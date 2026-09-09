@@ -12,6 +12,7 @@ use std::fmt::Write as _;
 
 use emath_world_ir::fnv1a64;
 
+use crate::json_emit::{emit_object, Json};
 use crate::synth::{LawViolation, MAX_CARRIER_SIZE, OpTable, SynthLaw, check_table};
 
 /// Agent-meaning schema id for artifacts and receipts.
@@ -471,64 +472,6 @@ fn validate(proposal: &AgentProposal) -> Result<(), ProviderError> {
         }
     }
     Ok(())
-}
-
-enum Json {
-    Str(String),
-    Number(String),
-    Null,
-    Array(Vec<Json>),
-}
-
-fn emit_object(fields: &BTreeMap<&str, Json>) -> String {
-    let mut out = String::from("{");
-    for (index, (key, value)) in fields.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        let _ = write!(out, "\"{}\":", json_escape(key));
-        emit_json(value, &mut out);
-    }
-    out.push('}');
-    out
-}
-
-fn emit_json(value: &Json, out: &mut String) {
-    match value {
-        Json::Str(text) => {
-            let _ = write!(out, "\"{}\"", json_escape(text));
-        }
-        Json::Number(text) => out.push_str(text),
-        Json::Null => out.push_str("null"),
-        Json::Array(items) => {
-            out.push('[');
-            for (index, item) in items.iter().enumerate() {
-                if index > 0 {
-                    out.push(',');
-                }
-                emit_json(item, out);
-            }
-            out.push(']');
-        }
-    }
-}
-
-fn json_escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if u32::from(c) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", u32::from(c));
-            }
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 fn escape(text: &str) -> String {

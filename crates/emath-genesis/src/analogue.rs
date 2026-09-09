@@ -14,6 +14,7 @@ use emath_term::{SymbolId, Term, VariableId};
 use emath_world_ir::fnv1a64;
 
 use crate::binder::{BinderBudget, BinderKind, BinderTerm};
+use crate::json_emit::{emit_object, Json};
 
 /// Finite-analogue schema id for artifacts and receipts.
 pub const ANALOGUE_SCHEMA: &str = "emath.analogue";
@@ -636,81 +637,11 @@ fn apply_op(operator: &SymbolId, arguments: &[f64]) -> Result<f64, AnalogueError
     }
 }
 
-enum Json {
-    Str(String),
-    Number(String),
-    Null,
-    Array(Vec<Json>),
-    Object(BTreeMap<&'static str, Json>),
-}
-
 fn sample_json(sample: &AnalogueSample) -> Json {
     let mut object = BTreeMap::new();
     object.insert("fx", Json::Str(format!("{:016x}", sample.fx_bits)));
     object.insert("x", Json::Str(format!("{:016x}", sample.x_bits)));
     Json::Object(object)
-}
-
-fn emit_object(fields: &BTreeMap<&str, Json>) -> String {
-    let mut out = String::from("{");
-    for (index, (key, value)) in fields.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        let _ = write!(out, "\"{}\":", json_escape(key));
-        emit_json(value, &mut out);
-    }
-    out.push('}');
-    out
-}
-
-fn emit_json(value: &Json, out: &mut String) {
-    match value {
-        Json::Str(text) => {
-            let _ = write!(out, "\"{}\"", json_escape(text));
-        }
-        Json::Number(text) => out.push_str(text),
-        Json::Null => out.push_str("null"),
-        Json::Array(items) => {
-            out.push('[');
-            for (index, item) in items.iter().enumerate() {
-                if index > 0 {
-                    out.push(',');
-                }
-                emit_json(item, out);
-            }
-            out.push(']');
-        }
-        Json::Object(fields) => {
-            out.push('{');
-            for (index, (key, item)) in fields.iter().enumerate() {
-                if index > 0 {
-                    out.push(',');
-                }
-                let _ = write!(out, "\"{}\":", json_escape(key));
-                emit_json(item, out);
-            }
-            out.push('}');
-        }
-    }
-}
-
-fn json_escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if u32::from(c) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", u32::from(c));
-            }
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 fn escape(text: &str) -> String {

@@ -14,6 +14,8 @@ use std::fmt::Write as _;
 use emath_term::{Signature, SymbolId, Term, VariableId};
 use emath_world_ir::{Fixity, fnv1a64};
 
+use crate::json_emit::json_escape;
+
 /// Budget for the bounded parse forest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ForestLimits {
@@ -680,25 +682,6 @@ fn is_free_variable(name: &str) -> bool {
 /// Any token that may hold operator position (not pure delimiters).
 fn is_operator_token(token: &str) -> bool {
     token != "(" && token != ")" && token != ","
-}
-
-/// Deterministic JSON string escaping (no whitespace inside values).
-fn json_escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if u32::from(c) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", u32::from(c));
-            }
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 fn fixity_name(fixity: Fixity) -> &'static str {

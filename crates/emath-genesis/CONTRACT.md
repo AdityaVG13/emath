@@ -7,6 +7,17 @@
 - Hosts the G1 world-side stage, moved from emath-syntax (world-side fence): the forest module builds a bounded parse forest over a genesis body expression, infers the world signature, and constructs emath-term and emath-world-ir values directly.
 - emath-syntax keeps the G0 emath custom section parser and re-exports this module for the CLI.
 
+## Nucleus disposition (emath-3so27)
+
+Recorded 2026-09-04. This crate is the G1 world-side evaluator, not the
+compiler nucleus. `emath-syntax` re-exports it; CLI `genesis` / `eval` /
+`world` / `portfolio` / `meaning` commands depend on it.
+
+Decision: **still-load-bearing**. Production `emath parse` / `compile`
+and layout still depend on this crate; `emath-cli-lab` uses it for
+genesis/eval. Keep it in `crates/`. Do not park under `tests/` without
+written authorization.
+
 ## Public types and semantics
 
 - FirstOrderWorld trait: generic first-order world over a value type and an error type; constant resolves nullary symbols, apply applies an operator to evaluated arguments. World ABI: carrier (`Value`), constants, variables (`Environment` + `evaluate`), apply, effects (`effects`, default empty; seed worlds are pure), budgets (`evaluate_bounded` under `WorldBudget`; exhaustion is typed `EvalError::BudgetExhausted`, never a partial value), evidence (`evidence -> WorldEvidence { world, origin, laws }`, required; every world names itself for result bundles), and `admits(&Signature)` (portfolio applicability; defaults `false`; a world claims a signature explicitly, never by omission). A NEW world implements the trait only; the evaluator gains no match arm for it.

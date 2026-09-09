@@ -17,6 +17,7 @@ pub mod analogue;
 pub mod binder;
 pub mod csa;
 pub mod forest;
+mod json_emit;
 pub mod joint_tuning;
 pub mod meaning_provider;
 pub mod morphism;
