@@ -186,6 +186,47 @@ pub fn map_expression(package: &SemanticPackage, id: ExprId) -> Result<DewExpr, 
                 UnaryOp::Abs => DewExpr::Abs(Box::new(inner)),
                 UnaryOp::Floor => DewExpr::Floor(Box::new(inner)),
                 UnaryOp::Ceil => DewExpr::Ceil(Box::new(inner)),
+                UnaryOp::Sign => DewExpr::If {
+                    condition: Box::new(DewExpr::Cmp(
+                        CmpOp::Gt,
+                        Box::new(inner.clone()),
+                        Box::new(DewExpr::Float64Bits(0.0_f64.to_bits())),
+                    )),
+                    then_value: Box::new(DewExpr::Float64Bits(1.0_f64.to_bits())),
+                    else_value: Box::new(DewExpr::If {
+                        condition: Box::new(DewExpr::Cmp(
+                            CmpOp::Lt,
+                            Box::new(inner),
+                            Box::new(DewExpr::Float64Bits(0.0_f64.to_bits())),
+                        )),
+                        then_value: Box::new(DewExpr::Float64Bits((-1.0_f64).to_bits())),
+                        else_value: Box::new(DewExpr::Float64Bits(0.0_f64.to_bits())),
+                    }),
+                },
+                UnaryOp::Cbrt => DewExpr::Pow(
+                    Box::new(inner),
+                    Box::new(DewExpr::Float64Bits((1.0_f64 / 3.0).to_bits())),
+                ),
+                UnaryOp::Recip => DewExpr::Div(
+                    Box::new(DewExpr::Float64Bits(1.0_f64.to_bits())),
+                    Box::new(inner),
+                ),
+                UnaryOp::Log2 => DewExpr::Div(
+                    Box::new(DewExpr::Ln(Box::new(inner))),
+                    Box::new(DewExpr::Ln(Box::new(DewExpr::Float64Bits(2.0_f64.to_bits())))),
+                ),
+                UnaryOp::Log10 => DewExpr::Div(
+                    Box::new(DewExpr::Ln(Box::new(inner))),
+                    Box::new(DewExpr::Ln(Box::new(DewExpr::Float64Bits(10.0_f64.to_bits())))),
+                ),
+                UnaryOp::IsFinite => DewExpr::IsFinite(Box::new(inner)),
+                UnaryOp::Length => {
+                    return Err(MappingIssue {
+                        code: "E-PROV-030",
+                        node: id,
+                        detail: "carrier length is outside the Dew subset".into(),
+                    });
+                }
             };
             Ok(mapped)
         }
@@ -215,22 +256,15 @@ pub fn map_expression(package: &SemanticPackage, id: ExprId) -> Result<DewExpr, 
                 BinaryOp::Min => DewExpr::Min(Box::new(l), Box::new(r)),
                 BinaryOp::Max => DewExpr::Max(Box::new(l), Box::new(r)),
                 BinaryOp::Atan2 => DewExpr::Atan2(Box::new(l), Box::new(r)),
-                BinaryOp::ExactAdd
+                BinaryOp::Hypot => DewExpr::Sqrt(Box::new(DewExpr::Add(
+                    Box::new(DewExpr::Mul(Box::new(l.clone()), Box::new(l))),
+                    Box::new(DewExpr::Mul(Box::new(r.clone()), Box::new(r))),
+                ))),
+                BinaryOp::Mod
+                | BinaryOp::ExactAdd
                 | BinaryOp::ExactSub
                 | BinaryOp::ExactMul
                 | BinaryOp::ExactDiv
-                | BinaryOp::VectorAdd
-                | BinaryOp::VectorSub
-                | BinaryOp::VectorScale
-                | BinaryOp::VectorDot
-                | BinaryOp::MatrixAdd
-                | BinaryOp::MatrixSub
-                | BinaryOp::MatrixScale
-                | BinaryOp::MatrixMulVector
-                | BinaryOp::MatrixMulMatrix
-                | BinaryOp::TensorAdd
-                | BinaryOp::TensorSub
-                | BinaryOp::TensorScale
                 | BinaryOp::SetContains => {
                     return Err(MappingIssue {
                         code: "E-PROV-030",
