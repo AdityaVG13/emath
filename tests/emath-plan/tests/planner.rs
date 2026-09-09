@@ -1,17 +1,18 @@
-//! Planner witnesses: artifact-class preservation under provider and
-//! budget growth, node-budget exhaustion (E-RES-100), and the capability
-//! matrix admitting supported / refusing unsupported providers with
-//! stable codes.
+//! Planner: artifact-class preservation under provider/budget growth,
+//! node-budget exhaustion (E-RES-100), capability matrix with stable
+//! codes, deterministic combinations, plan identity bound to goal
+//! semantics.
 
 use emath_ir::{
     DeterminismPolicy, EvidenceLevel, ExactnessPolicy, FallbackPolicy, Goal, GoalId, GoalKind,
-    GoalRequirements, TargetProfile,
+    GoalPayload, GoalRequirements, TargetProfile,
 };
-use emath_plan::{plan, PlannerConfig, PlanningOutcome};
+use emath_plan::{combination_name, plan, PlannerConfig, PlanningOutcome};
 use emath_provider_api::{
     CapabilitySpec, CapabilityTable, ProviderIsolation, ProviderLock, ProviderRegistry,
     RegistryConfig, RepresentationSpec,
 };
+use emath_test_harness::Probe;
 
 fn goal_with_produce(produce: &str) -> Goal {
     let mut goal = Goal {
@@ -31,7 +32,7 @@ fn goal_with_produce(produce: &str) -> Goal {
             fallback: FallbackPolicy::Diagnostic,
             produce: String::new(),
         },
-        payload: emath_ir::GoalPayload::default(),
+        payload: GoalPayload::default(),
         source: emath_core::Span::default(),
     };
     goal.requirements.produce = produce.to_string();
@@ -59,326 +60,254 @@ fn provider_table(name: &str) -> CapabilityTable {
     }
 }
 
-/// Resolution monotonicity (total artifact protocol): adding a
-/// provider or enlarging budgets must never destroy an artifact class
-/// that was previously reachable. A goal that selected a plan with
-/// one provider must still select the same class after another
-/// provider registers and after the budgets grow.
-#[test]
-fn adding_providers_or_budget_preserves_the_artifact_class() {
-    let goal = goal_with_produce("target");
-    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+fn register_ok(registry: &mut ProviderRegistry, id: &str, table: CapabilityTable) {
     registry
-        .register(
-            "p1",
-            ProviderIsolation::Static,
-            provider_table("evaluate.target"),
-        )
+        .register(id, ProviderIsolation::Static, table)
         .expect("sample registration must succeed");
-    let config = PlannerConfig::default();
-    let baseline = match plan(&goal, &registry, &config) {
-        PlanningOutcome::Selected { plan, .. } => plan.artifact_class,
-        other => panic!("baseline goal must select a plan, got {other:?}"),
-    };
-
-    registry
-        .register(
-            "p2",
-            ProviderIsolation::Static,
-            provider_table("evaluate.target"),
-        )
-        .expect("second registration must succeed");
-    let widened = match plan(&goal, &registry, &config) {
-        PlanningOutcome::Selected { plan, .. } => plan.artifact_class,
-        other => panic!("adding a provider must not destroy the plan, got {other:?}"),
-    };
-    assert_eq!(baseline, widened, "provider growth changed the class");
-
-    let generous = PlannerConfig {
-        max_nodes: config.max_nodes.saturating_mul(4),
-        max_candidates: config.max_candidates.saturating_mul(4),
-        ..config
-    };
-    let enlarged = match plan(&goal, &registry, &generous) {
-        PlanningOutcome::Selected { plan, .. } => plan.artifact_class,
-        other => panic!("budget growth must not destroy the plan, got {other:?}"),
-    };
-    assert_eq!(baseline, enlarged, "budget growth changed the class");
 }
 
 #[test]
-fn node_budget_refuses_oversized_plan_dag() {
-    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
-    registry
-        .register(
-            "p1",
-            ProviderIsolation::Static,
-            provider_table("evaluate.target"),
-        )
-        .expect("sample registration must succeed");
-    let outcome = plan(
-        &goal_with_produce("target"),
-        &registry,
-        &PlannerConfig {
-            max_nodes: 0,
-            ..PlannerConfig::default()
-        },
+fn planner_artifact_and_capability_matrix() {
+    let mut p = Probe::new(
+        "adding providers/budget never destroys artifact class; max_nodes=0 is E-RES-100; exact-ok selected, estimate E-PROV-515, wrong produce E-PROV-512; plan_id binds goal semantics",
     );
-    match &outcome {
-        PlanningOutcome::Exhausted { inspection, .. } => assert!(
-            inspection
-                .budget
-                .as_deref()
-                .unwrap_or_default()
-                .contains("E-RES-100"),
-            "E-RES-100 must be issued in the exhausted inspection: {outcome:?}"
-        ),
-        other => panic!("max_nodes=0 must exhaust, got {other:?}"),
-    }
-}
-
-/// Capability matrix: only a provider whose descriptor matches the
-/// goal is selected; estimate-only and wrong-produce providers are
-/// refused with stable codes; public IR carries `ProviderRef` ids,
-/// not upstream descriptor types. An unsupported-only registry
-/// falls back to the diagnostic disposition.
-#[test]
-fn capability_matrix_admits_supported_and_refuses_unsupported() {
-    let goal = goal_with_produce("target");
-    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
-    registry
-        .register(
-            "exact-ok",
-            ProviderIsolation::Static,
-            provider_table("evaluate.target"),
-        )
-        .expect("exact provider must register");
-    let mut estimate = provider_table("evaluate.target");
-    estimate.capabilities[0].exactness = vec!["estimate".into()];
-    registry
-        .register("estimate-only", ProviderIsolation::Static, estimate)
-        .expect("estimate provider must register");
-    registry
-        .register(
-            "wrong-produce",
-            ProviderIsolation::Static,
-            provider_table("evaluate.other"),
-        )
-        .expect("wrong-produce provider must register");
-
-    let outcome = plan(&goal, &registry, &PlannerConfig::default());
-    let (selected, inspection) = match outcome {
-        PlanningOutcome::Selected { plan, inspection } => (plan, inspection),
-        other => panic!("supported provider must select a plan, got {other:?}"),
-    };
-    assert_eq!(inspection.candidates, vec!["exact-ok".to_string()]);
-    assert!(
-        inspection
-            .exclusions
-            .iter()
-            .any(|(id, code, _)| id == "estimate-only" && code == "E-PROV-515"),
-        "estimate-only must be refused for an exact goal: {:?}",
-        inspection.exclusions
-    );
-    assert!(
-        inspection
-            .exclusions
-            .iter()
-            .any(|(id, code, _)| id == "wrong-produce" && code == "E-PROV-512"),
-        "wrong produce must be refused: {:?}",
-        inspection.exclusions
-    );
-    let explained = inspection.explain();
-    assert!(explained.contains("exact-ok"));
-    assert!(explained.contains("E-PROV-515"));
-    assert!(explained.contains("E-PROV-512"));
-    let provider_ids: Vec<&str> = selected
-        .nodes
-        .values()
-        .filter_map(|node| node.provider.as_ref().map(|provider| provider.id.as_str()))
-        .collect();
-    assert!(
-        provider_ids.iter().all(|id| *id == "exact-ok"),
-        "public IR must name the admitted provider by id, got {provider_ids:?}"
-    );
-
-    let mut unsupported = ProviderRegistry::new(RegistryConfig::static_only());
-    let mut estimate_only = provider_table("evaluate.target");
-    estimate_only.capabilities[0].exactness = vec!["estimate".into()];
-    unsupported
-        .register("estimate-only", ProviderIsolation::Static, estimate_only)
-        .expect("estimate-only provider must register");
-    let fallback = plan(&goal, &unsupported, &PlannerConfig::default());
-    match fallback {
-        PlanningOutcome::NoEligible {
-            disposition,
-            reasons,
-            ..
-        } => {
-            assert_eq!(disposition.name(), "diagnostic");
-            assert!(
-                reasons.iter().any(|reason| reason.contains("E-PROV-515")),
-                "unsupported-only registry must refuse with exactness: {reasons:?}"
-            );
+    p.case("class-preserved", |p| {
+        let goal = goal_with_produce("target");
+        let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+        register_ok(&mut registry, "p1", provider_table("evaluate.target"));
+        let config = PlannerConfig::default();
+        let baseline = match plan(&goal, &registry, &config) {
+            PlanningOutcome::Selected { plan, .. } => plan.artifact_class,
+            other => {
+                p.fail("baseline", format!("baseline goal must select a plan, got {other:?}"));
+                return;
+            }
+        };
+        register_ok(&mut registry, "p2", provider_table("evaluate.target"));
+        match plan(&goal, &registry, &config) {
+            PlanningOutcome::Selected { plan, .. } => {
+                p.eq("provider-growth", plan.artifact_class.clone(), baseline.clone());
+            }
+            other => {
+                p.fail("widened", format!("adding a provider must not destroy the plan, got {other:?}"));
+            }
         }
-        other => panic!("unsupported-only registry must fall back, got {other:?}"),
-    }
-}
-
-#[test]
-fn selected_plan_names_goal_solver_provider_combination_deterministically() {
-    let goal = goal_with_produce("target");
-    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
-    registry
-        .register(
-            "p1",
-            ProviderIsolation::Static,
-            provider_table("evaluate.target"),
-        )
-        .expect("sample registration must succeed");
-    let config = PlannerConfig::default();
-    let outcome = plan(&goal, &registry, &config);
-    let inspection = match &outcome {
-        PlanningOutcome::Selected { inspection, .. } => inspection,
-        other => panic!("goal must select a plan, got {other:?}"),
-    };
-    assert_eq!(
-        inspection.combination.as_deref(),
-        Some("evaluate:interpreter:p1"),
-        "selected plans must name the deterministic goal:solver:provider combination"
-    );
-    // Determinism: the same goal + registry + config name the same
-    // combination on a second run.
-    let second = plan(&goal, &registry, &config);
-    assert_eq!(
-        second.inspection().combination,
-        inspection.combination,
-        "the combination name must be deterministic across runs"
-    );
-    // The name must be part of the plan output: explain() and JSON.
-    assert!(
-        inspection.explain().contains("combination: evaluate:interpreter:p1"),
-        "explain() must render the combination"
-    );
-    assert!(
-        inspection.to_json().contains("evaluate:interpreter:p1"),
-        "to_json() must carry the combination"
-    );
-}
-
-#[test]
-fn combination_name_maps_goal_kinds_to_deterministic_solvers() {
-    use emath_ir::GoalPayload;
-    let mut base = goal_with_produce("target");
-    base.kind = GoalKind::Solve;
-    assert_eq!(
-        emath_plan::combination_name(&base, "p1"),
-        "solve:newton-bracket:p1"
-    );
-    base.kind = GoalKind::Differentiate;
-    assert_eq!(
-        emath_plan::combination_name(&base, "p1"),
-        "differentiate:dual-forward:p1"
-    );
-    base.kind = GoalKind::Optimize;
-    assert_eq!(
-        emath_plan::combination_name(&base, "p1"),
-        "optimize:newton-hessian:p1"
-    );
-    base.kind = GoalKind::Integrate;
-    assert_eq!(
-        emath_plan::combination_name(&base, "p1"),
-        "integrate:quadrature:p1"
-    );
-    base.kind = GoalKind::Evaluate;
-    assert_eq!(
-        emath_plan::combination_name(&base, "p1"),
-        "evaluate:interpreter:p1"
-    );
-    // A fit goal (custom kind with an optimizer method) names its
-    // declared solver.
-    base.kind = GoalKind::Custom(emath_core::SchemaId("fit".into()));
-    base.payload = GoalPayload {
-        method: "levenberg-marquardt".to_string(),
-        ..GoalPayload::default()
-    };
-    assert_eq!(
-        emath_plan::combination_name(&base, "p1"),
-        "custom:levenberg-marquardt:p1"
-    );
-}
-
-/// Plan identity must bind goal SEMANTICS (kind, target, payload), not
-/// just the positional goal id: two semantically different goals that
-/// occupy the same package slot in two different compilations must not
-/// collide on `plan_id`, because downstream caches (PlanCache, build
-/// manifests) key plans by that ContentId. And the same goal planned
-/// twice in-process must yield the identical id (determinism).
-#[test]
-fn plan_identity_binds_goal_semantics_and_is_deterministic() {
-    let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
-    let mut multi = provider_table("evaluate.target");
-    multi.capabilities.push({
-        let mut spec = multi.capabilities[0].clone();
-        spec.name = "differentiate.target".into();
-        spec
+        let generous = PlannerConfig {
+            max_nodes: config.max_nodes.saturating_mul(4),
+            max_candidates: config.max_candidates.saturating_mul(4),
+            ..config
+        };
+        match plan(&goal, &registry, &generous) {
+            PlanningOutcome::Selected { plan, .. } => {
+                p.eq("budget-growth", plan.artifact_class.clone(), baseline.clone());
+            }
+            other => {
+                p.fail("enlarged", format!("budget growth must not destroy the plan, got {other:?}"));
+            }
+        }
     });
-    multi.capabilities.push({
-        let mut spec = multi.capabilities[0].clone();
-        spec.name = "solve.target".into();
-        spec
+    p.case("node-budget-e-res-100", |p| {
+        let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+        register_ok(&mut registry, "p1", provider_table("evaluate.target"));
+        match plan(
+            &goal_with_produce("target"),
+            &registry,
+            &PlannerConfig {
+                max_nodes: 0,
+                ..PlannerConfig::default()
+            },
+        ) {
+            PlanningOutcome::Exhausted { inspection, .. } => {
+                p.contains(
+                    "code",
+                    inspection.budget.as_deref().unwrap_or_default(),
+                    "E-RES-100",
+                );
+            }
+            other => {
+                p.fail("exhausted", format!("max_nodes=0 must exhaust, got {other:?}"));
+            }
+        }
     });
-    registry
-        .register("p1", ProviderIsolation::Static, multi)
-        .expect("sample registration must succeed");
-    let config = PlannerConfig::default();
-
-    let mut differentiate = goal_with_produce("target");
-    differentiate.kind = GoalKind::Differentiate;
-    differentiate.payload.wrt = vec!["x".into()];
-    let mut solve = goal_with_produce("target");
-    solve.kind = GoalKind::Solve;
-
-    let plan_id = |goal: &Goal| match plan(goal, &registry, &config) {
-        PlanningOutcome::Selected { plan, .. } => plan.plan_id.0,
-        other => panic!("goal must select a plan, got {other:?}"),
-    };
-
-    // Same semantics, planned twice in-process: identical id.
-    let first = plan_id(&differentiate);
-    let again = plan_id(&differentiate);
-    assert_eq!(first, again, "plan id must be stable across compilations");
-
-    // Different semantics, same positional slot: different ids.
-    let other = plan_id(&solve);
-    assert_ne!(
-        first, other,
-        "two different goals in the same package slot must not collide on plan_id"
-    );
-
-    // A different wrt set is a semantic change: different id.
-    let mut different_wrt = goal_with_produce("target");
-    different_wrt.kind = GoalKind::Differentiate;
-    different_wrt.payload.wrt = vec!["x".into(), "y".into()];
-    assert_ne!(
-        first,
-        plan_id(&different_wrt),
-        "changing the wrt set must change the plan id"
-    );
-}
-
-#[test]
-fn unselected_outcomes_carry_no_combination() {
-    let goal = goal_with_produce("target");
-    let registry = ProviderRegistry::new(RegistryConfig::static_only());
-    let outcome = plan(&goal, &registry, &PlannerConfig::default());
-    assert!(
-        matches!(outcome, PlanningOutcome::NoEligible { .. }),
-        "an empty registry must refuse planning"
-    );
-    assert_eq!(
-        outcome.inspection().combination,
-        None,
-        "no plan selected: no goal:solver:provider combination"
-    );
+    p.case("capability-matrix", |p| {
+        let goal = goal_with_produce("target");
+        let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+        register_ok(&mut registry, "exact-ok", provider_table("evaluate.target"));
+        let mut estimate = provider_table("evaluate.target");
+        estimate.capabilities[0].exactness = vec!["estimate".into()];
+        register_ok(&mut registry, "estimate-only", estimate);
+        register_ok(&mut registry, "wrong-produce", provider_table("evaluate.other"));
+        match plan(&goal, &registry, &PlannerConfig::default()) {
+            PlanningOutcome::Selected { plan, inspection } => {
+                p.eq("candidates", inspection.candidates.clone(), vec!["exact-ok".to_string()]);
+                p.demand(
+                    "e-prov-515",
+                    inspection
+                        .exclusions
+                        .iter()
+                        .any(|(id, code, _)| id == "estimate-only" && code == "E-PROV-515"),
+                    format!("estimate-only must be E-PROV-515: {:?}", inspection.exclusions),
+                );
+                p.demand(
+                    "e-prov-512",
+                    inspection
+                        .exclusions
+                        .iter()
+                        .any(|(id, code, _)| id == "wrong-produce" && code == "E-PROV-512"),
+                    format!("wrong produce must be E-PROV-512: {:?}", inspection.exclusions),
+                );
+                let explained = inspection.explain();
+                p.contains("explain-ok", &explained, "exact-ok");
+                p.contains("explain-515", &explained, "E-PROV-515");
+                p.contains("explain-512", &explained, "E-PROV-512");
+                let provider_ids: Vec<&str> = plan
+                    .nodes
+                    .values()
+                    .filter_map(|node| node.provider.as_ref().map(|provider| provider.id.as_str()))
+                    .collect();
+                p.demand(
+                    "public-ids",
+                    provider_ids.iter().all(|id| *id == "exact-ok"),
+                    format!("public IR must name exact-ok, got {provider_ids:?}"),
+                );
+            }
+            other => {
+                p.fail("selected", format!("supported provider must select a plan, got {other:?}"));
+            }
+        }
+        let mut unsupported = ProviderRegistry::new(RegistryConfig::static_only());
+        let mut estimate_only = provider_table("evaluate.target");
+        estimate_only.capabilities[0].exactness = vec!["estimate".into()];
+        register_ok(&mut unsupported, "estimate-only", estimate_only);
+        match plan(&goal, &unsupported, &PlannerConfig::default()) {
+            PlanningOutcome::NoEligible {
+                disposition,
+                reasons,
+                ..
+            } => {
+                p.eq("disposition", disposition.name(), "diagnostic");
+                p.demand(
+                    "e-prov-515",
+                    reasons.iter().any(|reason| reason.contains("E-PROV-515")),
+                    format!("unsupported-only registry must refuse with exactness: {reasons:?}"),
+                );
+            }
+            other => {
+                p.fail("fallback", format!("unsupported-only registry must fall back, got {other:?}"));
+            }
+        }
+    });
+    p.case("combination-name", |p| {
+        let goal = goal_with_produce("target");
+        let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+        register_ok(&mut registry, "p1", provider_table("evaluate.target"));
+        let config = PlannerConfig::default();
+        match plan(&goal, &registry, &config) {
+            PlanningOutcome::Selected { inspection, .. } => {
+                p.eq(
+                    "combination",
+                    inspection.combination.clone(),
+                    Some("evaluate:interpreter:p1".to_string()),
+                );
+                let second = plan(&goal, &registry, &config);
+                p.eq(
+                    "deterministic",
+                    second.inspection().combination.clone(),
+                    inspection.combination.clone(),
+                );
+                p.contains("explain", &inspection.explain(), "combination: evaluate:interpreter:p1");
+                p.contains("json", &inspection.to_json(), "evaluate:interpreter:p1");
+            }
+            other => {
+                p.fail("selected", format!("goal must select a plan, got {other:?}"));
+            }
+        }
+        let mut base = goal_with_produce("target");
+        base.kind = GoalKind::Solve;
+        p.eq("solve", combination_name(&base, "p1"), "solve:newton-bracket:p1".to_string());
+        base.kind = GoalKind::Differentiate;
+        p.eq("diff", combination_name(&base, "p1"), "differentiate:dual-forward:p1".to_string());
+        base.kind = GoalKind::Optimize;
+        p.eq("opt", combination_name(&base, "p1"), "optimize:newton-hessian:p1".to_string());
+        base.kind = GoalKind::Integrate;
+        p.eq("int", combination_name(&base, "p1"), "integrate:quadrature:p1".to_string());
+        base.kind = GoalKind::Evaluate;
+        p.eq("eval", combination_name(&base, "p1"), "evaluate:interpreter:p1".to_string());
+        base.kind = GoalKind::Custom(emath_core::SchemaId("fit".into()));
+        base.payload = GoalPayload {
+            method: "levenberg-marquardt".to_string(),
+            ..GoalPayload::default()
+        };
+        p.eq(
+            "custom",
+            combination_name(&base, "p1"),
+            "custom:levenberg-marquardt:p1".to_string(),
+        );
+    });
+    p.case("plan-id-binds-semantics", |p| {
+        let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
+        let mut multi = provider_table("evaluate.target");
+        multi.capabilities.push({
+            let mut spec = multi.capabilities[0].clone();
+            spec.name = "differentiate.target".into();
+            spec
+        });
+        multi.capabilities.push({
+            let mut spec = multi.capabilities[0].clone();
+            spec.name = "solve.target".into();
+            spec
+        });
+        register_ok(&mut registry, "p1", multi);
+        let config = PlannerConfig::default();
+        let mut differentiate = goal_with_produce("target");
+        differentiate.kind = GoalKind::Differentiate;
+        differentiate.payload.wrt = vec!["x".into()];
+        let mut solve = goal_with_produce("target");
+        solve.kind = GoalKind::Solve;
+        let plan_id = |goal: &Goal| match plan(goal, &registry, &config) {
+            PlanningOutcome::Selected { plan, .. } => Some(plan.plan_id.0),
+            _ => None,
+        };
+        match (plan_id(&differentiate), plan_id(&differentiate)) {
+            (Some(first), Some(again)) => {
+                p.eq("stable", first.clone(), again);
+                match plan_id(&solve) {
+                    Some(other) => {
+                        p.ne("slot-collision", first.clone(), other);
+                    }
+                    None => {
+                        p.fail("solve", "solve goal must select a plan");
+                    }
+                }
+                let mut different_wrt = goal_with_produce("target");
+                different_wrt.kind = GoalKind::Differentiate;
+                different_wrt.payload.wrt = vec!["x".into(), "y".into()];
+                match plan_id(&different_wrt) {
+                    Some(wrt) => {
+                        p.ne("wrt", first.clone(), wrt);
+                    }
+                    None => {
+                        p.fail("wrt", "different wrt must still select");
+                    }
+                }
+            }
+            _ => {
+                p.fail("diff", "differentiate goal must select a plan");
+            }
+        }
+    });
+    p.case("unselected-no-combination", |p| {
+        let outcome = plan(
+            &goal_with_produce("target"),
+            &ProviderRegistry::new(RegistryConfig::static_only()),
+            &PlannerConfig::default(),
+        );
+        p.demand(
+            "no-eligible",
+            matches!(outcome, PlanningOutcome::NoEligible { .. }),
+            format!("an empty registry must refuse planning, got {outcome:?}"),
+        );
+        p.eq("combination", outcome.inspection().combination.clone(), None);
+    });
+    p.finish();
 }
