@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+emath-test-harness = { workspace = true }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-core = { path = "../../crates/emath-core" }
 # Absorbed test suites (search/holes/law-check/calibration) exercise these:

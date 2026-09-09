@@ -1,32 +1,25 @@
-//! Stats protocol tests (origin `crates/emath-lab-core/src/stats.rs`).
+//! Stats-protocol percentile and mean tests.
 
 use emath_lab_core::stats::{mean, percentile, percentile_f64};
-
-#[test]
-fn empty_percentile_is_e_host_006_not_an_index_panic() {
-    let err = percentile(&[], 0.5).unwrap_err();
-    assert_eq!(err.code, "E-HOST-006");
-    let err = percentile_f64(&[], 0.5).unwrap_err();
-    assert_eq!(err.code, "E-HOST-006");
-    let err = mean(&[]).unwrap_err();
-    assert_eq!(err.code, "E-HOST-006");
-}
-
-// The expected values below are exact by construction (integer casts,
-// whole f64 literals, and a midpoint of two integers), so bitwise
-// equality is the honest assertion.
-#[allow(clippy::float_cmp)]
-#[test]
-fn single_sample_percentile_is_the_sample() {
-    assert_eq!(percentile(&[42], 0.5).unwrap(), 42.0);
-    assert_eq!(percentile_f64(&[1.5], 0.99).unwrap(), 1.5);
-}
+use emath_test_harness::Probe;
 
 #[allow(clippy::float_cmp)]
 #[test]
-fn interpolated_percentile_of_two_samples() {
-    // Median of {10, 20} is the midpoint; p0/p100 are the extrema.
-    assert_eq!(percentile(&[10, 20], 0.5).unwrap(), 15.0);
-    assert_eq!(percentile(&[10, 20], 0.0).unwrap(), 10.0);
-    assert_eq!(percentile(&[10, 20], 1.0).unwrap(), 20.0);
+fn stats_protocol() {
+    let mut p = Probe::new("empty inputs refuse E-HOST-006; percentiles interpolate exactly");
+    p.case("empty-refused", |p| {
+        p.eq("u64", percentile(&[], 0.5).unwrap_err().code, "E-HOST-006");
+        p.eq("f64", percentile_f64(&[], 0.5).unwrap_err().code, "E-HOST-006");
+        p.eq("mean", mean(&[]).unwrap_err().code, "E-HOST-006");
+    });
+    p.case("single-is-sample", |p| {
+        p.eq("u64", percentile(&[42], 0.5).unwrap(), 42.0);
+        p.eq("f64", percentile_f64(&[1.5], 0.99).unwrap(), 1.5);
+    });
+    p.case("interpolated", |p| {
+        p.eq("median", percentile(&[10, 20], 0.5).unwrap(), 15.0);
+        p.eq("min", percentile(&[10, 20], 0.0).unwrap(), 10.0);
+        p.eq("max", percentile(&[10, 20], 1.0).unwrap(), 20.0);
+    });
+    p.finish();
 }

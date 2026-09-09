@@ -1,50 +1,36 @@
-//! `emath-lab-core` `search` artifact-corpus tests (migrated from
-//! `crates/emath-lab-core/src/search/corpus.rs`).
+//! Search artifact-corpus id tests.
 
-use emath_lab_core::search::{
-    ArtifactDoc, DOC_ID_SEPARATOR, SearchError, from_fs_doc_id, to_fs_doc_id,
-};
+use emath_lab_core::search::{ArtifactDoc, DOC_ID_SEPARATOR, SearchError, from_fs_doc_id, to_fs_doc_id};
+use emath_test_harness::{Case, Probe, check_all, expect_ok};
 
 #[test]
-fn round_trip_composite_id() {
-    let encoded = to_fs_doc_id("artifact", "42").expect("encode");
-    assert_eq!(encoded, format!("artifact{DOC_ID_SEPARATOR}42"));
-    assert_eq!(
-        from_fs_doc_id(&encoded),
-        Some(("artifact".into(), "42".into()))
-    );
-}
-
-#[test]
-fn empty_parts_rejected() {
-    assert!(matches!(
-        to_fs_doc_id("", "42"),
-        Err(SearchError::InvalidArgument { field: "kind", .. })
-    ));
-    assert!(matches!(
-        to_fs_doc_id("artifact", ""),
-        Err(SearchError::InvalidArgument { field: "id", .. })
-    ));
-}
-
-#[test]
-fn separator_inside_parts_rejected() {
-    assert!(to_fs_doc_id("art\x1fifact", "42").is_err());
-    assert!(to_fs_doc_id("artifact", "4\x1f2").is_err());
-}
-
-#[test]
-fn malformed_decode_returns_none() {
-    assert_eq!(from_fs_doc_id(""), None);
-    assert_eq!(from_fs_doc_id("no-separator"), None);
-    assert_eq!(from_fs_doc_id("\x1f42"), None);
-    assert_eq!(from_fs_doc_id("artifact\x1f"), None);
-    assert_eq!(from_fs_doc_id("artifact\x1f4\x1f2"), None);
-}
-
-#[test]
-fn artifact_doc_validates_at_construction() {
-    let doc = ArtifactDoc::new("7", "evidence", None, "verified claim").expect("valid");
-    assert_eq!(doc.fs_doc_id().expect("id"), "evidence\x1f7");
-    assert!(ArtifactDoc::new("7", "evi\x1fdence", None, "x").is_err());
+fn artifact_corpus_ids() {
+    let mut p = Probe::new("composite doc ids round-trip and refuse malformed parts");
+    p.case("round-trip", |p| {
+        let encoded = to_fs_doc_id("artifact", "42").expect("encode");
+        p.eq("encoded", encoded.clone(), format!("artifact{DOC_ID_SEPARATOR}42"));
+        p.eq("decoded", from_fs_doc_id(&encoded), Some(("artifact".into(), "42".into())));
+    });
+    p.case("empty-refused", |p| {
+        p.demand("kind", matches!(to_fs_doc_id("", "42"), Err(SearchError::InvalidArgument { field: "kind", .. })), "empty kind refused");
+        p.demand("id", matches!(to_fs_doc_id("artifact", ""), Err(SearchError::InvalidArgument { field: "id", .. })), "empty id refused");
+    });
+    p.case("separator-refused", |p| {
+        expect_ok(check_all(
+            &[Case::new("kind", ("art\x1fifact", "42"), true), Case::new("id", ("artifact", "4\x1f2"), true)],
+            |input: &(&str, &str)| to_fs_doc_id(input.0, input.1).is_err(),
+        ));
+    });
+    p.case("malformed-decode", |p| {
+        expect_ok(check_all(
+            &[Case::new("empty", "", None), Case::new("plain", "no-separator", None), Case::new("nokind", "\x1f42", None), Case::new("noid", "artifact\x1f", None), Case::new("extra", "artifact\x1f4\x1f2", None)],
+            |input: &&str| from_fs_doc_id(input).map(|(a, b)| (a.to_string(), b.to_string())),
+        ));
+    });
+    p.case("doc-validates", |p| {
+        let doc = ArtifactDoc::new("7", "evidence", None, "verified claim").expect("valid");
+        p.eq("id", doc.fs_doc_id().expect("id"), "evidence\x1f7");
+        p.demand("separator-refused", ArtifactDoc::new("7", "evi\x1fdence", None, "x").is_err(), "separator in kind refused");
+    });
+    p.finish();
 }
