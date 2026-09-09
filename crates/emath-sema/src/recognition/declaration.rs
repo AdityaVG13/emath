@@ -22,6 +22,10 @@ pub fn admit_declaration(
     } else {
         item_kind
     };
+    if schema_kind == "capability" {
+        super::capability::admit_capability(decl, package, diagnostics, trace);
+        return;
+    }
     if let Some(def) = kind_defs.get(schema_kind) {
         admit_kind_application(decl, def, package, diagnostics, trace);
         return;
@@ -80,6 +84,23 @@ fn admit_kind_application(
         ),
         Some(decl.head_source),
     );
+}
+
+/// Schema-only validation for a kind application. Function-shaped kinds
+/// are lowered by the generic declaration pass after this returns true.
+pub(crate) fn validate_kind_application(
+    decl: &emath_core::tree::Declaration,
+    def: &KindDef,
+    diagnostics: &mut Diagnostics,
+    _trace: &mut SemanticTrace,
+) -> bool {
+    // Function-shaped applications are section-checked by the generic
+    // Admitter (`inputs`/`definitions`/`tests`). Recognition function
+    // rules use different names (`input`/`define`) and must not refuse
+    // a valid Phase 1 body here.
+    let errors_before = diagnostics.errors().count();
+    enforce_schema(decl, def, diagnostics);
+    diagnostics.errors().count() == errors_before
 }
 
 fn sections_for_application(def: &KindDef) -> Vec<SectionRule> {
@@ -264,7 +285,7 @@ fn admit_extern(
     );
 }
 
-fn package_entry(decl: &emath_core::tree::Declaration, kind: &str) -> emath_ir::Declaration {
+pub(super) fn package_entry(decl: &emath_core::tree::Declaration, kind: &str) -> emath_ir::Declaration {
     emath_ir::Declaration {
         id: emath_ir::DeclarationId(0),
         name: emath_core::QualifiedName(decl.name.clone()),
