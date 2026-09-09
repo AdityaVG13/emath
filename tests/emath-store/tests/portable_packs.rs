@@ -1,11 +1,4 @@
 //! — CAPSTONE: portable `.emlib` envelopes.
-//!
-//! The share unit is the pack, not a git bundle of generated crates:
-//! create (canonical export), verify (corruption refuses by name),
-//! mount into a FRESH space (offline, no daemon), thin-pack against a
-//! parent, and reject truncated/mutated bytes. Built on the landed
-//! layers: format, spaces, object graph.
-//! Offline by construction: everything runs on in-memory structures.
 
 use std::sync::Arc;
 
@@ -13,6 +6,7 @@ use emath_core::MeaningId;
 use emath_store::Space;
 use emath_store::object_graph::{ObjectDraft, ObjectGraph, ObjectKind};
 use emath_store::pack::{PackBudgets, PackEntry, PackFault, PackReader, PackWriter};
+use emath_test_harness::Probe;
 
 fn object(meaning: &str, presentation: &str) -> ObjectDraft {
     ObjectDraft {
@@ -30,128 +24,60 @@ fn entries() -> Vec<PackEntry> {
     ]
 }
 
-fn budgets() -> PackBudgets {
-    PackBudgets::draft()
-}
-
-/// CREATE: the canonical pack bytes (deterministic, sorted by id).
 #[test]
-fn create_is_deterministic_canonical_bytes() {
-    let first = PackWriter::new(budgets()).write(&entries(), None).unwrap();
-    let mut shuffled = entries();
-    shuffled.reverse();
-    let second = PackWriter::new(budgets()).write(&shuffled, None).unwrap();
-    assert_eq!(first, second, "create is insertion-order independent");
-}
-
-/// VERIFY: a mutated pack refuses by name — no silent acceptance.
-#[test]
-fn verify_refuses_mutated_bytes() {
-    let bytes = PackWriter::new(budgets()).write(&entries(), None).unwrap();
-    // Truncation.
-    let truncated = &bytes[..bytes.len() - 4];
-    match PackReader::new(budgets()).read(truncated, None) {
-        Err(PackFault::Truncated { code }) => assert_eq!(code, "E-EVID-603"),
-        other => panic!("truncated pack must refuse E-EVID-603, got {other:?}"),
-    }
-    // Payload mutation inside the last entry: visible in the read-back
-    // bytes (the mutation is detectable by content comparison — the
-    // pack is content, so any tamper moves the derived identity).
-    let mut mutated = bytes.clone();
-    let last = mutated.len() - 1;
-    mutated[last] ^= 0x01;
-    let read = PackReader::new(budgets()).read(&mutated, None).unwrap();
-    let expected = {
+fn portable_packs() {
+    let mut p = Probe::new("packs create canonically, verify by name, and mount offline");
+    let budgets = PackBudgets::draft();
+    p.case("create", |p| {
+        let first = PackWriter::new(budgets.clone()).write(&entries(), None).unwrap();
+        let mut shuffled = entries();
+        shuffled.reverse();
+        p.eq("canonical", PackWriter::new(budgets.clone()).write(&shuffled, None).unwrap(), first);
+    });
+    p.case("verify", |p| {
+        let bytes = PackWriter::new(budgets.clone()).write(&entries(), None).unwrap();
+        match PackReader::new(budgets.clone()).read(&bytes[..bytes.len() - 4], None) {
+            Err(PackFault::Truncated { code }) => { p.eq("truncated", code, "E-EVID-603".to_string()); },
+            other => { p.fail("truncated", format!("must refuse E-EVID-603, got {other:?}")); },
+        }
+        let mut mutated = bytes.clone();
+        let last = mutated.len() - 1;
+        mutated[last] ^= 0x01;
+        let read = PackReader::new(budgets.clone()).read(&mutated, None).unwrap();
         let mut expected = entries();
-        let last_entry = expected.last_mut().unwrap();
-        let last_byte = last_entry.payload.last_mut().unwrap();
-        *last_byte ^= 0x01;
-        expected
-    };
-    assert_eq!(
-        read.last().unwrap(),
-        expected.last().unwrap(),
-        "a mutated payload byte must be VISIBLE in the read (the mutated pack is not the \
-         original pack — its derived identity moves)"
-    );
-    assert_ne!(
-        PackWriter::new(budgets()).write(&read, None).unwrap(),
-        bytes,
-        "re-serializing the mutated read cannot reproduce the original bytes"
-    );
-}
-
-/// MOUNT: the pack's entries materialize as objects in a FRESH space
-/// (offline, no daemon); the space's lock verifies against the graph.
-#[test]
-fn mount_into_fresh_space_and_verify() {
-    let bytes = PackWriter::new(budgets()).write(&entries(), None).unwrap();
-    let read = PackReader::new(budgets()).read(&bytes, None).unwrap();
-
-    let mut graph = ObjectGraph::default();
-    let mut mounted_ids = Vec::new();
-    for entry in &read {
-        let id = graph
-            .put(object(&entry.id, "mounted from .emlib"))
-            .expect("entry must mount as an object");
-        mounted_ids.push(id);
-    }
-    let space = Space::new("fresh-workbench", Arc::new(graph.clone())).expect("space must create");
-    assert_eq!(space.name(), "fresh-workbench");
-    // The mount's dependency lock verifies against the fresh graph:
-    // every mounted object present, nothing revoked.
-    let lock =
-        emath_store::LibraryLock::from_snapshot(&space.snapshot().unwrap(), mounted_ids.clone());
-    lock.verify(&graph)
-        .expect("freshly mounted objects must verify");
-}
-
-/// THIN-PACK: delta against a parent, refuses without closure, merges
-/// with it (discipline reused as the share flow).
-#[test]
-fn thin_pack_share_flow() {
-    let parent_bytes = PackWriter::new(budgets())
-        .write(
-            &[PackEntry::new("emath:meaning:v1:cell-a", b"payload-a")],
-            None,
-        )
-        .unwrap();
-    let thin_bytes = PackWriter::new(budgets())
-        .write(
-            &[PackEntry::new("emath:meaning:v1:cell-b", b"payload-b")],
-            Some("emath:meaning:v1:cell-a"),
-        )
-        .expect("thin pack must write");
-    // Without the parent closure: refused.
-    match PackReader::new(budgets()).read(&thin_bytes, None) {
-        Err(PackFault::ThinWithoutParent { code }) => assert_eq!(code, "E-EVID-605"),
-        other => panic!("thin without parent must refuse E-EVID-605, got {other:?}"),
-    }
-    // With the closure: the merged view carries both cells.
-    let merged = PackReader::new(budgets())
-        .read(&thin_bytes, Some(&parent_bytes))
-        .unwrap();
-    let ids: Vec<&str> = merged.iter().map(|entry| entry.id.as_str()).collect();
-    assert!(ids.contains(&"emath:meaning:v1:cell-a"));
-    assert!(ids.contains(&"emath:meaning:v1:cell-b"));
-}
-
-/// NEGATIVE (the committed corrupt fixture): the real truncated pack
-/// from `tests/invalid/emlib_truncated_pack.bin` refuses — silent
-/// mount is a fail. The fixture is a genuine .emlib pack cut mid-entry
-/// (truncation corrupts a declared length, never the magic).
-#[test]
-fn committed_truncated_fixture_refuses() {
-    let fixture = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/invalid/emlib_truncated_pack.bin"
-    ));
-    assert!(
-        fixture.starts_with(b"EMATHLIB\0"),
-        "the fixture must be a real pack cut (magic intact), not arbitrary bytes"
-    );
-    match PackReader::new(budgets()).read(fixture, None) {
-        Err(PackFault::Truncated { code }) => assert_eq!(code, "E-EVID-603"),
-        other => panic!("the committed truncated pack must refuse E-EVID-603, got {other:?}"),
-    }
+        *expected.last_mut().unwrap().payload.last_mut().unwrap() ^= 0x01;
+        p.eq("visible", read.last().unwrap().clone(), expected.last().unwrap().clone());
+        p.ne("rebytes", PackWriter::new(budgets.clone()).write(&read, None).unwrap(), bytes);
+    });
+    p.case("mount", |p| {
+        let bytes = PackWriter::new(budgets.clone()).write(&entries(), None).unwrap();
+        let read = PackReader::new(budgets.clone()).read(&bytes, None).unwrap();
+        let mut graph = ObjectGraph::default();
+        let mut mounted = Vec::new();
+        for entry in &read {
+            mounted.push(graph.put(object(&entry.id, "mounted from .emlib")).unwrap());
+        }
+        let space = Space::new("fresh-workbench", Arc::new(graph.clone())).unwrap();
+        p.eq("name", space.name().to_string(), "fresh-workbench".to_string());
+        p.demand("verify", emath_store::LibraryLock::from_snapshot(&space.snapshot().unwrap(), mounted).verify(&graph).is_ok(), "fresh mount verifies");
+    });
+    p.case("thin-fixture", |p| {
+        let parent = PackWriter::new(budgets.clone()).write(&[PackEntry::new("emath:meaning:v1:cell-a", b"payload-a")], None).unwrap();
+        let thin = PackWriter::new(budgets.clone()).write(&[PackEntry::new("emath:meaning:v1:cell-b", b"payload-b")], Some("emath:meaning:v1:cell-a")).unwrap();
+        match PackReader::new(budgets.clone()).read(&thin, None) {
+            Err(PackFault::ThinWithoutParent { code }) => { p.eq("no-parent", code, "E-EVID-605".to_string()); },
+            other => { p.fail("no-parent", format!("must refuse E-EVID-605, got {other:?}")); },
+        }
+        let merged = PackReader::new(budgets.clone()).read(&thin, Some(&parent)).unwrap();
+        let ids: Vec<&str> = merged.iter().map(|e| e.id.as_str()).collect();
+        p.demand("merged-a", ids.contains(&"emath:meaning:v1:cell-a"), "parent present");
+        p.demand("merged-b", ids.contains(&"emath:meaning:v1:cell-b"), "delta present");
+        let fixture = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/invalid/emlib_truncated_pack.bin"));
+        p.demand("magic", fixture.starts_with(b"EMATHLIB\0"), "fixture is a cut pack");
+        match PackReader::new(budgets.clone()).read(fixture, None) {
+            Err(PackFault::Truncated { code }) => { p.eq("fixture", code, "E-EVID-603".to_string()); },
+            other => { p.fail("fixture", format!("must refuse E-EVID-603, got {other:?}")); },
+        }
+    });
+    p.finish();
 }
