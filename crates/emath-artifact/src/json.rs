@@ -1,79 +1,8 @@
-//! Streaming JSON writer and low-level scanning helpers.
+//! Streaming JSON writer re-export and low-level scanning helpers.
 
 use super::*;
 
-/// Minimal deterministic JSON writer (order preserving, two-space indent).
-/// The std-only rule forbids serde; this writer is the single emitter.
-pub struct JsonWriter;
-
-impl JsonWriter {
-    #[must_use]
-    pub fn object() -> JsonObject {
-        JsonObject { out: String::new() }
-    }
-}
-
-pub struct JsonObject {
-    out: String,
-}
-
-impl JsonObject {
-    pub fn field(&mut self, name: &str, value: &str) -> &mut Self {
-        if !self.out.is_empty() {
-            self.out.push_str(",\n");
-        }
-        let entry = format!("  {}: {}", quote(name), value);
-        self.out.push_str(&entry);
-        self
-    }
-
-    pub fn string(&mut self, name: &str, value: &str) -> &mut Self {
-        self.field(name, &quote(value))
-    }
-
-    pub fn strings(&mut self, name: &str, values: &[String]) -> &mut Self {
-        let mut items = Vec::new();
-        for value in values {
-            items.push(quote(value));
-        }
-        self.field(name, &format!("[{}]", items.join(", ")))
-    }
-
-    /// Array of already-serialized JSON objects. `items` are `finish()` bodies
-    /// (or other object texts); this crate owns the array brackets so callers
-    /// do not concatenate JSON by hand.
-    pub fn objects(&mut self, name: &str, items: &[String]) -> &mut Self {
-        if items.is_empty() {
-            return self.field(name, "[]");
-        }
-        let mut body = String::from("[\n");
-        for (index, item) in items.iter().enumerate() {
-            if index > 0 {
-                body.push_str(",\n");
-            }
-            body.push_str(item.trim());
-        }
-        body.push_str("\n  ]");
-        self.field(name, &body)
-    }
-
-    pub fn int(&mut self, name: &str, value: u64) -> &mut Self {
-        self.field(name, &value.to_string())
-    }
-
-    pub fn bool(&mut self, name: &str, value: bool) -> &mut Self {
-        self.field(name, if value { "true" } else { "false" })
-    }
-
-    pub fn object_field(&mut self, name: &str, body: &str) -> &mut Self {
-        self.field(name, body)
-    }
-
-    #[must_use]
-    pub fn finish(self) -> String {
-        format!("{{\n{}\n}}\n", self.out)
-    }
-}
+pub use emath_core::{JsonObject, JsonWriter};
 
 /// Serialize an id field; an unresolved (empty) id still must produce a
 /// valid JSON string, otherwise `"field": ` would be emitted and no

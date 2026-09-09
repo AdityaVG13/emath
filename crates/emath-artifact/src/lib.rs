@@ -15,7 +15,6 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-mod authority;
 mod emit;
 mod identity;
 mod json;
@@ -24,7 +23,10 @@ mod manifest_io;
 mod model;
 mod staging;
 
-pub use authority::*;
+pub use emath_ir::{
+    AUTHORITY_LOCK_SCHEMA, AUTHORITY_RECEIPT_SCHEMA, AuthorityEntry, AuthorityError,
+    AuthorityEvidence, AuthorityLock, AuthorityReceipt, AuthorityState,
+};
 pub use emit::*;
 pub use identity::*;
 pub use json::*;

@@ -88,22 +88,5 @@ pub fn manifest_identity(manifest: &ArtifactManifest) -> ContentId {
 }
 
 pub(super) fn quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for ch in s.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if (ch as u32) < 0x20 => {
-                // fmt::Write for String is infallible; avoid unwrap on the hot path.
-                let _ = write!(out, "\\u{:04x}", ch as u32);
-            }
-            ch => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
+    emath_core::json_quote(s)
 }

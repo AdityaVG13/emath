@@ -76,7 +76,7 @@ impl JsonValue {
         }
     }
 
-    pub(super) fn strings_field(&self, name: &str) -> Result<Vec<String>, ArtifactError> {
+    pub fn strings_field(&self, name: &str) -> Result<Vec<String>, ArtifactError> {
         match self.field(name)? {
             Self::Arr(items) => items
                 .iter()
