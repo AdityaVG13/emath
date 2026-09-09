@@ -11,4 +11,5 @@ workspace = true
 
 [dependencies]
 emath-term = { path = "../emath-term" }
+emath-ir = { workspace = true }
 emath-core = { path = "../emath-core" }
