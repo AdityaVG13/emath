@@ -33,24 +33,19 @@ use crate::interp::Value;
 use crate::language_image::LanguageDistribution;
 use crate::term_compile::CompiledCell;
 
+#[path = "native_kernels/checked.rs"]
+pub mod checked;
+
 #[path = "native_kernels/calculus.rs"]
 mod calculus;
 #[path = "native_kernels/category.rs"]
 mod category;
-#[path = "native_kernels/domain_science.rs"]
-mod domain_science;
-#[path = "native_kernels/dynamics.rs"]
-mod dynamics;
 #[path = "native_kernels/einsum.rs"]
 mod einsum;
-#[path = "native_kernels/graph_optimization.rs"]
-mod graph_optimization;
 #[path = "native_kernels/linear.rs"]
 mod linear;
 #[path = "native_kernels/probability.rs"]
 mod probability;
-#[path = "native_kernels/program_optimize.rs"]
-mod program_optimize;
 #[path = "native_kernels/program_solve.rs"]
 mod program_solve;
 
@@ -166,24 +161,6 @@ static NATIVE_KERNELS: &[NativeKernel] = &[
         handler: checked_add,
     },
     NativeKernel {
-        kernel_id: "normalize-ratio",
-        signature: "(Int,Int)->Rat",
-        arity: 2,
-        handler: rat_construct,
-    },
-    NativeKernel {
-        kernel_id: "add-ratios",
-        signature: "(Rat,Rat)->Rat",
-        arity: 2,
-        handler: rat_add,
-    },
-    NativeKernel {
-        kernel_id: "normalize-ratio",
-        signature: "(Rat)->Rat",
-        arity: 1,
-        handler: rat_normalize,
-    },
-    NativeKernel {
         kernel_id: "bounded-product",
         signature: "(Int)->Int",
         arity: 1,
@@ -194,6 +171,12 @@ static NATIVE_KERNELS: &[NativeKernel] = &[
         signature: "(ExactInt,PositiveExactInt)->ExactInt",
         arity: 2,
         handler: integer_remainder,
+    },
+    NativeKernel {
+        kernel_id: "modular-alphabet-shift",
+        signature: "(ExactInt,ExactInt,PositiveExactInt)->ExactInt",
+        arity: 3,
+        handler: modular_alphabet_shift,
     },
     NativeKernel {
         kernel_id: "extended-gcd-inverse",
@@ -261,18 +244,165 @@ fn kernels() -> impl Iterator<Item = &'static NativeKernel> {
     NATIVE_KERNELS
         .iter()
         .chain(linear::LINEAR_KERNELS)
-        .chain(dynamics::KERNELS)
-        .chain(graph_optimization::KERNELS)
         .chain(category::KERNELS)
-        .chain(domain_science::DOMAIN_SCIENCE_KERNELS)
         .chain(probability::KERNELS)
         .chain(calculus::KERNELS)
         .chain(program_solve::KERNELS)
-        .chain(program_optimize::KERNELS)
         .chain(einsum::EINSUM_KERNELS)
+        .chain(checked::BINDINGS.iter().map(|binding| &binding.native))
+}
+
+/// The declared value ABI of an active capability, independent of its executor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CallableSignature {
+    pub inputs: Vec<String>,
+    pub output: String,
+}
+
+fn callable_signatures(distribution: &LanguageDistribution) -> BTreeMap<String, CallableSignature> {
+    distribution.capsules.iter().filter_map(|capsule| {
+        if capsule.class != emath_ir::FeatureClass::Capability || !distribution.authority.entries.get(&capsule.feature_id).is_some_and(|entry| entry.state.as_str() == "capsule-active") { return None; }
+        let emath_ir::CapsuleSlot::Value(semantics) = capsule.slots.get("semantics")? else { return None; };
+        let inputs = semantic_field(semantics, "inputs")?;
+        let output = semantic_field(semantics, "output")?.to_string();
+        let mut start = 0;
+        let mut depth = 0_u32;
+        let mut parameters = Vec::new();
+        for (index, byte) in inputs.bytes().enumerate() {
+            match byte {
+                b'<' => depth += 1,
+                b'>' => depth = depth.saturating_sub(1),
+                b',' if depth == 0 => { parameters.push(inputs[start..index].trim().to_string()); start = index + 1; }
+                _ => {}
+            }
+        }
+        if !inputs.trim().is_empty() { parameters.push(inputs[start..].trim().to_string()); }
+        Some((capsule.feature_id.to_string(), CallableSignature { inputs: parameters, output }))
+    }).collect()
+}
+
+pub fn installed_signature(capability: &str) -> Option<CallableSignature> {
+    CALLABLE_SIGNATURES.with(|signatures| signatures.borrow().get(capability).cloned())
+}
+
+/// A continuation contract authored beside its mathematical program.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MethodContract {
+    pub record: String,
+    pub step: String,
+    pub check: String,
+    pub complete: String,
+    /// Result field -> original argument index and record-field path.
+    pub bindings: BTreeMap<String, (usize, Vec<String>)>,
+}
+
+fn method_contracts(
+    distribution: &LanguageDistribution,
+    signatures: &BTreeMap<String, CallableSignature>,
+    layouts: &BTreeMap<String, RecordLayout>,
+) -> Result<BTreeMap<String, MethodContract>, KernelBindingError> {
+    let mut methods: BTreeMap<String, MethodContract> = BTreeMap::new();
+    for capsule in &distribution.capsules {
+        let Some(signature) = signatures.get(capsule.feature_id.as_str()) else { continue; };
+        let slot = |name: &str| match capsule.slots.get(name) { Some(emath_ir::CapsuleSlot::Value(value)) => Some(value.as_str()), _ => None };
+        let names = ["method_step", "method_check", "method_complete", "method_bindings"];
+        if names.iter().all(|name| slot(name).is_none()) { continue; }
+        let invalid = || KernelBindingError::InvalidDistribution(format!("{}: invalid authored method contract", capsule.feature_id));
+        let [Some(step), Some(check), Some(complete), Some(bindings)] = names.map(slot) else { return Err(invalid()); };
+        let record = signature.output.strip_prefix("Record<").and_then(|name| name.strip_suffix('>')).ok_or_else(invalid)?;
+        let layout = layouts.get(record).ok_or_else(invalid)?;
+        if !layout.fields.iter().any(|(field, ty)| field == complete && ty == "Bool") { return Err(invalid()); }
+        if ![step, check].iter().all(|target| distribution.reference_programs.keys().any(|feature| feature.as_str() == *target)) { return Err(invalid()); }
+        let step_signature = signatures.get(step).ok_or_else(invalid)?;
+        let check_signature = signatures.get(check).ok_or_else(invalid)?;
+        if step_signature.inputs.len() != 2 || step_signature.inputs[0] != signature.output
+            || !matches!(step_signature.inputs[1].as_str(), "Int" | "Nat") || step_signature.output != signature.output
+            || check_signature.inputs != [signature.output.clone()] || check_signature.output != "Bool"
+        { return Err(invalid()); }
+        let mut targets = BTreeMap::new();
+        for binding in bindings.split(';') {
+            let (field, path) = binding.trim().split_once('=').ok_or_else(invalid)?;
+            let field = field.trim();
+            let mut path = path.trim().split('.');
+            let argument: usize = path.next().ok_or_else(invalid)?.parse().map_err(|_| invalid())?;
+            let mut ty = signature.inputs.get(argument).ok_or_else(invalid)?.as_str();
+            let mut members = Vec::new();
+            for member in path {
+                let name = ty.strip_prefix("Record<").and_then(|name| name.strip_suffix('>')).ok_or_else(invalid)?;
+                ty = layouts.get(name).and_then(|layout| layout.fields.iter().find(|(name, _)| name == member)).map(|(_, ty)| ty.as_str()).ok_or_else(invalid)?;
+                members.push(member.to_string());
+            }
+            if !layout.fields.iter().any(|(name, target)| name == field && target == ty)
+                || targets.insert(field.to_string(), (argument, members)).is_some()
+            { return Err(invalid()); }
+        }
+        if methods.values().any(|method| method.record == record && method.complete != complete) { return Err(invalid()); }
+        methods.insert(capsule.feature_id.to_string(), MethodContract { record: record.into(), step: step.into(), check: check.into(), complete: complete.into(), bindings: targets });
+    }
+    Ok(methods)
+}
+
+pub fn installed_method_contract(capability: &str) -> Option<MethodContract> {
+    METHOD_CONTRACTS.with(|methods| methods.borrow().get(capability).cloned())
+}
+
+pub fn method_complete(value: &Value) -> Option<bool> {
+    let Value::Record { type_name, fields } = value else { return None; };
+    METHOD_CONTRACTS.with(|methods| {
+        let methods = methods.borrow();
+        let contract = methods.values().find(|contract| &contract.record == type_name)?;
+        match fields.get(&contract.complete) { Some(Value::Bool(complete)) => Some(*complete), _ => None }
+    })
+}
+
+/// A nominal record layout authored in an active capability capsule.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordLayout {
+    pub name: String,
+    pub fields: Vec<(String, String)>,
+}
+
+fn record_layouts(distribution: &LanguageDistribution) -> Result<BTreeMap<String, RecordLayout>, KernelBindingError> {
+    let mut layouts = BTreeMap::new();
+    for capsule in &distribution.capsules {
+        if !distribution.authority.entries.get(&capsule.feature_id).is_some_and(|entry| entry.state.as_str() == "capsule-active") { continue; }
+        let Some(emath_ir::CapsuleSlot::Value(fields)) = capsule.slots.get("record_fields") else { continue; };
+        let Some(emath_ir::CapsuleSlot::Value(semantics)) = capsule.slots.get("semantics") else {
+            return Err(KernelBindingError::MissingSignature(capsule.feature_id.to_string()));
+        };
+        let name = semantic_field(semantics, "output")
+            .and_then(|output| output.strip_prefix("Record<"))
+            .and_then(|output| output.strip_suffix('>'))
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| KernelBindingError::MissingSignature(capsule.feature_id.to_string()))?;
+        let mut members = Vec::new();
+        for field in fields.split(';') {
+            let Some((key, ty)) = field.trim().split_once('=') else {
+                return Err(KernelBindingError::InvalidDistribution(format!("record `{name}` requires field=type entries")));
+            };
+            let (key, ty) = (key.trim(), ty.trim());
+            if key.is_empty() || ty.is_empty() || members.iter().any(|(previous, _)| previous == key) {
+                return Err(KernelBindingError::InvalidDistribution(format!("record `{name}` has an invalid or duplicate field")));
+            }
+            members.push((key.to_string(), ty.to_string()));
+        }
+        let layout = RecordLayout { name: name.to_string(), fields: members };
+        if layouts.insert(name.to_string(), layout).is_some() {
+            return Err(KernelBindingError::InvalidDistribution(format!("record `{name}` has multiple layout declarations")));
+        }
+    }
+    Ok(layouts)
+}
+
+/// Look up a layout from the verified installed distribution.
+pub fn installed_record_layout(name: &str) -> Option<RecordLayout> {
+    RECORD_LAYOUTS.with(|layouts| layouts.borrow().get(name).cloned())
 }
 
 thread_local! {
+    static METHOD_CONTRACTS: RefCell<BTreeMap<String, MethodContract>> = RefCell::new(BTreeMap::new());
+    static RECORD_LAYOUTS: RefCell<BTreeMap<String, RecordLayout>> = RefCell::new(BTreeMap::new());
+    static CALLABLE_SIGNATURES: RefCell<BTreeMap<String, CallableSignature>> = RefCell::new(BTreeMap::new());
     static LANGUAGE_BINDINGS: RefCell<BTreeMap<String, InstalledKernelBinding>> =
         RefCell::new(BTreeMap::new());
     /// Installed authored reference cells (the verified Language Image's
@@ -325,6 +455,12 @@ pub fn install_reference_programs(
         .verify()
         .map_err(|error| KernelBindingError::InvalidDistribution(format!("{error:?}")))?;
     let references = capsule_active_reference_cells(distribution);
+    let layouts = record_layouts(distribution)?;
+    let signatures = callable_signatures(distribution);
+    let methods = method_contracts(distribution, &signatures, &layouts)?;
+    METHOD_CONTRACTS.with(|installed| *installed.borrow_mut() = methods);
+    RECORD_LAYOUTS.with(|installed| *installed.borrow_mut() = layouts);
+    CALLABLE_SIGNATURES.with(|installed| *installed.borrow_mut() = signatures);
     REFERENCE_CELLS.with(|installed| *installed.borrow_mut() = references);
     LANGUAGE_BINDINGS.with(|installed| *installed.borrow_mut() = BTreeMap::new());
     Ok(())
@@ -332,7 +468,7 @@ pub fn install_reference_programs(
 
 /// The installed authored reference cell for a capability, or `None` — on
 /// `None` the application seam's typed no-body refusal stays identical.
-pub(crate) fn installed_reference_cell(capability: &str) -> Option<CompiledCell> {
+pub fn installed_reference_cell(capability: &str) -> Option<CompiledCell> {
     REFERENCE_CELLS.with(|installed| installed.borrow().get(capability).cloned())
 }
 
@@ -401,6 +537,12 @@ pub fn install_language_distribution(
     // All fallible work (verify, kernel resolution, reference filtering)
     // precedes both swaps: a failed install leaves no partial state.
     let references = capsule_active_reference_cells(distribution);
+    let layouts = record_layouts(distribution)?;
+    let signatures = callable_signatures(distribution);
+    let methods = method_contracts(distribution, &signatures, &layouts)?;
+    METHOD_CONTRACTS.with(|installed| *installed.borrow_mut() = methods);
+    RECORD_LAYOUTS.with(|installed| *installed.borrow_mut() = layouts);
+    CALLABLE_SIGNATURES.with(|installed| *installed.borrow_mut() = signatures);
     LANGUAGE_BINDINGS.with(|installed| *installed.borrow_mut() = bindings);
     REFERENCE_CELLS.with(|installed| *installed.borrow_mut() = references);
     Ok(())
@@ -412,7 +554,7 @@ fn semantic_field<'a>(semantics: &'a str, field: &str) -> Option<&'a str> {
         .find_map(|part| part.trim().strip_prefix(field)?.strip_prefix('='))
 }
 
-fn parse_kernel_arity(value: &str) -> Option<KernelArity> {
+pub(crate) fn parse_kernel_arity(value: &str) -> Option<KernelArity> {
     if let Some((min, max)) = value.split_once("..") {
         let min = min.parse().ok()?;
         let max = max.parse().ok()?;
@@ -473,69 +615,6 @@ fn checked_add(args: &[Value]) -> Result<Value, String> {
             .ok_or_else(|| "E-ARITH-OVERFLOW: checked integer addition overflowed".to_string()),
         _ => Err("E-TYPE-012: checked-add arguments must be Int".to_string()),
     }
-}
-
-fn rat_construct(args: &[Value]) -> Result<Value, String> {
-    match args {
-        [Value::I64(num), Value::I64(den)] => canonical_rat(i128::from(*num), i128::from(*den)),
-        _ => Err("E-TYPE-012: rat-construct arguments must be Int".to_string()),
-    }
-}
-
-fn rat_add(args: &[Value]) -> Result<Value, String> {
-    let [
-        Value::Rat {
-            num: left_num,
-            den: left_den,
-        },
-        Value::Rat {
-            num: right_num,
-            den: right_den,
-        },
-    ] = args
-    else {
-        return Err("E-TYPE-012: rat-add arguments must be Rat".to_string());
-    };
-    let num = left_num
-        .checked_mul(*right_den)
-        .and_then(|left_term| {
-            right_num
-                .checked_mul(*left_den)
-                .and_then(|right_term| left_term.checked_add(right_term))
-        })
-        .ok_or_else(|| "rational addition overflow (i128)".to_string())?;
-    let den = left_den
-        .checked_mul(*right_den)
-        .ok_or_else(|| "rational addition overflow (i128)".to_string())?;
-    canonical_rat(num, den)
-}
-
-fn rat_normalize(args: &[Value]) -> Result<Value, String> {
-    match args {
-        [Value::Rat { num, den }] => canonical_rat(*num, *den),
-        _ => Err("E-TYPE-012: rat-normalize argument must be Rat".to_string()),
-    }
-}
-
-fn canonical_rat(num: i128, den: i128) -> Result<Value, String> {
-    if den == 0 {
-        return Err("rat denominator must be nonzero".to_string());
-    }
-    let (num, den) = if den < 0 {
-        (
-            num.checked_neg()
-                .ok_or_else(|| "rational arithmetic overflow (i128)".to_string())?,
-            den.checked_neg()
-                .ok_or_else(|| "rational arithmetic overflow (i128)".to_string())?,
-        )
-    } else {
-        (num, den)
-    };
-    let gcd = gcd_u128(num.unsigned_abs(), den.unsigned_abs());
-    Ok(Value::Rat {
-        num: num / gcd as i128,
-        den: den / gcd as i128,
-    })
 }
 
 fn gcd_u128(mut left: u128, mut right: u128) -> u128 {
@@ -784,5 +863,42 @@ fn bigint_exponent(value: &Value) -> Result<emath_rt::UBig, String> {
         Value::I64(value) if *value >= 0 => Ok(emath_rt::UBig::from_u64(*value as u64)),
         Value::I64(_) => Err("pow-mod: exponent must be non-negative".to_string()),
         _ => Err("E-TYPE-012: exponent must be an exact integer".to_string()),
+    }
+}
+
+fn modular_alphabet_shift(args: &[Value]) -> Result<Value, String> {
+    let [symbol, key, alphabet] = args else {
+        return Err(
+            "E-TYPE-012: modular-alphabet-shift expects ExactInt, ExactInt, PositiveExactInt"
+                .to_string(),
+        );
+    };
+    if has_bigint(args) {
+        let modulus = bigint_modulus(alphabet, "E-TYPE-012: alphabet size must be positive")?;
+        let symbol = bigint_field_element(symbol, &modulus)?;
+        let key = bigint_field_element(key, &modulus)?;
+        return emath_rt::big_int_rem_checked(&symbol.add(&key), &modulus)
+            .map(Value::BigInt)
+            .map_err(|detail| detail.to_string());
+    }
+    match (symbol, key, alphabet) {
+        (Value::I64(symbol), Value::I64(key), Value::I64(alphabet)) if *alphabet > 0 => {
+            match symbol.checked_add(*key) {
+                Some(sum) => Ok(Value::I64(sum.rem_euclid(*alphabet))),
+                None => {
+                    let sum = i128::from(*symbol) + i128::from(*key);
+                    let modulus = i128::from(*alphabet);
+                    let rem = ((sum % modulus) + modulus) % modulus;
+                    Ok(Value::I64(rem as i64))
+                }
+            }
+        }
+        (Value::I64(_), Value::I64(_), Value::I64(_)) => {
+            Err("E-TYPE-012: alphabet size must be positive".to_string())
+        }
+        _ => Err(
+            "E-TYPE-012: modular-alphabet-shift expects ExactInt, ExactInt, PositiveExactInt"
+                .to_string(),
+        ),
     }
 }

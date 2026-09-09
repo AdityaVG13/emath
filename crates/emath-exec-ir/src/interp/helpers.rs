@@ -82,9 +82,9 @@ pub(super) fn matrix_of<'a>(
         Value::Matrix { rows, cols, data } if rows.checked_mul(*cols) == Some(data.len()) => {
             Ok((*rows, *cols, data))
         }
-        Value::Matrix { .. } => Err(EvalFault::Arithmetic {
+        Value::Matrix { .. } => Err(EvalFault::CarrierRefused {
             op,
-            detail: "matrix storage does not match shape",
+            detail: "E-SHAPE-001".into(),
         }),
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,

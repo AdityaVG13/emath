@@ -37,7 +37,7 @@ pub enum TableError {
 
 pub fn generate_runtime_tables(capsules: &[FeatureCapsule]) -> Result<RuntimeTables, TableError> {
     let mut seen = BTreeSet::new();
-    let mut aliases = BTreeMap::<String, FeatureId>::new();
+    let mut aliases = BTreeMap::<(String, String), FeatureId>::new();
     let mut table = BTreeMap::<String, Vec<RuntimeTableEntry>>::new();
     for capsule in capsules {
         if !seen.insert(capsule.feature_id.clone()) {
@@ -68,7 +68,10 @@ pub fn generate_runtime_tables(capsules: &[FeatureCapsule]) -> Result<RuntimeTab
                 })
         });
         for alias in &entry_aliases {
-            if let Some(existing) = aliases.insert(alias.clone(), capsule.feature_id.clone()) {
+            if let Some(existing) = aliases.insert(
+                (category.clone(), alias.clone()),
+                capsule.feature_id.clone(),
+            ) {
                 if existing != capsule.feature_id {
                     return Err(TableError::AliasCollision(alias.clone()));
                 }

@@ -5,11 +5,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use emath_artifact::{AuthorityEntry, AuthorityLock, AuthorityState};
 use emath_core::{
     CanonicalField, DistributionHash, FeatureId, OperationalHash, SemanticHash, Span,
 };
-use emath_ir::{FeatureCapsule, MeaningEdge, MeaningEdgeKind, MeaningResource, MeaningSpine};
+use emath_ir::{
+    AuthorityEntry, AuthorityLock, AuthorityState, FeatureCapsule, MeaningEdge, MeaningEdgeKind,
+    MeaningResource, MeaningSpine,
+};
 use emath_schema::parse_feature_capsule;
 use emath_term::{Signature, SymbolId, Term, TermError};
 
@@ -207,11 +209,11 @@ impl LanguageDistribution {
             .iter()
             .map(|(id, entry)| (id.to_string(), entry.state.as_str().to_string()))
             .collect::<BTreeMap<_, _>>();
-        let views = crate::reference_views::generate_reference_views(
-            &self.capsules,
-            &authority_states,
-        )
-        .map_err(|error| LanguageImageError::OperationalContamination(format!("{error:?}")))?;
+        let views =
+            crate::reference_views::generate_reference_views(&self.capsules, &authority_states)
+                .map_err(|error| {
+                    LanguageImageError::OperationalContamination(format!("{error:?}"))
+                })?;
         views
             .verify()
             .map_err(|error| LanguageImageError::OperationalContamination(format!("{error:?}")))?;
@@ -894,6 +896,7 @@ const REFERENCE_NONE_PAGE: &str = "# none\n";
 #[derive(Clone, Debug)]
 struct ReferenceEntry {
     term: Term,
+    defaults: Vec<Term>,
     params: Vec<(String, ParamShape)>,
     cell: CompiledCell,
 }
@@ -909,6 +912,39 @@ enum ReferenceOperator {
     Mul,
     Div,
     Neg,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Eq,
+    Ne,
+    And,
+    Or,
+    Not,
+    IsFinite,
+    Unary(crate::BuiltinId),
+    Binary(crate::BuiltinId),
+    ToInt,
+    IntegerQuotient,
+    SameBits,
+    MatrixRows,
+    MatrixCols,
+    MatrixAt,
+    MatrixPack,
+    TensorShape,
+    TensorPack,
+    DenseIndex,
+    Infinity,
+    Exp2,
+    PowF,
+    PowI,
+    TextTrim,
+    TextLength,
+    IndexText,
+    TextByte,
+    FormatScientific,
+    ParseF64,
+    SortTotal,
 }
 
 impl ReferenceOperator {
@@ -919,6 +955,45 @@ impl ReferenceOperator {
             ("mul", 2) => Some(Self::Mul),
             ("div", 2) => Some(Self::Div),
             ("neg", 1) => Some(Self::Neg),
+            ("lt", 2) => Some(Self::Lt),
+            ("le", 2) => Some(Self::Le),
+            ("gt", 2) => Some(Self::Gt),
+            ("ge", 2) => Some(Self::Ge),
+            ("eq", 2) => Some(Self::Eq),
+            ("ne", 2) => Some(Self::Ne),
+            ("and", 2) => Some(Self::And),
+            ("or", 2) => Some(Self::Or),
+            ("not", 1) => Some(Self::Not),
+            ("is_finite", 1) => Some(Self::IsFinite),
+            ("floor", 1) => Some(Self::Unary(crate::BuiltinId::Floor)),
+            ("sqrt", 1) => Some(Self::Unary(crate::BuiltinId::Sqrt)),
+            ("exp", 1) => Some(Self::Unary(crate::BuiltinId::Exp)),
+            ("ln", 1) => Some(Self::Unary(crate::BuiltinId::Ln)),
+            ("exp2", 1) => Some(Self::Exp2),
+            ("powf", 2) => Some(Self::PowF),
+            ("powi", 2) => Some(Self::PowI),
+            ("text_trim", 1) => Some(Self::TextTrim),
+            ("text_length", 1) => Some(Self::TextLength),
+            ("index_text", 1) => Some(Self::IndexText),
+            ("text_byte", 2) => Some(Self::TextByte),
+            ("format_scientific", 2) => Some(Self::FormatScientific),
+            ("parse_f64", 1) => Some(Self::ParseF64),
+            ("sort_total", 1) => Some(Self::SortTotal),
+            ("abs", 1) => Some(Self::Unary(crate::BuiltinId::Abs)),
+            ("sin", 1) => Some(Self::Unary(crate::BuiltinId::Sin)),
+            ("cos", 1) => Some(Self::Unary(crate::BuiltinId::Cos)),
+            ("max", 2) => Some(Self::Binary(crate::BuiltinId::Max)),
+            ("to_int", 1) => Some(Self::ToInt),
+            ("quotient", 2) => Some(Self::IntegerQuotient),
+            ("same_bits", 2) => Some(Self::SameBits),
+            ("matrix_rows", 1) => Some(Self::MatrixRows),
+            ("matrix_cols", 1) => Some(Self::MatrixCols),
+            ("matrix_at", 3) => Some(Self::MatrixAt),
+            ("matrix_pack", 3) => Some(Self::MatrixPack),
+            ("infinity", 0) => Some(Self::Infinity),
+            ("tensor_shape", 1) => Some(Self::TensorShape),
+            ("tensor_pack", 2) => Some(Self::TensorPack),
+            ("dense_index", 2) => Some(Self::DenseIndex),
             _ => None,
         }
     }
@@ -933,6 +1008,39 @@ impl ReferenceOperator {
                 EmirOp::F64Div(operands[0], operands[1])
             }
             Self::Neg => EmirOp::Neg(operands[0]),
+            Self::Lt => EmirOp::Lt(operands[0], operands[1]),
+            Self::Le => EmirOp::Le(operands[0], operands[1]),
+            Self::Gt => EmirOp::Gt(operands[0], operands[1]),
+            Self::Ge => EmirOp::Ge(operands[0], operands[1]),
+            Self::Eq => EmirOp::Eq(operands[0], operands[1]),
+            Self::Ne => EmirOp::Ne(operands[0], operands[1]),
+            Self::And => EmirOp::And(operands[0], operands[1]),
+            Self::Or => EmirOp::Or(operands[0], operands[1]),
+            Self::Not => EmirOp::Not(operands[0]),
+            Self::IsFinite => EmirOp::IsFinite(operands[0]),
+            Self::Unary(builtin) => EmirOp::UnaryBuiltin(builtin, operands[0]),
+            Self::Binary(builtin) => EmirOp::BinaryBuiltin(builtin, operands[0], operands[1]),
+            Self::ToInt => EmirOp::ToInt(operands[0]),
+            Self::IntegerQuotient => EmirOp::IntegerQuotient(operands[0], operands[1]),
+            Self::SameBits => EmirOp::SameBits(operands[0], operands[1]),
+            Self::MatrixRows => EmirOp::MatrixRows(operands[0]),
+            Self::MatrixCols => EmirOp::MatrixCols(operands[0]),
+            Self::MatrixAt => EmirOp::MatrixIndex { matrix: operands[0], row: operands[1], col: operands[2] },
+            Self::MatrixPack => EmirOp::MatrixPack { rows: operands[0], cols: operands[1], data: operands[2] },
+            Self::Infinity => EmirOp::ConstF64(f64::INFINITY.to_bits()),
+            Self::Exp2 => EmirOp::F64Exp2(operands[0]),
+            Self::PowF => EmirOp::F64Pow(operands[0], operands[1]),
+            Self::PowI => EmirOp::F64PowI(operands[0], operands[1]),
+            Self::TextTrim => EmirOp::TextTrim(operands[0]),
+            Self::TextLength => EmirOp::TextLength(operands[0]),
+            Self::IndexText => EmirOp::IndexText(operands[0]),
+            Self::TextByte => EmirOp::TextByte(operands[0], operands[1]),
+            Self::FormatScientific => EmirOp::FormatScientific(operands[0], operands[1]),
+            Self::ParseF64 => EmirOp::ParseF64(operands[0]),
+            Self::SortTotal => EmirOp::F64SortTotal(operands[0]),
+            Self::TensorShape => EmirOp::TensorShape(operands[0]),
+            Self::TensorPack => EmirOp::TensorPack { shape: operands[0], data: operands[1] },
+            Self::DenseIndex => EmirOp::DenseIndex { dense: operands[0], index: operands[1] },
         }
     }
 }
@@ -952,7 +1060,47 @@ fn compile_reference_entries(
             }
         }
     }
+    let mut active = BTreeSet::new();
+    let mut complete = BTreeSet::new();
+    for feature in entries.keys() {
+        validate_reference_calls(feature, &entries, &mut active, &mut complete)?;
+    }
     Ok(entries)
+}
+
+fn validate_reference_calls(
+    feature: &FeatureId,
+    entries: &BTreeMap<FeatureId, ReferenceEntry>,
+    active: &mut BTreeSet<FeatureId>,
+    complete: &mut BTreeSet<FeatureId>,
+) -> Result<(), LanguageImageError> {
+    if complete.contains(feature) { return Ok(()); }
+    if !active.insert(feature.clone()) {
+        return Err(LanguageImageError::InvalidReferenceBody { feature: feature.clone(), detail: "cyclic authored calls require explicit bounded iteration".into() });
+    }
+    fn dependencies(program: &EmirProgram, out: &mut BTreeSet<FeatureId>) {
+        for (op, _) in &program.ops {
+            match op {
+                EmirOp::ApplyCapability { capability, .. } => { if let Ok(feature) = FeatureId::from_str(capability) { out.insert(feature); } }
+                EmirOp::Branch { then_body, else_body, .. } => { dependencies(then_body, out); dependencies(else_body, out); }
+                EmirOp::Iterate { body, stop, .. } => { if let Some(stop) = stop { dependencies(stop, out); } dependencies(body, out); }
+                EmirOp::Fold { body, .. } | EmirOp::Collect { body, .. }
+            | EmirOp::CallFrame { body, .. } | EmirOp::ProgramLiteral { body, .. } => dependencies(body, out),
+                _ => {}
+            }
+        }
+    }
+    if let Some(entry) = entries.get(feature) {
+        let mut called = BTreeSet::new();
+        dependencies(&entry.cell.program, &mut called);
+        for default in &entry.cell.defaults { dependencies(default, &mut called); }
+        for callee in called {
+            if entries.contains_key(&callee) { validate_reference_calls(&callee, entries, active, complete)?; }
+        }
+    }
+    active.remove(feature);
+    complete.insert(feature.clone());
+    Ok(())
 }
 
 /// Derives one capsule's reference entry, or `None` when the capsule
@@ -964,7 +1112,12 @@ fn reference_entry_for_capsule(
     let params_slot = reference_slot(capsule, REFERENCE_PARAMS_SLOT);
     let signature_slot = reference_slot(capsule, REFERENCE_SIGNATURE_SLOT);
     let body_slot = reference_slot(capsule, REFERENCE_BODY_SLOT);
-    if params_slot.is_none() && signature_slot.is_none() && body_slot.is_none() {
+    let defaults_slot = reference_slot(capsule, "reference_defaults");
+    if params_slot.is_none()
+        && signature_slot.is_none()
+        && body_slot.is_none()
+        && defaults_slot.is_none()
+    {
         return Ok(None);
     }
     let refuse = |detail: String| {
@@ -1004,7 +1157,7 @@ fn reference_entry_for_capsule(
     }
     let mut signature = Signature::default();
     for pair in signature_text.split(',') {
-        let Some((symbol, arity)) = pair.trim().split_once('=') else {
+        let Some((symbol, arity)) = pair.trim().rsplit_once('=') else {
             return refuse(format!(
                 "reference_signature `{signature_text}` must declare `symbol=arity` pairs"
             ));
@@ -1040,12 +1193,71 @@ fn reference_entry_for_capsule(
     for ((_, shape), declared) in params.iter_mut().zip(shapes) {
         *shape = declared;
     }
-    compile_reference_term(&term, &signature, &params, capsule.feature_id.as_str())
-        .map(|cell| Some(ReferenceEntry { term, params, cell }))
-        .map_err(|detail| LanguageImageError::InvalidReferenceBody {
-            feature: capsule.feature_id.clone(),
-            detail,
+    let defaults = defaults_slot
+        .map(|text| {
+            let mut depth = 0usize;
+            let mut escaped = false;
+            text.split(|ch| {
+                if escaped {
+                    escaped = false;
+                    return false;
+                }
+                match ch {
+                    '\\' => escaped = true,
+                    '(' => depth += 1,
+                    ')' => depth = depth.saturating_sub(1),
+                    ';' if depth == 0 => return true,
+                    _ => {}
+                }
+                false
+            })
+            .map(|term| Term::parse_canonical(term.trim()))
+            .collect::<Result<Vec<_>, _>>()
         })
+        .transpose()
+        .map_err(|error| LanguageImageError::InvalidReferenceBody {
+            feature: capsule.feature_id.clone(),
+            detail: format!("invalid reference default: {error:?}"),
+        })?
+        .unwrap_or_default();
+    if defaults_slot.is_some() {
+        let arity = semantics
+            .split(';')
+            .find_map(|part| part.trim().strip_prefix("arity="))
+            .and_then(crate::native_kernel::parse_kernel_arity);
+        let range = match arity {
+            Some(crate::native_kernel::KernelArity::Exact(count)) => Some((count, count)),
+            Some(crate::native_kernel::KernelArity::Bounded { min, max }) => Some((min, max)),
+            None => None,
+        };
+        if params
+            .len()
+            .checked_sub(defaults.len())
+            .map(|min| (min, params.len()))
+            != range
+        {
+            return refuse("reference defaults do not match the declared arity range".into());
+        }
+    }
+    compile_reference_with_defaults(
+        &term,
+        &defaults,
+        &signature,
+        &params,
+        capsule.feature_id.as_str(),
+    )
+    .map(|cell| {
+        Some(ReferenceEntry {
+            term,
+            defaults,
+            params,
+            cell,
+        })
+    })
+    .map_err(|detail| LanguageImageError::InvalidReferenceBody {
+        feature: capsule.feature_id.clone(),
+        detail,
+    })
 }
 
 fn reference_slot<'a>(capsule: &'a FeatureCapsule, name: &str) -> Option<&'a str> {
@@ -1068,7 +1280,9 @@ fn declared_input_shapes(semantics: &str) -> Vec<ParamShape> {
                 .split(',')
                 .map(|token| {
                     let token = token.trim();
-                    if token.starts_with("Vector") {
+                    if token == "Rat" {
+                        ParamShape::Rational
+                    } else if token.starts_with("Vector") {
                         ParamShape::Vector
                     } else if token.starts_with("Matrix") {
                         ParamShape::Matrix
@@ -1115,6 +1329,7 @@ fn compile_reference_term(
         next_register: 0,
         ops: Vec::new(),
         obligations: Vec::new(),
+        locals: BTreeMap::new(),
         params,
     };
     let result = compiler.emit(term)?;
@@ -1130,10 +1345,24 @@ fn compile_reference_term(
     Ok(CompiledCell {
         capability: capability.to_string(),
         params: params.to_vec(),
+        defaults: Vec::new(),
         guards: Vec::new(),
         result_guard: None,
         program,
     })
+}
+
+fn compile_reference_with_defaults(
+    term: &Term, defaults: &[Term], signature: &Signature,
+    params: &[(String, ParamShape)], capability: &str,
+) -> Result<CompiledCell, String> {
+    let first = params.len().checked_sub(defaults.len())
+        .ok_or_else(|| "reference defaults exceed parameter count".to_string())?;
+    let mut cell = compile_reference_term(term, signature, params, capability)?;
+    for (index, default) in defaults.iter().enumerate() {
+        cell.defaults.push(compile_reference_term(default, signature, &params[..first + index], capability)?.program);
+    }
+    Ok(cell)
 }
 
 /// Lowers a validated canonical term onto the closed scalar vocabulary.
@@ -1144,6 +1373,7 @@ struct ReferenceCompiler<'a> {
     ops: Vec<(EmirOp, Span)>,
     obligations: Vec<DomainObligation>,
     params: &'a [(String, ParamShape)],
+    locals: BTreeMap<String, EmirValue>,
 }
 
 impl ReferenceCompiler<'_> {
@@ -1154,9 +1384,112 @@ impl ReferenceCompiler<'_> {
         register
     }
 
+    fn capture(&mut self) -> Vec<(String, EmirValue)> {
+        for (index, (name, _)) in self.params.iter().enumerate() {
+            if !self.locals.contains_key(name) {
+                let value = self.push(EmirOp::LoadInput(index as u16));
+                self.locals.insert(name.clone(), value);
+            }
+        }
+        self.locals.iter().map(|(name, value)| (name.clone(), *value)).collect()
+    }
+
+    fn nested(term: &Term, names: Vec<String>) -> Result<EmirProgram, String> {
+        let input_count = u16::try_from(names.len()).map_err(|_| "too many captured arguments".to_string())?;
+        let params = names.into_iter().map(|name| (name, ParamShape::Scalar)).collect::<Vec<_>>();
+        let mut compiler = ReferenceCompiler { next_register: 0, ops: Vec::new(), obligations: Vec::new(), params: &params, locals: BTreeMap::new() };
+        let result = compiler.emit(term)?;
+        Ok(EmirProgram { ops: compiler.ops, result, input_count, state_count: 0, domain_obligations: compiler.obligations })
+    }
+
+    fn emit_control(&mut self, symbol: &str, arguments: &[Term]) -> Result<Option<EmirValue>, String> {
+        let literal = |term: &Term| match term {
+            Term::Constant(symbol) => Ok(symbol.0.clone()),
+            _ => Err("record fields and refusal codes require literal symbols".to_string()),
+        };
+        let op = match (symbol, arguments) {
+            ("let", [Term::Variable(name), init, body]) => {
+                let init = self.emit(init)?;
+                let previous = self.locals.insert(name.0.clone(), init);
+                let result = self.emit(body);
+                if let Some(previous) = previous { self.locals.insert(name.0.clone(), previous); } else { self.locals.remove(&name.0); }
+                return result.map(Some);
+            }
+            ("if", [condition, then_body, else_body]) => {
+                let condition = self.emit(condition)?;
+                let captured = self.capture();
+                let names = captured.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
+                EmirOp::Branch { condition, args: captured.into_iter().map(|(_, value)| value).collect(), then_body: Self::nested(then_body, names.clone())?, else_body: Self::nested(else_body, names)? }
+            }
+            ("collect", [Term::Variable(index), count, body]) => {
+                let count = self.emit(count)?;
+                let captured = self.capture().into_iter().filter(|(name, _)| name != &index.0).collect::<Vec<_>>();
+                let mut names = vec![index.0.clone()];
+                names.extend(captured.iter().map(|(name, _)| name.clone()));
+                EmirOp::Collect { count, args: captured.into_iter().map(|(_, value)| value).collect(), body: Self::nested(body, names)? }
+            }
+            (symbol, [Term::Variable(index), Term::Variable(state), count, init, rest @ ..]) if matches!(symbol, "iterate" | "iterate_until") => {
+                let (body, stop) = match (symbol, rest) {
+                    ("iterate", [body]) => (body, None),
+                    ("iterate_until", [stop, body]) => (body, Some(stop)),
+                    _ => return Err("bounded iteration has the wrong argument count".into()),
+                };
+                if index == state { return Err("iteration index and accumulator require distinct names".into()); }
+                let count = self.emit(count)?;
+                let init = self.emit(init)?;
+                let captured = self.capture().into_iter().filter(|(name, _)| name != &index.0 && name != &state.0).collect::<Vec<_>>();
+                let mut names = vec![index.0.clone(), state.0.clone()];
+                names.extend(captured.iter().map(|(name, _)| name.clone()));
+                let body = Self::nested(body, names.clone())?;
+                let stop = stop.map(|stop| Self::nested(stop, names)).transpose()?;
+                EmirOp::Iterate { count, init, args: captured.into_iter().map(|(_, value)| value).collect(), stop, body }
+            }
+            ("get", [record, field]) => EmirOp::RecordField { record: self.emit(record)?, field: literal(field)? },
+            ("refuse", [detail]) => {
+                let detail = literal(detail)?;
+                EmirOp::Refuse(detail.strip_prefix("text:").unwrap_or(&detail).to_string())
+            }
+            ("refuse_value", [value]) => EmirOp::RefuseValue(self.emit(value)?),
+            ("format_text", [template, arguments @ ..]) => {
+                let template = literal(template)?;
+                EmirOp::FormatText {
+                    template: template.strip_prefix("text:").unwrap_or(&template).to_string(),
+                    arguments: arguments.iter().map(|value| self.emit(value)).collect::<Result<Vec<_>, _>>()?,
+                }
+            }
+            ("call_program", [program, inputs]) => EmirOp::CallProgram { program: self.emit(program)?, inputs: self.emit(inputs)? },
+            ("call_scalar_program", [program, inputs]) => EmirOp::CallScalarProgram { program: self.emit(program)?, inputs: self.emit(inputs)? },
+            ("call_real_program", [program, inputs]) => EmirOp::CallRealProgram { program: self.emit(program)?, inputs: self.emit(inputs)? },
+            ("try_call_real_program", [program, inputs]) => EmirOp::TryCallRealProgram { program: self.emit(program)?, inputs: self.emit(inputs)? },
+            ("result_is_ok", [value]) => EmirOp::ResultIsOk(self.emit(value)?),
+            ("result_unwrap_or", [value, fallback]) => EmirOp::ResultUnwrapOr(self.emit(value)?, self.emit(fallback)?),
+            ("vector", [value]) => EmirOp::ToF64Vector(self.emit(value)?),
+            ("length", [value]) => EmirOp::VectorLength(self.emit(value)?),
+            ("index", [value, index]) => EmirOp::VectorIndex { vector: self.emit(value)?, index: self.emit(index)? },
+            ("list", elements) => EmirOp::ListCreate(elements.iter().map(|element| self.emit(element)).collect::<Result<Vec<_>, _>>()?),
+            (symbol, values) if symbol.starts_with("record:") => {
+                let mut parts = symbol[7..].split(':');
+                let type_name = parts.next().unwrap_or_default().to_string();
+                let fields = parts.collect::<Vec<_>>();
+                if type_name.is_empty() || fields.len() != values.len() { return Err("record constructor requires a type and one field name per value".into()); }
+                let mut seen = BTreeSet::new();
+                let mut members = Vec::with_capacity(values.len());
+                for (field, value) in fields.into_iter().zip(values) {
+                    if field.is_empty() || !seen.insert(field) { return Err("record constructor has an empty or repeated field".into()); }
+                    members.push((field.to_string(), self.emit(value)?));
+                }
+                EmirOp::RecordCreate { type_name, fields: members }
+            }
+            (symbol, values) if FeatureId::from_str(symbol).is_ok() => EmirOp::ApplyCapability { capability: symbol.to_string(), class: crate::CellClass::Pure, args: values.iter().map(|value| self.emit(value)).collect::<Result<Vec<_>, _>>()? },
+            _ => return Ok(None),
+        };
+        Ok(Some(self.push(op)))
+    }
+
     fn emit(&mut self, term: &Term) -> Result<EmirValue, String> {
         match term {
             Term::Variable(variable) => {
+                if let Some(value) = self.locals.get(&variable.0) { return Ok(*value); }
                 let index = self
                     .params
                     .iter()
@@ -1169,16 +1502,40 @@ impl ReferenceCompiler<'_> {
                     })?;
                 let index = u16::try_from(index)
                     .map_err(|_| "reference cells exceed u16::MAX parameters".to_string())?;
-                Ok(self.push(EmirOp::LoadInput(index)))
+                let value = self.push(EmirOp::LoadInput(index));
+                self.locals.insert(variable.0.clone(), value);
+                Ok(value)
             }
-            Term::Constant(symbol) => Err(format!(
-                "reference constant symbol `{}` is outside the closed scalar vocabulary",
-                symbol.0
-            )),
+            Term::Constant(symbol) => {
+                let op = match symbol.0.as_str() {
+                    "true" => EmirOp::ConstBool(true),
+                    "false" => EmirOp::ConstBool(false),
+                    text if text.starts_with("text:") => EmirOp::ConstText(text[5..].to_string()),
+                    text if text.starts_with("i64:") => {
+                        EmirOp::ConstI64(text[4..].parse().map_err(|_| {
+                            format!("reference integer literal `{text}` is outside i64")
+                        })?)
+                    }
+                    text => {
+                        let value = text
+                            .parse::<f64>()
+                            .ok()
+                            .filter(|value| value.is_finite())
+                            .ok_or_else(|| {
+                                format!(
+                                    "reference constant `{text}` is not a finite binary64 literal"
+                                )
+                            })?;
+                        EmirOp::ConstF64(value.to_bits())
+                    }
+                };
+                Ok(self.push(op))
+            }
             Term::Apply {
                 operator,
                 arguments,
             } => {
+                if let Some(value) = self.emit_control(&operator.0, arguments)? { return Ok(value); }
                 let resolved = ReferenceOperator::resolve(&operator.0, arguments.len())
                     .ok_or_else(|| {
                         format!(
@@ -1221,6 +1578,12 @@ fn encode_reference_partition(entries: &BTreeMap<FeatureId, ReferenceEntry>) -> 
             page.push_str(shape.as_str());
         }
         page.push('\n');
+        page.push_str(&format!("defaults {}\n", entry.defaults.len()));
+        for default in &entry.defaults {
+            page.push_str("default ");
+            page.push_str(&default.canonical());
+            page.push('\n');
+        }
         page.push_str("term ");
         page.push_str(&entry.term.canonical());
         page.push('\n');
@@ -1262,6 +1625,17 @@ fn decode_reference_entries(
             )));
         };
         let params = parse_partition_params(params_text).map_err(malformed)?;
+        let defaults_line = next_line(&mut rest)
+            .ok_or_else(|| malformed("reference entry ends before defaults".into()))?;
+        let count = defaults_line.strip_prefix("defaults ").and_then(|text| text.parse::<usize>().ok())
+            .filter(|count| *count <= params.len())
+            .ok_or_else(|| malformed("invalid reference default count".into()))?;
+        let mut defaults = Vec::with_capacity(count);
+        for _ in 0..count {
+            let text = next_line(&mut rest).and_then(|line| line.strip_prefix("default "))
+                .ok_or_else(|| malformed("reference entry ends before a default term".into()))?;
+            defaults.push(Term::parse_canonical(text).map_err(|error| malformed(format!("invalid reference default: {error:?}")))?);
+        }
         let term_line = next_line(&mut rest)
             .ok_or_else(|| malformed("reference entry ends before term".to_string()))?;
         let Some(term_text) = term_line.strip_prefix("term ") else {
@@ -1294,7 +1668,10 @@ fn decode_reference_entries(
         let mut signature = Signature::default();
         note_term_arities(&term, &mut signature)
             .map_err(|detail| malformed(format!("reference entry declares {detail}")))?;
-        let cell = compile_reference_term(&term, &signature, &params, feature.as_str()).map_err(
+        for default in &defaults {
+            note_term_arities(default, &mut signature).map_err(|detail| malformed(format!("reference default declares {detail}")))?;
+        }
+        let cell = compile_reference_with_defaults(&term, &defaults, &signature, &params, feature.as_str()).map_err(
             |detail| {
                 malformed(format!(
                     "reference entry `{}` refuses recompilation: {detail}",
@@ -1308,7 +1685,7 @@ fn decode_reference_entries(
             });
         }
         if entries
-            .insert(feature, ReferenceEntry { term, params, cell })
+            .insert(feature, ReferenceEntry { term, defaults, params, cell })
             .is_some()
         {
             return Err(malformed(format!(
@@ -1345,6 +1722,7 @@ fn parse_partition_params(text: &str) -> Result<Vec<(String, ParamShape)>, Strin
                 .ok_or_else(|| format!("parameter `{token}` lacks a `name:shape` shape"))?;
             let shape = match shape.trim() {
                 "scalar" => ParamShape::Scalar,
+                "rational" => ParamShape::Rational,
                 "vector" => ParamShape::Vector,
                 "matrix" => ParamShape::Matrix,
                 other => return Err(format!("unknown parameter shape `{other}`")),
@@ -1402,7 +1780,7 @@ fn first_installed_map_mismatch(
 }
 
 fn reference_entries_agree(left: &ReferenceEntry, right: &ReferenceEntry) -> bool {
-    left.term == right.term && left.params == right.params && left.cell == right.cell
+    left.term == right.term && left.defaults == right.defaults && left.params == right.params && left.cell == right.cell
 }
 
 /// Names the first capability whose compiled entry the decoded page does

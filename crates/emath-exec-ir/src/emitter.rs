@@ -109,11 +109,32 @@ impl Emitter {
                 Err("rational construction must be a capability application".to_string())
             }
             ExprNode::Variable(name) => {
-                if let Some(state) = name.0.strip_prefix("state.") {
+                if self.inputs.iter().any(|candidate| candidate == &name.0) {
+                    self.push(EmirOp::LoadInput(self.input_index(&name.0)?), span)
+                } else if let Some(state) = name.0.strip_prefix("state.") {
                     self.push(EmirOp::LoadState(self.state_index(state)?), span)
                 } else {
                     self.push(EmirOp::LoadInput(self.input_index(&name.0)?), span)
                 }
+            }
+            ExprNode::Program { body, inputs } => {
+                let mut nested = Emitter {
+                    ops: Vec::new(),
+                    inputs: inputs.clone(),
+                    states: Vec::new(),
+                    obligations: Vec::new(),
+                };
+                let result = nested.emit(package, *body)?;
+                self.push(
+                    EmirOp::program_literal(EmirProgram {
+                        ops: nested.ops,
+                        result,
+                        input_count: count_u16(inputs.len(), "program input")?,
+                        state_count: 0,
+                        domain_obligations: nested.obligations,
+                    }),
+                    span,
+                )
             }
             ExprNode::Apply {
                 capability,
@@ -135,10 +156,43 @@ impl Emitter {
                     span,
                 )
             }
-            ExprNode::Call { function, .. } => Err(format!(
-                "legacy named call `{}` reached executable lowering; admission must resolve a FeatureID application",
-                function.0
-            )),
+            ExprNode::Call { function, arguments } => {
+                let leaf = function
+                    .0
+                    .rsplit([':', '.'])
+                    .next()
+                    .unwrap_or(function.0.as_str());
+                let mut args = Vec::with_capacity(arguments.len());
+                for argument in arguments {
+                    args.push(self.emit(package, *argument)?);
+                }
+                let op = match (leaf, args.as_slice()) {
+                    ("option_some", [value]) => EmirOp::OptionSome(*value),
+                    ("option_none", []) => EmirOp::OptionNone,
+                    ("option_is_some", [value]) => EmirOp::OptionIsSome(*value),
+                    ("option_unwrap_or", [carrier, default]) => {
+                        EmirOp::OptionUnwrapOr(*carrier, *default)
+                    }
+                    ("result_ok", [value]) => EmirOp::ResultOk(*value),
+                    ("result_err", [value]) => EmirOp::ResultErr(*value),
+                    ("result_is_ok", [value]) => EmirOp::ResultIsOk(*value),
+                    ("result_unwrap_or", [carrier, default]) => {
+                        EmirOp::ResultUnwrapOr(*carrier, *default)
+                    }
+                    ("result_error_of", [value]) => EmirOp::ResultErrorOf(*value),
+                    ("series_at", [series, time]) => EmirOp::SeriesSample {
+                        series: *series,
+                        time: *time,
+                    },
+                    _ => {
+                        return Err(format!(
+                            "legacy named call `{}` reached executable lowering; admission must resolve a FeatureID application",
+                            function.0
+                        ));
+                    }
+                };
+                self.push(op, span)
+            }
             ExprNode::Unary { operation, value } => {
                 let value = self.emit(package, *value)?;
                 let op = match operation {
@@ -154,6 +208,13 @@ impl Emitter {
                     UnaryOp::Abs => EmirOp::UnaryBuiltin(BuiltinId::Abs, value),
                     UnaryOp::Floor => EmirOp::UnaryBuiltin(BuiltinId::Floor, value),
                     UnaryOp::Ceil => EmirOp::UnaryBuiltin(BuiltinId::Ceil, value),
+                    UnaryOp::Sign => EmirOp::UnaryBuiltin(BuiltinId::Sign, value),
+                    UnaryOp::Cbrt => EmirOp::UnaryBuiltin(BuiltinId::Cbrt, value),
+                    UnaryOp::Recip => EmirOp::UnaryBuiltin(BuiltinId::Recip, value),
+                    UnaryOp::Log2 => EmirOp::UnaryBuiltin(BuiltinId::Log2, value),
+                    UnaryOp::Log10 => EmirOp::UnaryBuiltin(BuiltinId::Log10, value),
+                    UnaryOp::IsFinite => EmirOp::IsFinite(value),
+                    UnaryOp::Length => EmirOp::VectorLength(value),
                 };
                 self.push(op, span)
             }
@@ -187,6 +248,8 @@ impl Emitter {
                     BinaryOp::Min => EmirOp::BinaryBuiltin(BuiltinId::Min, left, right),
                     BinaryOp::Max => EmirOp::BinaryBuiltin(BuiltinId::Max, left, right),
                     BinaryOp::Atan2 => EmirOp::BinaryBuiltin(BuiltinId::Atan2, left, right),
+                    BinaryOp::Hypot => EmirOp::BinaryBuiltin(BuiltinId::Hypot, left, right),
+                    BinaryOp::Mod => EmirOp::BinaryBuiltin(BuiltinId::Mod, left, right),
                     other => {
                         return Err(format!(
                             "legacy operation {:?} reached executable lowering; admission must resolve a FeatureID application",
@@ -368,13 +431,6 @@ impl Emitter {
                 variables,
                 body,
             } => self.emit_fold(package, *kind, variables, *body, span),
-            ExprNode::Differentiate { .. }
-            | ExprNode::Solve { .. }
-            | ExprNode::Optimize { .. }
-            | ExprNode::SampleLimit { .. } => Err(
-                "domain computation reached executable lowering without a FeatureID application"
-                    .to_string(),
-            ),
         }
     }
 

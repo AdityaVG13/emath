@@ -26,6 +26,14 @@ pub enum EmirOp {
     F64Div(EmirValue, EmirValue),
     F64Pow(EmirValue, EmirValue),
     Neg(EmirValue),
+    /// Exact integral binary64-to-i64 conversion; rejects rounding and overflow.
+    ToInt(EmirValue),
+    /// Convert a numeric scalar to binary64 without applying arithmetic.
+    ToF64(EmirValue),
+    /// Truncating signed integer quotient; rejects zero divisors and overflow.
+    IntegerQuotient(EmirValue, EmirValue),
+    /// Binary64 representation equality, including signed zero and NaN payloads.
+    SameBits(EmirValue, EmirValue),
     UnaryBuiltin(BuiltinId, EmirValue),
     BinaryBuiltin(BuiltinId, EmirValue, EmirValue),
     Lt(EmirValue, EmirValue),
@@ -72,7 +80,13 @@ pub enum EmirOp {
         type_name: String,
         fields: Vec<(String, EmirValue)>,
     },
+    /// Preserve element carriers without numeric widening.
+    ListCreate(Vec<EmirValue>),
+    RecordField { record: EmirValue, field: String },
     VectorCreate(Vec<EmirValue>),
+    VectorLength(EmirValue),
+    /// Pack a homogeneous Float64 sequence without widening exact carriers.
+    ToF64Vector(EmirValue),
     MatrixCreate {
         rows: usize,
         cols: usize,
@@ -86,6 +100,23 @@ pub enum EmirOp {
         vector: EmirValue,
         index: EmirValue,
     },
+    /// Matrix storage metadata and checked row-major packing.
+    MatrixRows(EmirValue),
+    TensorShape(EmirValue),
+    /// IEEE binary64 intrinsics and UTF-8/decimal representation operations.
+    F64Exp2(EmirValue),
+    F64PowI(EmirValue, EmirValue),
+    TextTrim(EmirValue),
+    TextLength(EmirValue),
+    /// Native unsigned-index conversion followed by decimal representation.
+    IndexText(EmirValue),
+    TextByte(EmirValue, EmirValue),
+    FormatScientific(EmirValue, EmirValue),
+    ParseF64(EmirValue),
+    TensorPack { shape: EmirValue, data: EmirValue },
+    DenseIndex { dense: EmirValue, index: EmirValue },
+    MatrixCols(EmirValue),
+    MatrixPack { rows: EmirValue, cols: EmirValue, data: EmirValue },
     MatrixIndex {
         matrix: EmirValue,
         row: EmirValue,
@@ -110,6 +141,27 @@ pub enum EmirOp {
     ResultErrorOf(EmirValue),
 
     // Universal binding/control.
+    /// Evaluate only the selected program, with explicit captured arguments.
+    Branch {
+        condition: EmirValue,
+        args: Vec<EmirValue>,
+        then_body: EmirProgram,
+        else_body: EmirProgram,
+    },
+    /// Body inputs are iteration index, accumulator, then captured arguments.
+    /// An optional stop predicate receives the same inputs before each update.
+    Iterate {
+        count: EmirValue,
+        init: EmirValue,
+        args: Vec<EmirValue>,
+        stop: Option<EmirProgram>,
+        body: EmirProgram,
+    },
+    /// Build a sequence once; body inputs are index then captured arguments.
+    Collect { count: EmirValue, args: Vec<EmirValue>, body: EmirProgram },
+    /// A refusal declared by the authored program, never a fabricated value.
+    Refuse(String),
+    RefuseValue(EmirValue),
     Fold {
         start: EmirValue,
         end: EmirValue,
@@ -132,7 +184,38 @@ pub enum EmirOp {
     /// carrier machinery — the literal names no FeatureID and dispatches
     /// nothing; like any value it can flow into an `ApplyCapability`
     /// argument register.
-    ProgramLiteral(EmirProgram),
+    /// Evaluate a literal program with explicit typed input and state frames.
+    CallFrame { body: EmirProgram, inputs: Vec<EmirValue>, state: Vec<EmirValue> },
+    /// Compare scalar/dense carrier layout, including stored element counts.
+    SameDenseShape(EmirValue, EmirValue),
+    DenseLayout(EmirValue),
+    VectorSlice { vector: EmirValue, offset: EmirValue, count: EmirValue },
+    VectorConcat(Vec<EmirValue>),
+    /// Stable binary64 representation ordering, including signed zero and NaNs.
+    F64SortTotal(EmirValue),
+    /// Copy numeric storage into a Float64 vector; scalar Int explicitly widens.
+    DenseValues(EmirValue),
+    /// Rebuild a floating dense carrier with the template layout.
+    DenseRepack { template: EmirValue, data: EmirValue },
+
+    ProgramLiteral {
+        body: EmirProgram,
+        /// Captures follow explicit arguments in the nested input frame.
+        captures: Vec<EmirValue>,
+        /// Bind the numeric argument vector as one input, not one input per element.
+        vector_input: bool,
+    },
+
+    /// Invoke a closed numeric program with a dynamic Float64 argument vector.
+    /// Scalar results are packed as one element; vector results retain their shape.
+    /// This instruction does not select a method or impose mathematical guards.
+    CallProgram { program: EmirValue, inputs: EmirValue },
+    /// Require a Float64 callback result without packing or widening it.
+    CallScalarProgram { program: EmirValue, inputs: EmirValue },
+    /// Convert a Float64 or Int callback result to binary64.
+    CallRealProgram { program: EmirValue, inputs: EmirValue },
+    /// Recover ordinary callback faults and nonnumeric results; retain budget faults.
+    TryCallRealProgram { program: EmirValue, inputs: EmirValue },
 
     // Closed carrier bytecode used by authored reference programs.
     VectorMap {
@@ -149,4 +232,11 @@ pub enum EmirOp {
         source: EmirValue,
     },
     VectorAllFinite(EmirValue),
+}
+
+impl EmirOp {
+    /// A closed numeric program with one Float64 input per supplied element.
+    pub fn program_literal(body: EmirProgram) -> Self {
+        Self::ProgramLiteral { body, captures: Vec::new(), vector_input: false }
+    }
 }

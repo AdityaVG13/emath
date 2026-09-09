@@ -23,7 +23,8 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         | EmirOp::LoadInput(_)
         | EmirOp::LoadState(_)
         | EmirOp::SeriesCreate { .. }
-        | EmirOp::OptionNone => {}
+        | EmirOp::OptionNone
+        | EmirOp::Refuse(_) => {}
         EmirOp::F64Add(a, b)
         | EmirOp::F64Sub(a, b)
         | EmirOp::F64Mul(a, b)
@@ -33,6 +34,11 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         | EmirOp::Le(a, b)
         | EmirOp::Gt(a, b)
         | EmirOp::Ge(a, b)
+        | EmirOp::IntegerQuotient(a, b)
+        | EmirOp::SameBits(a, b)
+        | EmirOp::F64PowI(a, b)
+        | EmirOp::TextByte(a, b)
+        | EmirOp::FormatScientific(a, b)
         | EmirOp::Eq(a, b)
         | EmirOp::Ne(a, b)
         | EmirOp::And(a, b)
@@ -43,9 +49,21 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         | EmirOp::OptionUnwrapOr(a, b)
         | EmirOp::ResultUnwrapOr(a, b) => out.extend([*a, *b]),
         EmirOp::Neg(value)
+        | EmirOp::ToInt(value)
         | EmirOp::UnaryBuiltin(_, value)
         | EmirOp::Not(value)
         | EmirOp::IsFinite(value)
+        | EmirOp::VectorLength(value)
+        | EmirOp::ToF64Vector(value)
+        | EmirOp::MatrixRows(value)
+        | EmirOp::TensorShape(value)
+        | EmirOp::F64Exp2(value)
+        | EmirOp::TextTrim(value)
+        | EmirOp::TextLength(value)
+        | EmirOp::IndexText(value)
+        | EmirOp::RefuseValue(value)
+        | EmirOp::ParseF64(value)
+        | EmirOp::MatrixCols(value)
         | EmirOp::OptionSome(value)
         | EmirOp::OptionIsSome(value)
         | EmirOp::ResultOk(value)
@@ -62,21 +80,33 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         }
         EmirOp::FormatText { arguments, .. }
         | EmirOp::VectorCreate(arguments)
+        | EmirOp::ListCreate(arguments)
         | EmirOp::ApplyCapability {
             args: arguments, ..
         } => out.extend(arguments.iter().copied()),
         EmirOp::SeriesSample { series, time } => out.extend([*series, *time]),
+        EmirOp::CallProgram { program, inputs }
+        | EmirOp::CallScalarProgram { program, inputs }
+        | EmirOp::CallRealProgram { program, inputs }
+        | EmirOp::TryCallRealProgram { program, inputs } => out.extend([*program, *inputs]),
         EmirOp::SetCreate { elements, guards } => {
             out.extend(elements.iter().copied());
             out.extend(guards.iter().flatten().copied());
         }
         EmirOp::SetContains { element, set } => out.extend([*element, *set]),
         EmirOp::RecordCreate { fields, .. } => out.extend(fields.iter().map(|(_, value)| *value)),
+        EmirOp::RecordField { record, .. } => out.push(*record),
+        EmirOp::Branch { condition, args, .. } => { out.push(*condition); out.extend(args.iter().copied()); }
+        EmirOp::Collect { count, args, .. } => { out.push(*count); out.extend(args.iter().copied()); }
+        EmirOp::Iterate { count, init, args, .. } => { out.extend([*count, *init]); out.extend(args.iter().copied()); }
         EmirOp::MatrixCreate { elements, .. } | EmirOp::TensorCreate { elements, .. } => {
             out.extend(elements.iter().copied());
         }
         EmirOp::VectorIndex { vector, index } => out.extend([*vector, *index]),
         EmirOp::MatrixIndex { matrix, row, col } => out.extend([*matrix, *row, *col]),
+        EmirOp::MatrixPack { rows, cols, data } => out.extend([*rows, *cols, *data]),
+        EmirOp::TensorPack { shape, data } => out.extend([*shape, *data]),
+        EmirOp::DenseIndex { dense, index } => out.extend([*dense, *index]),
         EmirOp::TensorIndex { tensor, indices } => {
             out.push(*tensor);
             out.extend(indices.iter().copied());
@@ -95,9 +125,14 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         } => out.extend([*start, *end, *init]),
         EmirOp::VectorMap { source, .. } | EmirOp::VectorReduce { source, .. } => out.push(*source),
         EmirOp::VectorMapScalar { vector, scalar, .. } => out.extend([*vector, *scalar]),
-        // The literal carries its own nested register namespace; it
-        // consumes no outer registers.
-        EmirOp::ProgramLiteral(_) => {}
+        EmirOp::CallFrame { inputs, state, .. } => { out.extend(inputs); out.extend(state); }
+        EmirOp::SameDenseShape(left, right) => out.extend([*left, *right]),
+        EmirOp::DenseValues(value) | EmirOp::DenseLayout(value) | EmirOp::ToF64(value) | EmirOp::F64SortTotal(value) => out.push(*value),
+        EmirOp::VectorSlice { vector, offset, count } => out.extend([*vector, *offset, *count]),
+        EmirOp::VectorConcat(values) => out.extend(values),
+        EmirOp::DenseRepack { template, data } => out.extend([*template, *data]),
+        // Body registers are local; capture registers belong to this frame.
+        EmirOp::ProgramLiteral { captures, .. } => out.extend(captures),
     }
 }
 

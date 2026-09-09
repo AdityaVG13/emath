@@ -8,6 +8,8 @@ use super::*;
 pub enum ParamShape {
     /// IEEE-754 binary64 scalar.
     Scalar,
+    /// Exact rational scalar, never widened through binary64.
+    Rational,
     /// Rank-1 Float64 vector.
     Vector,
     /// Dense row-major Float64 matrix (the graph/linear-algebra
@@ -21,6 +23,7 @@ impl ParamShape {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Scalar => "scalar",
+            Self::Rational => "rational",
             Self::Vector => "vector",
             Self::Matrix => "matrix",
         }
@@ -297,6 +300,8 @@ pub struct CompiledCell {
     pub capability: String,
     /// Declared parameters, in argument order.
     pub params: Vec<(String, ParamShape)>,
+    /// Trailing defaults, each evaluated against all preceding arguments.
+    pub defaults: Vec<crate::EmirProgram>,
     /// Contract guards run at the seam before the body, in order.
     pub guards: Vec<ArgGuard>,
     /// Optional post-body certificate: refuses typed when the result
@@ -304,4 +309,11 @@ pub struct CompiledCell {
     pub result_guard: Option<ResultGuard>,
     /// Generic bytecode the reference VM executes.
     pub program: EmirProgram,
+}
+
+impl CompiledCell {
+    pub fn admits_arity(&self, count: usize) -> bool {
+        self.params.len().checked_sub(self.defaults.len())
+            .is_some_and(|min| count >= min && count <= self.params.len())
+    }
 }

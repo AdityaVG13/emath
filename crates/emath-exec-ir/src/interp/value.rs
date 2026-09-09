@@ -67,15 +67,30 @@ pub enum Value {
     /// `EmirOp::ProgramLiteral`. Domain-neutral: the carrier names no
     /// FeatureID and dispatches nothing; it can flow into an
     /// `ApplyCapability` argument register like any other value.
-    Program(EmirProgram),
+    Program(ProgramValue),
     /// Universal heterogeneous sequence: the ordinary carrier for
     /// variadic capability arguments (a subscript `Text` plus a
     /// rank-polymorphic operand list rides as one value).
     /// Domain-neutral: no operand-shape or capability naming.
     List(Vec<Value>),
+    /// Logical shape and storage size, without copying numeric data.
+    DenseLayout(emath_rt::DenseLayout),
+}
+
+/// A numeric callback with an explicit argument convention and typed captures.
+/// Captures occupy the final input slots; the body has no state slots.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProgramValue {
+    pub body: EmirProgram,
+    pub captures: Vec<Value>,
+    pub vector_input: bool,
 }
 
 impl Value {
+    pub fn program(body: EmirProgram) -> Self {
+        Self::Program(ProgramValue { body, captures: Vec::new(), vector_input: false })
+    }
+
     /// Stage-2 (emath-t63iz): parse an exact non-negative decimal
     /// integer into the big lane. Used by the eval `--set` binding path;
     /// admits |F| < 2^256 only.
@@ -229,6 +244,7 @@ impl PartialEq for Value {
                 },
             ) => ok1 == ok2 && p1 == p2,
             (Self::Program(left), Self::Program(right)) => left == right,
+            (Self::DenseLayout(left), Self::DenseLayout(right)) => left == right,
             (Self::List(left), Self::List(right)) => left == right,
             _ => false,
         }
@@ -358,6 +374,7 @@ impl fmt::Display for Value {
             // Canonical dump of the program artifact: the nested program's
             // own Debug form, bracketed so the carrier is unmistakable.
             Self::Program(program) => write!(f, "program({program:?})"),
+            Self::DenseLayout(layout) => write!(f, "layout({layout:?})"),
             Self::List(values) => {
                 f.write_str("[")?;
                 for (index, value) in values.iter().enumerate() {
@@ -429,6 +446,8 @@ pub enum EvalFault {
         /// Short reason (`integral steps must be positive and even`).
         detail: &'static str,
     },
+    /// A scalar carrier operation refused; retain its full diagnostic.
+    CarrierRefused { op: &'static str, detail: String },
     /// A series with `extrapolation: refuse` was sampled outside its support.
     SeriesOutOfSupport {
         time_bits: u64,
@@ -475,6 +494,7 @@ impl fmt::Display for EvalFault {
                 write!(f, "{op} index {index} is outside 0..{len}")
             }
             Self::Arithmetic { op, detail } => write!(f, "{op}: {detail}"),
+            Self::CarrierRefused { op, detail } => write!(f, "{op}: {detail}"),
             Self::SeriesOutOfSupport {
                 time_bits,
                 start_bits,
@@ -502,6 +522,93 @@ impl fmt::Display for EvalFault {
                 "evaluation budget exhausted after {executed} step(s); \
                  no partial authority"
             ),
+        }
+    }
+}
+
+
+impl Value {
+    /// Structured value view; numeric payloads retain exact carrier bits.
+    /// Program values remain opaque rather than resumable method arguments.
+    pub fn json(&self) -> String {
+        use emath_core::JsonWriter;
+        let mut out = JsonWriter::object();
+        let kind = match self {
+            Self::I64(_) => "Int", Self::F64(_) => "Float64", Self::Bool(_) => "Bool",
+            Self::Rat { .. } => "Rat", Self::BigInt(_) => "BigInt", Self::BigVector(_) => "Vector<BigInt>",
+            Self::Vector(_) => "Vector<Float64>", Self::Matrix { .. } => "Matrix<Float64>",
+            Self::Tensor { .. } => "Tensor<Float64>", Self::Complex { .. } => "Complex",
+            Self::Interval { .. } => "Interval<Float64>", Self::Text(_) => "Text", Self::Series { .. } => "Series",
+            Self::Set(_) => "Set", Self::Record { .. } => "Record", Self::Option(_) => "Option",
+            Self::Result { .. } => "Result", Self::Program(_) => "Program", Self::List(_) => "List",
+            Self::DenseLayout(_) => "DenseLayout",
+        };
+        out.string("type", kind);
+        out.string("value", &self.to_string());
+        let bits = |values: &[f64]| values.iter().map(|value| format!("{:016x}", value.to_bits())).collect::<Vec<_>>();
+        match self {
+            Self::F64(value) => { out.string("bits", &format!("{:016x}", value.to_bits())); }
+            Self::Rat { num, den } => { out.string("numerator", &num.to_string()); out.string("denominator", &den.to_string()); }
+            Self::Record { type_name, fields } => {
+                out.string("name", type_name);
+                let mut members = JsonWriter::object();
+                for (name, value) in fields { members.object_field(name, &value.json()); }
+                out.object_field("fields", &members.finish());
+            }
+            Self::List(values) | Self::Set(values) => { out.objects("elements", &values.iter().map(Self::json).collect::<Vec<_>>()); }
+            Self::Vector(values) => { out.strings("bits", &bits(values)); }
+            Self::BigVector(values) => { out.strings("elements", &values.iter().map(emath_rt::UBig::to_decimal).collect::<Vec<_>>()); }
+            Self::Matrix { rows, cols, data } => {
+                out.int("rows", *rows as u64); out.int("columns", *cols as u64); out.strings("bits", &bits(data));
+            }
+            Self::Tensor { shape, data } => {
+                out.strings("shape", &shape.iter().map(usize::to_string).collect::<Vec<_>>()); out.strings("bits", &bits(data));
+            }
+            Self::Complex { re, im } => { out.strings("bits", &bits(&[*re, *im])); }
+            Self::Interval { lo, hi } => { out.strings("bits", &bits(&[*lo, *hi])); }
+            Self::Option(value) => {
+                out.bool("some", value.is_some());
+                if let Some(value) = value { out.object_field("payload", &value.json()); }
+            }
+            Self::Result { ok, payload } => { out.bool("ok", *ok); out.object_field("payload", &payload.json()); }
+            Self::Series { points, interpolation, extrapolation } => {
+                out.string("interpolation", interpolation); out.string("extrapolation", extrapolation);
+                out.strings("time_bits", &points.iter().map(|(time, _)| format!("{:016x}", time.to_bits())).collect::<Vec<_>>());
+                out.strings("value_bits", &points.iter().map(|(_, value)| format!("{:016x}", value.to_bits())).collect::<Vec<_>>());
+            }
+            Self::Program(program) => {
+                out.string("program", &program.body.print());
+                out.bool("vector_input", program.vector_input);
+                out.objects("captures", &program.captures.iter().map(Self::json).collect::<Vec<_>>());
+            }
+            Self::DenseLayout(layout) => { out.string("layout", &format!("{layout:?}")); }
+            Self::I64(_) | Self::Bool(_) | Self::Text(_) | Self::BigInt(_) => {}
+        }
+        out.finish()
+    }
+}
+
+impl Value {
+    pub fn dense_layout(&self) -> Option<emath_rt::DenseLayout> {
+        use emath_rt::DenseLayout;
+        Some(match self {
+            Self::F64(_) | Self::I64(_) => DenseLayout::Scalar,
+            Self::Vector(data) => DenseLayout::Vector(data.len()),
+            Self::Matrix { rows, cols, data } => DenseLayout::Matrix { rows: *rows, cols: *cols, len: data.len() },
+            Self::Tensor { shape, data } => DenseLayout::Tensor { shape: shape.clone(), len: data.len() },
+            _ => return None,
+        })
+    }
+
+    pub(super) fn matches_dense_layout(&self, layout: &emath_rt::DenseLayout) -> bool {
+        use emath_rt::DenseLayout;
+        match (layout, self) {
+            (DenseLayout::Scalar, Self::F64(_) | Self::I64(_)) => true,
+            (DenseLayout::Vector(len), Self::Vector(data)) => *len == data.len(),
+            (DenseLayout::Matrix { rows, cols, len }, Self::Matrix { rows: actual_rows, cols: actual_cols, data }) => rows == actual_rows && cols == actual_cols && *len == data.len(),
+            (DenseLayout::Tensor { shape, len }, Self::Tensor { shape: actual, data }) => shape == actual && *len == data.len(),
+            (expected, Self::DenseLayout(actual)) => expected == actual,
+            _ => false,
         }
     }
 }

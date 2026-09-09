@@ -16,6 +16,7 @@ pub mod language_image;
 pub mod language_tables;
 pub mod lazy;
 pub mod native_kernel;
+pub mod progress;
 pub mod optimize;
 pub mod reference_views;
 pub mod runner;
