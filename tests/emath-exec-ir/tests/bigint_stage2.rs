@@ -20,6 +20,8 @@ use emath_exec_ir::language_image::load_language_distribution;
 use emath_exec_ir::native_kernel::install_language_distribution;
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue};
 
+use emath_test_harness::Probe;
+
 /// The Curve25519 prime 2^255 - 19.
 const P25519: &str =
     "57896044618658097711785492504343953926634992332820282019728792003956564819949";
@@ -68,8 +70,59 @@ fn capability(name: &str, args: Vec<EmirValue>) -> EmirOp {
 /// 2^((p-1)/2) mod p = p-1 for the non-residue 2 over P25519 (Euler's
 /// criterion; p ≡ 5 mod 8 makes 2 a non-residue by the supplementary
 /// law). Proves ConstBigInt + PowMod promotion end to end.
-#[test]
-fn pow_mod_euler_criterion_at_255_bits() {
+
+/// int_rem over the big lane with a mixed-width dividend: the negative
+/// i64 -5 promotes through the exact-Euclidean kernel, so
+/// int_rem(-5, p) = p - 5 (the stage-1 sign law, swapped representation).
+
+/// sqrt_mod at width: sqrt(4) = 2 exactly, and the non-residue 2
+/// refuses on the GENERAL Tonelli-Shanks path (p ≡ 1 mod 4) — the
+/// regression the Legendre pre-check fix covers (it used to underflow
+/// m - i - 1 before the fix).
+
+/// mod_inv at width: the inverse of 2 over P25519 is (p+1)/2, and the
+/// round trip 2·inv ≡ 1 (mod p) is checked through poly_eval_mod with
+/// coefficients [0, 2] (f(x) = 2x, exact whole f64 coefficients).
+
+/// rs_encode over the big modulus returns a big codeword; with
+/// f(t) = 1 + 2t the codeword at x = 0,1,2 is exactly 1, 3, 5.
+
+/// The all-I64 lane is untouched: pow_mod(2, 10, 1000) = 24 through the
+/// stage-1 kernel, still Value::I64, bit-for-bit.
+
+/// ConstBigInt parses to canonical form: leading zeros never survive
+/// (Display renders canonical decimal digits).
+
+/// Congruence over the big lane: (p + 7) ≡ 7 (mod p) is true and
+/// (p + 7) ≡ 8 (mod p) is false, with exact big operands.
+
+
+/// assert_eq/assert_ne semantics over references: borrows both operands
+/// (like the macros) and allows PartialEq between distinct types.
+fn eq_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    expected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual == expected, format!("expected {expected:?}, got {actual:?}"));
+}
+
+fn ne_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    unexpected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual != unexpected, format!("got forbidden value {unexpected:?}"));
+}
+
+fn pow_mod_euler_criterion_at_255_bits(ph: &mut Probe) {
+    ph.case("pow_mod_euler_criterion_at_255_bits", |ph| {
     install_checked_in_distribution();
     let result = evaluate(
         &program(vec![
@@ -86,16 +139,15 @@ fn pow_mod_euler_criterion_at_255_bits() {
     )
     .expect("big pow_mod evaluates");
     match result {
-        Value::BigInt(value) => assert_eq!(value.to_decimal(), PM1, "Euler symbol = p-1"),
+        Value::BigInt(value) => { eq_ref(ph, format!( "Euler symbol = p-1"), &(value.to_decimal()), &( PM1)); },
         other => panic!("expected BigInt, got {other:?}"),
     }
+
+    });
 }
 
-/// int_rem over the big lane with a mixed-width dividend: the negative
-/// i64 -5 promotes through the exact-Euclidean kernel, so
-/// int_rem(-5, p) = p - 5 (the stage-1 sign law, swapped representation).
-#[test]
-fn int_rem_sign_law_mixed_widths() {
+fn int_rem_sign_law_mixed_widths(ph: &mut Probe) {
+    ph.case("int_rem_sign_law_mixed_widths", |ph| {
     install_checked_in_distribution();
     let result = evaluate(
         &program(vec![
@@ -113,18 +165,16 @@ fn int_rem_sign_law_mixed_widths() {
     match result {
         Value::BigInt(value) => {
             let expected = emath_rt::UBig::parse_decimal(P_MINUS_5).expect("p - 5 parses");
-            assert_eq!(value, expected, "int_rem(-5, p) = p - 5");
+            eq_ref(ph, format!( "int_rem(-5, p) = p - 5"), &(value), &( expected));
         }
         other => panic!("expected BigInt, got {other:?}"),
     }
+
+    });
 }
 
-/// sqrt_mod at width: sqrt(4) = 2 exactly, and the non-residue 2
-/// refuses on the GENERAL Tonelli-Shanks path (p ≡ 1 mod 4) — the
-/// regression the Legendre pre-check fix covers (it used to underflow
-/// m - i - 1 before the fix).
-#[test]
-fn sqrt_mod_round_trip_and_non_residue_refusal() {
+fn sqrt_mod_round_trip_and_non_residue_refusal(ph: &mut Probe) {
+    ph.case("sqrt_mod_round_trip_and_non_residue_refusal", |ph| {
     install_checked_in_distribution();
     let root = evaluate(
         &program(vec![
@@ -140,10 +190,10 @@ fn sqrt_mod_round_trip_and_non_residue_refusal() {
     )
     .expect("sqrt_mod(4, p)");
     match root {
-        Value::BigInt(value) => assert_eq!(value.to_decimal(), "2"),
+        Value::BigInt(value) => { eq_ref(ph, "1", &(value.to_decimal()), &( "2")); },
         other => panic!("expected BigInt, got {other:?}"),
     }
-    assert!(
+    ph.demand("2", 
         evaluate(
             &program(vec![
                 big("2"),
@@ -157,14 +207,13 @@ fn sqrt_mod_round_trip_and_non_residue_refusal() {
             &[],
         )
         .is_err()
-    );
+    , "assertion failed: evaluate(\n            &program(vec![\n                big(\"2\"),\n                b");
+
+    });
 }
 
-/// mod_inv at width: the inverse of 2 over P25519 is (p+1)/2, and the
-/// round trip 2·inv ≡ 1 (mod p) is checked through poly_eval_mod with
-/// coefficients [0, 2] (f(x) = 2x, exact whole f64 coefficients).
-#[test]
-fn mod_inverse_round_trip_at_width() {
+fn mod_inverse_round_trip_at_width(ph: &mut Probe) {
+    ph.case("mod_inverse_round_trip_at_width", |ph| {
     install_checked_in_distribution();
     let inv = evaluate(
         &program(vec![
@@ -188,7 +237,7 @@ fn mod_inverse_round_trip_at_width() {
         "28948022309329048855892746252171976963317496166410141009864396001978282409975",
     )
     .expect("(p+1)/2 parses");
-    assert_eq!(inv, expected, "inv(2, p) = (p+1)/2");
+    eq_ref(ph, format!( "inv(2, p) = (p+1)/2"), &(inv), &( expected));
     // Round trip through the poly lane: 2·inv ≡ 1 (mod p).
     let two_inv = evaluate(
         &program(vec![
@@ -207,15 +256,15 @@ fn mod_inverse_round_trip_at_width() {
     )
     .expect("poly 2x at inv");
     match two_inv {
-        Value::BigInt(value) => assert_eq!(value.to_decimal(), "1", "2·inv ≡ 1 (mod p)"),
+        Value::BigInt(value) => { eq_ref(ph, format!( "2·inv ≡ 1 (mod p)"), &(value.to_decimal()), &( "1")); },
         other => panic!("expected BigInt, got {other:?}"),
     }
+
+    });
 }
 
-/// rs_encode over the big modulus returns a big codeword; with
-/// f(t) = 1 + 2t the codeword at x = 0,1,2 is exactly 1, 3, 5.
-#[test]
-fn rs_encode_big_codeword_matches_hand_derivation() {
+fn rs_encode_big_codeword_matches_hand_derivation(ph: &mut Probe) {
+    ph.case("rs_encode_big_codeword_matches_hand_derivation", |ph| {
     install_checked_in_distribution();
     let result = evaluate(
         &program(vec![
@@ -235,21 +284,21 @@ fn rs_encode_big_codeword_matches_hand_derivation() {
     .expect("rs_encode over p");
     match result {
         Value::BigVector(codeword) => {
-            assert_eq!(codeword.len(), 3);
+            eq_ref(ph, "1", &(codeword.len()), &( 3));
             let digits: Vec<String> = codeword.iter().map(|v| v.to_decimal()).collect();
-            assert_eq!(
-                digits,
+            eq_ref(ph, "2", &(
+                digits), &(
                 vec!["1".to_string(), "3".to_string(), "5".to_string()]
-            );
+            ));
         }
         other => panic!("expected BigVector, got {other:?}"),
     }
+
+    });
 }
 
-/// The all-I64 lane is untouched: pow_mod(2, 10, 1000) = 24 through the
-/// stage-1 kernel, still Value::I64, bit-for-bit.
-#[test]
-fn i64_lane_unchanged_bit_parity() {
+fn i64_lane_unchanged_bit_parity(ph: &mut Probe) {
+    ph.case("i64_lane_unchanged_bit_parity", |ph| {
     install_checked_in_distribution();
     let result = evaluate(
         &program(vec![
@@ -265,13 +314,13 @@ fn i64_lane_unchanged_bit_parity() {
         &[],
     )
     .expect("i64 pow_mod");
-    assert_eq!(result, Value::I64(24));
+    eq_ref(ph, "1", &(result), &( Value::I64(24)));
+
+    });
 }
 
-/// ConstBigInt parses to canonical form: leading zeros never survive
-/// (Display renders canonical decimal digits).
-#[test]
-fn const_bigint_display_is_canonical_decimal() {
+fn const_bigint_display_is_canonical_decimal(ph: &mut Probe) {
+    ph.case("const_bigint_display_is_canonical_decimal", |ph| {
     let result = evaluate(
         &program(vec![EmirOp::ConstBigInt("000123".to_string())]),
         &[],
@@ -280,16 +329,16 @@ fn const_bigint_display_is_canonical_decimal() {
     .expect("const-bigint");
     match result {
         Value::BigInt(value) => {
-            assert_eq!(value.to_decimal(), "123", "canonical: no leading zeros")
+            { eq_ref(ph, format!( "canonical: no leading zeros"), &(value.to_decimal()), &( "123")); }
         }
         other => panic!("expected BigInt, got {other:?}"),
     }
+
+    });
 }
 
-/// Congruence over the big lane: (p + 7) ≡ 7 (mod p) is true and
-/// (p + 7) ≡ 8 (mod p) is false, with exact big operands.
-#[test]
-fn congruence_big_lane() {
+fn congruence_big_lane(ph: &mut Probe) {
+    ph.case("congruence_big_lane", |ph| {
     install_checked_in_distribution();
     let yes = evaluate(
         &program(vec![
@@ -321,7 +370,7 @@ fn congruence_big_lane() {
         &[],
     )
     .expect("cong big true");
-    assert_eq!(yes, Value::Bool(true));
+    eq_ref(ph, "1", &(yes), &( Value::Bool(true)));
     let no = evaluate(
         &program(vec![
             big(P25519),
@@ -336,5 +385,21 @@ fn congruence_big_lane() {
         &[],
     )
     .expect("cong big false");
-    assert_eq!(no, Value::Bool(false));
+    eq_ref(ph, "2", &(no), &( Value::Bool(false)));
+
+    });
+}
+
+#[test]
+fn stage2_bigint_contracts() {
+    let mut ph = Probe::new("stage-2 big-integer wiring stays exact at width with number-theory oracles and typed domain refusals");
+    pow_mod_euler_criterion_at_255_bits(&mut ph);
+    int_rem_sign_law_mixed_widths(&mut ph);
+    sqrt_mod_round_trip_and_non_residue_refusal(&mut ph);
+    mod_inverse_round_trip_at_width(&mut ph);
+    rs_encode_big_codeword_matches_hand_derivation(&mut ph);
+    i64_lane_unchanged_bit_parity(&mut ph);
+    const_bigint_display_is_canonical_decimal(&mut ph);
+    congruence_big_lane(&mut ph);
+    ph.finish();
 }

@@ -15,12 +15,9 @@ use emath_exec_ir::native_kernel::{
 use emath_exec_ir::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget};
 use emath_ir::CapsuleSlot;
 
+use emath_test_harness::Probe;
+
 /// Unknown names keep `None` — the registry never fabricates a handler.
-#[test]
-fn unknown_name_keeps_none() {
-    assert!(native_kernel("std.stochastic.does_not_exist").is_none());
-    assert!(native_kernel("").is_none());
-}
 
 /// --- The interpreter seam (ApplyCapability → native registry) ---
 ///
@@ -81,8 +78,48 @@ fn mutate_add_semantics(
     mutated
 }
 
-#[test]
-fn exact_number_theory_cutover_is_feature_bound_and_refusal_safe() {
+
+/// GCD/LCM cutover (emath-ehpal.7): the `std.capability.exact.gcd` /
+/// `std.capability.exact.lcm` capsules are capsule-active and bind the
+/// domain-neutral `euclidean-gcd` / `checked-lcm` kernels by verified
+/// identity/signature/hash. Inactive (uninstalled) and stale (mutated
+/// signature) images refuse typed; overflow refuses typed, never wraps.
+
+
+/// assert_eq/assert_ne semantics over references: borrows both operands
+/// (like the macros) and allows PartialEq between distinct types.
+fn eq_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    expected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual == expected, format!("expected {expected:?}, got {actual:?}"));
+}
+
+fn ne_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    unexpected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual != unexpected, format!("got forbidden value {unexpected:?}"));
+}
+
+fn unknown_name_keeps_none(ph: &mut Probe) {
+    ph.case("unknown_name_keeps_none", |ph| {
+    ph.demand("1", native_kernel("std.stochastic.does_not_exist").is_none(), "assertion failed: native_kernel(\"std.stochastic.does_not_exist\").is_none()");
+    ph.demand("2", native_kernel("").is_none(), "assertion failed: native_kernel(\"\").is_none()");
+
+    });
+}
+
+fn exact_number_theory_cutover_is_feature_bound_and_refusal_safe(ph: &mut Probe) {
+    ph.case("exact_number_theory_cutover_is_feature_bound_and_refusal_safe", |ph| {
     const ADD: &str = "std.capability.math.add";
     const POW_MOD: &str = "std.capability.exact.pow-mod";
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
@@ -98,19 +135,19 @@ fn exact_number_theory_cutover_is_feature_bound_and_refusal_safe() {
     };
     let add_capsule = capsule(ADD);
     let kernel = native_kernel(ADD).expect("FeatureID resolves its native kernel");
-    assert_eq!(kernel.kernel_id, "checked-add");
-    assert_eq!(
-        binding_semantic_hash(ADD).as_deref(),
-        Some(add_capsule.semantic_hash.as_str()),
+    eq_ref(ph, "1", &(kernel.kernel_id), &( "checked-add"));
+    eq_ref(ph, format!(
         "the binding is pinned to the resolved capsule, not its alias or label"
-    );
+    ), &(
+        binding_semantic_hash(ADD).as_deref()), &(
+        Some(add_capsule.semantic_hash.as_str())));
     let pow_capsule = capsule(POW_MOD);
     let pow_kernel = native_kernel(POW_MOD).expect("number-theory FeatureID resolves its kernel");
-    assert_eq!(pow_kernel.arity, 3);
-    assert_eq!(
-        binding_semantic_hash(POW_MOD).as_deref(),
+    eq_ref(ph, "3", &(pow_kernel.arity), &( 3));
+    eq_ref(ph, "4", &(
+        binding_semantic_hash(POW_MOD).as_deref()), &(
         Some(pow_capsule.semantic_hash.as_str())
-    );
+    ));
 
     for (left, right, expected) in [
         (0, 0, 0),
@@ -120,17 +157,17 @@ fn exact_number_theory_cutover_is_feature_bound_and_refusal_safe() {
     ] {
         let native = (kernel.handler)(&[Value::I64(left), Value::I64(right)]);
         let reference = seam_eval(ADD, &[Value::I64(left), Value::I64(right)]);
-        assert_eq!(native, Ok(Value::I64(expected)));
-        assert_eq!(reference, Ok(Value::I64(expected)));
+        eq_ref(ph, "5", &(native), &( Ok(Value::I64(expected))));
+        eq_ref(ph, "6", &(reference), &( Ok(Value::I64(expected))));
     }
-    assert!(
-        (kernel.handler)(&[Value::I64(i64::MAX), Value::I64(1)]).is_err(),
+    ph.demand("7", 
+        (kernel.handler)(&[Value::I64(i64::MAX), Value::I64(1)]).is_err(), format!(
         "native exact addition must refuse overflow"
-    );
-    assert!(
-        seam_eval(ADD, &[Value::I64(i64::MAX), Value::I64(1)]).is_err(),
+    ));
+    ph.demand("8", 
+        seam_eval(ADD, &[Value::I64(i64::MAX), Value::I64(1)]).is_err(), format!(
         "reference execution must refuse the same overflow boundary"
-    );
+    ));
 
     for (base, exponent, modulus, expected) in [
         (2, 10, 1_000, 24),
@@ -140,31 +177,31 @@ fn exact_number_theory_cutover_is_feature_bound_and_refusal_safe() {
         let args = [Value::I64(base), Value::I64(exponent), Value::I64(modulus)];
         let native = (pow_kernel.handler)(&args).expect("native pow_mod");
         let reference = reference_pow_mod(base, exponent, modulus).expect("reference pow_mod");
-        assert_eq!(native, Value::I64(expected));
-        assert_eq!(reference, Value::I64(expected));
+        eq_ref(ph, "9", &(native), &( Value::I64(expected)));
+        eq_ref(ph, "10", &(reference), &( Value::I64(expected)));
     }
     let zero_modulus = [Value::I64(2), Value::I64(3), Value::I64(0)];
-    assert!((pow_kernel.handler)(&zero_modulus).is_err());
-    assert!(
-        reference_pow_mod(2, 3, 0).is_err(),
+    ph.demand("11", (pow_kernel.handler)(&zero_modulus).is_err(), "assertion failed: (pow_kernel.handler)(&zero_modulus).is_err()");
+    ph.demand("12", 
+        reference_pow_mod(2, 3, 0).is_err(), format!(
         "zero-modulus domain errors must never produce a value"
-    );
+    ));
 
     let wrong_kernel = mutate_add_semantics(&distribution, "checked-add", "scalar-double");
-    assert_eq!(
-        install_language_distribution(&wrong_kernel),
+    eq_ref(ph, "13", &(
+        install_language_distribution(&wrong_kernel)), &(
         Err(KernelBindingError::MissingKernel("scalar-double".to_string()))
-    );
+    ));
     let stale_signature = mutate_add_semantics(&distribution, "output=Int", "output=Float64");
-    assert_eq!(
-        install_language_distribution(&stale_signature),
+    eq_ref(ph, "14", &(
+        install_language_distribution(&stale_signature)), &(
         Err(KernelBindingError::SignatureMismatch(ADD.to_string()))
-    );
-    assert_eq!(
-        binding_semantic_hash(ADD).as_deref(),
-        Some(add_capsule.semantic_hash.as_str()),
+    ));
+    eq_ref(ph, format!(
         "refused installs cannot replace the last valid binding"
-    );
+    ), &(
+        binding_semantic_hash(ADD).as_deref()), &(
+        Some(add_capsule.semantic_hash.as_str())));
 
     let mut forged_label = distribution.clone();
     let capsule = forged_label
@@ -179,29 +216,26 @@ fn exact_number_theory_cutover_is_feature_bound_and_refusal_safe() {
     );
     install_language_distribution(&forged_label).expect("labels do not define kernel meaning");
     let kernel = native_kernel(ADD).expect("FeatureID remains bound");
-    assert_eq!(
-        (kernel.handler)(&[Value::I64(2), Value::I64(1)]),
-        Ok(Value::I64(3)),
+    eq_ref(ph, format!(
         "kernel output comes from operands and semantics, never a result label"
-    );
+    ), &(
+        (kernel.handler)(&[Value::I64(2), Value::I64(1)])), &(
+        Ok(Value::I64(3))));
 
     install_language_distribution(&distribution).expect("restore canonical distribution");
+
+    });
 }
 
-/// GCD/LCM cutover (emath-ehpal.7): the `std.capability.exact.gcd` /
-/// `std.capability.exact.lcm` capsules are capsule-active and bind the
-/// domain-neutral `euclidean-gcd` / `checked-lcm` kernels by verified
-/// identity/signature/hash. Inactive (uninstalled) and stale (mutated
-/// signature) images refuse typed; overflow refuses typed, never wraps.
-#[test]
-fn gcd_lcm_cutover_is_feature_bound_and_refusal_safe() {
+fn gcd_lcm_cutover_is_feature_bound_and_refusal_safe(ph: &mut Probe) {
+    ph.case("gcd_lcm_cutover_is_feature_bound_and_refusal_safe", |ph| {
     const GCD: &str = "std.capability.exact.gcd";
     const LCM: &str = "std.capability.exact.lcm";
     // Inactive image: no binding is installed on this thread, so the
     // registry fabricates no handler and the seam keeps its typed refusal.
-    assert!(native_kernel(GCD).is_none());
-    assert!(native_kernel(LCM).is_none());
-    assert!(seam_eval(GCD, &[Value::I64(12), Value::I64(18)]).is_err());
+    ph.demand("1", native_kernel(GCD).is_none(), "assertion failed: native_kernel(GCD).is_none()");
+    ph.demand("2", native_kernel(LCM).is_none(), "assertion failed: native_kernel(LCM).is_none()");
+    ph.demand("3", seam_eval(GCD, &[Value::I64(12), Value::I64(18)]).is_err(), "assertion failed: seam_eval(GCD, &[Value::I64(12), Value::I64(18)]).is_err()");
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../language");
     let distribution = load_language_distribution(&root).expect("load capsule distribution");
@@ -216,57 +250,57 @@ fn gcd_lcm_cutover_is_feature_bound_and_refusal_safe() {
     };
     let gcd_capsule = capsule(GCD);
     let gcd_kernel = native_kernel(GCD).expect("gcd FeatureID resolves its native kernel");
-    assert_eq!(gcd_kernel.kernel_id, "euclidean-gcd");
-    assert_eq!(
-        binding_semantic_hash(GCD).as_deref(),
-        Some(gcd_capsule.semantic_hash.as_str()),
+    eq_ref(ph, "4", &(gcd_kernel.kernel_id), &( "euclidean-gcd"));
+    eq_ref(ph, format!(
         "the binding is pinned to the resolved capsule, not its alias or label"
-    );
+    ), &(
+        binding_semantic_hash(GCD).as_deref()), &(
+        Some(gcd_capsule.semantic_hash.as_str())));
     let lcm_capsule = capsule(LCM);
     let lcm_kernel = native_kernel(LCM).expect("lcm FeatureID resolves its native kernel");
-    assert_eq!(lcm_kernel.kernel_id, "checked-lcm");
-    assert_eq!(
-        binding_semantic_hash(LCM).as_deref(),
+    eq_ref(ph, "6", &(lcm_kernel.kernel_id), &( "checked-lcm"));
+    eq_ref(ph, "7", &(
+        binding_semantic_hash(LCM).as_deref()), &(
         Some(lcm_capsule.semantic_hash.as_str())
-    );
+    ));
 
     // Happy paths execute through the capsule-active FeatureID seam.
-    assert_eq!(
-        seam_eval(GCD, &[Value::I64(12), Value::I64(18)]),
+    eq_ref(ph, "8", &(
+        seam_eval(GCD, &[Value::I64(12), Value::I64(18)])), &(
         Ok(Value::I64(6))
-    );
-    assert_eq!(
-        seam_eval(LCM, &[Value::I64(4), Value::I64(6)]),
+    ));
+    eq_ref(ph, "9", &(
+        seam_eval(LCM, &[Value::I64(4), Value::I64(6)])), &(
         Ok(Value::I64(12))
-    );
+    ));
     // Edges: gcd(0,0)=0 lattice meet, sign normalization on magnitudes,
     // lcm(0,x)=0.
-    assert_eq!(
-        seam_eval(GCD, &[Value::I64(0), Value::I64(0)]),
+    eq_ref(ph, "10", &(
+        seam_eval(GCD, &[Value::I64(0), Value::I64(0)])), &(
         Ok(Value::I64(0))
-    );
-    assert_eq!(
-        seam_eval(GCD, &[Value::I64(-12), Value::I64(18)]),
+    ));
+    eq_ref(ph, "11", &(
+        seam_eval(GCD, &[Value::I64(-12), Value::I64(18)])), &(
         Ok(Value::I64(6))
-    );
-    assert_eq!(
-        seam_eval(LCM, &[Value::I64(0), Value::I64(7)]),
+    ));
+    eq_ref(ph, "12", &(
+        seam_eval(LCM, &[Value::I64(0), Value::I64(7)])), &(
         Ok(Value::I64(0))
-    );
-    assert_eq!(
-        seam_eval(LCM, &[Value::I64(-4), Value::I64(6)]),
+    ));
+    eq_ref(ph, "13", &(
+        seam_eval(LCM, &[Value::I64(-4), Value::I64(6)])), &(
         Ok(Value::I64(12))
-    );
+    ));
     // gcd(i64::MIN, 0) = 2^63 has no i64 carrier — typed refusal.
-    assert!(
-        seam_eval(GCD, &[Value::I64(i64::MIN), Value::I64(0)]).is_err(),
+    ph.demand("14", 
+        seam_eval(GCD, &[Value::I64(i64::MIN), Value::I64(0)]).is_err(), format!(
         "gcd(i64::MIN, 0) must refuse: 2^63 exceeds the i64 carrier"
-    );
+    ));
     // lcm overflow refuses typed, never wraps.
-    assert!(
-        seam_eval(LCM, &[Value::I64(i64::MAX), Value::I64(i64::MAX - 1)]).is_err(),
+    ph.demand("15", 
+        seam_eval(LCM, &[Value::I64(i64::MAX), Value::I64(i64::MAX - 1)]).is_err(), format!(
         "lcm(i64::MAX, i64::MAX-1) must refuse overflow typed"
-    );
+    ));
 
     // Stale image: a mutated carrier signature refuses install and cannot
     // replace the last valid binding.
@@ -280,15 +314,29 @@ fn gcd_lcm_cutover_is_feature_bound_and_refusal_safe() {
         panic!("gcd capsule carries semantics")
     };
     *semantics = semantics.replace("output=Int", "output=Nat");
-    assert_eq!(
-        install_language_distribution(&stale),
+    eq_ref(ph, "16", &(
+        install_language_distribution(&stale)), &(
         Err(KernelBindingError::SignatureMismatch(GCD.to_string()))
-    );
-    assert_eq!(
-        binding_semantic_hash(GCD).as_deref(),
-        Some(gcd_capsule.semantic_hash.as_str()),
+    ));
+    eq_ref(ph, format!(
         "refused installs cannot replace the last valid binding"
-    );
+    ), &(
+        binding_semantic_hash(GCD).as_deref()), &(
+        Some(gcd_capsule.semantic_hash.as_str())));
 
     install_language_distribution(&distribution).expect("restore canonical distribution");
+
+    });
+}
+
+#[test]
+fn kernel_registry_contracts() {
+    let mut ph = Probe::new("capsule FeatureIDs bind immutable kernels by hash/signature; unknown names and stale installs refuse without replacing valid bindings");
+    unknown_name_keeps_none(&mut ph);
+    // The gcd/lcm case starts from a thread with NO installed distribution
+    // (its opening pins assert the uninstalled state), so it runs before
+    // any case installs bindings on this thread.
+    gcd_lcm_cutover_is_feature_bound_and_refusal_safe(&mut ph);
+    exact_number_theory_cutover_is_feature_bound_and_refusal_safe(&mut ph);
+    ph.finish();
 }

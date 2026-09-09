@@ -5,6 +5,8 @@ use emath_core::{FeatureId, SemanticHash};
 use emath_exec_ir::language_tables::{TableError, generate_runtime_tables};
 use emath_ir::{CapsuleSlot, FEATURE_CAPSULE_SCHEMA, FeatureCapsule, FeatureClass, Maturity};
 
+use emath_test_harness::Probe;
+
 fn capsule(
     id: &str,
     class: FeatureClass,
@@ -39,8 +41,33 @@ fn capsule(
     }
 }
 
-#[test]
-fn seven_runtime_table_families_generate_deterministically() {
+
+/// assert_eq/assert_ne semantics over references: borrows both operands
+/// (like the macros) and allows PartialEq between distinct types.
+fn eq_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    expected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual == expected, format!("expected {expected:?}, got {actual:?}"));
+}
+
+fn ne_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    unexpected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual != unexpected, format!("got forbidden value {unexpected:?}"));
+}
+
+fn seven_runtime_table_families_generate_deterministically(ph: &mut Probe) {
+    ph.case("seven_runtime_table_families_generate_deterministically", |ph| {
     let capsules = vec![
         capsule(
             "std.symbol.math.add",
@@ -94,7 +121,7 @@ fn seven_runtime_table_families_generate_deterministically() {
     ];
     let first = generate_runtime_tables(&capsules).unwrap();
     let second = generate_runtime_tables(&capsules).unwrap();
-    assert_eq!(first, second);
+    eq_ref(ph, "1", &(first), &( second));
     first.verify().unwrap();
     for name in [
         "symbols",
@@ -105,22 +132,24 @@ fn seven_runtime_table_families_generate_deterministically() {
         "providers",
         "capabilities",
     ] {
-        assert!(first.tables.contains_key(name), "missing {name}");
+        ph.demand("2", first.tables.contains_key(name), format!( "missing {name}"));
     }
-    assert!(
+    ph.demand("3", 
         first
             .bytes
             .starts_with("# @generated from Feature Capsules; DO NOT EDIT")
-    );
-    assert!(
+    , "assertion failed: first\n            .bytes\n            .starts_with(\"# @generated from Feature Cap");
+    ph.demand("4", 
         first
             .bytes
             .contains("source=language/spec/std.symbol.math.add.emath")
-    );
+    , "assertion failed: first\n            .bytes\n            .contains(\"source=language/spec/std.symbol.");
+
+    });
 }
 
-#[test]
-fn stale_alias_duplicate_precedence_and_unsafe_mutations_refuse() {
+fn stale_alias_duplicate_precedence_and_unsafe_mutations_refuse(ph: &mut Probe) {
+    ph.case("stale_alias_duplicate_precedence_and_unsafe_mutations_refuse", |ph| {
     let add = capsule(
         "std.symbol.math.add",
         FeatureClass::Symbol,
@@ -128,10 +157,10 @@ fn stale_alias_duplicate_precedence_and_unsafe_mutations_refuse() {
         "aliases=+",
         "infix;precedence=60",
     );
-    assert_eq!(
-        generate_runtime_tables(&[add.clone(), add.clone()]),
+    eq_ref(ph, "1", &(
+        generate_runtime_tables(&[add.clone(), add.clone()])), &(
         Err(TableError::DuplicateFeature(add.feature_id.clone()))
-    );
+    ));
     let other = capsule(
         "std.symbol.math.plus",
         FeatureClass::Symbol,
@@ -139,10 +168,10 @@ fn stale_alias_duplicate_precedence_and_unsafe_mutations_refuse() {
         "aliases=+",
         "infix;precedence=60",
     );
-    assert_eq!(
-        generate_runtime_tables(&[add.clone(), other]),
+    eq_ref(ph, "2", &(
+        generate_runtime_tables(&[add.clone(), other])), &(
         Err(TableError::AliasCollision("+".to_string()))
-    );
+    ));
     let no_alias = capsule(
         "std.symbol.math.times",
         FeatureClass::Symbol,
@@ -150,10 +179,10 @@ fn stale_alias_duplicate_precedence_and_unsafe_mutations_refuse() {
         "none",
         "infix;precedence=70",
     );
-    assert!(matches!(
+    ph.demand("3", matches!(
         generate_runtime_tables(&[no_alias]),
         Err(TableError::PrecedenceAmbiguity(_))
-    ));
+    ), "assertion failed: matches!(\n        generate_runtime_tables(&[no_alias]),\n        Err(TableError::");
     let provider = capsule(
         "std.provider.native",
         FeatureClass::Provider,
@@ -161,11 +190,21 @@ fn stale_alias_duplicate_precedence_and_unsafe_mutations_refuse() {
         "none",
         "provider",
     );
-    assert_eq!(
-        generate_runtime_tables(&[provider]),
+    eq_ref(ph, "4", &(
+        generate_runtime_tables(&[provider])), &(
         Err(TableError::UnsafeGeneratedText)
-    );
+    ));
     let mut generated = generate_runtime_tables(&[add]).unwrap();
     generated.bytes.push_str("manual edit");
-    assert_eq!(generated.verify(), Err(TableError::StaleLock));
+    eq_ref(ph, "5", &(generated.verify()), &( Err(TableError::StaleLock)));
+
+    });
+}
+
+#[test]
+fn runtime_table_contracts() {
+    let mut ph = Probe::new("runtime language tables generate deterministically, share only declared aliases, and refuse drift or unsafe mutations");
+    seven_runtime_table_families_generate_deterministically(&mut ph);
+    stale_alias_duplicate_precedence_and_unsafe_mutations_refuse(&mut ph);
+    ph.finish();
 }

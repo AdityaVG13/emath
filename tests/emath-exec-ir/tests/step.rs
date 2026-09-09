@@ -11,6 +11,8 @@ use emath_ir::{
 };
 use std::collections::BTreeMap;
 
+use emath_test_harness::Probe;
+
 fn float_field(name: &str, ty: emath_ir::TypeId) -> Field {
     Field {
         name: name.to_string(),
@@ -61,8 +63,33 @@ fn decay_package() -> SemanticPackage {
     package
 }
 
-#[test]
-fn euler_decay_one_step() {
+
+/// assert_eq/assert_ne semantics over references: borrows both operands
+/// (like the macros) and allows PartialEq between distinct types.
+fn eq_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    expected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual == expected, format!("expected {expected:?}, got {actual:?}"));
+}
+
+fn ne_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    unexpected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual != unexpected, format!("got forbidden value {unexpected:?}"));
+}
+
+fn euler_decay_one_step(ph: &mut Probe) {
+    ph.case("euler_decay_one_step", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let inputs = BTreeMap::new();
@@ -77,11 +104,13 @@ fn euler_decay_one_step() {
         StepMethod::Euler,
     )
     .unwrap();
-    assert_eq!(next.get("x").copied(), Some(0.9));
+    eq_ref(ph, "1", &(next.get("x").copied()), &( Some(0.9)));
+
+    });
 }
 
-#[test]
-fn rk4_decay_beats_euler() {
+fn rk4_decay_beats_euler(ph: &mut Probe) {
+    ph.case("rk4_decay_beats_euler", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let inputs = BTreeMap::new();
@@ -101,11 +130,13 @@ fn rk4_decay_beats_euler() {
     let exact = (-0.5_f64).exp();
     let euler_err = (euler["x"] - exact).abs();
     let rk4_err = (rk4["x"] - exact).abs();
-    assert!(rk4_err < euler_err, "rk4={rk4_err} euler={euler_err}");
+    ph.demand("1", rk4_err < euler_err, format!( "rk4={rk4_err} euler={euler_err}"));
+
+    });
 }
 
-#[test]
-fn missing_rate_is_refused() {
+fn missing_rate_is_refused(ph: &mut Probe) {
+    ph.case("missing_rate_is_refused", |ph| {
     let mut package = SemanticPackage::new();
     let ty = package.push_type(TypeNode::Float64);
     package.declarations.push(Declaration {
@@ -141,11 +172,13 @@ fn missing_rate_is_refused() {
         StepMethod::Euler,
     )
     .unwrap_err();
-    assert!(error.contains("der_x"), "{error}");
+    ph.demand("1", error.contains("der_x"), format!( "{error}"));
+
+    });
 }
 
-#[test]
-fn non_positive_dt_is_refused() {
+fn non_positive_dt_is_refused(ph: &mut Probe) {
+    ph.case("non_positive_dt_is_refused", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let mut state = BTreeMap::new();
@@ -159,11 +192,13 @@ fn non_positive_dt_is_refused() {
         StepMethod::Euler,
     )
     .unwrap_err();
-    assert!(error.contains("step size"), "{error}");
+    ph.demand("1", error.contains("step size"), format!( "{error}"));
+
+    });
 }
 
-#[test]
-fn simulate_decay_includes_endpoints() {
+fn simulate_decay_includes_endpoints(ph: &mut Probe) {
+    ph.case("simulate_decay_includes_endpoints", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let mut state = BTreeMap::new();
@@ -179,17 +214,19 @@ fn simulate_decay_includes_endpoints() {
         StepMethod::Euler,
     )
     .unwrap();
-    assert_eq!(trajectory.samples.len(), 3);
-    assert_eq!(trajectory.samples[0].t, 0.0);
-    assert_eq!(trajectory.samples[2].t, 0.2);
-    assert_eq!(
-        trajectory.samples[2].state.get("x"),
+    eq_ref(ph, "1", &(trajectory.samples.len()), &( 3));
+    eq_ref(ph, "2", &(trajectory.samples[0].t), &( 0.0));
+    eq_ref(ph, "3", &(trajectory.samples[2].t), &( 0.2));
+    eq_ref(ph, "4", &(
+        trajectory.samples[2].state.get("x")), &(
         Some(&Value::F64(0.81))
-    );
+    ));
+
+    });
 }
 
-#[test]
-fn simulate_zero_span_returns_initial_sample() {
+fn simulate_zero_span_returns_initial_sample(ph: &mut Probe) {
+    ph.case("simulate_zero_span_returns_initial_sample", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let mut state = BTreeMap::new();
@@ -205,17 +242,19 @@ fn simulate_zero_span_returns_initial_sample() {
         StepMethod::Euler,
     )
     .expect("t1 == t0 is a 0-step trajectory, not a panic");
-    assert_eq!(trajectory.samples.len(), 1);
-    assert_eq!(trajectory.samples[0].t, 0.5);
-    assert_eq!(
-        trajectory.samples[0].state.get("x"),
-        Some(&Value::F64(1.0)),
+    eq_ref(ph, "1", &(trajectory.samples.len()), &( 1));
+    eq_ref(ph, "2", &(trajectory.samples[0].t), &( 0.5));
+    eq_ref(ph, format!(
         "0-step simulate must keep the initial state"
-    );
+    ), &(
+        trajectory.samples[0].state.get("x")), &(
+        Some(&Value::F64(1.0))));
+
+    });
 }
 
-#[test]
-fn rk45_decay_is_finite() {
+fn rk45_decay_is_finite(ph: &mut Probe) {
+    ph.case("rk45_decay_is_finite", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let mut state = BTreeMap::new();
@@ -229,12 +268,14 @@ fn rk45_decay_is_finite() {
         StepMethod::Rk45,
     )
     .unwrap();
-    assert!(next["x"].is_finite());
-    assert!(next["x"] > 0.0);
+    ph.demand("1", next["x"].is_finite(), "assertion failed: next[\"x\"].is_finite()");
+    ph.demand("2", next["x"] > 0.0, "assertion failed: next[\"x\"] > 0.0");
+
+    });
 }
 
-#[test]
-fn vector_state_euler_steps_componentwise() {
+fn vector_state_euler_steps_componentwise(ph: &mut Probe) {
+    ph.case("vector_state_euler_steps_componentwise", |ph| {
     let mut package = SemanticPackage::new();
     let ty = package.push_type(TypeNode::Vector {
         element: Box::new(TypeNode::Float64),
@@ -279,11 +320,13 @@ fn vector_state_euler_steps_componentwise() {
         StepMethod::Euler,
     )
     .unwrap();
-    assert_eq!(next.get("x"), Some(&Value::Vector(vec![1.5, 3.0])));
+    eq_ref(ph, "1", &(next.get("x")), &( Some(&Value::Vector(vec![1.5, 3.0]))));
+
+    });
 }
 
-#[test]
-fn adaptive_decay_uses_fewer_steps_than_tiny_fixed() {
+fn adaptive_decay_uses_fewer_steps_than_tiny_fixed(ph: &mut Probe) {
+    ph.case("adaptive_decay_uses_fewer_steps_than_tiny_fixed", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let mut state = BTreeMap::new();
@@ -316,21 +359,23 @@ fn adaptive_decay_uses_fewer_steps_than_tiny_fixed() {
         },
     )
     .unwrap();
-    assert!(
-        adaptive.samples.len() < fixed.samples.len(),
-        "adaptive={} fixed={}",
-        adaptive.samples.len(),
+    ph.demand("1", 
+        adaptive.samples.len() < fixed.samples.len(), format!(
+        "adaptive={} fixed={}", 
+        adaptive.samples.len(), 
         fixed.samples.len()
-    );
+    ));
     let last = match adaptive.samples.last().unwrap().state.get("x") {
         Some(Value::F64(value)) => *value,
         other => panic!("expected scalar x, got {other:?}"),
     };
-    assert!((last - (-1.0_f64).exp()).abs() < 1e-4, "last={last}");
+    ph.demand("2", (last - (-1.0_f64).exp()).abs() < 1e-4, format!( "last={last}"));
+
+    });
 }
 
-#[test]
-fn non_positive_atol_is_refused() {
+fn non_positive_atol_is_refused(ph: &mut Probe) {
+    ph.case("non_positive_atol_is_refused", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let mut state = BTreeMap::new();
@@ -352,11 +397,13 @@ fn non_positive_atol_is_refused() {
         },
     )
     .unwrap_err();
-    assert!(error.contains("atol"), "{error}");
+    ph.demand("1", error.contains("atol"), format!( "{error}"));
+
+    });
 }
 
-#[test]
-fn adaptive_refuses_nan_initial_state() {
+fn adaptive_refuses_nan_initial_state(ph: &mut Probe) {
+    ph.case("adaptive_refuses_nan_initial_state", |ph| {
     // NaN fourth/fifth pairs used to report err=0 via f64::max ignoring NaN,
     // so adaptive RK45 silently "converged" on a poisoned trajectory.
     let package = decay_package();
@@ -380,14 +427,16 @@ fn adaptive_refuses_nan_initial_state() {
         },
     )
     .unwrap_err();
-    assert!(
-        error.contains("non-finite"),
+    ph.demand("1", 
+        error.contains("non-finite"), format!(
         "expected non-finite refusal, got: {error}"
-    );
+    ));
+
+    });
 }
 
-#[test]
-fn event_stops_when_x_crosses_half() {
+fn event_stops_when_x_crosses_half(ph: &mut Probe) {
+    ph.case("event_stops_when_x_crosses_half", |ph| {
     let package = decay_package();
     let declaration = &package.declarations[0];
     let mut state = BTreeMap::new();
@@ -414,12 +463,14 @@ fn event_stops_when_x_crosses_half() {
         Some(Value::F64(value)) => *value,
         other => panic!("expected scalar x, got {other:?}"),
     };
-    assert!((x - 0.5).abs() < 1e-6, "x={x} t={}", last.t);
-    assert!(last.t < 1.0, "event time should be before t1, t={}", last.t);
+    ph.demand("1", (x - 0.5).abs() < 1e-6, format!( "x={x} t={}",  last.t));
+    ph.demand("2", last.t < 1.0, format!( "event time should be before t1, t={}",  last.t));
+
+    });
 }
 
-#[test]
-fn event_refuses_non_finite_gap() {
+fn event_refuses_non_finite_gap(ph: &mut Probe) {
+    ph.case("event_refuses_non_finite_gap", |ph| {
     // NaN gaps make `g0 * g1 > 0` false, so the locator treated a blow-up
     // as a bracketed crossing and bisected garbage.
     let package = decay_package();
@@ -443,8 +494,29 @@ fn event_refuses_non_finite_gap() {
         },
     )
     .unwrap_err();
-    assert!(
-        error.contains("non-finite"),
+    ph.demand("1", 
+        error.contains("non-finite"), format!(
         "expected non-finite event refusal, got: {error}"
-    );
+    ));
+
+    });
+}
+
+#[test]
+fn stepping_contracts() {
+    let mut ph = Probe::new("explicit Euler/RK4 step and simulate trajectories with typed refusals; adaptive RK45 and event handling under certified tolerances");
+    euler_decay_one_step(&mut ph);
+    rk4_decay_beats_euler(&mut ph);
+    missing_rate_is_refused(&mut ph);
+    non_positive_dt_is_refused(&mut ph);
+    simulate_decay_includes_endpoints(&mut ph);
+    simulate_zero_span_returns_initial_sample(&mut ph);
+    rk45_decay_is_finite(&mut ph);
+    vector_state_euler_steps_componentwise(&mut ph);
+    adaptive_decay_uses_fewer_steps_than_tiny_fixed(&mut ph);
+    non_positive_atol_is_refused(&mut ph);
+    adaptive_refuses_nan_initial_state(&mut ph);
+    event_stops_when_x_crosses_half(&mut ph);
+    event_refuses_non_finite_gap(&mut ph);
+    ph.finish();
 }

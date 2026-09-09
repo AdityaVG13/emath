@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use emath_core::{fnv1a64_bytes, sha256_digest};
 
+use emath_test_harness::Probe;
+
 const IMAGE_BYTES: &[u8] = include_bytes!("../../../language/generated/language.image");
 const LOCK_BYTES: &[u8] = include_bytes!("../../../language/language.lock");
 const SOURCE_MAP_BYTES: &[u8] = include_bytes!("../../../language/generated/source-map.lock");
@@ -192,26 +194,51 @@ fn exact_add(left: i64, right: i64) -> Result<i64, &'static str> {
     left.checked_add(right).ok_or("E-ARITH-OVERFLOW")
 }
 
-#[test]
-fn independent_reader_reproduces_checked_in_identity_authority_and_exact_result() {
+
+/// assert_eq/assert_ne semantics over references: borrows both operands
+/// (like the macros) and allows PartialEq between distinct types.
+fn eq_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    expected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual == expected, format!("expected {expected:?}, got {actual:?}"));
+}
+
+fn ne_ref<T: ?Sized + std::fmt::Debug, U: ?Sized + std::fmt::Debug>(
+    ph: &mut Probe,
+    name: impl Into<String>,
+    actual: &T,
+    unexpected: &U,
+) where
+    T: PartialEq<U>,
+{
+    ph.demand(name, actual != unexpected, format!("got forbidden value {unexpected:?}"));
+}
+
+fn independent_reader_reproduces_checked_in_identity_authority_and_exact_result(ph: &mut Probe) {
+    ph.case("independent_reader_reproduces_checked_in_identity_authority_and_exact_result", |ph| {
     let image = decode_image(IMAGE_BYTES).expect("canonical checked-in image");
     let lock = decode_lock(LOCK_BYTES).expect("canonical checked-in lock");
-    assert_eq!(lock["schema"], "emath.language-lock");
-    assert_eq!(lock["semantic_hash"], image.semantic_hash);
-    assert_eq!(lock["distribution_hash"], image.distribution_hash);
-    assert_eq!(distribution_identity(&image), image.distribution_hash);
+    eq_ref(ph, "1", &(lock["schema"]), &( "emath.language-lock"));
+    eq_ref(ph, "2", &(lock["semantic_hash"]), &( image.semantic_hash));
+    eq_ref(ph, "3", &(lock["distribution_hash"]), &( image.distribution_hash));
+    eq_ref(ph, "4", &(distribution_identity(&image)), &( image.distribution_hash));
 
     let embedded_lock = decode_lock(&image.partitions["language.lock"].body).unwrap();
-    assert_eq!(embedded_lock, lock);
+    eq_ref(ph, "5", &(embedded_lock), &( lock));
     let source_map = decode_map(SOURCE_MAP_BYTES).expect("canonical checked-in source map");
-    assert_eq!(image.partitions["language.sources"].body, SOURCE_MAP_BYTES);
+    eq_ref(ph, "6", &(image.partitions["language.sources"].body), &( SOURCE_MAP_BYTES));
 
     let authority = decode_map(&image.partitions["language.authority"].body).unwrap();
-    assert_eq!(authority["std.capability.math.add"], "capsule-active");
-    assert_eq!(
-        source_map["std.capability.math.add"],
+    eq_ref(ph, "7", &(authority["std.capability.math.add"]), &( "capsule-active"));
+    eq_ref(ph, "8", &(
+        source_map["std.capability.math.add"]), &(
         "language/spec/capabilities/core/add.emath"
-    );
+    ));
 
     let capsules = std::str::from_utf8(&image.partitions["language.capsules"].body).unwrap();
     let add = capsules
@@ -224,14 +251,16 @@ fn independent_reader_reproduces_checked_in_identity_authority_and_exact_result(
         .lines()
         .find(|row| row.starts_with("std.capability.math.add "))
         .expect("add runtime row");
-    assert!(add_table.contains(&format!("hash={add_hash}")));
-    assert!(add_table.contains("handle=kernel=checked-add;arity=2"));
-    assert_eq!(exact_add(2, 1), Ok(3));
-    assert_eq!(exact_add(i64::MAX, 1), Err("E-ARITH-OVERFLOW"));
+    ph.demand("9", add_table.contains(&format!("hash={add_hash}")), "assertion failed: add_table.contains(&format!(\"hash={add_hash}\"))");
+    ph.demand("10", add_table.contains("handle=kernel=checked-add;arity=2"), "assertion failed: add_table.contains(\"handle=kernel=checked-add;arity=2\")");
+    eq_ref(ph, "11", &(exact_add(2, 1)), &( Ok(3)));
+    eq_ref(ph, "12", &(exact_add(i64::MAX, 1)), &( Err("E-ARITH-OVERFLOW")));
+
+    });
 }
 
-#[test]
-fn independent_reader_refuses_mutated_checked_in_bytes() {
+fn independent_reader_refuses_mutated_checked_in_bytes(ph: &mut Probe) {
+    ph.case("independent_reader_refuses_mutated_checked_in_bytes", |ph| {
     let mut image = IMAGE_BYTES.to_vec();
     let needle = b"std.capability.math.add=capsule-active";
     let start = image
@@ -239,17 +268,17 @@ fn independent_reader_refuses_mutated_checked_in_bytes() {
         .position(|window| window == needle)
         .unwrap();
     image[start] = b'x';
-    assert!(
-        decode_image(&image).is_err(),
+    ph.demand("1", 
+        decode_image(&image).is_err(), format!(
         "partition stamp detects authority tampering"
-    );
+    ));
 
     let mut source_map = SOURCE_MAP_BYTES.to_vec();
     source_map[0] = b'x';
-    assert_ne!(
-        decode_image(IMAGE_BYTES).unwrap().partitions["language.sources"].body,
+    ne_ref(ph, "2", &(
+        decode_image(IMAGE_BYTES).unwrap().partitions["language.sources"].body), &(
         source_map
-    );
+    ));
 
     let mut lock = LOCK_BYTES.to_vec();
     let digest = lock
@@ -259,5 +288,15 @@ fn independent_reader_refuses_mutated_checked_in_bytes() {
     lock[digest] = if lock[digest] == b'a' { b'b' } else { b'a' };
     let changed = decode_lock(&lock).unwrap();
     let image = decode_image(IMAGE_BYTES).unwrap();
-    assert_ne!(changed["semantic_hash"], image.semantic_hash);
+    ne_ref(ph, "3", &(changed["semantic_hash"]), &( image.semantic_hash));
+
+    });
+}
+
+#[test]
+fn independent_reader_contracts() {
+    let mut ph = Probe::new("an independent reader reproduces the checked-in image identity, authority, and exact results and refuses mutated bytes");
+    independent_reader_reproduces_checked_in_identity_authority_and_exact_result(&mut ph);
+    independent_reader_refuses_mutated_checked_in_bytes(&mut ph);
+    ph.finish();
 }
