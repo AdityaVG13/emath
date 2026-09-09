@@ -6,7 +6,7 @@ use super::*;
 pub const ABI_VERSION: u32 = 1;
 
 /// Classic `hello-square` example served by the `examples` op.
-pub const HELLO_SQUARE: &str = include_str!("../../../language/examples/intro/hello-square.emath");
+pub const HELLO_SQUARE: &str = include_str!("../../../tests/fixtures/language/intro/hello-square.emath");
 /// Stateful affine-scorer tutorial served by the `examples` op.
 pub const AFFINE_SCORER: &str =
     include_str!("../../../tests/fixtures/language/intro/stateful-affine-scorer.emath");
@@ -31,7 +31,7 @@ pub const INTEGRAL: &str = include_str!("../../../tests/fixtures/language/intro/
 /// Autodiff example served by the `examples` op.
 pub const AUTODIFF: &str = include_str!("../../../language/examples/intro/autodiff.emath");
 /// Equation-solving example served by the `examples` op.
-pub const SOLVE: &str = include_str!("../../../language/examples/intro/solve.emath");
+pub const SOLVE: &str = include_str!("../../../tests/fixtures/language/intro/solve.emath");
 /// Optimization example served by the `examples` op.
 pub const OPTIMIZE: &str = include_str!("../../../language/examples/intro/optimize.emath");
 /// Constrained-optimization fixture served by the `examples` op.
