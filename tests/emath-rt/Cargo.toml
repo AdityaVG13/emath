@@ -7,6 +7,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+emath-test-harness = { workspace = true }
 emath-rt = { workspace = true }
 emath-core = { workspace = true }
 
