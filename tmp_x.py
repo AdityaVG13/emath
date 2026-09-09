@@ -1,0 +1,10 @@
+p = "crates/emath-exec-ir/src/native_kernels/program_solve.rs"
+t = open(p).read()
+start = t.find("/// Composite Simpson integral of an authored")
+end = t.find("/// Dispatch an authored program goal by method label.")
+assert start > 0 and end > start
+print("cutting", end - start, "chars")
+helper = "/// Evaluate already-shaped goal arguments through the authored reference\n/// program installed for `capability`. Refusals surface under their authored\n/// codes; any other evaluation fault is reported verbatim, the same way a\n/// direct capability invocation surfaces it.\nfn apply_authored(capability: &str, args: &[Value]) -> Result<Value, String> {\n    let mut ops = Vec::with_capacity(args.len() + 1);\n    for index in 0..args.len() {\n        let register = u16::try_from(index).map_err(|_| {\n            \"E-TYPE-012: program-expression-goal passes too many arguments\".to_string()\n        })?;\n        ops.push((EmirOp::LoadInput(register), Span::default()));\n    }\n    let result = u16::try_from(args.len()).map_err(|_| {\n        \"E-TYPE-012: program-expression-goal passes too many arguments\".to_string()\n    })?;\n    ops.push((\n        EmirOp::ApplyCapability {\n            capability: capability.to_string(),\n            class: CellClass::Pure,\n            args: (0..args.len() as u32).map(EmirValue).collect(),\n        },\n        Span::default(),\n    ));\n    match evaluate(\n        &EmirProgram {\n            ops,\n            result: EmirValue(result),\n            input_count: result,\n            state_count: 0,\n            domain_obligations: Vec::new(),\n        },\n        args,\n        &[],\n    ) {\n        Ok(value) => Ok(value),\n        Err(EvalFault::CapabilityRefused { code, .. }) => Err(code),\n        Err(fault) => Err(format!(\"{fault:?} adversar")),\n    }\n}\n\n"
+t = t[:start] + helper + t[end:]
+open(p, "w").write(t)
+print("saved phase 3")

@@ -797,7 +797,7 @@ corpus_oracle() {
 
 corpus_oracle "spring-final-row" \
     "t=3.141592653589793 s=[-0.9999999999978184, -0.0000000002616344400786959]" \
-    simulate language/examples/numerical/explicit-mass-spring.emath \
+    simulate tests/fixtures/language/numerical/explicit-mass-spring.emath \
     --set m=1 --set k=1 --set c=0 --set s='[1,0]' --dt 0.01 --t1 3.141592653589793
 
 corpus_oracle "heat-rod-final-row" \
@@ -813,7 +813,7 @@ corpus_oracle "heat-plate-final-row" \
 # Typed-hole discipline: scratch admits check (the hole is the example)
 # and run must refuse with the exact goal code, never a produced crate.
 lane_begin
-SCRATCH_OUT="$(cargo run -q -p emath-cli -- run language/examples/intro/scratch.emath --out "$TMP_DIR/scratch" 2>&1 || true)"
+SCRATCH_OUT="$(cargo run -q -p emath-cli -- run tests/fixtures/language/intro/scratch.emath --out "$TMP_DIR/scratch" 2>&1 || true)"
 if ! printf '%s\n' "$SCRATCH_OUT" | grep -q "E-GOAL-043"; then
     echo "FAIL: scratch run must refuse with E-GOAL-043, got:" >&2
     printf '%s\n' "$SCRATCH_OUT" >&2
