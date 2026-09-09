@@ -7,24 +7,26 @@ pub(super) fn op_data_exprs(
     program: &EmirProgram,
     names: &[String],
     states: &[String],
+    input_kinds: &InputKinds,
 ) -> Result<Expr, BackendError> {
     match op {
         EmirOp::FormatText {
             template,
             arguments,
         } => {
-            let args = arguments
-                .iter()
-                .map(|value| render_expr(&operand(program, *value)))
-                .collect::<Vec<_>>();
-            let mut rendered = template.clone();
-            for argument in args {
-                rendered = rendered.replacen("{}", &format!("{{{argument}}}"), 1);
+            // VM formatting replaces only the supplied positional holes.
+            // Literal braces remain text; operands are expressions, not Rust captures.
+            let escape = |text: &str| text.replace('{', "{{").replace('}', "}}");
+            let mut parts = template.splitn(arguments.len() + 1, "{}");
+            let mut rendered = escape(parts.next().unwrap_or_default());
+            let mut values = String::new();
+            for (part, argument) in parts.zip(arguments) {
+                rendered.push_str("{}");
+                rendered.push_str(&escape(part));
+                values.push_str(", ");
+                values.push_str(&render_expr(&operand(program, *argument)));
             }
-            Ok(Expr::Raw(format!(
-                "format!(\"{}\")",
-                rendered.replace('"', "\\\"")
-            )))
+            Ok(Expr::Raw(format!("format!({rendered:?}{values})")))
         }
         EmirOp::SeriesCreate { points, .. } => Ok(Expr::Raw(format!(
             "vec![{}]",
@@ -60,16 +62,31 @@ pub(super) fn op_data_exprs(
             render_expr(&operand(program, *set)),
             render_expr(&operand(program, *element))
         ))),
-        EmirOp::RecordCreate { fields, .. } => {
-            let fields = fields
-                .iter()
-                .map(|(name, value)| {
-                    format!("({name:?}, {})", render_expr(&operand(program, *value)))
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
+        EmirOp::RecordCreate { type_name, fields } => {
+            if emath_exec_ir::native_kernel::installed_record_layout(type_name).is_none() {
+                return Err(BackendError::UnsupportedType(format!(
+                    "record {type_name} has no authored layout"
+                )));
+            }
+            let layout = emath_exec_ir::native_kernel::installed_record_layout(type_name)
+                .ok_or_else(|| BackendError::UnsupportedType(type_name.clone()))?;
+            let mut members = Vec::with_capacity(fields.len());
+            for (name, value) in fields {
+                let ty = layout
+                    .fields
+                    .iter()
+                    .find(|(field, _)| field == name)
+                    .ok_or_else(|| {
+                        BackendError::UnsupportedType(format!("unknown record field {name}"))
+                    })?;
+                let kind = ValueKind::from_signature(&ty.1);
+                let value = render_expr(&owned_value(operand(program, *value), &kind));
+                members.push(format!("{}: {value}", escape_ident(name)));
+            }
+            let fields = members.join(", ");
             Ok(Expr::Raw(format!(
-                "std::collections::BTreeMap::from([{fields}])"
+                "EmathRecord_{} {{ {fields} }}",
+                escape_ident(type_name)
             )))
         }
         EmirOp::ConstComplex(real, imaginary) => {
@@ -80,16 +97,30 @@ pub(super) fn op_data_exprs(
             let name = names
                 .get(*index as usize)
                 .ok_or_else(|| BackendError::MissingInput(format!("input #{index}")))?;
-            Ok(Expr::Var(escape_ident(name)))
+            let value = Expr::Var(escape_ident(name));
+            if input_kind(Some(name), input_kinds).is_copy() {
+                Ok(value)
+            } else {
+                Ok(borrowed_value(value, &input_kind(Some(name), input_kinds)))
+            }
         }
         EmirOp::LoadState(index) => {
             let name = states
                 .get(*index as usize)
                 .ok_or_else(|| BackendError::MissingInput(format!("state #{index}")))?;
-            Ok(Expr::Field {
-                receiver: Box::new(Expr::SelfValue),
-                field: escape_ident(name),
-            })
+            let value = if local_state() {
+                Expr::Var(escape_ident(name))
+            } else {
+                Expr::Field {
+                    receiver: Box::new(Expr::SelfValue),
+                    field: escape_ident(name),
+                }
+            };
+            if input_kind(Some(name), input_kinds).is_copy() {
+                Ok(value)
+            } else {
+                Ok(borrowed_value(value, &input_kind(Some(name), input_kinds)))
+            }
         }
         _ => unreachable!("op_data_exprs routed a non-universal data op"),
     }

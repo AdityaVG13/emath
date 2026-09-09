@@ -15,14 +15,17 @@ Rust backend: universal EMIR and artifact contracts to deterministic Rust via th
 
 - Generated crates are std-only, `#![forbid(unsafe_code)]`, `#![allow(dead_code)]`, and byte-deterministic.
 - Generated crates embed `mod emath_rt { ... }` (the verbatim `emath-rt` kernel source) with an outer `#[allow(dead_code)]` so hosts that strip inner attributes (e.g. the demo-host `include!` driver) stay warning-free.
-- The emitter is exhaustive over the contracted 57-variant universal `EmirOp`; active backend modules contain no removed domain-op references. Obsolete domain/dual helper files remain unreferenced only because deletion is forbidden.
+- The emitter is exhaustive over the contracted universal `EmirOp`; active backend modules contain no removed domain-op references. Obsolete domain/dual helper files remain unreferenced only because deletion is forbidden.
 - The emitter never maps a mathematical feature name or legacy domain operation to a runtime function. A semantic operation without an `ApplyCapability` artifact contract fails as `MissingArtifactContract`.
-- `ApplyCapability` dispatches only on generic cell class. Unsupported provider and intrinsic/native bindings fail as `UnsupportedBinding`; other applications without an executable artifact body fail as `MissingArtifactContract`. Closed vector reference bytecode also refuses `MissingArtifactContract` until its upstream carrier contract is complete. No identity, interpreter fallback, or compatibility shim is emitted.
+- `ApplyCapability` dispatches only on generic cell class. Unsupported provider and intrinsic/native bindings fail as `UnsupportedBinding`; other applications without an executable artifact body fail as `MissingArtifactContract`. No identity, interpreter fallback, or compatibility shim is emitted.
 - Generated manifest emits `edition = "2024"`, sanitized crate name/version; keywords and reserved identifiers are escaped (`type` to `type_`) and never emitted raw.
 - A declaration with no `state` and no constructors emits a free `fn` per evaluate target (no `self`, no unit struct). Worked-example tests call that function directly.
 - Constructors are controlled entry points: every `require` precondition and `ensure`/`invariant` postcondition is checked in generated code before a value escapes.
 - Goals and tests attach by declared ids, never by span geometry.
-- `model` declarations emit explicit `step_euler` and `step_rk4` step methods over `der_<state>` rates; models with `algebraic:` residual equations emit the same two steps embedding the interpreter's causalized Newton solve (forward-difference Jacobian, Gaussian elimination, 30 iterations, 1e-9 solve tolerance, 1e-6 convergence check), returning `Result<Self, String>` that errors on non-convergence instead of inventing a value; no silent omission. Algebraic unknowns are fields of `Self` (extended DAE state). After the differential update each step re-solves them at the accepted state so the algebraic residual at the returned point is ~0 (index-1 projection), matching `emath simulate`.
+- `model` declarations emit explicit `step_euler` and `step_rk4` step methods over `der_<state>` rates; models with `algebraic:` residual equations render the shared typed residual step program and its authored Newton cells (forward-difference Jacobian, Gaussian elimination, 30 iterations, 1e-9 solve tolerance, 1e-6 convergence check), returning `Result<Self, String>` that errors on non-convergence instead of inventing a value; no silent omission. Algebraic unknowns are fields of `Self` (extended DAE state). After the differential update each step re-solves them at the accepted state so the algebraic residual at the returned point is ~0 (index-1 projection), matching `emath simulate`.
+- Program literals retain typed captures. Literal frames bind their own inputs and state. Nested frames and programs disable outer register inlining, so outer substitutions cannot change inner bindings.
+- Text formatting uses positional operands and preserves literal braces. Statistical estimates use the authored `Estimate` record layout.
+- `SameVector`, `SameMatrix`, and `SameTensor` result signatures retain their dense carrier kind. Authored guards retain shape validation.
 - Phase 1 subset: one constructor and one evaluate goal per declaration.
   `Float64` is `f64`; `Int`/`Nat` are exact `i64` (`ConstI64` is not
   widened through f64). Mixed Int/Float64 arithmetic widens to `f64`.
@@ -73,8 +76,8 @@ Legacy domain-render assertions are not part of this contract. They must be migr
 
 ## No-claim boundaries
 
-- Only the Phase 1 subset is generated: a declaration needs exactly one evaluate goal and supports one constructor. Admitted types: `Float64`, `Bool`, `Int`, `Nat`, vectors/matrices/tensors, host opaques. Other types yield `UnsupportedType`.
-- The current upstream `EmirProgram`/`ApplyCapability` payload carries capability identity, class, and arguments but no executable Rust artifact body or kernel ABI descriptor. Consequently this backend refuses all capability applications until that external contract reaches it; it does not recover legacy domain dispatch.
+- Only the Phase 1 subset is generated: a declaration needs exactly one evaluate goal and supports one constructor. Admitted types: `Float64`, `Bool`, `Int`, `Nat`, vectors/matrices/tensors, authored records, host opaques. Other types yield `UnsupportedType`.
+- Capability generation reads the verified installed distribution. With no native binding, an installed reference program supplies the body. Argument count must match. Separate cell guards and result guards still refuse rather than disappear. Unsupported instructions retain their existing refusals. Native bindings still require a matching artifact contract; the backend does not recover legacy domain dispatch.
 - No certification power; generated crates carry invariants but the backend itself performs no evidence checks.
 
 ## Absorbed module: `rust_ir` (was `emath-rust-ir`)
@@ -132,3 +135,20 @@ No `crates/`-side tests for the profile surface. The former
 ## No-claim boundaries
 
 No additional no-claim boundaries documented.
+
+## Shared authored carriers
+
+Generated input and state loads borrow non-Copy carriers. Repeated record
+arguments do not move the source value. Existing owning boundaries
+materialize returned values and record fields. Input-dependent quantized
+self-products exercise this rule through compiled search.
+
+## Matrix carrier
+
+Generated `Matrix<Float64>` values use `emath_rt::Matrix`, not nested vectors.
+The carrier stores both dimensions and flat row-major data. It preserves
+`0×N` and `N×0` without allocating rows. `Matrix::new(rows, cols, data)`
+checks the dimension product and data length. `get(row, col)` checks both
+indices. The constructor does not perform mathematical operations.
+The reference operators `matrix_rows`, `matrix_cols`, `matrix_at`, and
+`matrix_pack` use this carrier. Their checked operations return errors.

@@ -6,8 +6,30 @@ use emath_exec_ir::BuiltinId;
 pub(super) fn op_arith_exprs(
     op: &EmirOp,
     program: &EmirProgram,
-    kinds: &[ScalarKind],
+    kinds: &[ValueKind],
 ) -> Result<Expr, BackendError> {
+    let exact = match op {
+        EmirOp::F64Add(a, b) => Some(("ratio_add", *a, *b, false)),
+        EmirOp::F64Sub(a, b) => Some(("ratio_sub", *a, *b, false)),
+        EmirOp::F64Mul(a, b) => Some(("ratio_mul", *a, *b, false)),
+        EmirOp::F64Div(a, b) => Some(("ratio_div", *a, *b, false)),
+        EmirOp::Lt(a, b) => Some(("ratio_lt", *a, *b, false)),
+        EmirOp::Le(a, b) => Some(("ratio_lt", *b, *a, true)),
+        EmirOp::Gt(a, b) => Some(("ratio_lt", *b, *a, false)),
+        EmirOp::Ge(a, b) => Some(("ratio_lt", *a, *b, true)),
+        _ => None,
+    };
+    if let Some((function, left, right, negate)) = exact {
+        if kind_at(kinds, left) == ValueKind::Rational && kind_at(kinds, right) == ValueKind::Rational {
+            let value = map_runtime_result(format!("emath_rt::{function}({}, {})", render_expr(&operand(program, left)), render_expr(&operand(program, right))));
+            return Ok(if negate { Expr::Un { op: UnOp::Not, value: Box::new(value) } } else { value });
+        }
+    }
+    if let EmirOp::Neg(value) = op {
+        if kind_at(kinds, *value) == ValueKind::Rational {
+            return Ok(map_runtime_result(format!("emath_rt::ratio_sub((0, 1), {})", render_expr(&operand(program, *value)))));
+        }
+    }
     match op {
         EmirOp::F64Add(l, r) => Ok(i64_or_f64_bin(
             BinOp::Add,
@@ -35,29 +57,25 @@ pub(super) fn op_arith_exprs(
         )),
         EmirOp::F64Div(l, r) => Ok(Expr::Bin {
             op: BinOp::Div,
-            left: Box::new(typed_operand(program, *l, ScalarKind::F64, &kinds)),
-            right: Box::new(typed_operand(program, *r, ScalarKind::F64, &kinds)),
+            left: Box::new(typed_operand(program, *l, ValueKind::F64, &kinds)),
+            right: Box::new(typed_operand(program, *r, ValueKind::F64, &kinds)),
         }),
         EmirOp::F64Pow(l, r) => Ok(Expr::Bin {
             op: BinOp::Pow,
-            left: Box::new(typed_operand(program, *l, ScalarKind::F64, &kinds)),
-            right: Box::new(typed_operand(program, *r, ScalarKind::F64, &kinds)),
+            left: Box::new(typed_operand(program, *l, ValueKind::F64, &kinds)),
+            right: Box::new(typed_operand(program, *r, ValueKind::F64, &kinds)),
         }),
         EmirOp::Neg(value) => {
-            if operand_kind(&kinds, *value) == ScalarKind::I64 {
-                Ok(Expr::MethodCall {
-                    receiver: Box::new(Expr::MethodCall {
-                        receiver: Box::new(operand(program, *value)),
-                        method: "checked_neg".to_string(),
-                        args: Vec::new(),
-                    }),
-                    method: "expect".to_string(),
-                    args: vec![Expr::Str("i64 overflow".to_string())],
-                })
+            if operand_kind(&kinds, *value) == ValueKind::I64 {
+                Ok(checked_integer_result(Expr::MethodCall {
+                    receiver: Box::new(operand(program, *value)),
+                    method: "checked_neg".to_string(),
+                    args: Vec::new(),
+                }))
             } else {
                 Ok(Expr::Un {
                     op: UnOp::Neg,
-                    value: Box::new(typed_operand(program, *value, ScalarKind::F64, &kinds)),
+                    value: Box::new(typed_operand(program, *value, ValueKind::F64, &kinds)),
                 })
             }
         }
@@ -66,16 +84,16 @@ pub(super) fn op_arith_exprs(
             value: Box::new(operand(program, *value)),
         }),
         EmirOp::UnaryBuiltin(id, value) => {
-            let arg = render_expr(&typed_operand(program, *value, ScalarKind::F64, &kinds));
+            let arg = render_expr(&typed_operand(program, *value, ValueKind::F64, &kinds));
             Ok(Expr::Raw(unary_builtin(*id, &arg)?))
         }
         EmirOp::BinaryBuiltin(id, left, right) => {
-            let left = render_expr(&typed_operand(program, *left, ScalarKind::F64, &kinds));
-            let right = render_expr(&typed_operand(program, *right, ScalarKind::F64, &kinds));
+            let left = render_expr(&typed_operand(program, *left, ValueKind::F64, &kinds));
+            let right = render_expr(&typed_operand(program, *right, ValueKind::F64, &kinds));
             Ok(Expr::Raw(binary_builtin(*id, &left, &right)?))
         }
         EmirOp::IsFinite(value) => Ok(Expr::MethodCall {
-            receiver: Box::new(typed_operand(program, *value, ScalarKind::F64, &kinds)),
+            receiver: Box::new(typed_operand(program, *value, ValueKind::F64, &kinds)),
             method: "is_finite".to_string(),
             args: Vec::new(),
         }),

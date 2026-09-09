@@ -2,13 +2,12 @@ use crate::rust_ir::ast::{
     BinOp, Expr, FnDef, ImplDef, Item, Param, RUST_KEYWORDS, Stmt, StructDef, Ty, Visibility,
     escape_ident,
 };
-use crate::rust_ir::render::render_expr;
 use emath_exec_ir::{EmirProgram, EmirValue};
 use emath_ir::{ExprId, ExprNode, SemanticPackage, TypeNode};
 use std::collections::BTreeSet;
 
 use crate::BackendError;
-use crate::codegen_render::operand;
+use crate::codegen_render::{InputKinds, ValueKind, operand};
 
 pub(crate) fn sanitize_crate_name(name: &str) -> String {
     let mut out: String = name
@@ -164,14 +163,18 @@ pub(crate) fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut
             }
             collect_var_names(package, *body, out);
         }
-        ExprNode::Differentiate { body, .. }
-        | ExprNode::Solve { body, .. }
-        | ExprNode::Optimize { body, .. }
-        | ExprNode::SampleLimit { body, .. } => collect_var_names(package, *body, out),
         ExprNode::Apply { arguments, .. } => {
             for argument in arguments {
                 collect_var_names(package, *argument, out);
             }
+        }
+        ExprNode::Program { body, inputs } => {
+            let mut free = BTreeSet::new();
+            collect_var_names(package, *body, &mut free);
+            for input in inputs {
+                free.remove(input);
+            }
+            out.extend(free);
         }
         // A series data constant carries no free variables: the pairs
         // are literals and the policy is declared (04 §5.4 slice 1).
@@ -234,6 +237,7 @@ pub(crate) fn emit_host_structs(
             name: struct_name.clone(),
             generics: vec![],
             fields: fields.clone(),
+            field_visibility: Visibility::Private,
             derives: vec!["Clone".to_string(), "Debug".to_string()],
             doc: Vec::new(),
             visibility: Visibility::Public,
@@ -281,15 +285,32 @@ fn node_is_i64(node: Option<&TypeNode>) -> bool {
     }
 }
 
-pub(crate) fn i64_field_names(
+pub(crate) fn field_value_kinds(
     package: &SemanticPackage,
     declaration: &emath_ir::Declaration,
-) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    let mut consider = |field: &emath_ir::Field| {
-        if type_is_i64(package, field.ty) {
-            names.insert(field.name.clone());
+) -> InputKinds {
+    fn carrier(node: Option<&TypeNode>) -> ValueKind {
+        match node {
+            Some(TypeNode::Int | TypeNode::Nat) => ValueKind::I64,
+            Some(TypeNode::Rational) => ValueKind::Rational,
+            Some(TypeNode::Bool) => ValueKind::Bool,
+            Some(TypeNode::Other(name)) if name.0 == "Text" => ValueKind::Text,
+            Some(TypeNode::Float64) => ValueKind::F64,
+            Some(TypeNode::Record(name)) => ValueKind::Record(name.0.clone()),
+            Some(TypeNode::Vector { element, .. }) => {
+                ValueKind::Vector(Box::new(carrier(Some(element))))
+            }
+            Some(TypeNode::Matrix { element, .. }) => {
+                ValueKind::Matrix(Box::new(carrier(Some(element))))
+            }
+            Some(TypeNode::Tensor { .. }) => ValueKind::Tensor,
+            Some(TypeNode::Refinement { base, .. }) => carrier(Some(base)),
+            _ => ValueKind::Other,
         }
+    }
+    let mut names = InputKinds::new();
+    let mut consider = |field: &emath_ir::Field| {
+        names.insert(field.name.clone(), carrier(package.ty(field.ty)));
     };
     for field in declaration
         .inputs
@@ -318,69 +339,5 @@ pub(crate) fn comparison(
         op,
         left: Box::new(operand(program, left)),
         right: Box::new(operand(program, right)),
-    }
-}
-
-pub(crate) fn rate_call(state_name: &str, input_args: &[Expr]) -> Expr {
-    Expr::MethodCall {
-        receiver: Box::new(Expr::SelfValue),
-        method: escape_ident(&format!("der_{state_name}")),
-        args: input_args.to_vec(),
-    }
-}
-
-pub(crate) fn rate_lets(
-    prefix: &str,
-    declaration: &emath_ir::Declaration,
-    input_args: &[Expr],
-) -> Vec<Stmt> {
-    declaration
-        .state
-        .iter()
-        .map(|field| Stmt::Let {
-            pattern: format!("{prefix}_{}", field.name),
-            // `self` receiver must be Expr::SelfValue: Expr::Var("self")
-            // renders through escape_ident as `self_` (E0425 in generated
-            // model crates). Same contract as `rate_call` below.
-            value: Box::new(Expr::MethodCall {
-                receiver: Box::new(Expr::SelfValue),
-                method: escape_ident(&format!("der_{}", field.name)),
-                args: input_args.to_vec(),
-            }),
-        })
-        .collect()
-}
-
-pub(crate) fn add_scaled_expr(value: Expr, rate: Expr, scale: Expr, node: &TypeNode) -> Expr {
-    match node {
-        // value + scale * rate, via the embedded runtime kernels (the
-        // same kernels the interpreter uses).
-        TypeNode::Vector { .. } => Expr::Raw(format!(
-            "emath_rt::vec_add(&{v}, &emath_rt::vec_scale(&{r}, {s}))",
-            v = render_expr(&value),
-            r = render_expr(&rate),
-            s = render_expr(&scale),
-        )),
-        TypeNode::Matrix { .. } => Expr::Raw(format!(
-            "emath_rt::mat_add(&{v}, &emath_rt::mat_scale(&{r}, {s}))",
-            v = render_expr(&value),
-            r = render_expr(&rate),
-            s = render_expr(&scale),
-        )),
-        TypeNode::Tensor { .. } => Expr::Raw(format!(
-            "emath_rt::Tensor {{ shape: {v}.shape.clone(), data: emath_rt::tensor_add(&{v}.data, &emath_rt::tensor_scale(&{r}.data, {s})) }}",
-            v = render_expr(&value),
-            r = render_expr(&rate),
-            s = render_expr(&scale),
-        )),
-        _ => Expr::Bin {
-            op: BinOp::Add,
-            left: Box::new(value),
-            right: Box::new(Expr::Bin {
-                op: BinOp::Mul,
-                left: Box::new(scale),
-                right: Box::new(rate),
-            }),
-        },
     }
 }

@@ -51,30 +51,33 @@ impl CarrierPayloadTypes {
 pub(super) fn nested_operand_ty(
     program: &EmirProgram,
     register: EmirValue,
-    kinds: &[ScalarKind],
+    kinds: &[ValueKind],
     names: &[String],
     states: &[String],
-    i64_names: &BTreeSet<String>,
+    input_kinds: &InputKinds,
 ) -> Option<String> {
     let Some((op, _)) = program.ops.get(register.0 as usize) else {
         return None;
     };
+    if let kind @ ValueKind::Result(..) = kind_at(kinds, register) {
+        return Some(crate::rust_ir::render::render_ty(&kind.rust_ty().ok()?));
+    }
     match op {
         EmirOp::OptionSome(payload) => Some(format!(
             "Option<{}>",
-            nested_operand_ty(program, *payload, kinds, names, states, i64_names)
+            nested_operand_ty(program, *payload, kinds, names, states, input_kinds)
                 .unwrap_or_else(|| "f64".to_string())
         )),
         EmirOp::OptionNone => Some("Option<f64>".to_string()),
         EmirOp::ResultOk(payload) | EmirOp::ResultErr(payload) => {
-            let inner = nested_operand_ty(program, *payload, kinds, names, states, i64_names)
+            let inner = nested_operand_ty(program, *payload, kinds, names, states, input_kinds)
                 .unwrap_or_else(|| "f64".to_string());
             Some(format!("Result<{inner}, {inner}>"))
         }
         EmirOp::ResultErrorOf(carrier) => {
             let err_ty = match program.ops.get(carrier.0 as usize) {
                 Some((EmirOp::ResultErr(payload), _)) => {
-                    nested_operand_ty(program, *payload, kinds, names, states, i64_names)
+                    nested_operand_ty(program, *payload, kinds, names, states, input_kinds)
                         .unwrap_or_else(|| "f64".to_string())
                 }
                 _ => "f64".to_string(),
@@ -82,9 +85,9 @@ pub(super) fn nested_operand_ty(
             Some(format!("Option<{err_ty}>"))
         }
         EmirOp::OptionUnwrapOr(_, default) | EmirOp::ResultUnwrapOr(_, default) => {
-            nested_operand_ty(program, *default, kinds, names, states, i64_names)
+            nested_operand_ty(program, *default, kinds, names, states, input_kinds)
         }
-        _ => register_rust_ty(program, register, kinds, names, states, i64_names),
+        _ => register_rust_ty(program, register, kinds, names, states, input_kinds),
     }
 }
 
@@ -92,9 +95,9 @@ pub(super) fn carrier_payload_types(
     program: &EmirProgram,
     names: &[String],
     states: &[String],
-    i64_names: &BTreeSet<String>,
+    input_kinds: &InputKinds,
 ) -> Result<CarrierPayloadTypes, BackendError> {
-    let kinds = scalar_kinds(program, names, states, i64_names);
+    let kinds = value_kinds(program, names, states, input_kinds);
     let mut tys = CarrierPayloadTypes {
         opt: HashMap::new(),
         ok: HashMap::new(),
@@ -118,7 +121,7 @@ pub(super) fn carrier_payload_types(
         }
     };
     let payload_ty = |register: EmirValue, op: &EmirOp| -> Result<String, BackendError> {
-        nested_operand_ty(program, register, &kinds, names, states, i64_names).ok_or_else(|| {
+        nested_operand_ty(program, register, &kinds, names, states, input_kinds).ok_or_else(|| {
             BackendError::Lowering(format!(
                 "op `{}` payload register {} out of range",
                 op.name(),
@@ -128,6 +131,10 @@ pub(super) fn carrier_payload_types(
     };
     // Producer-determined payload types.
     for (i, (op, _)) in program.ops.iter().enumerate() {
+        if let ValueKind::Result(ok, error) = kind_at(&kinds, EmirValue(i as u32)) {
+            bind(&mut tys.ok, i as u32, crate::rust_ir::render::render_ty(&ok.rust_ty()?), op)?;
+            bind(&mut tys.err, i as u32, crate::rust_ir::render::render_ty(&error.rust_ty()?), op)?;
+        }
         match op {
             EmirOp::OptionSome(payload) => {
                 bind(&mut tys.opt, i as u32, payload_ty(*payload, op)?, op)?;
@@ -208,6 +215,7 @@ pub(super) fn expect_carrier(
     value: EmirValue,
     is_result: bool,
     consumer: &str,
+    kinds: &[ValueKind],
 ) -> Result<(), BackendError> {
     let Some(producer) = program.ops.get(value.0 as usize).map(|(op, _)| op) else {
         return Err(BackendError::Lowering(format!(
@@ -220,7 +228,8 @@ pub(super) fn expect_carrier(
             producer,
             EmirOp::OptionSome(_) | EmirOp::OptionNone | EmirOp::ResultErrorOf(_)
         ),
-        true => matches!(producer, EmirOp::ResultOk(_) | EmirOp::ResultErr(_)),
+        true => matches!(kind_at(kinds, value), ValueKind::Result(..))
+            || matches!(producer, EmirOp::ResultOk(_) | EmirOp::ResultErr(_)),
     };
     if family_ok {
         Ok(())

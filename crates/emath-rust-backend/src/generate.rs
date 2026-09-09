@@ -1,6 +1,7 @@
 //! The backend codegen pipeline (`BackendInput::generate`).
 
 use super::*;
+use emath_exec_ir::{EmirOp, EmirProgram};
 
 impl BackendInput<'_> {
     /// Run the whole backend: structure + methods + tests + crate files.
@@ -27,6 +28,7 @@ impl BackendInput<'_> {
             emath_rt::SOURCE
         )));
 
+        emit_authored_records(package, &mut items)?;
         for declaration in &package.declarations {
             let name = declaration.name.leaf().to_string();
             // The declaration name becomes Rust source: keywords and
@@ -82,6 +84,7 @@ impl BackendInput<'_> {
                     name: struct_name.clone(),
                     generics: vec![],
                     fields: struct_fields,
+                    field_visibility: Visibility::Private,
                     derives: vec!["Clone".to_string(), "Debug".to_string()],
                     doc: Vec::new(),
                     visibility: Visibility::Public,
@@ -91,7 +94,7 @@ impl BackendInput<'_> {
             let mut methods: Vec<FnDef> = Vec::new();
             let mut evaluate_targets: Vec<String> = Vec::new();
             let mut result_eval_targets: BTreeSet<String> = BTreeSet::new();
-            let i64_names = i64_field_names(package, declaration);
+            let input_kinds = field_value_kinds(package, declaration);
 
             // --- constructor ----------------------------------------------
             if declaration.constructors.len() > 1 {
@@ -167,7 +170,7 @@ impl BackendInput<'_> {
                     let ok_name = format!("__ok{index}");
                     let negated = Expr::Un {
                         op: UnOp::Not,
-                        value: Box::new(value_expr(&program, &param_names, &[], &i64_names)?),
+                        value: Box::new(value_expr(&program, &param_names, &[], &input_kinds)?),
                     };
                     statements.push(Stmt::Let {
                         pattern: ok_name.clone(),
@@ -209,8 +212,8 @@ impl BackendInput<'_> {
                     field_values.push((
                         field_def.name.clone(),
                         coerce_to_ty(
-                            value_expr(&program, &param_names, &[], &i64_names)?,
-                            program_kind(&program, &param_names, &[], &i64_names),
+                            value_expr(&program, &param_names, &[], &input_kinds)?,
+                            program_kind(&program, &param_names, &[], &input_kinds),
                             &self.rust_ty(field_def.ty, &name)?,
                         ),
                     ));
@@ -225,7 +228,7 @@ impl BackendInput<'_> {
                     let check_name = format!("__post_ok{index}");
                     let negated = Expr::Un {
                         op: UnOp::Not,
-                        value: Box::new(value_expr(&program, &param_names, &[], &i64_names)?),
+                        value: Box::new(value_expr(&program, &param_names, &[], &input_kinds)?),
                     };
                     statements.push(Stmt::Let {
                         pattern: check_name.clone(),
@@ -323,9 +326,9 @@ impl BackendInput<'_> {
                     .map(|field| self.rust_output_ty(field.ty, &name))
                     .transpose()?
                     .unwrap_or(Ty::F64);
-                let mut eval_i64 = i64_names.clone();
+                let mut eval_kinds = input_kinds.clone();
                 let mut body_stmts = Vec::new();
-                let mut index_fault = false;
+                let mut can_fault = false;
                 if !emit_free_fn {
                     for field in &declaration.algebraic {
                         let scalar = matches!(
@@ -367,12 +370,12 @@ impl BackendInput<'_> {
                         lower_definition(package, def_expr, &lowering_inputs, &state_names)
                             .map_err(BackendError::Lowering)?;
                     add_obligations(&program, &mut assumptions);
-                    let kind = program_kind(&program, &lowering_inputs, &state_names, &eval_i64);
-                    let value = value_expr(&program, &lowering_inputs, &state_names, &eval_i64)?;
-                    index_fault |= program_may_index_fault(&program);
+                    let kind = program_kind(&program, &lowering_inputs, &state_names, &eval_kinds);
+                    let value = value_expr(&program, &lowering_inputs, &state_names, &eval_kinds)?;
+                    can_fault |= program_may_fault(&program);
                     if def_name == &target {
                         let expr = coerce_to_ty(value, kind, &inner_ret);
-                        body_stmts.push(Stmt::Expr(if index_fault {
+                        body_stmts.push(Stmt::Expr(if can_fault {
                             Expr::Call {
                                 path: vec!["Ok".to_string()],
                                 args: vec![expr],
@@ -381,9 +384,7 @@ impl BackendInput<'_> {
                             expr
                         }));
                     } else {
-                        if kind == ScalarKind::I64 {
-                            eval_i64.insert(def_name.clone());
-                        }
+                        eval_kinds.insert(def_name.clone(), kind);
                         body_stmts.push(Stmt::Let {
                             pattern: escape_ident(def_name),
                             value: Box::new(value),
@@ -421,10 +422,10 @@ impl BackendInput<'_> {
                     escape_ident(&target)
                 };
                 evaluate_targets.push(target.clone());
-                if index_fault {
+                if can_fault {
                     result_eval_targets.insert(target.clone());
                 }
-                let ret = if index_fault {
+                let ret = if can_fault {
                     Ty::Result {
                         ok: Box::new(inner_ret),
                         error: Box::new(Ty::Named("String".to_string())),
@@ -434,7 +435,7 @@ impl BackendInput<'_> {
                 };
                 let doc = if matches!(ret, Ty::I64) {
                     format!("Evaluate `{target}` (exact i64).")
-                } else if index_fault {
+                } else if can_fault {
                     format!(
                         "Evaluate `{target}` (strict-f64, Phase 1). Index/slice out of bounds is `Err`."
                     )
@@ -502,8 +503,8 @@ impl BackendInput<'_> {
                     let program = lower_definition(package, test.given[given_name], &seen, &[])
                         .map_err(BackendError::Lowering)?;
                     add_obligations(&program, &mut assumptions);
-                    let kind = program_kind(&program, &seen, &[], &i64_names);
-                    let value = value_expr(&program, &seen, &[], &i64_names)?;
+                    let kind = program_kind(&program, &seen, &[], &input_kinds);
+                    let value = value_expr(&program, &seen, &[], &input_kinds)?;
                     let field_ty = declaration
                         .inputs
                         .iter()
@@ -663,14 +664,14 @@ impl BackendInput<'_> {
                             }
                         }
                     }
-                    let mut expect_i64 = i64_names.clone();
+                    let mut expect_kinds = input_kinds.clone();
                     if declaration
                         .outputs
                         .iter()
                         .any(|field| &field.name == target && type_is_i64(package, field.ty))
                     {
                         for definition in declaration.definitions.keys() {
-                            expect_i64.insert(definition.clone());
+                            expect_kinds.insert(definition.clone(), ValueKind::I64);
                         }
                     }
                     let expect_program =
@@ -685,7 +686,7 @@ impl BackendInput<'_> {
                             &expect_program,
                             &expect_names,
                             &state_names,
-                            &expect_i64,
+                            &expect_kinds,
                         )?],
                     }));
                 } else {
@@ -739,4 +740,50 @@ impl BackendInput<'_> {
             receipts,
         })
     }
+}
+
+
+/// Emit only layouts reachable through the admitted capability value ABI.
+fn emit_authored_records(package: &SemanticPackage, items: &mut Vec<Item>) -> Result<(), BackendError> {
+    fn collect_kind(kind: ValueKind, records: &mut BTreeSet<String>) {
+        match kind {
+            ValueKind::Record(name) => { records.insert(name); }
+            ValueKind::Vector(element) | ValueKind::Matrix(element) => collect_kind(*element, records),
+            _ => {}
+        }
+    }
+    fn calls(program: &EmirProgram, queue: &mut Vec<String>) {
+        for (op, _) in &program.ops {
+            match op {
+                EmirOp::ApplyCapability { capability, .. } => queue.push(capability.clone()),
+                EmirOp::Iterate { body, stop, .. } => { if let Some(stop) = stop { calls(stop, queue); } calls(body, queue); }
+                EmirOp::Fold { body, .. } | EmirOp::Collect { body, .. } => calls(body, queue),
+                EmirOp::Branch { then_body, else_body, .. } => { calls(then_body, queue); calls(else_body, queue); }
+                _ => {}
+            }
+        }
+    }
+    let mut queue = package.capabilities.iter().map(|capability| capability.name.0.clone()).collect::<Vec<_>>();
+    let mut visited = BTreeSet::new();
+    let mut records = BTreeSet::new();
+    while let Some(capability) = queue.pop() {
+        if !visited.insert(capability.clone()) { continue; }
+        if let Some(signature) = emath_exec_ir::native_kernel::installed_signature(&capability) {
+            for ty in signature.inputs.iter().chain(std::iter::once(&signature.output)) { collect_kind(ValueKind::from_signature(ty), &mut records); }
+        }
+        if let Some(cell) = emath_exec_ir::native_kernel::installed_reference_cell(&capability) { calls(&cell.program, &mut queue); }
+    }
+    let mut emitted = BTreeSet::new();
+    while let Some(name) = records.pop_first() {
+        if !emitted.insert(name.clone()) { continue; }
+        let Some(layout) = emath_exec_ir::native_kernel::installed_record_layout(&name) else { continue; };
+        let mut fields = Vec::with_capacity(layout.fields.len());
+        for (field, ty) in layout.fields {
+            let kind = ValueKind::from_signature(&ty);
+            fields.push((escape_ident(&field), kind.rust_ty()?));
+            collect_kind(kind, &mut records);
+        }
+        items.push(Item::Struct(StructDef { name: format!("EmathRecord_{}", escape_ident(&name)), generics: Vec::new(), fields, field_visibility: Visibility::Public, derives: vec!["Clone".into(), "Debug".into(), "PartialEq".into()], doc: Vec::new(), visibility: Visibility::Public }));
+    }
+    Ok(())
 }

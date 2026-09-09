@@ -37,7 +37,16 @@ impl BackendInput<'_> {
     pub(super) fn rust_node(&self, node: &TypeNode, owner: &str) -> Result<Ty, BackendError> {
         match node {
             TypeNode::Float64 => Ok(Ty::F64),
+            TypeNode::Other(name) if name.0 == "Text" => Ok(Ty::Named("String".into())),
             TypeNode::Bool => Ok(Ty::Bool),
+            TypeNode::Rational => Ok(Ty::Named("emath_rt::ExactRatio".into())),
+            TypeNode::Record(name) => {
+                if emath_exec_ir::native_kernel::installed_record_layout(&name.0).is_some() {
+                    ValueKind::Record(name.0.clone()).rust_ty()
+                } else {
+                    Err(BackendError::UnsupportedType(name.0.clone()))
+                }
+            }
             // Stage-2 (emath-t63iz): the exact big field-element type maps
             // onto the embedded runtime's UBig (verbatim SOURCE module).
             TypeNode::BigInt => Ok(Ty::Named("emath_rt::UBig".to_string())),
@@ -55,10 +64,11 @@ impl BackendInput<'_> {
                         Ok(Ty::Named("Vec<Vec<f64>>".to_string()))
                     }
                 }
+                TypeNode::Rational => Ok(Ty::Named("Vec<emath_rt::ExactRatio>".into())),
                 TypeNode::BigInt => Ok(Ty::Named("Vec<emath_rt::UBig>".to_string())),
                 _ => Ok(Ty::Named("Vec<f64>".to_string())),
             },
-            TypeNode::Matrix { .. } => Ok(Ty::Named("Vec<Vec<f64>>".to_string())),
+            TypeNode::Matrix { .. } => Ok(Ty::Named("emath_rt::Matrix".to_string())),
             TypeNode::Tensor { .. } => Ok(Ty::Named("emath_rt::Tensor".to_string())),
             TypeNode::Nat | TypeNode::Int => Ok(Ty::I64),
             TypeNode::Refinement { base, .. } => self.rust_node(base, owner),

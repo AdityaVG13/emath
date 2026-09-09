@@ -154,7 +154,16 @@ pub(super) fn count_ssa_uses(program: &EmirProgram) -> Vec<u32> {
 }
 
 pub(super) fn has_nested_body(op: &EmirOp) -> bool {
-    matches!(op, EmirOp::Fold { .. })
+    matches!(
+        op,
+        EmirOp::Fold { .. }
+            | EmirOp::ApplyCapability { .. }
+            | EmirOp::Branch { .. }
+            | EmirOp::Iterate { .. }
+            | EmirOp::Collect { .. }
+            | EmirOp::ProgramLiteral { .. }
+            | EmirOp::CallFrame { .. }
+    )
 }
 
 /// Flatten an SSA body; see [`FlatSsa`].
@@ -162,7 +171,7 @@ pub(crate) fn flat_ssa(
     program: &EmirProgram,
     names: &[String],
     states: &[String],
-    i64_names: &BTreeSet<String>,
+    input_kinds: &InputKinds,
     var_index: Option<u16>,
 ) -> Result<FlatSsa, BackendError> {
     let n = program.ops.len();
@@ -170,7 +179,11 @@ pub(crate) fn flat_ssa(
     let mut e_src = Vec::with_capacity(n);
     for (op, _) in &program.ops {
         e_src.push(render_expr(&op_expr(
-            op, program, names, states, i64_names,
+            op,
+            program,
+            names,
+            states,
+            input_kinds,
         )?));
     }
     let e_direct = count_ssa_uses(program);

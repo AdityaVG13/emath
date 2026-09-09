@@ -2,108 +2,389 @@
 
 use super::*;
 
-/// Scalar kind of an EMIR register in generated Rust. Mirrors interp:
-/// I64×I64 add/sub/mul/neg and integer folds stay `i64`; everything else
-/// that computes a number widens to `f64`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ScalarKind {
+/// Scalar carrier of an EMIR register. Exact carriers never widen implicitly.
+pub(crate) type InputKinds = BTreeMap<String, ValueKind>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ValueKind {
     I64,
     F64,
+    Rational,
     Bool,
     /// Stage-2 (emath-t63iz): exact big field element (emath_rt::UBig).
     BigInt,
+    Text,
+    Program,
+    DenseLayout(Box<ValueKind>),
+    Result(Box<ValueKind>, Box<ValueKind>),
+    Vector(Box<ValueKind>),
+    Matrix(Box<ValueKind>),
+    Tensor,
+    Record(String),
+    Never,
     Other,
+}
+
+impl ValueKind {
+    pub(crate) fn from_signature(text: &str) -> Self {
+        fn parse(text: &str, remaining: usize) -> ValueKind {
+            if remaining == 0 {
+                return ValueKind::Other;
+            }
+            match text.trim() {
+                "Int" | "I64" | "Nat" => ValueKind::I64,
+                "Float64" => ValueKind::F64,
+                "Rat" => ValueKind::Rational,
+                "Bool" => ValueKind::Bool,
+                "Text" => ValueKind::Text,
+                "Program" => ValueKind::Program,
+                "BigInt" => ValueKind::BigInt,
+                "emath_rt::Tensor" => ValueKind::Tensor,
+                text if text.starts_with("Tensor<") || text.starts_with("SameTensor<") => {
+                    ValueKind::Tensor
+                }
+                text => {
+                    if let Some(inner) = text
+                        .strip_prefix("Vector<")
+                        .or_else(|| text.strip_prefix("SameVector<"))
+                        .and_then(|text| text.strip_suffix('>'))
+                    {
+                        ValueKind::Vector(Box::new(parse(inner, remaining - 1)))
+                    } else if let Some(inner) = text
+                        .strip_prefix("Matrix<")
+                        .or_else(|| text.strip_prefix("SameMatrix<"))
+                        .and_then(|text| text.strip_suffix('>'))
+                    {
+                        ValueKind::Matrix(Box::new(parse(inner, remaining - 1)))
+                    } else if let Some(name) = text
+                        .strip_prefix("Record<")
+                        .and_then(|text| text.strip_suffix('>'))
+                    {
+                        ValueKind::Record(name.to_string())
+                    } else {
+                        ValueKind::Other
+                    }
+                }
+            }
+        }
+        parse(text, 32)
+    }
+
+    pub(crate) fn rust_ty(&self) -> Result<Ty, BackendError> {
+        use crate::rust_ir::render::render_ty;
+        Ok(match self {
+            Self::I64 => Ty::I64,
+            Self::F64 => Ty::F64,
+            Self::Rational => Ty::Named("emath_rt::ExactRatio".into()),
+            Self::Bool => Ty::Bool,
+            Self::Text => Ty::Named("String".into()),
+            Self::DenseLayout(_) => Ty::Named("emath_rt::DenseLayout".into()),
+            Self::Program => Ty::Named(
+                "std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>>"
+                    .into(),
+            ),
+            Self::Result(ok, error) => Ty::Named(format!(
+                "Result<{}, {}>",
+                render_ty(&ok.rust_ty()?),
+                render_ty(&error.rust_ty()?)
+            )),
+            Self::BigInt => Ty::Named("emath_rt::UBig".into()),
+            Self::Vector(element) => Ty::Named(format!("Vec<{}>", render_ty(&element.rust_ty()?))),
+            Self::Matrix(element) => Ty::Named(format!(
+                "emath_rt::Matrix<{}>",
+                render_ty(&element.rust_ty()?)
+            )),
+            Self::Tensor => Ty::Named("emath_rt::Tensor".into()),
+            Self::Record(name) => Ty::Named(format!("EmathRecord_{}", escape_ident(name))),
+            Self::Never => Ty::Named("!".into()),
+            Self::Other => {
+                return Err(BackendError::UnsupportedType(
+                    "unknown value carrier".into(),
+                ));
+            }
+        })
+    }
+
+    pub(super) fn borrowed_rust_ty(&self) -> Result<Ty, BackendError> {
+        if *self == Self::Text {
+            Ok(Ty::Named("str".into()))
+        } else {
+            self.rust_ty()
+        }
+    }
+
+    pub(super) fn is_copy(&self) -> bool {
+        matches!(self, Self::I64 | Self::F64 | Self::Rational | Self::Bool)
+    }
+}
+
+pub(super) fn checked_integer_operand(
+    program: &EmirProgram,
+    value: EmirValue,
+    kinds: &[ValueKind],
+) -> Result<Expr, BackendError> {
+    match kind_at(kinds, value) {
+        ValueKind::I64 => Ok(operand(program, value)),
+        ValueKind::F64 => Ok(Expr::Raw(format!(
+            "{{ let __convert = {}; if !(__convert >= i64::MIN as f64 && __convert < -(i64::MIN as f64) && __convert.fract() == 0.0) {{ return Err(String::from(\"E-SCALAR-CONVERT: value must be an exact integer in i64 range\")); }} __convert as i64 }}",
+            render_expr(&operand(program, value))
+        ))),
+        _ => Err(BackendError::UnsupportedType(
+            "integer conversion requires Int or Float64".into(),
+        )),
+    }
 }
 
 pub(crate) fn program_kind(
     program: &EmirProgram,
     names: &[String],
     states: &[String],
-    i64_names: &BTreeSet<String>,
-) -> ScalarKind {
+    input_kinds: &InputKinds,
+) -> ValueKind {
     if program.ops.is_empty() {
-        return ScalarKind::Other;
+        return ValueKind::Other;
     }
-    let kinds = scalar_kinds(program, names, states, i64_names);
+    let kinds = value_kinds(program, names, states, input_kinds);
     kinds
         .get(program.result.0 as usize)
-        .copied()
-        .unwrap_or(ScalarKind::Other)
+        .cloned()
+        .unwrap_or(ValueKind::Other)
 }
 
-pub(super) fn scalar_kinds(
+pub(super) fn value_kinds(
     program: &EmirProgram,
     names: &[String],
     states: &[String],
-    i64_names: &BTreeSet<String>,
-) -> Vec<ScalarKind> {
+    input_kinds: &InputKinds,
+) -> Vec<ValueKind> {
     let n = program.ops.len();
-    let mut kinds = vec![ScalarKind::Other; n];
+    let mut kinds = vec![ValueKind::Other; n];
     for (i, (op, _)) in program.ops.iter().enumerate() {
-        kinds[i] = kind_of_op(op, &kinds, names, states, i64_names);
+        kinds[i] = kind_of_op(op, &kinds, names, states, input_kinds);
     }
     kinds
 }
 
-pub(super) fn kind_at(kinds: &[ScalarKind], value: EmirValue) -> ScalarKind {
+pub(super) fn kind_at(kinds: &[ValueKind], value: EmirValue) -> ValueKind {
     kinds
         .get(value.0 as usize)
-        .copied()
-        .unwrap_or(ScalarKind::Other)
+        .cloned()
+        .unwrap_or(ValueKind::Other)
 }
 
 pub(super) fn kind_of_op(
     op: &EmirOp,
-    kinds: &[ScalarKind],
+    kinds: &[ValueKind],
     names: &[String],
     states: &[String],
-    i64_names: &BTreeSet<String>,
-) -> ScalarKind {
+    input_kinds: &InputKinds,
+) -> ValueKind {
     match op {
-        EmirOp::ConstI64(_) => ScalarKind::I64,
-        EmirOp::ConstBigInt(_) => ScalarKind::BigInt,
-        EmirOp::ConstF64(_) => ScalarKind::F64,
-        EmirOp::ConstBool(_) => ScalarKind::Bool,
-        EmirOp::ConstText(_)
-        | EmirOp::ConstComplex(..)
-        | EmirOp::FormatText { .. }
+        EmirOp::ConstI64(_)
+        | EmirOp::VectorLength(_)
+        | EmirOp::ToInt(_)
+        | EmirOp::IntegerQuotient(_, _)
+        | EmirOp::MatrixRows(_)
+        | EmirOp::MatrixCols(_) => ValueKind::I64,
+        EmirOp::MatrixPack { .. } | EmirOp::MatrixCreate { .. } => {
+            ValueKind::Matrix(Box::new(ValueKind::F64))
+        }
+        EmirOp::TensorPack { .. } | EmirOp::TensorCreate { .. } => ValueKind::Tensor,
+        EmirOp::TensorShape(_) => ValueKind::Vector(Box::new(ValueKind::I64)),
+        EmirOp::F64Exp2(_) | EmirOp::F64PowI(..) | EmirOp::ParseF64(_) => ValueKind::F64,
+        EmirOp::TextTrim(_) | EmirOp::FormatScientific(..) | EmirOp::IndexText(_) => {
+            ValueKind::Text
+        }
+        EmirOp::TextLength(_) | EmirOp::TextByte(..) => ValueKind::I64,
+        EmirOp::DenseIndex { .. } => ValueKind::F64,
+        EmirOp::ConstBigInt(_) => ValueKind::BigInt,
+        EmirOp::ConstF64(_) => ValueKind::F64,
+        EmirOp::ConstBool(_) => ValueKind::Bool,
+        EmirOp::ConstText(_) | EmirOp::FormatText { .. } => ValueKind::Text,
+        EmirOp::RecordCreate { type_name, .. } => ValueKind::Record(type_name.clone()),
+        EmirOp::RecordField { record, field } => {
+            let ValueKind::Record(name) = kind_at(kinds, *record) else {
+                return ValueKind::Other;
+            };
+            emath_exec_ir::native_kernel::installed_record_layout(&name)
+                .and_then(|layout| layout.fields.into_iter().find(|(name, _)| name == field))
+                .map(|(_, ty)| ValueKind::from_signature(&ty))
+                .unwrap_or(ValueKind::Other)
+        }
+        EmirOp::Refuse(_) | EmirOp::RefuseValue(_) => ValueKind::Never,
+        EmirOp::ProgramLiteral { .. } => ValueKind::Program,
+        EmirOp::CallFrame {
+            body,
+            inputs,
+            state,
+        } => {
+            let names = (0..inputs.len())
+                .map(|index| format!("__frame_input_{index}"))
+                .collect::<Vec<_>>();
+            let states = (0..state.len())
+                .map(|index| format!("__frame_state_{index}"))
+                .collect::<Vec<_>>();
+            let frame = names
+                .iter()
+                .zip(inputs)
+                .chain(states.iter().zip(state))
+                .map(|(name, value)| (name.clone(), kind_at(kinds, *value)))
+                .collect();
+            program_kind(body, &names, &states, &frame)
+        }
+        EmirOp::SameDenseShape(..) => ValueKind::Bool,
+        EmirOp::ToF64(_) => ValueKind::F64,
+        EmirOp::DenseLayout(value) => ValueKind::DenseLayout(Box::new(kind_at(kinds, *value))),
+        EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::F64SortTotal(_) => {
+            ValueKind::Vector(Box::new(ValueKind::F64))
+        }
+        EmirOp::DenseValues(_) => ValueKind::Vector(Box::new(ValueKind::F64)),
+        EmirOp::DenseRepack { template, .. } => match kind_at(kinds, *template) {
+            ValueKind::DenseLayout(kind) => {
+                if *kind == ValueKind::I64 {
+                    ValueKind::F64
+                } else {
+                    *kind
+                }
+            }
+            _ => ValueKind::Other,
+        },
+        EmirOp::CallProgram { .. } | EmirOp::ToF64Vector(_) => {
+            ValueKind::Vector(Box::new(ValueKind::F64))
+        }
+        EmirOp::CallScalarProgram { .. } | EmirOp::CallRealProgram { .. } => ValueKind::F64,
+        EmirOp::TryCallRealProgram { .. } => {
+            ValueKind::Result(Box::new(ValueKind::F64), Box::new(ValueKind::Text))
+        }
+        EmirOp::Iterate { init, .. } => kind_at(kinds, *init),
+        EmirOp::Collect { args, body, .. } => {
+            let names = (0..=args.len())
+                .map(|index| format!("capture_{index}"))
+                .collect::<Vec<_>>();
+            let inputs = names
+                .iter()
+                .cloned()
+                .zip(
+                    std::iter::once(ValueKind::I64)
+                        .chain(args.iter().map(|value| kind_at(kinds, *value))),
+                )
+                .collect();
+            ValueKind::Vector(Box::new(program_kind(body, &names, &[], &inputs)))
+        }
+        EmirOp::Branch {
+            args,
+            then_body,
+            else_body,
+            ..
+        } => {
+            let names = (0..args.len())
+                .map(|index| format!("capture_{index}"))
+                .collect::<Vec<_>>();
+            let inputs = names
+                .iter()
+                .cloned()
+                .zip(args.iter().map(|value| kind_at(kinds, *value)))
+                .collect();
+            let left = program_kind(then_body, &names, &[], &inputs);
+            let right = program_kind(else_body, &names, &[], &inputs);
+            if left == ValueKind::Never {
+                right
+            } else if right == ValueKind::Never || left == right {
+                left
+            } else {
+                ValueKind::Other
+            }
+        }
+        EmirOp::ListCreate(values)
+        | EmirOp::SetCreate {
+            elements: values, ..
+        } => ValueKind::Vector(Box::new(
+            values
+                .first()
+                .map(|value| kind_at(kinds, *value))
+                .unwrap_or(ValueKind::Other),
+        )),
+        EmirOp::VectorCreate(values) => ValueKind::Vector(Box::new(
+            if values
+                .iter()
+                .any(|value| kind_at(kinds, *value) == ValueKind::Rational)
+            {
+                ValueKind::Rational
+            } else {
+                ValueKind::F64
+            },
+        )),
+        EmirOp::VectorIndex { vector, .. } => match kind_at(kinds, *vector) {
+            ValueKind::Vector(element) => *element,
+            ValueKind::Matrix(element) => ValueKind::Vector(element),
+            _ => ValueKind::F64,
+        },
+        EmirOp::ConstComplex(..)
         | EmirOp::SeriesCreate { .. }
-        | EmirOp::SetCreate { .. }
-        | EmirOp::RecordCreate { .. }
-        | EmirOp::VectorCreate(_)
-        | EmirOp::MatrixCreate { .. }
-        | EmirOp::TensorCreate { .. }
         | EmirOp::TensorSlice { .. }
         | EmirOp::OptionSome(_)
         | EmirOp::OptionNone
         | EmirOp::ResultOk(_)
         | EmirOp::ResultErr(_)
         | EmirOp::ResultErrorOf(_)
-        | EmirOp::ProgramLiteral(_)
-        | EmirOp::ApplyCapability { .. }
         | EmirOp::VectorMap { .. }
         | EmirOp::VectorMapScalar { .. }
-        | EmirOp::VectorReduce { .. } => ScalarKind::Other,
+        | EmirOp::VectorReduce { .. } => ValueKind::Other,
         EmirOp::SeriesSample { .. }
-        | EmirOp::F64Div(..)
         | EmirOp::F64Pow(..)
         | EmirOp::UnaryBuiltin(..)
         | EmirOp::BinaryBuiltin(..)
-        | EmirOp::VectorIndex { .. }
         | EmirOp::MatrixIndex { .. }
-        | EmirOp::TensorIndex { .. } => ScalarKind::F64,
-        EmirOp::LoadInput(index) => input_kind(names.get(*index as usize), i64_names),
-        EmirOp::LoadState(index) => input_kind(states.get(*index as usize), i64_names),
-        EmirOp::F64Add(left, right) | EmirOp::F64Sub(left, right) | EmirOp::F64Mul(left, right) => {
-            if kind_at(kinds, *left) == ScalarKind::I64 && kind_at(kinds, *right) == ScalarKind::I64
+        | EmirOp::TensorIndex { .. } => ValueKind::F64,
+        EmirOp::ApplyCapability {
+            capability, args, ..
+        } => {
+            if let Some(signature) = emath_exec_ir::native_kernel::installed_signature(capability) {
+                return ValueKind::from_signature(&signature.output);
+            }
+            if let Ok(binding) = emath_exec_ir::native_kernel::verified_kernel_binding(capability) {
+                return binding
+                    .signature
+                    .split_once(")->")
+                    .map(|(_, output)| ValueKind::from_signature(output))
+                    .unwrap_or(ValueKind::Other);
+            }
+            if let Some(cell) = emath_exec_ir::native_kernel::installed_reference_cell(capability) {
+                let names: Vec<_> = cell.params.iter().map(|(name, _)| name.clone()).collect();
+                let inputs = names
+                    .iter()
+                    .zip(args)
+                    .map(|(name, arg)| (name.clone(), kind_at(kinds, *arg)))
+                    .collect();
+                return program_kind(&cell.program, &names, &[], &inputs);
+            }
+            ValueKind::Other
+        }
+        EmirOp::F64Div(left, right) => {
+            if kind_at(kinds, *left) == ValueKind::Rational
+                && kind_at(kinds, *right) == ValueKind::Rational
             {
-                ScalarKind::I64
+                ValueKind::Rational
             } else {
-                ScalarKind::F64
+                ValueKind::F64
+            }
+        }
+        EmirOp::LoadInput(index) => input_kind(names.get(*index as usize), input_kinds),
+        EmirOp::LoadState(index) => input_kind(states.get(*index as usize), input_kinds),
+        EmirOp::F64Add(left, right) | EmirOp::F64Sub(left, right) | EmirOp::F64Mul(left, right) => {
+            if kind_at(kinds, *left) == ValueKind::I64 && kind_at(kinds, *right) == ValueKind::I64 {
+                ValueKind::I64
+            } else if kind_at(kinds, *left) == ValueKind::Rational
+                && kind_at(kinds, *right) == ValueKind::Rational
+            {
+                ValueKind::Rational
+            } else {
+                ValueKind::F64
             }
         }
         EmirOp::Neg(value) => kind_at(kinds, *value),
         EmirOp::IsFinite(_)
+        | EmirOp::SameBits(_, _)
         | EmirOp::Eq(..)
         | EmirOp::Ne(..)
         | EmirOp::Lt(..)
@@ -118,7 +399,7 @@ pub(super) fn kind_of_op(
         | EmirOp::Not(_)
         | EmirOp::OptionIsSome(_)
         | EmirOp::ResultIsOk(_)
-        | EmirOp::VectorAllFinite(_) => ScalarKind::Bool,
+        | EmirOp::VectorAllFinite(_) => ValueKind::Bool,
         EmirOp::Select {
             then_value,
             else_value,
@@ -129,7 +410,7 @@ pub(super) fn kind_of_op(
             if then_kind == else_kind {
                 then_kind
             } else {
-                ScalarKind::F64
+                ValueKind::F64
             }
         }
         EmirOp::Fold {
@@ -139,7 +420,7 @@ pub(super) fn kind_of_op(
             body,
             ..
         } => match combine {
-            FoldCombine::And | FoldCombine::Or => ScalarKind::Bool,
+            FoldCombine::And | FoldCombine::Or => ValueKind::Bool,
             FoldCombine::Add | FoldCombine::Mul => {
                 if fold_is_i64(
                     kinds,
@@ -148,11 +429,11 @@ pub(super) fn kind_of_op(
                     body,
                     names,
                     states,
-                    i64_names,
+                    input_kinds,
                 ) {
-                    ScalarKind::I64
+                    ValueKind::I64
                 } else {
-                    ScalarKind::F64
+                    ValueKind::F64
                 }
             }
         },
@@ -162,24 +443,22 @@ pub(super) fn kind_of_op(
     }
 }
 
-fn input_kind(name: Option<&String>, i64_names: &BTreeSet<String>) -> ScalarKind {
-    if name.is_some_and(|name| i64_names.contains(name)) {
-        ScalarKind::I64
-    } else {
-        ScalarKind::F64
-    }
+pub(super) fn input_kind(name: Option<&String>, input_kinds: &InputKinds) -> ValueKind {
+    name.and_then(|name| input_kinds.get(name))
+        .cloned()
+        .unwrap_or(ValueKind::F64)
 }
 
 pub(super) fn fold_is_i64(
-    kinds: &[ScalarKind],
+    kinds: &[ValueKind],
     init: EmirValue,
     loop_var_index: u16,
     body: &EmirProgram,
     names: &[String],
     states: &[String],
-    i64_names: &BTreeSet<String>,
+    input_kinds: &InputKinds,
 ) -> bool {
-    if kind_at(kinds, init) != ScalarKind::I64 {
+    if kind_at(kinds, init) != ValueKind::I64 {
         return false;
     }
     let mut body_names = names.to_vec();
@@ -192,9 +471,9 @@ pub(super) fn fold_is_i64(
     // variable (a shared name made inner bodies read the inner loop var).
     let loop_name = format!("__loop{lv}");
     body_names[lv] = loop_name.clone();
-    let mut body_i64 = i64_names.clone();
-    body_i64.insert(loop_name);
-    program_kind(body, &body_names, states, &body_i64) == ScalarKind::I64
+    let mut body_kinds = input_kinds.clone();
+    body_kinds.insert(loop_name, ValueKind::I64);
+    program_kind(body, &body_names, states, &body_kinds) == ValueKind::I64
 }
 
 pub(super) fn as_f64(expr: Expr) -> Expr {
@@ -205,34 +484,30 @@ pub(super) fn as_i64(expr: Expr) -> Expr {
     Expr::Raw(format!("({}) as i64", render_expr(&expr)))
 }
 
-pub(super) fn operand_kind<'a>(kinds: &'a [ScalarKind], value: EmirValue) -> ScalarKind {
+pub(super) fn operand_kind<'a>(kinds: &'a [ValueKind], value: EmirValue) -> ValueKind {
     kind_at(kinds, value)
 }
 
 pub(super) fn typed_operand(
     program: &EmirProgram,
     value: EmirValue,
-    want: ScalarKind,
-    kinds: &[ScalarKind],
+    want: ValueKind,
+    kinds: &[ValueKind],
 ) -> Expr {
     let expr = operand(program, value);
     match (operand_kind(kinds, value), want) {
-        (ScalarKind::I64, ScalarKind::F64) => as_f64(expr),
-        (ScalarKind::F64, ScalarKind::I64) => as_i64(expr),
+        (ValueKind::I64, ValueKind::F64) => as_f64(expr),
+        (ValueKind::F64, ValueKind::I64) => as_i64(expr),
         _ => expr,
     }
 }
 
 pub(super) fn i64_checked_bin(method: &str, left: Expr, right: Expr) -> Expr {
-    Expr::MethodCall {
-        receiver: Box::new(Expr::MethodCall {
-            receiver: Box::new(left),
-            method: method.to_string(),
-            args: vec![right],
-        }),
-        method: "expect".to_string(),
-        args: vec![Expr::Str("i64 overflow".to_string())],
-    }
+    checked_integer_result(Expr::MethodCall {
+        receiver: Box::new(left),
+        method: method.to_string(),
+        args: vec![right],
+    })
 }
 
 pub(super) fn cmp_expr(
@@ -240,36 +515,36 @@ pub(super) fn cmp_expr(
     program: &EmirProgram,
     left: EmirValue,
     right: EmirValue,
-    kinds: &[ScalarKind],
+    kinds: &[ValueKind],
 ) -> Expr {
     let lk = operand_kind(kinds, left);
     let rk = operand_kind(kinds, right);
     match (lk, rk) {
-        (ScalarKind::I64, ScalarKind::I64) | (ScalarKind::Bool, ScalarKind::Bool) => Expr::Bin {
+        (ValueKind::I64, ValueKind::I64) | (ValueKind::Bool, ValueKind::Bool) => Expr::Bin {
             op,
             left: Box::new(operand(program, left)),
             right: Box::new(operand(program, right)),
         },
-        (ScalarKind::I64, ScalarKind::F64) => mixed_i64_f64_cmp(
+        (ValueKind::I64, ValueKind::F64) => mixed_i64_f64_cmp(
             op,
             operand(program, left),
-            typed_operand(program, right, ScalarKind::F64, kinds),
+            typed_operand(program, right, ValueKind::F64, kinds),
             true,
         ),
-        (ScalarKind::F64, ScalarKind::I64) => mixed_i64_f64_cmp(
+        (ValueKind::F64, ValueKind::I64) => mixed_i64_f64_cmp(
             op,
             operand(program, right),
-            typed_operand(program, left, ScalarKind::F64, kinds),
+            typed_operand(program, left, ValueKind::F64, kinds),
             false,
         ),
-        (ScalarKind::I64, _) => Expr::Bin {
+        (ValueKind::I64, _) => Expr::Bin {
             op,
             left: Box::new(as_f64(operand(program, left))),
-            right: Box::new(typed_operand(program, right, ScalarKind::F64, kinds)),
+            right: Box::new(typed_operand(program, right, ValueKind::F64, kinds)),
         },
-        (_, ScalarKind::I64) => Expr::Bin {
+        (_, ValueKind::I64) => Expr::Bin {
             op,
-            left: Box::new(typed_operand(program, left, ScalarKind::F64, kinds)),
+            left: Box::new(typed_operand(program, left, ValueKind::F64, kinds)),
             right: Box::new(as_f64(operand(program, right))),
         },
         _ => Expr::Bin {
@@ -325,24 +600,23 @@ pub(super) fn i64_or_f64_bin(
     program: &EmirProgram,
     left: EmirValue,
     right: EmirValue,
-    kinds: &[ScalarKind],
+    kinds: &[ValueKind],
 ) -> Expr {
-    if operand_kind(kinds, left) == ScalarKind::I64 && operand_kind(kinds, right) == ScalarKind::I64
-    {
+    if operand_kind(kinds, left) == ValueKind::I64 && operand_kind(kinds, right) == ValueKind::I64 {
         i64_checked_bin(i64_method, operand(program, left), operand(program, right))
     } else {
         Expr::Bin {
             op: f64_op,
-            left: Box::new(typed_operand(program, left, ScalarKind::F64, kinds)),
-            right: Box::new(typed_operand(program, right, ScalarKind::F64, kinds)),
+            left: Box::new(typed_operand(program, left, ValueKind::F64, kinds)),
+            right: Box::new(typed_operand(program, right, ValueKind::F64, kinds)),
         }
     }
 }
 
-pub(crate) fn coerce_to_ty(expr: Expr, from: ScalarKind, to: &Ty) -> Expr {
+pub(crate) fn coerce_to_ty(expr: Expr, from: ValueKind, to: &Ty) -> Expr {
     match (from, to) {
-        (ScalarKind::I64, Ty::F64) => as_f64(expr),
-        (ScalarKind::F64, Ty::I64) => as_i64(expr),
+        (ValueKind::I64, Ty::F64) => as_f64(expr),
+        (ValueKind::F64, Ty::I64) => as_i64(expr),
         _ => expr,
     }
 }
@@ -353,12 +627,13 @@ pub(crate) fn value_expr(
     program: &EmirProgram,
     names: &[String],
     states: &[String],
-    i64_names: &BTreeSet<String>,
+    input_kinds: &InputKinds,
 ) -> Result<Expr, BackendError> {
     if program.ops.len() == 1 {
-        return op_expr(&program.ops[0].0, program, names, states, i64_names);
+        let expression = op_expr(&program.ops[0].0, program, names, states, input_kinds)?;
+        return owned_result(program, expression, names, states, input_kinds);
     }
-    let flat = flat_ssa(program, names, states, i64_names, None)?;
+    let flat = flat_ssa(program, names, states, input_kinds, None)?;
     let mut statements: Vec<Stmt> = Vec::with_capacity(flat.e_lets.len() + 1);
     for (pattern, src) in flat.e_lets {
         statements.push(Stmt::Let {
@@ -366,6 +641,40 @@ pub(crate) fn value_expr(
             value: Box::new(Expr::Raw(src)),
         });
     }
-    statements.push(Stmt::Expr(Expr::Raw(flat.e_tail)));
+    statements.push(Stmt::Expr(owned_result(
+        program,
+        Expr::Raw(flat.e_tail),
+        names,
+        states,
+        input_kinds,
+    )?));
     Ok(Expr::Block(Box::new(Stmt::Block(Block { statements }))))
+}
+
+fn owned_result(
+    program: &EmirProgram,
+    expression: Expr,
+    names: &[String],
+    states: &[String],
+    inputs: &InputKinds,
+) -> Result<Expr, BackendError> {
+    let kind = program_kind(program, names, states, inputs);
+    let borrowed = program
+        .ops
+        .get(program.result.0 as usize)
+        .is_some_and(|(op, _)| {
+            matches!(
+                op,
+                EmirOp::LoadInput(_)
+                    | EmirOp::LoadState(_)
+                    | EmirOp::RecordField { .. }
+                    | EmirOp::VectorIndex { .. }
+                    | EmirOp::ConstText(_)
+            )
+        });
+    if borrowed && !kind.is_copy() {
+        Ok(owned_value(expression, &kind))
+    } else {
+        Ok(expression)
+    }
 }

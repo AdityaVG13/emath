@@ -275,8 +275,12 @@ fn render_item(code: &mut Code, item: &Item) {
             let generics = render_generics(&def.generics);
             code.line(&format!("{visibility}struct {}{generics} {{", def.name));
             code.indent += 1;
+            let field_visibility = match def.field_visibility {
+                Visibility::Public => "pub ",
+                Visibility::Private => "",
+            };
             for (name, ty) in &def.fields {
-                code.line(&format!("{}: {},", escape_ident(name), render_ty(ty)));
+                code.line(&format!("{field_visibility}{}: {},", escape_ident(name), render_ty(ty)));
             }
             code.indent -= 1;
             code.line("}");
@@ -621,7 +625,7 @@ pub fn render_expr(expr: &Expr) -> String {
             // Debug of NaN/Inf is `NaN`/`inf`, which is not a Rust literal.
             // Folded `sqrt(-1)` / `1/0` must still generate a compiling crate.
             if value.is_finite() {
-                format!("{value:?}")
+                format!("{value:?}f64")
             } else {
                 format!("f64::from_bits({bits:#x})")
             }

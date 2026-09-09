@@ -44,6 +44,7 @@ pub struct StructDef {
     pub name: String,
     pub generics: Vec<String>,
     pub fields: Vec<(String, Ty)>,
+    pub field_visibility: Visibility,
     pub derives: Vec<String>,
     pub doc: Vec<String>,
     pub visibility: Visibility,
