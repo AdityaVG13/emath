@@ -1,5 +1,0 @@
-emath function ExactButFloat:
-    outputs:
-        y: Int
-    definitions:
-        y = 1.5

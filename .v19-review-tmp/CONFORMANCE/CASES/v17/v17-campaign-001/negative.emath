@@ -1,5 +1,0 @@
-use execution_dynamics
-
-emath campaign Untrusted:
-    goals:
-        promote without measurement

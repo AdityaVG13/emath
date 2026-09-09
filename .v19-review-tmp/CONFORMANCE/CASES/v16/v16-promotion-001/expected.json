@@ -1,5 +1,0 @@
-{
-  "catalog_transition": "catalog-only→prototype-specified",
-  "world": "std.world.exact.prime_field@1",
-  "label": "exact"
-}
