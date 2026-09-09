@@ -27,6 +27,7 @@ pub fn run(args: &[String]) -> CliExit {
             }
             EXIT_OK
         }),
+        ParsedCli::MetaTriage { target, json } => triage::triage_cmd(target, json),
         ParsedCli::CommandHelp { name } => print_command_help(name),
         ParsedCli::UnknownFlag { code } => {
             if catalog::wants_json(args)
@@ -68,6 +69,7 @@ pub(super) enum ParsedCli<'a> {
     MetaVersion { rest: &'a [String] },
     MetaCapabilities { rest: &'a [String] },
     MetaRobotDocs { rest: &'a [String] },
+    MetaTriage { target: Option<PathBuf>, json: bool },
     CommandHelp { name: &'a str },
     UnknownFlag { code: CliExit },
     Usage(&'static str),
@@ -154,6 +156,25 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
         "version" | "--version" | "-V" => return ParsedCli::MetaVersion { rest },
         "capabilities" | "--capabilities" => return ParsedCli::MetaCapabilities { rest },
         "robot-docs" | "--robot-help" => return ParsedCli::MetaRobotDocs { rest },
+        "triage" | "--robot-triage" => {
+            if catalog::wants_help(rest) {
+                return ParsedCli::CommandHelp { name: "triage" };
+            }
+            if let Some(code) = catalog::reject_unknown_flags("triage", rest) {
+                return ParsedCli::UnknownFlag { code };
+            }
+            let json = catalog::wants_json(rest) || first == "--robot-triage";
+            let mut target = None;
+            for arg in rest {
+                if !arg.starts_with('-') {
+                    if target.is_some() {
+                        return ParsedCli::Usage("triage accepts at most one target file");
+                    }
+                    target = Some(PathBuf::from(arg));
+                }
+            }
+            return ParsedCli::MetaTriage { target, json };
+        }
         _ => {}
     }
     if catalog::wants_help(rest) {

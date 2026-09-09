@@ -13,6 +13,7 @@ pub mod language_cmd;
 mod provenance_cmd;
 pub mod simulate_cmd;
 pub mod tooling_cmd;
+pub mod triage;
 
 mod cli_artifacts;
 mod cli_build;

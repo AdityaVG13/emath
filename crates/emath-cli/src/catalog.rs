@@ -26,6 +26,7 @@ pub const COMMANDS: &[&str] = &[
     "doctor",
     "capabilities",
     "robot-docs",
+    "triage",
     "help",
     "version",
 ];
@@ -134,6 +135,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "version" | "--version" | "-V" => "version",
         "capabilities" => "capabilities [--json]",
         "robot-docs" => "robot-docs [guide]",
+        "triage" => "triage [<file.emath>] [--json]",
         _ => return None,
     })
 }
@@ -229,6 +231,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "version" | "--version" | "-V" => "print the emath-cli crate version",
         "capabilities" => "machine contract: commands, flags, exit codes, env vars",
         "robot-docs" => "paste-ready agent handbook (`guide`)",
+        "triage" => "mega-command: orient, inspect health, and get ranked next actions",
         _ => return None,
     })
 }
@@ -362,7 +365,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "explain" => &["--json", "--provenance", "--show-defaults", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" => &["--json", "--verify-data", "--help", "-h"],
-        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "import"
+        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "triage" | "import"
         | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
         "coverage" => &["--emit", "--check", "--help", "-h"],
         "solve" => &["--check", "--json", "--apply", "--help", "-h"],
