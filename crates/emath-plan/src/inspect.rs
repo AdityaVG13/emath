@@ -83,7 +83,7 @@ impl PlanInspection {
     /// Renders the inspection as deterministic JSON.
     #[must_use]
     pub fn to_json(&self) -> String {
-        let mut object = emath_artifact::JsonWriter::object();
+        let mut object = emath_core::JsonWriter::object();
         object.string("schema", "emath.plan-explanation v1");
         object.string("policy", &self.policy);
         object.strings("candidates", &self.candidates);
