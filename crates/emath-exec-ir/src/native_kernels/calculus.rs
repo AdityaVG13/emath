@@ -52,7 +52,7 @@ pub static KERNELS: &[NativeKernel] = &[
 
 /// Forward-mode tangent of `program` at `point` w.r.t. input slot
 /// `var_index`: dual evaluation with tangent seed 1.0 on that slot.
-fn program_forward_difference(args: &[Value]) -> Result<Value, String> {
+pub(super) fn program_forward_difference(args: &[Value]) -> Result<Value, String> {
     let [program, point, var_index] = args else {
         return Err(
             "E-TYPE-012: program-forward-difference expects (Program, Vector<Float64>, I64)"
@@ -88,7 +88,7 @@ fn program_reverse_gradient(args: &[Value]) -> Result<Value, String> {
 
 fn program_carrier(value: &Value) -> Result<EmirProgram, String> {
     match value {
-        Value::Program(program) => Ok(program.clone()),
+        Value::Program(program) if !program.vector_input && program.captures.is_empty() => Ok(program.body.clone()),
         _ => Err("E-TYPE-012: program-carrier kernel argument must be a Program value".to_string()),
     }
 }
@@ -354,18 +354,18 @@ fn evaluate_dual(program: &EmirProgram, point: &[f64], var_index: u16) -> Result
             EmirOp::ApplyCapability {
                 capability, args, ..
             } => {
-                let Some(kernel) = crate::native_kernel::native_kernel(capability) else {
+                if capability.as_str() != "std.capability.geometry.inner-product" {
                     return Err(
                         "E-TYPE-012: nested capability has no forward dual rule".to_string()
                     );
                 };
-                match (kernel.kernel_id, args.as_slice()) {
-                    ("pairwise-sum-products", [left, right]) => {
+                match args.as_slice() {
+                    [left, right] => {
                         let left = dual_vec_of(&vec_regs, left)?;
                         let right = dual_vec_of(&vec_regs, right)?;
                         if left.len() != right.len() {
                             return Err(
-                                "E-SHAPE-001: pairwise-sum-products requires equal vector lengths"
+                                "E-SHAPE-001: std.capability.geometry.inner-product requires equal vector lengths"
                                     .to_string(),
                             );
                         }
@@ -752,13 +752,13 @@ fn backward_step(
         EmirOp::ApplyCapability {
             capability, args, ..
         } => {
-            let Some(kernel) = crate::native_kernel::native_kernel(capability) else {
+            if capability.as_str() != "std.capability.geometry.inner-product" {
                 return Err(
                     "E-TYPE-012: nested capability has no reverse-mode adjoint rule".to_string(),
                 );
             };
-            match (kernel.kernel_id, args.as_slice()) {
-                ("pairwise-sum-products", [left, right]) => {
+            match args.as_slice() {
+                [left, right] => {
                     let left_primal = primals
                         .get(left.0 as usize)
                         .and_then(|value| match value {
@@ -766,7 +766,7 @@ fn backward_step(
                             _ => None,
                         })
                         .ok_or_else(|| {
-                            "E-TYPE-012: pairwise-sum-products needs a vector left primal"
+                            "E-TYPE-012: std.capability.geometry.inner-product needs a vector left primal"
                                 .to_string()
                         })?;
                     let right_primal = primals
@@ -776,12 +776,12 @@ fn backward_step(
                             _ => None,
                         })
                         .ok_or_else(|| {
-                            "E-TYPE-012: pairwise-sum-products needs a vector right primal"
+                            "E-TYPE-012: std.capability.geometry.inner-product needs a vector right primal"
                                 .to_string()
                         })?;
                     if left_primal.len() != right_primal.len() {
                         return Err(
-                            "E-SHAPE-001: pairwise-sum-products requires equal vector lengths"
+                            "E-SHAPE-001: std.capability.geometry.inner-product requires equal vector lengths"
                                 .to_string(),
                         );
                     }

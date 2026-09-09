@@ -65,6 +65,7 @@ fn einsum_contract(args: &[Value]) -> Result<Value, String> {
     };
     let operand_values: Vec<&Value> = match operands {
         Value::List(values) => values.iter().collect(),
+        Value::Set(values) => values.iter().collect(),
         Value::Record { type_name, fields } if type_name == "Sequence" => fields.values().collect(),
         _ => {
             return Err("E-TYPE-012: einsum-contract operands must be a Sequence".to_string());
