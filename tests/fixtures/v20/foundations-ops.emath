@@ -1,0 +1,34 @@
+# User-shaped foundations/logic operations. Not a teaching example.
+
+emath function FoundationsFieldOps:
+    inputs:
+        unused: Int
+    outputs:
+        and_ok: Int
+        tertium: Int
+        fuzzy: Int
+        card: Int
+        cut: Int
+        rec: Int
+        sim: Int
+        tensor: Int
+    definitions:
+        and_ok = 1 * 1
+        tertium = 1 + 1 + 1
+        fuzzy = (1 + 3) / 2
+        card = 2 * 2
+        cut = 3 + (-1)
+        rec = 2 * 3
+        sim = 4 * 2
+        tensor = 2 * 3
+    tests:
+        example <slice>:
+            given unused = 0
+            expect and_ok == 1
+            expect tertium == 3
+            expect fuzzy == 2
+            expect card == 4
+            expect cut == 2
+            expect rec == 6
+            expect sim == 8
+            expect tensor == 6

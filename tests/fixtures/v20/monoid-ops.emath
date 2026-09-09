@@ -1,0 +1,19 @@
+# User-shaped monoid operations: left/right unit and associativity.
+
+emath function MonoidOps:
+    inputs:
+        x: Int
+    outputs:
+        left_unit: Int
+        right_unit: Int
+        assoc_holds: Bool
+    definitions:
+        left_unit = 1 * x
+        right_unit = x * 1
+        assoc_holds = (2 * 3) * 4 == 2 * (3 * 4)
+    tests:
+        example <seven>:
+            given x = 7
+            expect left_unit == 7
+            expect right_unit == 7
+            expect assoc_holds == true

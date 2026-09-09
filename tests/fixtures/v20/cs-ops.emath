@@ -1,0 +1,40 @@
+# User-shaped CS/AI operations. Not a teaching example.
+
+emath function CsFieldOps:
+    inputs:
+        unused: Int
+    outputs:
+        mid: Int
+        gcd: Int
+        ham: Int
+        pix: Int
+        loss: Int
+        hops: Int
+        sat: Int
+        ratio: Int
+        ate: Int
+        quorum: Int
+    definitions:
+        mid = (1 + 5) / 2
+        gcd = 15 / 3
+        ham = 2 * 3 + 1
+        pix = 4 * 8
+        loss = 4 + (-4)
+        hops = 4 + 7
+        sat = 3 + 2
+        ratio = 8 / 2
+        ate = 3 + (-1)
+        quorum = 2 + 1
+    tests:
+        example <slice>:
+            given unused = 0
+            expect mid == 3
+            expect gcd == 5
+            expect ham == 7
+            expect pix == 32
+            expect loss == 0
+            expect hops == 11
+            expect sat == 5
+            expect ratio == 4
+            expect ate == 2
+            expect quorum == 3

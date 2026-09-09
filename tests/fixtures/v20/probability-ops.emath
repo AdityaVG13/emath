@@ -1,0 +1,82 @@
+# User-shaped probability and statistics operations. Not a teaching example.
+
+emath function ProbabilityFieldOps:
+    inputs:
+        unused: Int
+    outputs:
+        add_mass: Int
+        complement: Int
+        die_sum: Int
+        binom: Int
+        martingale: Int
+        levy: Int
+        perc: Int
+        er_edges: Int
+        goe: Int
+        mmone: Int
+        little: Int
+        slope: Int
+        f1: Int
+        freq_mean: Int
+        wmean: Int
+        chi2: Int
+        iqr: Int
+        ate: Int
+        pn: Int
+        mc: Int
+        uq: Int
+        cells: Int
+        rand_graph: Int
+        bern4: Int
+    definitions:
+        add_mass = 1 + 3
+        complement = 4 + (-1)
+        die_sum = 1 + 2 + 3 + 4 + 5 + 6
+        binom = 4 * 1 / 2
+        martingale = 5 + (-5)
+        levy = (2 * 2) / 2
+        perc = 2 * 5
+        er_edges = 5 * 4 / 2
+        goe = 2 * (2 + 1) / 2
+        mmone = 3 / (4 - 3)
+        little = 2 * 5
+        slope = (6 - 2) / (4 - 2)
+        f1 = 2 * 2 * 2 / (2 + 2)
+        freq_mean = (1 + 2 + 3 + 4 + 5) / 5
+        wmean = (2 * 3 + 4 * 6) / (2 + 4)
+        chi2 = 3 * 3 + 4 * 4
+        iqr = 7 + (-3)
+        ate = 3 + (-1)
+        pn = 6 / 3
+        mc = 4 / 4
+        uq = 4 + (-4)
+        cells = 2 * 3
+        rand_graph = 5 * 4 / 2
+        bern4 = 4 * 1 / 4
+    tests:
+        example <slice>:
+            given unused = 0
+            expect add_mass == 4
+            expect complement == 3
+            expect die_sum == 21
+            expect binom == 2
+            expect martingale == 0
+            expect levy == 2
+            expect perc == 10
+            expect er_edges == 10
+            expect goe == 3
+            expect mmone == 3
+            expect little == 10
+            expect slope == 2
+            expect f1 == 2
+            expect freq_mean == 3
+            expect wmean == 5
+            expect chi2 == 25
+            expect iqr == 4
+            expect ate == 2
+            expect pn == 2
+            expect mc == 1
+            expect uq == 0
+            expect cells == 6
+            expect rand_graph == 10
+            expect bern4 == 1

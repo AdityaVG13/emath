@@ -1,0 +1,19 @@
+# Tropical min-plus: meet, times as +, multiplicative unit 0.
+
+emath function TropicalOps:
+    inputs:
+        unused: Int
+    outputs:
+        meet: Int
+        trop_times: Int
+        trop_unit: Int
+    definitions:
+        meet = min(2, 3)
+        trop_times = 2 + 5
+        trop_unit = 2 + 0
+    tests:
+        example <ints>:
+            given unused = 0
+            expect meet == 2
+            expect trop_times == 7
+            expect trop_unit == 2

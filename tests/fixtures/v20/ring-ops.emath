@@ -1,0 +1,19 @@
+# Ring operations: distribute, additive unit, multiplicative unit.
+
+emath function RingOps:
+    inputs:
+        unused: Int
+    outputs:
+        distributes: Bool
+        add_unit: Int
+        mul_unit: Int
+    definitions:
+        distributes = 2 * (3 + 4) == 2 * 3 + 2 * 4
+        add_unit = 0 + 5
+        mul_unit = 1 * 5
+    tests:
+        example <ints>:
+            given unused = 0
+            expect distributes == true
+            expect add_unit == 5
+            expect mul_unit == 5

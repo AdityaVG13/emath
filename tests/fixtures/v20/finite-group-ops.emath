@@ -1,0 +1,30 @@
+# User-shaped finite group operations. Not a teaching example.
+# order |S3|=3!, inverse in (Z/5Z)*, identity, Lagrange index, divides, element order.
+
+emath function FiniteGroupOps:
+    inputs:
+        g: Int
+    outputs:
+        order_s3: Int
+        inv_ok: Bool
+        identity_g: Int
+        lagrange_index: Int
+        divides_ok: Bool
+        elt_order_ok: Bool
+    definitions:
+        order_s3 = 3 * 2 * 1
+        inv_ok = int_rem(2 * 3, 5) == 1
+        identity_g = 1 * g
+        order_a3 = factorial(3) / 2
+        lagrange_index = factorial(3) / order_a3
+        divides_ok = int_rem(order_s3, 2) == 0
+        elt_order_ok = pow_mod(2, 4, 5) == 1
+    tests:
+        example <s3_and_f5>:
+            given g = 7
+            expect order_s3 == 6
+            expect inv_ok == true
+            expect identity_g == 7
+            expect lagrange_index == 2
+            expect divides_ok == true
+            expect elt_order_ok == true

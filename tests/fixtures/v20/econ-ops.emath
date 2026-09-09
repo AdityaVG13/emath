@@ -1,0 +1,34 @@
+# User-shaped economics/games operations. Not a teaching example.
+
+emath function EconFieldOps:
+    inputs:
+        unused: Int
+    outputs:
+        nash: Int
+        shapley: Int
+        vickrey: Int
+        eu: Int
+        gdp: Int
+        ols: Int
+        fair: Int
+        spread: Int
+    definitions:
+        nash = 2 * 2
+        shapley = (1 + 2) / 3
+        vickrey = 7 + (-2)
+        eu = 2 * 3 + 4 * 1
+        gdp = 3 + 2 + 1
+        ols = (6 - 2) / (4 - 2)
+        fair = 6 / 3
+        spread = 7 + (-5)
+    tests:
+        example <slice>:
+            given unused = 0
+            expect nash == 4
+            expect shapley == 1
+            expect vickrey == 5
+            expect eu == 10
+            expect gdp == 6
+            expect ols == 2
+            expect fair == 2
+            expect spread == 2

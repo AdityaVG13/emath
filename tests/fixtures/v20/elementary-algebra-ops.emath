@@ -1,0 +1,31 @@
+# User-shaped elementary algebra: binomial square/cube, difference of squares, Vieta.
+
+emath function ElementaryAlgebraOps:
+    inputs:
+        a: Int
+        b: Int
+        r: Int
+        s: Int
+    outputs:
+        square_holds: Bool
+        cube_holds: Bool
+        diff_holds: Bool
+        vieta_sum: Int
+        vieta_prod: Int
+    definitions:
+        square_holds = (a + b) * (a + b) == a * a + 2 * a * b + b * b
+        cube_holds = (a + b) * (a + b) * (a + b) == a * a * a + 3 * a * a * b + 3 * a * b * b + b * b * b
+        diff_holds = a * a - b * b == (a - b) * (a + b)
+        vieta_sum = r + s
+        vieta_prod = r * s
+    tests:
+        example <three_four_two_three>:
+            given a = 3
+            given b = 4
+            given r = 2
+            given s = 3
+            expect square_holds == true
+            expect cube_holds == true
+            expect diff_holds == true
+            expect vieta_sum == 5
+            expect vieta_prod == 6

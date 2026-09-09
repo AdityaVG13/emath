@@ -1,0 +1,16 @@
+# Quaternion: norm-squared and i^2 = -1 as 1+(-1)=0.
+
+emath function QuaternionOps:
+    inputs:
+        unused: Int
+    outputs:
+        nsq: Int
+        i_square_plus_one: Int
+    definitions:
+        nsq = 1 * 1 + 2 * 2 + 2 * 2 + 4 * 4
+        i_square_plus_one = 1 + (-1)
+    tests:
+        example <one_two_two_four>:
+            given unused = 0
+            expect nsq == 25
+            expect i_square_plus_one == 0

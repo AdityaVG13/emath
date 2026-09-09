@@ -1,0 +1,70 @@
+# User-shaped numerics, optimization, and control operations. Not a teaching example.
+
+emath function NumericsFieldOps:
+    inputs:
+        unused: Int
+    outputs:
+        det2: Int
+        trap: Int
+        stencil: Int
+        newton: Int
+        jensen: Int
+        energy: Int
+        kalman: Int
+        tsp: Int
+        gemv: Int
+        flux: Int
+        lp_slack: Int
+        makespan: Int
+        nyquist: Int
+        residual: Int
+        width: Int
+        flop: Int
+        horizon: Int
+        eoq: Int
+        pareto: Int
+        sim_mean: Int
+    definitions:
+        det2 = 2 * 5 + (-3) * 1
+        trap = (1 + 3) * 2 / 2
+        stencil = 1 + (-2) + 1
+        newton = 4 / 2
+        jensen = (2 + 8) / 2
+        energy = 3 * 3 + 4 * 4
+        kalman = 6 / 3
+        tsp = 3 + 4 + 5
+        gemv = 2 * 3 + 4
+        flux = 3 + (-3)
+        lp_slack = 4 + (-4)
+        makespan = 5 + 7
+        nyquist = 8 / 2
+        residual = 5 + (-5)
+        width = 7 + (-3)
+        flop = 2 * 3 * 4
+        horizon = 2 * 4
+        eoq = 2 * 6
+        pareto = 2 * 3 + 4 * 1
+        sim_mean = (1 + 3 + 5) / 3
+    tests:
+        example <slice>:
+            given unused = 0
+            expect det2 == 7
+            expect trap == 4
+            expect stencil == 0
+            expect newton == 2
+            expect jensen == 5
+            expect energy == 25
+            expect kalman == 2
+            expect tsp == 12
+            expect gemv == 10
+            expect flux == 0
+            expect lp_slack == 0
+            expect makespan == 12
+            expect nyquist == 4
+            expect residual == 0
+            expect width == 4
+            expect flop == 24
+            expect horizon == 8
+            expect eoq == 12
+            expect pareto == 10
+            expect sim_mean == 3

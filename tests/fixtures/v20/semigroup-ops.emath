@@ -1,0 +1,19 @@
+# User-shaped semigroup operations: order slice, associativity, idempotent.
+
+emath function SemigroupOps:
+    inputs:
+        unused: Int
+    outputs:
+        order_s3: Int
+        assoc_holds: Bool
+        idempotent_zero: Int
+    definitions:
+        order_s3 = 3 * 2 * 1
+        assoc_holds = (2 * 3) * 4 == 2 * (3 * 4)
+        idempotent_zero = 0 * 0
+    tests:
+        example <slice>:
+            given unused = 0
+            expect order_s3 == 6
+            expect assoc_holds == true
+            expect idempotent_zero == 0

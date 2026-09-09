@@ -1,0 +1,79 @@
+# User-shaped algebra field operations. Not a teaching example.
+
+emath function AlgebraMoreOps:
+    inputs:
+        unused: Int
+    outputs:
+        sl3_dim: Int
+        bracket_skew: Int
+        trivial_dim: Int
+        hom_dim: Int
+        euler: Int
+        disc: Int
+        j_inv: Int
+        vp_unit: Int
+        vp_p: Int
+        oct_ones: Int
+        tensor_assoc: Int
+        gb_rem: Int
+        compose_arity: Int
+        cayley_nhood: Int
+        pi_five: Int
+        m12_dim: Int
+        mediant_num: Int
+        crt_ok: Bool
+        ext_dim: Int
+        farey_w: Int
+        cat_id: Int
+        phi_seven: Int
+        quad_disc: Int
+    definitions:
+        sl3_dim = 3 * 3 - 1
+        bracket_skew = 1 + (-1)
+        trivial_dim = 1 + 0
+        hom_dim = 2 * 3
+        euler = 1 + 0
+        disc = -16 * 27
+        j_inv = 0 * 1
+        vp_unit = 0 * 1
+        vp_p = 1 + 0
+        oct_ones = 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1
+        tensor_assoc = (2 * 3) * 4
+        gb_rem = 6 + (-6)
+        compose_arity = 2 + 1
+        cayley_nhood = 1 + 2 * 3
+        pi_five = 2 + 1
+        m12_dim = 1 + 1
+        mediant_num = 1 + 1
+        crt_ok = int_rem(8, 3) == 2
+        ext_dim = 2 * 2 * 2
+        farey_w = 1 * 7 - 1 * 4
+        cat_id = (1 + 2) - 2
+        phi_seven = 7 + (-1)
+        quad_disc = 1 + (-4)
+    tests:
+        example <slice>:
+            given unused = 0
+            expect sl3_dim == 8
+            expect bracket_skew == 0
+            expect trivial_dim == 1
+            expect hom_dim == 6
+            expect euler == 1
+            expect disc == -432
+            expect j_inv == 0
+            expect vp_unit == 0
+            expect vp_p == 1
+            expect oct_ones == 8
+            expect tensor_assoc == 24
+            expect gb_rem == 0
+            expect compose_arity == 3
+            expect cayley_nhood == 7
+            expect pi_five == 3
+            expect m12_dim == 2
+            expect mediant_num == 2
+            expect crt_ok == true
+            expect ext_dim == 8
+            expect farey_w == 3
+            expect cat_id == 1
+            expect phi_seven == 6
+            expect quad_disc == -3

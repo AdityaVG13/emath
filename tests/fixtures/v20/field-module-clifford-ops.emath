@@ -1,0 +1,40 @@
+# Field / Galois / module / Clifford user-shaped operations.
+
+emath function FieldGaloisOps:
+    inputs:
+        unused: Int
+    outputs:
+        tower: Int
+        char_five: Int
+        inv_ok: Bool
+    definitions:
+        tower = 4 / 2
+        char_five = 1 + 1 + 1 + 1 + 1
+        inv_ok = int_rem(2 * 3, 5) == 1
+    tests:
+        example <f5>:
+            given unused = 0
+            expect tower == 2
+            expect char_five == 5
+            expect inv_ok == true
+
+emath function ModuleCliffordOps:
+    inputs:
+        unused: Int
+    outputs:
+        tensor_rank: Int
+        sum_rank: Int
+        cliff_dim: Int
+        e_square: Int
+    definitions:
+        tensor_rank = 3 * 4
+        sum_rank = 3 + 4
+        cliff_dim = 2 * 2 * 2 * 2
+        e_square = 1 * 1
+    tests:
+        example <ranks>:
+            given unused = 0
+            expect tensor_rank == 12
+            expect sum_rank == 7
+            expect cliff_dim == 16
+            expect e_square == 1

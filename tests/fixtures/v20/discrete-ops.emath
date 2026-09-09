@@ -1,0 +1,88 @@
+# User-shaped discrete combinatorics operations. Not a teaching example.
+
+emath function DiscreteFieldOps:
+    inputs:
+        unused: Int
+    outputs:
+        choose: Int
+        tri: Int
+        catalan: Int
+        stirling: Int
+        ramsey: Int
+        sumset: Int
+        central: Int
+        latin: Int
+        design: Int
+        matroid: Int
+        k5: Int
+        tree_e: Int
+        handshake: Int
+        hyper: Int
+        planar: Int
+        hops: Int
+        fano: Int
+        triang: Int
+        tile: Int
+        pack: Int
+        nimz: Int
+        collatz: Int
+        part: Int
+        p53: Int
+        words: Int
+        incl: Int
+    definitions:
+        choose = 5 * 4 / 2
+        tri = 5 * 6 / 2
+        catalan = 6 * 5 * 4 / (4 * 3 * 2)
+        stirling = 6 + 1
+        ramsey = 2 * 3
+        sumset = 2 * 3 + (-1)
+        central = 6 * 5 * 4 / (3 * 2 * 1)
+        latin = 5 * 5
+        design = 4 * 3 + (-6) * 2
+        matroid = 3 + 4 + (-5) + (-2)
+        k5 = 5 * 4 / 2
+        tree_e = 7 + (-1)
+        handshake = 2 * 6
+        hyper = 4 * 3 * 2 / (3 * 2 * 1)
+        planar = 3 * 5 + (-6)
+        hops = 4 + 7
+        fano = 2 * 2 * 2 + (-1)
+        triang = 2 * 3 + (-4)
+        tile = 3 * 8
+        pack = 20 / 4
+        nimz = 3 + (-3)
+        collatz = 3 * 5 + 1
+        part = 3 + 2
+        p53 = 5 * 4 * 3
+        words = 2 * 2 * 2
+        incl = 5 + 5 + 5 + (-2) + (-2) + (-2) + 1
+    tests:
+        example <slice>:
+            given unused = 0
+            expect choose == 10
+            expect tri == 15
+            expect catalan == 5
+            expect stirling == 7
+            expect ramsey == 6
+            expect sumset == 5
+            expect central == 20
+            expect latin == 25
+            expect design == 0
+            expect matroid == 0
+            expect k5 == 10
+            expect tree_e == 6
+            expect handshake == 12
+            expect hyper == 4
+            expect planar == 9
+            expect hops == 11
+            expect fano == 7
+            expect triang == 2
+            expect tile == 24
+            expect pack == 5
+            expect nimz == 0
+            expect collatz == 16
+            expect part == 5
+            expect p53 == 60
+            expect words == 8
+            expect incl == 10

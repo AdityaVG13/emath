@@ -1,0 +1,19 @@
+# Commutative algebra: ab=ba and a+b=b+a.
+
+emath function CommutativeAlgebraOps:
+    inputs:
+        unused: Int
+    outputs:
+        mul_commutes: Bool
+        add_commutes: Bool
+        product_slice: Int
+    definitions:
+        mul_commutes = 2 * 3 == 3 * 2
+        add_commutes = 2 + 3 == 3 + 2
+        product_slice = 2 * 3
+    tests:
+        example <ints>:
+            given unused = 0
+            expect mul_commutes == true
+            expect add_commutes == true
+            expect product_slice == 6

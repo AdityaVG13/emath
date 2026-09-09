@@ -1,0 +1,34 @@
+# User-shaped cryptology/puzzle operations. Not a teaching example.
+
+emath function CryptologyFieldOps:
+    inputs:
+        unused: Int
+    outputs:
+        affine: Int
+        rsae: Int
+        share: Int
+        grid: Int
+        ham_path: Int
+        steg: Int
+        shift: Int
+        csp: Int
+    definitions:
+        affine = 5 * 3 + 7
+        rsae = 3 * 7
+        share = 2 + 1
+        grid = 9 * 9
+        ham_path = 3 + 4
+        steg = 8 / 2
+        shift = 3 + 2
+        csp = 4 * 3
+    tests:
+        example <slice>:
+            given unused = 0
+            expect affine == 22
+            expect rsae == 21
+            expect share == 3
+            expect grid == 81
+            expect ham_path == 7
+            expect steg == 4
+            expect shift == 5
+            expect csp == 12

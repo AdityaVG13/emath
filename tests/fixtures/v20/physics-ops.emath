@@ -1,0 +1,70 @@
+# User-shaped physics and engineering operations. Not a teaching example.
+
+emath function PhysicsFieldOps:
+    inputs:
+        unused: Int
+    outputs:
+        force: Int
+        ke: Int
+        lag: Int
+        kepler: Int
+        hooke: Int
+        cfl: Int
+        re: Int
+        ohm: Int
+        kirch: Int
+        emc: Int
+        an: Int
+        balance: Int
+        ekin: Int
+        partz: Int
+        torque: Int
+        da: Int
+        yield0: Int
+        wave: Int
+        lattice: Int
+        moment: Int
+    definitions:
+        force = 2 * 3
+        ke = 2 * 2 * 2 / 2
+        lag = 5 + (-2)
+        kepler = 8 / 8
+        hooke = 3 * 5
+        cfl = 2 * 1 / 2
+        re = 8 * 2 / 4
+        ohm = 12 / 3
+        kirch = 2 + 3 + (-5)
+        emc = 2 * 3 * 3
+        an = 2 + 3
+        balance = 4 + (-4)
+        ekin = 4 * 4 / (2 * 2)
+        partz = 1 + 2 + 4
+        torque = 2 * 4
+        da = 4 / 2
+        yield0 = 6 + (-6)
+        wave = 6 / 2
+        lattice = 2 * 2 * 2
+        moment = 2 * 6
+    tests:
+        example <slice>:
+            given unused = 0
+            expect force == 6
+            expect ke == 4
+            expect lag == 3
+            expect kepler == 1
+            expect hooke == 15
+            expect cfl == 1
+            expect re == 4
+            expect ohm == 4
+            expect kirch == 0
+            expect emc == 18
+            expect an == 5
+            expect balance == 0
+            expect ekin == 4
+            expect partz == 7
+            expect torque == 8
+            expect da == 2
+            expect yield0 == 0
+            expect wave == 3
+            expect lattice == 8
+            expect moment == 12
