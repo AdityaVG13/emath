@@ -32,6 +32,7 @@ pub fn run(args: &[String]) -> CliExit {
             EXIT_OK
         }),
         ParsedCli::MetaTriage { target, json } => triage::triage_cmd(target, json),
+        ParsedCli::MetaNext { target, json } => triage::next_cmd(target, json),
         ParsedCli::CommandHelp { name, json } => print_command_help(name, json),
         ParsedCli::UnknownFlag { code } => code,
         ParsedCli::Pedagogic(err) => err.emit(catalog::wants_json(&cleaned_args)),
@@ -60,6 +61,7 @@ pub(super) enum ParsedCli<'a> {
     MetaCapabilities { rest: &'a [String] },
     MetaRobotDocs { rest: &'a [String] },
     MetaTriage { target: Option<PathBuf>, json: bool },
+    MetaNext { target: Option<PathBuf>, json: bool },
     CommandHelp { name: &'a str, json: bool },
     UnknownFlag { code: CliExit },
     Pedagogic(PedagogicError),
@@ -179,6 +181,37 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
                 }
             }
             return ParsedCli::MetaTriage { target, json };
+        }
+        "next" | "--robot-next" => {
+            if catalog::wants_help(rest) {
+                return ParsedCli::CommandHelp {
+                    name: "next",
+                    json: catalog::wants_json(rest),
+                };
+            }
+            if let Some(code) = catalog::reject_unknown_flags("next", rest) {
+                return ParsedCli::UnknownFlag { code };
+            }
+            let json = catalog::wants_json(rest) || first == "--robot-next";
+            let mut target = None;
+            for arg in rest {
+                if !arg.starts_with('-') {
+                    if target.is_some() {
+                        return ParsedCli::Pedagogic(
+                            PedagogicError::new(
+                                "E-CLI-USAGE",
+                                "next accepts at most one target file",
+                                "arguments for `emath next`",
+                                "emath next [<file.emath>] [--json]",
+                            )
+                            .with_command("next")
+                            .with_usage("emath next [<file.emath>] [--json]"),
+                        );
+                    }
+                    target = Some(PathBuf::from(arg));
+                }
+            }
+            return ParsedCli::MetaNext { target, json };
         }
         _ => {}
     }

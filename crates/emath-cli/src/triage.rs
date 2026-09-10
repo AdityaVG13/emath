@@ -1,4 +1,4 @@
-//! Mega-command for AI agents and developers (`emath triage` / `emath --robot-triage`).
+//! Mega-command for AI agents and developers (`emath triage` / `emath --robot-triage` / `emath next` / `emath --robot-next`).
 //!
 //! Provides single-call complete situational awareness:
 //! - Workspace and target file orientation
@@ -21,29 +21,14 @@ pub struct TriageRecommendation {
     pub reason: String,
 }
 
-pub fn triage_cmd(target: Option<PathBuf>, json: bool) -> CliExit {
-    let probes = doctor_probes();
-    let doctor_ok = probes.iter().all(|probe| probe.ok);
-
-    let active_path = target.or_else(discover_target_file);
-
-    let (admitted, package_id, diagnostics, goals, plans_count, plan_ok) = match &active_path {
-        Some(path) if path.exists() => {
-            let (diags, pkg_id, _) = run_check(path);
-            let adm = !diags.has_errors();
-            let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-            let (g, p, p_ok) = match session.load_package(path) {
-                Ok(pkg) => {
-                    let result = session.plan(pkg.file);
-                    (result.package.goals, result.plans.len(), true)
-                }
-                Err(_) => (Vec::new(), 0, false),
-            };
-            (adm, Some(pkg_id), diags, g, p, p_ok)
-        }
-        _ => (false, None, emath_core::Diagnostics::new(), Vec::new(), 0, false),
-    };
-
+/// Computes ranked next actions given active path and system diagnostic state.
+pub fn compute_recommendations(
+    active_path: Option<&Path>,
+    doctor_ok: bool,
+    probes: &[crate::tooling_cmd::DoctorProbe],
+    admitted: bool,
+    diagnostics: &emath_core::Diagnostics,
+) -> Vec<TriageRecommendation> {
     let mut recommendations = Vec::new();
     let mut prio = 1;
 
@@ -58,7 +43,7 @@ pub fn triage_cmd(target: Option<PathBuf>, json: bool) -> CliExit {
         prio += 1;
     }
 
-    match &active_path {
+    match active_path {
         Some(path) => {
             let path_str = path.display().to_string();
             if !admitted {
@@ -118,6 +103,40 @@ pub fn triage_cmd(target: Option<PathBuf>, json: bool) -> CliExit {
         }
     }
 
+    recommendations
+}
+
+pub fn triage_cmd(target: Option<PathBuf>, json: bool) -> CliExit {
+    let probes = doctor_probes();
+    let doctor_ok = probes.iter().all(|probe| probe.ok);
+
+    let active_path = target.or_else(discover_target_file);
+
+    let (admitted, package_id, diagnostics, goals, plans_count, plan_ok) = match &active_path {
+        Some(path) if path.exists() => {
+            let (diags, pkg_id, _) = run_check(path);
+            let adm = !diags.has_errors();
+            let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+            let (g, p, p_ok) = match session.load_package(path) {
+                Ok(pkg) => {
+                    let result = session.plan(pkg.file);
+                    (result.package.goals, result.plans.len(), true)
+                }
+                Err(_) => (Vec::new(), 0, false),
+            };
+            (adm, Some(pkg_id), diags, g, p, p_ok)
+        }
+        _ => (false, None, emath_core::Diagnostics::new(), Vec::new(), 0, false),
+    };
+
+    let recommendations = compute_recommendations(
+        active_path.as_deref(),
+        doctor_ok,
+        &probes,
+        admitted,
+        &diagnostics,
+    );
+
     if json {
         print_triage_json(
             active_path.as_deref(),
@@ -141,6 +160,85 @@ pub fn triage_cmd(target: Option<PathBuf>, json: bool) -> CliExit {
             plans_count,
             &recommendations,
         );
+    }
+
+    if doctor_ok && (active_path.is_none() || admitted) {
+        EXIT_OK
+    } else {
+        EXIT_REFUSED
+    }
+}
+
+/// Next-action engine command (`emath next` / `emath --robot-next`).
+/// Emits the single highest-priority next action for agent loops.
+pub fn next_cmd(target: Option<PathBuf>, json: bool) -> CliExit {
+    let probes = doctor_probes();
+    let doctor_ok = probes.iter().all(|probe| probe.ok);
+
+    let active_path = target.or_else(discover_target_file);
+
+    let (admitted, diagnostics) = match &active_path {
+        Some(path) if path.exists() => {
+            let (diags, _, _) = run_check(path);
+            let adm = !diags.has_errors();
+            (adm, diags)
+        }
+        _ => (false, emath_core::Diagnostics::new()),
+    };
+
+    let recommendations = compute_recommendations(
+        active_path.as_deref(),
+        doctor_ok,
+        &probes,
+        admitted,
+        &diagnostics,
+    );
+
+    let top = recommendations.first();
+
+    if json {
+        let mut root = JsonWriter::object();
+        root.string("schema", "emath.next");
+        root.string("tool", "emath");
+        root.string("version", env!("CARGO_PKG_VERSION"));
+        root.string(
+            "status",
+            if doctor_ok && (active_path.is_none() || admitted) {
+                "ready"
+            } else {
+                "attention_required"
+            },
+        );
+
+        if let Some(rec) = top {
+            root.string("action", rec.action);
+            root.int("priority", rec.priority as u64);
+            root.string("command", &rec.command);
+            root.string("reason", &rec.reason);
+            root.string("claim_command", &rec.command);
+        } else {
+            root.string("action", "none");
+            root.int("priority", 0);
+            root.string("command", "");
+            root.string("reason", "No pending actions found");
+            root.string("claim_command", "");
+        }
+        println!("{}", root.finish());
+    } else {
+        println!("{}", crate::terminal::stdout_bold("emath next-action:"));
+        if let Some(rec) = top {
+            let action_tag = crate::terminal::stdout_cyan(&format!("[{}]", rec.action));
+            let cmd_text = crate::terminal::stdout_bold(&rec.command);
+            println!("  {action_tag} {cmd_text}");
+            println!("  -> {}", rec.reason);
+            println!();
+            println!(
+                "Run command to proceed. Pass {} for machine-readable output.",
+                crate::terminal::stdout_dim("--json")
+            );
+        } else {
+            println!("  All actions clear; workspace ready.");
+        }
     }
 
     if doctor_ok && (active_path.is_none() || admitted) {

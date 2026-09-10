@@ -46,6 +46,8 @@ pub fn capabilities_json() -> String {
         ("diff", "Content-id fingerprint comparison", "diff <a.emath> <b.emath> [--json]"),
         ("doctor", "Toolchain presence and environment health", "doctor [--json]"),
         ("capabilities", "Machine-readable contract and capabilities export", "capabilities [--json]"),
+        ("triage", "Mega-command to orient, check health, and get recommendations", "triage [<file.emath>] [--json]"),
+        ("next", "Next-action engine returning top action and claim command", "next [<file.emath>] [--json]"),
         ("help", "Command catalog and help text", "help [<command>]"),
         ("version", "Print emath-cli version", "version"),
     ];
@@ -108,6 +110,7 @@ pub fn capabilities_json() -> String {
         "command_aliases".to_string(),
         "environment_conventions".to_string(),
         "ansi_color_control".to_string(),
+        "next_action_engine".to_string(),
         "provable_artifacts".to_string(),
     ];
     root.strings("features", &features);

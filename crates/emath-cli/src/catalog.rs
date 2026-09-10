@@ -27,6 +27,7 @@ pub const COMMANDS: &[&str] = &[
     "capabilities",
     "robot-docs",
     "triage",
+    "next",
     "help",
     "version",
 ];
@@ -80,6 +81,7 @@ pub const ALIASES: &[(&str, &str)] = &[
     ("caps", "capabilities"),
     ("guide", "robot-docs"),
     ("tr", "triage"),
+    ("n", "next"),
 ];
 
 /// Returns the primary command for a given alias, or None if not an alias.
@@ -110,6 +112,7 @@ pub fn command_aliases(command: &str) -> &'static [&'static str] {
         "capabilities" => &["caps"],
         "robot-docs" => &["guide"],
         "triage" => &["tr"],
+        "next" => &["n"],
         _ => &[],
     }
 }
@@ -193,6 +196,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "capabilities" => "capabilities [--json]",
         "robot-docs" => "robot-docs [guide]",
         "triage" => "triage [<file.emath>] [--json]",
+        "next" => "next [<file.emath>] [--json]",
         _ => return None,
     })
 }
@@ -290,6 +294,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "capabilities" => "machine contract: commands, flags, exit codes, env vars",
         "robot-docs" => "paste-ready agent handbook (`guide`)",
         "triage" => "mega-command: orient, inspect health, and get ranked next actions",
+        "next" => "next-action engine: return highest-priority next step and claim command",
         _ => return None,
     })
 }
@@ -500,6 +505,11 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
             "emath triage model.emath",
             "emath triage --json",
         ],
+        "next" => &[
+            "emath next",
+            "emath next model.emath",
+            "emath next --json",
+        ],
         "capabilities" => &[
             "emath capabilities",
             "emath capabilities --json",
@@ -690,6 +700,7 @@ Aliases (single-letter & shorthand)
   s, sim -> simulate    doc -> doctor         format -> fmt
   t -> test             r -> run              df -> diff
   caps -> capabilities  guide -> robot-docs   tr -> triage
+  n -> next
 
 Exit codes (stable contract)
   0  success (contract met)
@@ -760,7 +771,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "explain" => &["--json", "--provenance", "--show-defaults", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" => &["--json", "--verify-data", "--help", "-h"],
-        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "triage" | "import"
+        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "triage" | "next" | "import"
         | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
         "coverage" => &["--emit", "--check", "--help", "-h"],
         "solve" => &["--check", "--json", "--apply", "--help", "-h"],
