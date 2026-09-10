@@ -322,11 +322,44 @@ pub(super) fn print_command_help(command: &str) -> CliExit {
             print!("{text}");
             EXIT_OK
         }
-        None => unknown_command(command),
+        None => unknown_command(command, false),
     }
 }
 
-pub(super) fn unknown_command(other: &str) -> CliExit {
+pub(super) fn unknown_command(other: &str, json: bool) -> CliExit {
+    if json {
+        let mut obj = emath_artifact::JsonWriter::object();
+        obj.string("status", "error");
+        obj.string("code", "E-CLI-UNKNOWN-COMMAND");
+        if catalog::EXTRACTED_COMMANDS.contains(&other) {
+            let msg = format!("`{other}` lives in `emath-lab`, not production `emath`");
+            obj.string("message", &msg);
+            let dym = format!("emath-lab {other}");
+            obj.string("did_you_mean", &dym);
+            let t = format!("emath-lab help {other}");
+            obj.string("try", &t);
+        } else {
+            let msg = format!("unknown command `{other}`");
+            obj.string("message", &msg);
+            if let Some(hint) = catalog::suggest_command(other) {
+                if catalog::EXTRACTED_COMMANDS.contains(&hint) {
+                    let dym = format!("emath-lab {hint}");
+                    obj.string("did_you_mean", &dym);
+                    let t = format!("emath-lab help {hint}");
+                    obj.string("try", &t);
+                } else {
+                    let dym = format!("emath {hint}");
+                    obj.string("did_you_mean", &dym);
+                    let t = format!("emath help {hint}");
+                    obj.string("try", &t);
+                }
+            } else {
+                obj.string("try", "emath help");
+            }
+        }
+        println!("{}", obj.finish());
+        return EXIT_USAGE;
+    }
     if catalog::EXTRACTED_COMMANDS.contains(&other) {
         eprintln!("error: `{other}` lives in `emath-lab`, not production `emath`");
         eprintln!("try: emath-lab {other}");

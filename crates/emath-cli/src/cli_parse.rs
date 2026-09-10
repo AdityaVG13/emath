@@ -29,36 +29,27 @@ pub fn run(args: &[String]) -> CliExit {
         }),
         ParsedCli::MetaTriage { target, json } => triage::triage_cmd(target, json),
         ParsedCli::CommandHelp { name } => print_command_help(name),
-        ParsedCli::UnknownFlag { code } => {
-            if catalog::wants_json(args)
-                && matches!(
-                    args.first().map(String::as_str),
-                    Some("api" | "run" | "step" | "inspect" | "verify")
-                )
-            {
-                execution::diagnostic(
-                    true,
-                    code,
-                    "E-CLI-USAGE",
-                    "invalid command arguments; use emath help for the accepted arguments",
-                )
-            } else {
-                code
-            }
-        }
+        ParsedCli::UnknownFlag { code } => code,
         ParsedCli::Usage(message) => {
-            if catalog::wants_json(args)
-                && matches!(
-                    args.first().map(String::as_str),
-                    Some("api" | "run" | "step" | "inspect" | "verify")
-                )
-            {
-                execution::diagnostic(true, EXIT_USAGE, "E-CLI-USAGE", message)
+            if catalog::wants_json(args) {
+                let mut obj = emath_artifact::JsonWriter::object();
+                obj.string("status", "error");
+                obj.string("code", "E-CLI-USAGE");
+                obj.string("message", message);
+                let cmd = args.first().map(String::as_str).unwrap_or("help");
+                if let Some(usage_text) = catalog::command_usage(cmd) {
+                    let u = format!("emath {usage_text}");
+                    obj.string("usage", &u);
+                }
+                let t = format!("emath help {cmd}");
+                obj.string("try", &t);
+                println!("{}", obj.finish());
+                EXIT_USAGE
             } else {
                 usage(message)
             }
         }
-        ParsedCli::Unknown(name) => unknown_command(name),
+        ParsedCli::Unknown(name) => unknown_command(name, catalog::wants_json(args)),
         ParsedCli::Known(command) => run_command(command),
     }
 }
@@ -179,6 +170,9 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
     }
     if catalog::wants_help(rest) {
         return ParsedCli::CommandHelp { name: first };
+    }
+    if !catalog::is_known_command(first.as_str()) {
+        return ParsedCli::Unknown(first);
     }
     if let Some(code) = catalog::reject_unknown_flags(first, rest) {
         return ParsedCli::UnknownFlag { code };

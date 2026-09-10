@@ -64,6 +64,12 @@ pub const EXTRACTED_COMMANDS: &[&str] = &[
     "agent",
 ];
 
+/// Returns true if the command is a recognized production emath command.
+#[must_use]
+pub fn is_known_command(command: &str) -> bool {
+    COMMANDS.contains(&command)
+}
+
 /// One-line usage after `emath` for a known command.
 #[must_use]
 pub fn command_usage(command: &str) -> Option<&'static str> {
@@ -251,11 +257,11 @@ pub fn suggest_command(unknown: &str) -> Option<&'static str> {
         let distance = edit_distance(needle, command);
         let prefix = command.starts_with(needle) || needle.starts_with(command);
         let score = if prefix {
-            distance.saturating_sub(1)
+            distance.saturating_sub(needle.len().min(2))
         } else {
             distance
         };
-        if score <= 2 && best.is_none_or(|(_, current)| score < current) {
+        if score <= 3 && best.is_none_or(|(_, current)| score < current) {
             best = Some((command, score));
         }
     }
@@ -465,7 +471,24 @@ fn value_looks_like_flag(value: &str, known: &[&str]) -> bool {
     value.starts_with("--") || known.contains(&value)
 }
 
-fn missing_value_exit(command: &str, arg: &str) -> CliExit {
+fn missing_value_exit(command: &str, arg: &str, json: bool) -> CliExit {
+    if json {
+        let mut obj = emath_artifact::JsonWriter::object();
+        obj.string("status", "error");
+        obj.string("code", "E-CLI-MISSING-VALUE");
+        let msg = format!("`{arg}` needs a value for `emath {command}`");
+        obj.string("message", &msg);
+        obj.string("flag", arg);
+        obj.string("command", command);
+        if let Some(usage) = command_usage(command) {
+            let u = format!("emath {usage}");
+            obj.string("usage", &u);
+        }
+        let t = format!("emath help {command}");
+        obj.string("try", &t);
+        println!("{}", obj.finish());
+        return CliExit::Usage;
+    }
     eprintln!("error: `{arg}` needs a value for `emath {command}`");
     if let Some(usage) = command_usage(command) {
         eprintln!("usage: emath {usage}");
@@ -477,6 +500,7 @@ fn missing_value_exit(command: &str, arg: &str) -> CliExit {
 /// Refuse unknown flags instead of silently ignoring them.
 pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<CliExit> {
     let known = flags_for(command);
+    let json = wants_json(args);
     let mut index = 0;
     while index < args.len() {
         let arg = args[index].as_str();
@@ -484,6 +508,24 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<CliExit> {
             break;
         }
         if arg.starts_with('-') && arg != "-" && !known.contains(&arg) {
+            if json {
+                let mut obj = emath_artifact::JsonWriter::object();
+                obj.string("status", "error");
+                obj.string("code", "E-CLI-UNKNOWN-FLAG");
+                let msg = format!("unknown flag `{arg}` for `emath {command}`");
+                obj.string("message", &msg);
+                if let Some(hint) = suggest_flag(arg, known) {
+                    obj.string("did_you_mean", hint);
+                }
+                if let Some(usage) = command_usage(command) {
+                    let u = format!("emath {usage}");
+                    obj.string("usage", &u);
+                }
+                let t = format!("emath help {command}");
+                obj.string("try", &t);
+                println!("{}", obj.finish());
+                return Some(CliExit::Usage);
+            }
             eprintln!("error: unknown flag `{arg}` for `emath {command}`");
             if let Some(hint) = suggest_flag(arg, known) {
                 eprintln!("did you mean `{hint}`?");
@@ -501,7 +543,7 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<CliExit> {
             let missing =
                 index + 1 >= args.len() || value_looks_like_flag(args[index + 1].as_str(), known);
             if missing {
-                return Some(missing_value_exit(command, arg));
+                return Some(missing_value_exit(command, arg, json));
             }
             index += 1;
         }
@@ -511,11 +553,27 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<CliExit> {
 }
 
 fn suggest_flag(unknown: &str, known: &'static [&'static str]) -> Option<&'static str> {
+    let needle = unknown.trim_start_matches('-');
     let mut best: Option<(&'static str, usize)> = None;
     for flag in known {
-        let distance = edit_distance(unknown, flag);
-        if distance <= 3 && best.is_none_or(|(_, current)| distance < current) {
-            best = Some((flag, distance));
+        let flag_needle = flag.trim_start_matches('-');
+        if needle.is_empty() || flag_needle.is_empty() {
+            continue;
+        }
+        let distance = edit_distance(needle, flag_needle);
+        let prefix = flag_needle.starts_with(needle) || needle.starts_with(flag_needle);
+        let part_match = flag_needle
+            .split('-')
+            .any(|part| part == needle || edit_distance(needle, part) <= 1);
+        let score = if part_match {
+            1
+        } else if prefix {
+            distance.saturating_sub(needle.len().min(3))
+        } else {
+            distance
+        };
+        if score <= 3 && best.is_none_or(|(_, current)| score < current) {
+            best = Some((flag, score));
         }
     }
     best.map(|(flag, _)| flag)
