@@ -174,6 +174,15 @@ impl super::super::Admitter {
         };
         let name = segments.join("::");
         let dotted = name.contains("::").then(|| name.replace("::", "."));
+        // Declaration authority: a sibling `emath function` in this file
+        // shadows any ambient capability alias with the same leaf
+        // (`inner` the user function must never hijack to the geometry
+        // inner-product alias). Siblings key by leaf; one file is one
+        // package.
+        let sibling_leaf = name.rsplit("::").next().unwrap_or(&name).to_string();
+        if self.sibling_functions.contains_key(&sibling_leaf) {
+            return self.lower_sibling_call(&sibling_leaf, args, expr.source);
+        }
         if let Some(binding) = self
             .capability_cells
             .iter()
@@ -329,9 +338,6 @@ impl super::super::Admitter {
                     return Some((id, result));
                 }
             }
-        }
-        if self.sibling_functions.contains_key(&name) {
-            return self.lower_sibling_call(&name, args, expr.source);
         }
         // Carrier cardinality is a universal machine op, not a FeatureID.
         if operator_leaf(&name) == "length" {

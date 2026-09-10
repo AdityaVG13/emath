@@ -437,6 +437,21 @@ impl Admitter {
                 let body = self.inline_defs(body);
                 self.push_expr(ExprNode::Program { body, inputs }, span)
             }
+            // Capability applications carry the renamed sibling
+            // parameters in their ARGUMENTS: integer `+` on a spliced
+            // callee body lowers to an Apply of the machine add
+            // capability, and without this arm the Apply's argument
+            // vectors kept the raw `param#owner` Variables — the runner
+            // then refused them as unknown inputs (E-EVAL-007). Fold the
+            // arguments like any other node (emath-sibling-apply).
+            ExprNode::Apply {
+                capability,
+                arguments,
+            } => {
+                let arguments: Vec<_> =
+                    arguments.into_iter().map(|a| self.inline_defs(a)).collect();
+                self.push_expr(ExprNode::Apply { capability, arguments }, span)
+            }
             // Slice, Record — keep as-is (rare in derivative bodies).
             // Binder DOMAINS must be inlined like any other expression:
             // a variable-range binder in a callee body (`product k in
