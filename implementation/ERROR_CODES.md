@@ -1311,7 +1311,7 @@ Not yet documented at generation time: **0**.
 | `E-GOAL-013` | crates/emath-goal/src/schema.rs | `E-GOAL-013` |
 | `E-GOAL-041` | crates/emath-sema/src/session/requests.rs | `E-GOAL-041` |
 | `E-GOAL-042` | crates/emath-sema/src/session/requests.rs | `E-GOAL-042`<br>`unrecognized fit row `{row}` (fit rows: model, prediction, residual, method, initial, weights, data, require i` |
-| `E-GOAL-043` | crates/emath-sema/src/session/requests.rs | `E-GOAL-043` |
+| `E-GOAL-043` | crates/emath-cli/src/execution.rs<br>crates/emath-sema/src/session/requests.rs | `E-GOAL-043` |
 | `E-GOAL-044` | crates/emath-sema/src/session/requests.rs | `E-GOAL-044` |
 | `E-GOAL-045` | crates/emath-sema/src/session/requests.rs | `E-GOAL-045` |
 | `E-GOAL-201` | crates/emath-plan/src/planner.rs | `E-GOAL-201`<br>`E-GOAL-201: no eligible plan` |

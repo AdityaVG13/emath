@@ -455,6 +455,37 @@ fn installed_language(path: &Path, json: bool) -> Result<String, CliExit> {
     Ok(distribution.image.distribution_hash.to_string())
 }
 
+/// Plan the source for `emath run`: the admission package PLUS the
+/// elaborated goals (`package.declarations[].goals` attaches only in the
+/// planner path). The run consults goal kinds — a goal outside the
+/// executable subset must refuse (E-GOAL-043) before any checkpoint is
+/// written — so the run needs the planned view, not the bare check.
+fn planned_package(path: &Path, json: bool) -> Result<SemanticPackage, CliExit> {
+    let mut session = CompilerSession::new(Limits::default());
+    let loaded = session
+        .load_package(path)
+        .map_err(|error| diagnostic(json, EXIT_USAGE, "E-PKG-080", &format!("{error:?}")))?;
+    let result = session.plan(loaded.file);
+    if result.diagnostics.has_errors() {
+        crate::print_diagnostics(&result.diagnostics);
+        if json {
+            let mut out = JsonWriter::object();
+            out.string("schema", SCHEMA);
+            out.string("operation_status", "failed");
+            out.bool("goal_met", false);
+            out.objects("results", &[]);
+            out.objects(
+                "diagnostics",
+                &crate::json_diagnostics_entries(&result.diagnostics),
+            );
+            println!("{}", out.finish());
+        }
+        Err(EXIT_REFUSED)
+    } else {
+        Ok(result.package)
+    }
+}
+
 pub(crate) fn run(request: RunRequest) -> CliExit {
     if let Some(exit) = crate::refuse_malformed_project_lock(&request.path) {
         return diagnostic(
@@ -476,7 +507,7 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
         Ok(source) => source,
         Err(error) => return diagnostic(request.json, EXIT_USAGE, "E-PKG-080", &error.to_string()),
     };
-    let package = match checked_package(&path, request.json) {
+    let package = match planned_package(&path, request.json) {
         Ok(package) => package,
         Err(exit) => return exit,
     };
@@ -507,6 +538,39 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
         measurements: Vec::new(),
         branch: None,
     };
+    // Typed-hole discipline (E-GOAL-043): the runner executes evaluate
+    // cases. A no-test declaration carrying a goal outside that
+    // executable subset (a scratch `find` lowers to `search` — an open
+    // hole stays symbolic) refuses before any checkpoint is written:
+    // never a produced crate for an unexecutable goal. Declarations with
+    // tests run their pinned cases; the goals do not gate those.
+    for declaration in &package.declarations {
+        if state
+            .function
+            .as_deref()
+            .is_some_and(|name| declaration.name.leaf() != name)
+        {
+            continue;
+        }
+        if declaration.tests.is_empty() {
+            for goal_id in &declaration.goals {
+                if let Some(goal) = package.goal(*goal_id)
+                    && goal.kind != GoalKind::Evaluate
+                {
+                    return diagnostic(
+                        request.json,
+                        EXIT_REFUSED,
+                        "E-GOAL-043",
+                        &format!(
+                            "goal kind `{}` on `{}` is outside `emath run`'s executable subset (evaluate cases only); the goal stays symbolic — inspect `emath-lab expand`",
+                            goal.kind.as_str(),
+                            declaration.name.leaf(),
+                        ),
+                    );
+                }
+            }
+        }
+    }
     if let (Some(parent), Some(relation)) = (&request.branch_from, &request.relation) {
         let ancestry = std::fs::canonicalize(parent)
             .map_err(|error| error.to_string())
