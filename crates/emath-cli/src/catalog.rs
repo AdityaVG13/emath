@@ -64,16 +64,67 @@ pub const EXTRACTED_COMMANDS: &[&str] = &[
     "agent",
 ];
 
+/// Canonical command aliases mapping shorthand names to primary commands.
+pub const ALIASES: &[(&str, &str)] = &[
+    ("c", "check"),
+    ("chk", "check"),
+    ("b", "build"),
+    ("p", "plan"),
+    ("sim", "simulate"),
+    ("s", "simulate"),
+    ("doc", "doctor"),
+    ("format", "fmt"),
+    ("t", "test"),
+    ("r", "run"),
+    ("df", "diff"),
+    ("caps", "capabilities"),
+    ("guide", "robot-docs"),
+    ("tr", "triage"),
+];
+
+/// Returns the primary command for a given alias, or None if not an alias.
+#[must_use]
+pub fn resolve_alias(name: &str) -> Option<&'static str> {
+    for &(alias, canonical) in ALIASES {
+        if alias == name {
+            return Some(canonical);
+        }
+    }
+    None
+}
+
+/// Returns list of aliases for a given primary command.
+#[must_use]
+pub fn command_aliases(command: &str) -> &'static [&'static str] {
+    let canonical = resolve_alias(command).unwrap_or(command);
+    match canonical {
+        "check" => &["c", "chk"],
+        "build" => &["b"],
+        "plan" => &["p"],
+        "simulate" => &["sim", "s"],
+        "doctor" => &["doc"],
+        "fmt" => &["format"],
+        "test" => &["t"],
+        "run" => &["r"],
+        "diff" => &["df"],
+        "capabilities" => &["caps"],
+        "robot-docs" => &["guide"],
+        "triage" => &["tr"],
+        _ => &[],
+    }
+}
+
 /// Returns true if the command is a recognized production emath command.
 #[must_use]
 pub fn is_known_command(command: &str) -> bool {
-    COMMANDS.contains(&command)
+    COMMANDS.contains(&command) || resolve_alias(command).is_some_and(|c| COMMANDS.contains(&c))
 }
 
 /// One-line usage after `emath` for a known command.
 #[must_use]
 pub fn command_usage(command: &str) -> Option<&'static str> {
-    Some(match command {
+    let resolved = resolve_alias(command).unwrap_or(command);
+    Some(match resolved {
         "search" => crate::compiled_search::USAGE,
         "api" => "api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]",
         "check" => "check <file.emath> [--verify-data] [--json]",
@@ -149,7 +200,8 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
 /// Short description printed by `emath help <command>` / `emath <command> --help`.
 #[must_use]
 pub fn command_summary(command: &str) -> Option<&'static str> {
-    Some(match command {
+    let resolved = resolve_alias(command).unwrap_or(command);
+    Some(match resolved {
         "api" => {
             "discover commands, source syntax, and active Language Image features; executable status comes from installed reference/native implementations"
         }
@@ -249,9 +301,12 @@ pub fn suggest_command(unknown: &str) -> Option<&'static str> {
     if needle.is_empty() {
         return None;
     }
+    if let Some(canonical) = resolve_alias(needle) {
+        return Some(canonical);
+    }
     let mut best: Option<(&'static str, usize)> = None;
-    for command in COMMANDS.iter().chain(EXTRACTED_COMMANDS) {
-        if *command == needle {
+    for &command in COMMANDS.iter().chain(EXTRACTED_COMMANDS) {
+        if command == needle {
             return Some(command);
         }
         let distance = edit_distance(needle, command);
@@ -263,6 +318,12 @@ pub fn suggest_command(unknown: &str) -> Option<&'static str> {
         };
         if score <= 3 && best.is_none_or(|(_, current)| score < current) {
             best = Some((command, score));
+        }
+    }
+    for &(alias, canonical) in ALIASES {
+        let distance = edit_distance(needle, alias);
+        if distance <= 1 && best.is_none_or(|(_, current)| distance < current) {
+            best = Some((canonical, distance));
         }
     }
     best.map(|(command, _)| command)
@@ -348,7 +409,8 @@ pub fn flag_description(flag: &str) -> &'static str {
 
 #[must_use]
 pub fn command_examples(command: &str) -> &'static [&'static str] {
-    match command {
+    let resolved = resolve_alias(command).unwrap_or(command);
+    match resolved {
         "check" => &[
             "emath check model.emath",
             "emath check model.emath --verify-data",
@@ -469,14 +531,20 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
 /// Usage + one-line summary for a single command. Returns `None` if unknown.
 #[must_use]
 pub fn command_help_text(command: &str) -> Option<String> {
-    let usage = command_usage(command)?;
-    let summary = command_summary(command)?;
-    let flags = flags_for(command);
-    let examples = command_examples(command);
+    let resolved = resolve_alias(command).unwrap_or(command);
+    let usage = command_usage(resolved)?;
+    let summary = command_summary(resolved)?;
+    let flags = flags_for(resolved);
+    let examples = command_examples(resolved);
+    let aliases = command_aliases(resolved);
 
     let mut out = String::new();
     out.push_str(&format!("Usage:\n  emath {usage}\n\n"));
     out.push_str(&format!("Summary:\n  {summary}\n\n"));
+
+    if !aliases.is_empty() {
+        out.push_str(&format!("Aliases:\n  {}\n\n", aliases.join(", ")));
+    }
 
     if !flags.is_empty() {
         out.push_str("Flags:\n");
@@ -506,17 +574,24 @@ pub fn command_help_text(command: &str) -> Option<String> {
 /// Structured JSON representation of single command help.
 #[must_use]
 pub fn command_help_json(command: &str) -> Option<String> {
-    let usage = command_usage(command)?;
-    let summary = command_summary(command)?;
-    let flags = flags_for(command);
-    let examples = command_examples(command);
+    let resolved = resolve_alias(command).unwrap_or(command);
+    let usage = command_usage(resolved)?;
+    let summary = command_summary(resolved)?;
+    let flags = flags_for(resolved);
+    let examples = command_examples(resolved);
+    let aliases = command_aliases(resolved);
 
     let mut obj = emath_core::JsonWriter::object();
     obj.string("status", "ok");
-    obj.string("command", command);
+    obj.string("command", resolved);
     let full_usage = format!("emath {usage}");
     obj.string("usage", &full_usage);
     obj.string("summary", summary);
+
+    if !aliases.is_empty() {
+        let alias_strings: Vec<String> = aliases.iter().map(|s| s.to_string()).collect();
+        obj.strings("aliases", &alias_strings);
+    }
 
     let mut flag_items = Vec::new();
     for flag in flags {
@@ -562,6 +637,11 @@ pub fn catalog_help_json() -> String {
         let full_usage = format!("emath {usage}");
         c_obj.string("usage", &full_usage);
         c_obj.string("summary", summary);
+        let aliases = command_aliases(command);
+        if !aliases.is_empty() {
+            let alias_strings: Vec<String> = aliases.iter().map(|s| s.to_string()).collect();
+            c_obj.strings("aliases", &alias_strings);
+        }
         cmd_items.push(c_obj.finish());
     }
     obj.objects("commands", &cmd_items);
@@ -587,6 +667,12 @@ Identity
   {}
   First command to try: emath capabilities --json
   Human help: emath help [<command>]   or   emath <command> --help
+
+Aliases (single-letter & shorthand)
+  c, chk -> check       b -> build            p -> plan
+  s, sim -> simulate    doc -> doctor         format -> fmt
+  t -> test             r -> run              df -> diff
+  caps -> capabilities  guide -> robot-docs   tr -> triage
 
 Exit codes (stable contract)
   0  success (contract met)
@@ -615,7 +701,8 @@ Rules
 }
 
 pub fn flags_for(command: &str) -> &'static [&'static str] {
-    match command {
+    let resolved = resolve_alias(command).unwrap_or(command);
+    match resolved {
         "search" => &["--function", "--candidate", "--set", "--measure", "--out", "-o", "--json", "--help", "-h"],
         "api" => &[
             "--search", "--offset", "--limit", "--source", "--json", "--help", "-h",

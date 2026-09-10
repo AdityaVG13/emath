@@ -134,7 +134,13 @@ pub fn help_text() -> String {
         out.push_str("      ");
         out.push_str(summary);
         out.push('\n');
+        let aliases = catalog::command_aliases(command);
+        if !aliases.is_empty() {
+            out.push_str("      aliases: ");
+            out.push_str(&aliases.join(", "));
+            out.push('\n');
+        }
     }
-    out.push_str("\nexit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error\n");
+    out.push_str("\nexit codes: 0 ok, 1 refused, 2 usage, 3 toolchain, 4 io, 5 safety\n");
     out
 }

@@ -33,13 +33,14 @@ pub fn run(args: &[String]) -> CliExit {
         ParsedCli::Pedagogic(err) => err.emit(catalog::wants_json(args)),
         ParsedCli::Usage(message) => {
             let cmd = args.first().map(String::as_str).unwrap_or("help");
+            let canonical = catalog::resolve_alias(cmd).unwrap_or(cmd);
             let err = PedagogicError::new(
                 "E-CLI-USAGE",
-                format!("invalid or missing arguments for `emath {cmd}`"),
-                format!("arguments for `emath {cmd}`"),
+                format!("invalid or missing arguments for `emath {canonical}`"),
+                format!("arguments for `emath {canonical}`"),
                 format!("emath {message}"),
             )
-            .with_command(cmd)
+            .with_command(canonical)
             .with_usage(format!("emath {message}"));
             err.emit(catalog::wants_json(args))
         }
@@ -138,7 +139,8 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
         return ParsedCli::Empty;
     };
     let rest = &args[1..];
-    match first.as_str() {
+    let canonical = catalog::resolve_alias(first.as_str()).unwrap_or(first.as_str());
+    match canonical {
         "help" | "--help" | "-h" => return ParsedCli::MetaHelp { rest },
         "version" | "--version" | "-V" => return ParsedCli::MetaVersion { rest },
         "capabilities" | "--capabilities" => return ParsedCli::MetaCapabilities { rest },
@@ -178,17 +180,17 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
     }
     if catalog::wants_help(rest) {
         return ParsedCli::CommandHelp {
-            name: first,
+            name: canonical,
             json: catalog::wants_json(rest),
         };
     }
-    if !catalog::is_known_command(first.as_str()) {
+    if !catalog::is_known_command(canonical) {
         return ParsedCli::Unknown(first);
     }
-    if let Some(code) = catalog::reject_unknown_flags(first, rest) {
+    if let Some(code) = catalog::reject_unknown_flags(canonical, rest) {
         return ParsedCli::UnknownFlag { code };
     }
-    match parse_known(first.as_str(), rest) {
+    match parse_known(canonical, rest) {
         Ok(command) => ParsedCli::Known(command),
         Err(ParseKnownError::Pedagogic(err)) => ParsedCli::Pedagogic(err),
         Err(ParseKnownError::Usage(message)) => ParsedCli::Usage(message),

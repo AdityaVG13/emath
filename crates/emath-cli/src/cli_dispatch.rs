@@ -295,7 +295,16 @@ pub(super) fn catalog_read_cmd(
     if let Some(code) = catalog::reject_unknown_flags(command, args) {
         return code;
     }
-    if !no_extra_positionals(args) {
+    if command == "robot-docs" {
+        let positionals: Vec<&str> = args
+            .iter()
+            .filter(|arg| !arg.starts_with('-'))
+            .map(String::as_str)
+            .collect();
+        if positionals.len() > 1 || (positionals.len() == 1 && positionals[0] != "guide") {
+            return usage(command);
+        }
+    } else if !no_extra_positionals(args) {
         return usage(command);
     }
     emit()
@@ -324,13 +333,17 @@ pub(super) fn help_cmd(args: &[String]) -> CliExit {
             }
             EXIT_OK
         }
-        Some(cmd) => print_command_help(cmd, json),
+        Some(cmd) => {
+            let canonical = catalog::resolve_alias(cmd).unwrap_or(cmd);
+            print_command_help(canonical, json)
+        }
     }
 }
 
 pub(super) fn print_command_help(command: &str, json: bool) -> CliExit {
+    let resolved = catalog::resolve_alias(command).unwrap_or(command);
     if json {
-        match catalog::command_help_json(command) {
+        match catalog::command_help_json(resolved) {
             Some(json_text) => {
                 println!("{json_text}");
                 EXIT_OK
@@ -338,7 +351,7 @@ pub(super) fn print_command_help(command: &str, json: bool) -> CliExit {
             None => unknown_command(command, true),
         }
     } else {
-        match catalog::command_help_text(command) {
+        match catalog::command_help_text(resolved) {
             Some(text) => {
                 print!("{text}");
                 EXIT_OK

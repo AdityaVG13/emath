@@ -56,6 +56,11 @@ pub fn capabilities_json() -> String {
         obj.string("name", name);
         obj.string("purpose", purpose);
         obj.string("usage", usage);
+        let aliases = crate::catalog::command_aliases(name);
+        if !aliases.is_empty() {
+            let alias_strings: Vec<String> = aliases.iter().map(|s| s.to_string()).collect();
+            obj.strings("aliases", &alias_strings);
+        }
         command_objects.push(obj.finish());
     }
     root.objects("commands", &command_objects);
@@ -99,6 +104,7 @@ pub fn capabilities_json() -> String {
         "pure_stdout_stderr_separation".to_string(),
         "robot_mode".to_string(),
         "intent_recovery".to_string(),
+        "command_aliases".to_string(),
         "provable_artifacts".to_string(),
     ];
     root.strings("features", &features);
@@ -115,6 +121,7 @@ fn print_human_summary() {
     println!("  • Typechecked dimensional analysis & unit preservation");
     println!("  • Machine-readable JSON streaming on all inspection commands");
     println!("  • Structured exit code contracts and error pedagogy");
+    println!("  • Single-letter and intuitive command aliases (c, b, p, sim, doc, fmt)");
     println!();
     println!("For machine-readable JSON schema contract, run: emath capabilities --json");
 }
