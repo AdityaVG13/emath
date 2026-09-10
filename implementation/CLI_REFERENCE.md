@@ -2,24 +2,26 @@
 
 `emath-cli` implements the commands below; `docs/P11_TOOLING_AND_DX.md`
 tracks their status. Exit classes are stable: **0** ok, **1** refused or
-admission/build diagnostics, **2** usage or io error. `--json` uses the
+admission/build diagnostics, **2** usage or argument error, **3**
+toolchain/environment, **4** io, **5** safety (destructive or unguarded
+operation blocked). `--json` uses the
 in-tree writer. Optional execution timings are observations, not deterministic values.
 
 ## Semantic pipeline
 
 | Command | Behavior |
 | --- | --- |
-| `emath check <file> [--verify-data] [--json]` | parse + admission, no codegen; refuses with a typed `E-*` code on any diagnostic (empty / comment-only source is `E-PKG-081`, not a vacuous admit); `--verify-data` (04 §5.2) re-hashes every `sha256` declared in InstrumentRun provenance against the data file (resolved relative to the source file) and refuses drift or an unreadable file as `E-OBS-HASH`; without the flag, provenance is declared, not verified; prints the effective honesty table (`honesty: units_profile <decl>=<level>`) when declarations carry `@units_profile`; `--json` always includes a `diagnostics` array of `{code, severity, message}` plus the `units_profiles` rows |
+| `emath check <file\|-> [--verify-data] [--json]` | parse + admission, no codegen; refuses with a typed `E-*` code on any diagnostic (empty / comment-only source is `E-PKG-081`, not a vacuous admit); `check -` reads the source from stdin (package id derives from source bytes alone, identical to the same text checked from disk; `--verify-data` is refused for stdin — no data-file base directory); `--verify-data` (04 §5.2) re-hashes every `sha256` declared in InstrumentRun provenance against the data file (resolved relative to the source file) and refuses drift or an unreadable file as `E-OBS-HASH`; without the flag, provenance is declared, not verified; prints the effective honesty table (`honesty: units_profile <decl>=<level>`) when declarations carry `@units_profile`; `--json` always includes `status` (`ok`\|`refused`), a `diagnostics` array of `{code, severity, message}` plus the `units_profiles` rows |
 | `emath eval <file> [--world <name>] [--function NAME] [--set name=value] [--json]` | two lanes: a genesis-format reference file evaluates on the semantic VM (default world `free_symbolic`; `--world` selects an admitted world; `--json` is the `emath.eval-answer` envelope); a standard function-spec file executes an admitted `emath function` through the generic EMIR/reference-VM stack; `--set name=value` binds declared inputs (finite decimal scalar or `[vector]`; every input must be bound), `--function NAME` selects among several declarations, and plain `eval` runs the spec's own single worked example as the input oracle (or evaluates a zero-input function). The `--json` receipt is schema `emath.eval-function` v1 (`function`, `entrypoint`, `inputs_from`, `meaning_id`, `inputs{}`, `outputs{}`); typed refusals cover unsupported (`E-EVAL-001`), unknown named (`E-EVAL-002`), ambiguous (`E-EVAL-003`), missing input (`E-EVAL-004`), malformed/unknown/duplicate `--set` (`E-EVAL-005`), unsupported input type (`E-EVAL-006`), lowering/evaluation fault or failing example (`E-EVAL-007`), and `--world` misuse (`E-EVAL-008`). Missing files are `E-PKG-080` |
 | `emath plan <file> [--json]` | admission + goal elaboration + deterministic native resolution plan (no artifact) |
 | `emath planner <file> [--json] [--parametric]` | provider-registry planning: per-goal disposition. Refuses (exit 1) when any goal is unplanned; `--parametric` lifts missing operators to a provider trait |
-| `emath build <file> --out <dir> [--verify] [--json]` | full pipeline: parse → admit → plan → generate → compile → artifact; `--verify` runs the generated tests |
+| `emath build <file> --out <dir> [--verify] [--dry-run] [--json]` | full pipeline: parse → admit → plan → generate → compile → artifact; `--verify` runs the generated tests; `--dry-run` runs the Language Image gate + planner in memory and reports crate/package/plan ids without generating anything or invoking Cargo (`status` envelope, no disk writes) |
 | `emath api [--search text] [--offset N] [--limit N] [--source file] [--json]` | discover command arguments, a starter source, and verified Language Image features |
 | `emath run <file> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out <dir>] [--json]` | execute existing source mathematics; commit case initialization or one authored method step; return partial values, explicit target relations, and optional real reference timings |
 | `emath step <checkpoint> [--work N] [--expect-revision N] [--cancel-file path] [--out <dir>] [--json]` | resume a fixed target and its saved method states; reuse committed work; reject competing requests at the same revision |
 | `emath test <file> [--out <dir>]` | build with `--verify`; generated crate with no tests is refused (E-TLT-012) |
 | `emath bench <file>` | typed refusal E-TLT-004 (benchmark harness is Phase 4+) |
-| `emath explain <file> [<symbol>] [--json]` | plan-level explanation of goals and plans; `--provenance` renders the binding-provenance DAG; `--show-defaults` prints the effective-defaults table (7 rows, each labeled with its source: language default / declaration attribute / planner default) plus one `units-profile: <decl>=<level>` row per declaration that overrides, `--json` emits the same under `defaults` + `declaration_overrides` |
+| `emath explain <file> [<symbol>] [--json]` / `emath explain <E-CODE> [--list-codes] [--json]` | plan-level explanation of goals and plans; `--provenance` renders the binding-provenance DAG; `--show-defaults` prints the effective-defaults table (7 rows, each labeled with its source: language default / declaration attribute / planner default) plus one `units-profile: <decl>=<level>` row per declaration that overrides, `--json` emits the same under `defaults` + `declaration_overrides`; an `E-*` code argument looks up the CLI diagnostics registry instead of the filesystem: exact rows print cause + copy-pasteable fix (`--json`: `emath.diagnostic-explanation`), `--list-codes` dumps the 20-row registry (`emath.diagnostic-registry`), unknown codes refuse with exit 2 and point compiler-emitted codes at `language/reference/`; `E-LAW-001` keeps its checker-witness demo |
 | `emath diff <a.emath> <b.emath> [--json]` | content-id fingerprint comparison of parse-admitted sources |
 | `emath simulate <file.emath> [--dt N] [--t0 N] [--t1 N] [--method euler\|rk4\|rk45] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]` | integrate an admitted `emath model`; default is fixed-step classic RK4; `--set` binds scalars or `[vector]`/`[[matrix]]` literals; `--atol/--rtol` opt into adaptive RK45; `--event` locates one scalar crossing; missing files are `E-PKG-080`; `--json` includes diagnostic `code`s on admission refusal |
 
@@ -74,12 +76,12 @@ The compiler benchmark/search loop remains outside this runtime change. Generate
 
 | Command | Behavior |
 | --- | --- |
-| `emath new <name> [--out <dir>]` | deterministic project scaffold; refuses overwrite (E-TLT-011) |
-| `emath fmt <file>` | canonical-form check via the lossless formatter (round-trip); stays a check in Phase 1 |
-| `emath migrate <file> [--fix] [--check] [--receipt <path>]` / `emath migrate --list-rules` | receipt-driven rewrites (05 §5): `--check` reports without rewriting; `--fix` applies formatter respells only after byte-identical MeaningId verification; the registry also classifies edition-major semantic corrections, which must receipt a checked before/after MeaningId delta; ambiguous semantic sites refuse as E-MIG-AMBIGUOUS-SITE with candidates; refusing source is E-MIG-SOURCE-REFUSES; receipt = canonical replay-stable `emath.migration-receipt v1` JSON |
+| `emath new <name> [--out <dir>] [--dry-run] [--force] [--json]` | deterministic project scaffold; refuses overwrite (E-TLT-011, exit 5) unless `--force`; `--dry-run` prints the planned files and collision warning without disk writes; `--json` carries `status`, `planned_files`, `will_overwrite` |
+| `emath fmt <file\|->` | canonical-form check via the lossless formatter (round-trip); `fmt -` reads stdin (never rewritten, byte-identical verdicts to file mode); stays a check in Phase 1 |
+| `emath migrate <file> [--fix] [--check] [--dry-run] [--json] [--receipt <path>]` / `emath migrate --list-rules` | receipt-driven rewrites (05 §5): `--check` reports without rewriting; `--dry-run` verifies the rewrite identity in memory (no source or receipt write, `--json` envelope with `rules_applied`/`refusals`); `--fix` applies formatter respells only after byte-identical MeaningId verification; the registry also classifies edition-major semantic corrections, which must receipt a checked before/after MeaningId delta; ambiguous semantic sites refuse as E-MIG-AMBIGUOUS-SITE with candidates; refusing source is E-MIG-SOURCE-REFUSES; receipt = canonical replay-stable `emath.migration-receipt v1` JSON |
 | `emath verify <artifact-dir>` or `emath verify <checkpoint> [--json]` | independently check a published artifact, or check saved method certificates and source results without refinement replay; no formal-proof claim |
 | `emath inspect <dir-or-checkpoint> [--json]` | read committed artifact manifests or saved mathematical results without execution |
-| `emath doctor [--json]` | rustc/cargo/rustfmt/clippy presence checks |
+| `emath doctor [--json]` | toolchain health: rustc/cargo/rustfmt/clippy probes, `SOURCE_DATE_EPOCH` validity (unset = ok; set must be a decimal UNIX timestamp; invalid fails with exit 3), and `language-root` discovery (`language/spec` from the working directory; MISSING outside a project); `--json` carries `command`, `status`, and per-check rows |
 | `emath vendor --out <dir>` | offline dependency lock snapshot (`forks/UPSTREAM_LOCK.json`); E-TLT-007 if lock missing; zero third-party deps |
 | `emath provider list\|inspect <id>\|test <id> [--json]` | built-in provider descriptors; status table must agree with in-tree adapters |
 | `emath artifact check <dir>` (`artifact battery`) | independent artifact checker; seeded negative-control battery |
@@ -103,10 +105,21 @@ The compiler benchmark/search loop remains outside this runtime change. Generate
 | Command | Behavior |
 | --- | --- |
 | `emath agent check\|plan\|build\|triage <file> [--out <dir>]` | `emath.agent` over the same session/build paths; `triage` is the mega-command (doctor+check+plan); `build` defaults `--out` to `target/emath`; an agent cannot bypass admission, planning, or artifact checks |
+| `emath triage [<file>] [--json]` / `emath --robot-triage` | mega-command: orientation, toolchain health, admission, and ranked next actions |
+| `emath next [<file>] [--json]` / `emath --robot-next` | next-action engine: single highest-priority action with `command` and `claim_command` (`emath.next` schema); alias `n` |
+| `emath catalog [--json]` | full command matrix: per-command `usage`, `summary`, `aliases`, `flags`, `examples` (`emath.catalog` schema) |
 | `emath help [<command>]` / `emath <command> --help` | full catalog, or one-command usage; unknown tokens print `did you mean` |
 | `emath version` / `--version` / `-V` | crate version line (`emath <semver>`), no git SHA |
-| `emath capabilities [--json]` | machine contract (always JSON): commands, exit codes, env vars |
+| `emath capabilities [--json]` | machine contract (always JSON): commands, exit codes, env vars, features |
 | `emath robot-docs [guide]` | paste-ready agent handbook |
+
+### JSON envelope convention
+
+Every core `--json` emitter carries a uniform top-level `status`
+string (`ok` \| `refused`) alongside `command` and `diagnostics`
+(`admitted`/`ok` booleans remain for back-compat). Envelopes are
+deterministic: no timestamps, sorted maps, content-addressed ids
+(`SOURCE_DATE_EPOCH` is validated by `emath doctor` when set).
 
 ## LSP
 

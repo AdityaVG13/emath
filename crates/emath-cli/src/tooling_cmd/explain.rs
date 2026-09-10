@@ -281,8 +281,10 @@ pub(super) fn show_defaults_cmd(path: &Path, json: bool) -> CliExit {
 
     // One row per declaration that OVERRIDES a default (a declared
     // units profile), in source order. A file with no overrides has no
-    // override rows — the table never invents one.
-    let override_rows: Vec<(String, String)> = Vec::new();
+    // override rows — the table never invents one. The checker's
+    // units_profiles table is exactly those declarations, in admission
+    // order.
+    let override_rows: Vec<(String, String)> = result.units_profiles.clone();
 
     if json {
         let mut out = JsonWriter::object();
