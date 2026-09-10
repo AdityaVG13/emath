@@ -40,17 +40,23 @@ impl BackendInput<'_> {
             let input_names: Vec<String> =
                 declaration.inputs.iter().map(|f| f.name.clone()).collect();
             let stateless = declaration.state.is_empty() && declaration.constructors.is_empty();
-            let has_evaluate = declaration.goals.iter().any(|goal_id| {
-                package
-                    .goals
-                    .get(goal_id.index())
-                    .is_some_and(|goal| goal.kind == GoalKind::Evaluate)
-            });
+            let evaluate_goals: Vec<&emath_ir::Goal> = declaration
+                .goals
+                .iter()
+                .filter_map(|goal_id| package.goals.get(goal_id.index()))
+                .filter(|goal| goal.kind == GoalKind::Evaluate)
+                .collect();
+            let has_evaluate = !evaluate_goals.is_empty();
             // No state and no constructors: emit a free function instead of
-            // a method on an empty struct. A stateless declaration with
+            // a method on an empty struct — but only for a single evaluate
+            // target, since the free function is named after the
+            // declaration. Multiple evaluate goals (the `E-SEC-133`
+            // ergonomics default: every definition evaluates) take the
+            // unit-struct + per-target-method form, where each method is
+            // named after its definition. A stateless declaration with
             // nothing to evaluate still keeps a unit struct so the
             // declaration name remains a Rust identifier.
-            let emit_free_fn = stateless && has_evaluate;
+            let emit_free_fn = stateless && has_evaluate && evaluate_goals.len() == 1;
 
             let mut used_names = BTreeSet::new();
             for expr in declaration.definitions.values().copied() {
@@ -287,12 +293,7 @@ impl BackendInput<'_> {
             // Goals attach by their declared ids on the declaration, never
             // by span geometry (an overlapping offset in another file must
             // not cross-attach a goal).
-            let mut goals: Vec<&emath_ir::Goal> = declaration
-                .goals
-                .iter()
-                .filter_map(|goal_id| package.goals.get(goal_id.index()))
-                .filter(|goal| goal.kind == GoalKind::Evaluate)
-                .collect();
+            let goals = evaluate_goals;
             for goal in &goals {
                 let target = goal.target.clone();
                 // `der_*` definitions on models are rate functions owned by
@@ -453,13 +454,11 @@ impl BackendInput<'_> {
                     attrs: Vec::new(),
                 });
             }
-            if goals.len() > 1 {
-                return Err(BackendError::NoEvaluateGoal(
-                    "multiple evaluate goals per declaration are outside the Phase 1 subset; declare one `goals:` target or split the declaration"
-                        .to_string(),
-                ));
-            }
-            goals.clear();
+            // Multiple evaluate goals per declaration are the documented
+            // ergonomics default (`E-SEC-133`: every definition defaults
+            // to `evaluate`), so the goal loop emits one method per
+            // target; no per-declaration cap.
+            drop(goals);
 
             if declaration.kind_label == "model" && !emit_free_fn {
                 self.emit_model_step_methods(
@@ -529,128 +528,129 @@ impl BackendInput<'_> {
                     });
                     seen.push(given_name.clone());
                 }
-                let Some(target) = evaluate_targets.first() else {
+                if evaluate_targets.is_empty() {
                     return Err(BackendError::NoEvaluateGoal(
                         declaration.name.leaf().to_string(),
                     ));
-                };
-                let mut eval_args: Vec<Expr> = Vec::new();
-                for input in &declaration.inputs {
-                    if !given_names.contains(&input.name) {
-                        return Err(BackendError::MissingInput(input.name.clone()));
-                    }
-                    eval_args.push(Expr::Var(escape_ident(&input.name)));
                 }
-                let eval_call = if emit_free_fn {
-                    Expr::Call {
-                        path: vec![escape_ident(&name)],
-                        args: eval_args,
-                    }
-                } else {
-                    let instance_name = snake_case(declaration.name.leaf());
-                    let instance: Expr = if let Some(constructor) = declaration.constructors.first()
-                    {
-                        // The generated API is `Struct::new(params) -> Result<Self,
-                        // ConfigError>`, so the instance is an associated-call
-                        // followed by `expect`.
-                        let args: Vec<Expr> = constructor
-                            .parameters
-                            .iter()
-                            .map(|p| {
-                                if !given_names.contains(&p.name) {
-                                    return Err(BackendError::MissingGiven(p.name.clone()));
-                                }
-                                Ok(Expr::Var(escape_ident(&p.name)))
-                            })
-                            .collect::<Result<_, _>>()?;
-                        Expr::MethodCall {
-                            receiver: Box::new(Expr::Call {
-                                path: vec![struct_name.clone(), constructor.name.clone()],
-                                args,
-                            }),
-                            method: "expect".to_string(),
-                            args: vec![Expr::Str(
-                                "constructor invariants must hold for this example".to_string(),
-                            )],
+                // Every evaluate target is called and bound to its
+                // definition name, so `expect` rows observe the whole
+                // definition surface (the `E-SEC-133` default promises
+                // `evaluate` for every definition). `actual` is rebound
+                // per target; the shadowed binding below captures each
+                // target's own value.
+                let mut expect_names: Vec<String> = input_names.clone();
+                for target in &evaluate_targets {
+                    let mut eval_args: Vec<Expr> = Vec::new();
+                    for input in &declaration.inputs {
+                        if !given_names.contains(&input.name) {
+                            return Err(BackendError::MissingInput(input.name.clone()));
                         }
-                    } else if !declaration.state.is_empty() {
-                        let mut fields = declaration
-                            .state
-                            .iter()
-                            .map(|field| {
+                        eval_args.push(Expr::Var(escape_ident(&input.name)));
+                    }
+                    let eval_call = if emit_free_fn {
+                        Expr::Call {
+                            path: vec![escape_ident(&name)],
+                            args: eval_args,
+                        }
+                    } else {
+                        let instance_name = snake_case(declaration.name.leaf());
+                        let instance: Expr = if let Some(constructor) = declaration.constructors.first()
+                        {
+                            // The generated API is `Struct::new(params) -> Result<Self,
+                            // ConfigError>`, so the instance is an associated-call
+                            // followed by `expect`.
+                            let args: Vec<Expr> = constructor
+                                .parameters
+                                .iter()
+                                .map(|p| {
+                                    if !given_names.contains(&p.name) {
+                                        return Err(BackendError::MissingGiven(p.name.clone()));
+                                    }
+                                    Ok(Expr::Var(escape_ident(&p.name)))
+                                })
+                                .collect::<Result<_, _>>()?;
+                            Expr::MethodCall {
+                                receiver: Box::new(Expr::Call {
+                                    path: vec![struct_name.clone(), constructor.name.clone()],
+                                    args,
+                                }),
+                                method: "expect".to_string(),
+                                args: vec![Expr::Str(
+                                    "constructor invariants must hold for this example".to_string(),
+                                )],
+                            }
+                        } else if !declaration.state.is_empty() {
+                            let mut fields = declaration
+                                .state
+                                .iter()
+                                .map(|field| {
+                                    if !given_names.contains(&field.name) {
+                                        return Err(BackendError::MissingGiven(field.name.clone()));
+                                    }
+                                    Ok((field.name.clone(), Expr::Var(escape_ident(&field.name))))
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            for field in &declaration.algebraic {
                                 if !given_names.contains(&field.name) {
                                     return Err(BackendError::MissingGiven(field.name.clone()));
                                 }
-                                Ok((field.name.clone(), Expr::Var(escape_ident(&field.name))))
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        for field in &declaration.algebraic {
-                            if !given_names.contains(&field.name) {
-                                return Err(BackendError::MissingGiven(field.name.clone()));
+                                fields.push((field.name.clone(), Expr::Var(escape_ident(&field.name))));
                             }
-                            fields.push((field.name.clone(), Expr::Var(escape_ident(&field.name))));
-                        }
-                        Expr::StructLiteral {
-                            name: struct_name.clone(),
-                            fields,
-                        }
-                    } else {
-                        Expr::StructLiteral {
-                            name: struct_name.clone(),
-                            fields: Vec::new(),
+                            Expr::StructLiteral {
+                                name: struct_name.clone(),
+                                fields,
+                            }
+                        } else {
+                            Expr::StructLiteral {
+                                name: struct_name.clone(),
+                                fields: Vec::new(),
+                            }
+                        };
+                        statements.push(Stmt::Let {
+                            pattern: escape_ident(&instance_name),
+                            value: Box::new(instance),
+                        });
+                        Expr::MethodCall {
+                            receiver: Box::new(Expr::Var(instance_name)),
+                            method: escape_ident(target),
+                            args: eval_args,
                         }
                     };
+                    let eval_call = if result_eval_targets.contains(target) {
+                        Expr::MethodCall {
+                            receiver: Box::new(eval_call),
+                            method: "expect".to_string(),
+                            args: vec![Expr::Str("index in bounds".to_string())],
+                        }
+                    } else {
+                        eval_call
+                    };
                     statements.push(Stmt::Let {
-                        pattern: escape_ident(&instance_name),
-                        value: Box::new(instance),
+                        pattern: "actual".to_string(),
+                        value: Box::new(eval_call),
                     });
-                    Expr::MethodCall {
-                        receiver: Box::new(Expr::Var(instance_name)),
-                        method: escape_ident(target),
-                        args: eval_args,
+                    for definition in declaration.definitions.keys() {
+                        if definition.starts_with("der_") {
+                            continue;
+                        }
+                        if definition == target {
+                            statements.push(Stmt::Let {
+                                pattern: escape_ident(definition),
+                                value: Box::new(Expr::Var("actual".to_string())),
+                            });
+                        }
                     }
-                };
-                let eval_call = if result_eval_targets.contains(target) {
-                    Expr::MethodCall {
-                        receiver: Box::new(eval_call),
-                        method: "expect".to_string(),
-                        args: vec![Expr::Str("index in bounds".to_string())],
-                    }
-                } else {
-                    eval_call
-                };
-                statements.push(Stmt::Let {
-                    pattern: "actual".to_string(),
-                    value: Box::new(eval_call),
-                });
-                // `actual` holds the evaluate goal's target value and
-                // nothing else. Binding every definition name to it made
-                // `expect` expressions silently compare the target's value
-                // under a different name. Bind only the target itself; a
-                // test that needs another definition's value is outside the
-                // Phase 1 surface (one evaluate goal per declaration) and
-                // must say so instead of lying.
-                let mut expect_names: Vec<String> = input_names.clone();
-                if !expect_names.contains(target) {
-                    expect_names.push(target.clone());
-                }
-                for definition in declaration.definitions.keys() {
-                    if definition.starts_with("der_") {
-                        continue;
-                    }
-                    if definition == target {
-                        statements.push(Stmt::Let {
-                            pattern: escape_ident(definition),
-                            value: Box::new(Expr::Var("actual".to_string())),
-                        });
+                    if !expect_names.contains(target) {
+                        expect_names.push(target.clone());
                     }
                 }
                 if let Some(expect) = test.expect {
-                    // A `test.expect` observes exactly what the evaluate
-                    // goal returns: inputs and the target. Name another
-                    // definition here and the old generator silently bound
-                    // the target's value to it; reject that with the fix
-                    // the author actually needs.
+                    // A `test.expect` observes the inputs plus every
+                    // evaluate target (bound above). Name a definition that
+                    // no evaluate goal binds (e.g. a model's `der_*` rate)
+                    // and the refusal says so instead of silently binding
+                    // the wrong value.
                     {
                         let mut referenced = BTreeSet::new();
                         collect_var_names(package, expect, &mut referenced);
@@ -659,19 +659,21 @@ impl BackendInput<'_> {
                                 && declaration.definitions.contains_key(&name)
                             {
                                 return Err(BackendError::NoEvaluateGoal(format!(
-                                    "test `{test_name}` expects `{name}`, but Phase 1 tests observe only the evaluate target `{target}`; assert on `{target}` or promote `{name}` to the `goals:` target"
+                                    "test `{test_name}` expects `{name}`, but no evaluate goal binds it; add an `evaluate <{name}>:` goal or assert on a bound target"
                                 )));
                             }
                         }
                     }
                     let mut expect_kinds = input_kinds.clone();
-                    if declaration
-                        .outputs
-                        .iter()
-                        .any(|field| &field.name == target && type_is_i64(package, field.ty))
-                    {
-                        for definition in declaration.definitions.keys() {
-                            expect_kinds.insert(definition.clone(), ValueKind::I64);
+                    for target in &evaluate_targets {
+                        if declaration
+                            .outputs
+                            .iter()
+                            .any(|field| &field.name == target && type_is_i64(package, field.ty))
+                        {
+                            for definition in declaration.definitions.keys() {
+                                expect_kinds.insert(definition.clone(), ValueKind::I64);
+                            }
                         }
                     }
                     let expect_program =

@@ -628,7 +628,7 @@ fn gcd_u128(mut left: u128, mut right: u128) -> u128 {
 /// divisibility-lattice convention (0 divides only 0, and gcd is the
 /// lattice meet). The one refusal is the 2^63 magnitude (|i64::MIN|)
 /// paired with 0, whose gcd has no i64 carrier.
-fn euclidean_gcd(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn euclidean_gcd(args: &[Value]) -> Result<Value, String> {
     match args {
         [Value::I64(left), Value::I64(right)] => {
             let gcd = gcd_u128(
@@ -646,7 +646,7 @@ fn euclidean_gcd(args: &[Value]) -> Result<Value, String> {
 /// lcm(0, x) = 0; otherwise |a|/gcd · |b| in u128 intermediates
 /// (|a|, |b| <= 2^63, so the widened product cannot wrap u128), and a
 /// result past i64::MAX refuses typed instead of wrapping.
-fn checked_lcm(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn checked_lcm(args: &[Value]) -> Result<Value, String> {
     match args {
         [Value::I64(left), Value::I64(right)] => {
             let left = u128::from(left.unsigned_abs());
@@ -663,7 +663,7 @@ fn checked_lcm(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn integer_factorial(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn integer_factorial(args: &[Value]) -> Result<Value, String> {
     match args {
         [Value::I64(n)] => emath_rt::factorial_checked(*n)
             .map(Value::I64)
@@ -672,7 +672,7 @@ fn integer_factorial(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn integer_remainder(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn integer_remainder(args: &[Value]) -> Result<Value, String> {
     let [value, modulus] = args else {
         return Err("E-TYPE-012: integer-remainder arguments must be exact integers".to_string());
     };
@@ -692,7 +692,7 @@ fn integer_remainder(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn modular_inverse(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn modular_inverse(args: &[Value]) -> Result<Value, String> {
     let [value, modulus] = args else {
         return Err("E-TYPE-012: modular-inverse arguments must be exact integers".to_string());
     };
@@ -711,7 +711,7 @@ fn modular_inverse(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn modular_power(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn modular_power(args: &[Value]) -> Result<Value, String> {
     let [base, exponent, modulus] = args else {
         return Err("E-TYPE-012: modular-power arguments must be exact integers".to_string());
     };
@@ -733,7 +733,7 @@ fn modular_power(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn modular_square_root(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn modular_square_root(args: &[Value]) -> Result<Value, String> {
     let [value, modulus] = args else {
         return Err("E-TYPE-012: modular-square-root arguments must be exact integers".to_string());
     };
@@ -752,7 +752,7 @@ fn modular_square_root(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn modular_congruence(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn modular_congruence(args: &[Value]) -> Result<Value, String> {
     let [left, right, modulus] = args else {
         return Err("E-TYPE-012: modular-congruence arguments must be exact integers".to_string());
     };

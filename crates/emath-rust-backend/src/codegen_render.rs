@@ -378,12 +378,25 @@ struct KernelArtifact {
 enum KernelArtifactKind {
     Sampling(u8),
     DensePointIndex,
+    CheckedAdd,
 }
 
 impl KernelArtifact {
     fn render(&self, args: &[EmirValue], program: &EmirProgram, kinds: &[ValueKind]) -> Option<Expr> {
         let kind = match self.kind {
             KernelArtifactKind::DensePointIndex => return op_collections::dense_point_index_expr(args, program, kinds),
+            KernelArtifactKind::CheckedAdd => {
+                let [left, right] = args else {
+                    return None;
+                };
+                let left = render_expr(&operand_ref(program, *left));
+                let right = render_expr(&operand_ref(program, *right));
+                // Same typed fault as the interp handler (`checked_add` in
+                // exec-ir native_kernel.rs): generated code matches the VM.
+                return Some(Expr::Raw(format!(
+                    "({left}).checked_add({right}).ok_or_else(|| String::from(\"E-ARITH-OVERFLOW: checked integer addition overflowed\"))?"
+                )));
+            }
             KernelArtifactKind::Sampling(kind) => kind,
         };
         let [params, seed, draws, tail @ ..] = args else {
@@ -414,6 +427,12 @@ impl KernelArtifact {
 const SAMPLING_SIGNATURE: &str = "(Vector<Float64>,Float64,Float64,Text?)->Vector<Float64>";
 
 const KERNEL_ARTIFACTS: &[KernelArtifact] = &[
+    KernelArtifact {
+        kernel_id: "checked-add",
+        signature: "(Int,Int)->Int",
+        semantic_hash: "sha256:79bdccd71ba3fc3c6419e05dae510273992460767e6fee5927baee1318a8e801",
+        kind: KernelArtifactKind::CheckedAdd,
+    },
     KernelArtifact {
         kernel_id: "checked-dense-index",
         signature: "(Dense<Float64>,Sequence)->Float64",

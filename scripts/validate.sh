@@ -709,7 +709,7 @@ echo "planner: supported goals plan; unplannable goals refuse"
 
 echo "== typed tooling refusals =="
 lane_begin
-if BENCH_OUT="$(cargo run -q -p emath-cli -- bench tests/valid/square.emath 2>&1)"; then
+if BENCH_OUT="$(cargo run -q -p emath-cli-lab -- bench tests/valid/square.emath 2>&1)"; then
     echo "FAIL: bench command succeeded" >&2
     lane_done "tooling" "bench" "failed" "bench admitted"
     exit 1
@@ -725,7 +725,7 @@ lane_done "tooling" "bench" "passed" "bench refused E-TLT-004"
 # CONF-0026: a load failure (unreadable source) must be a typed refusal
 # in the agent envelope too, never an empty-diagnostics admit.
 lane_begin
-if AG_OUT="$(cargo run -q -p emath-cli -- agent check /nonexistent.emath 2>&1)"; then
+if AG_OUT="$(cargo run -q -p emath-cli-lab -- agent check /nonexistent.emath 2>&1)"; then
     echo "FAIL: agent check on a missing file admitted" >&2
     lane_done "tooling" "agent-load" "failed" "missing file admitted"
     exit 1
