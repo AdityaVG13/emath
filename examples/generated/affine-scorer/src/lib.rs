@@ -32,6 +32,29 @@ pub fn complex_exp(re: f64, im: f64) -> (f64, f64) {
     (scale * im.cos(), scale * im.sin())
 }
 
+/// Complex scalar arithmetic, codegen parity twins of the interpreter's
+/// complex arm in the scalar apply (`exec-ir interp.rs`): same formulas,
+/// same IEEE-754 operation order, bit-for-bit same output.
+pub fn complex_add(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    (a.0 + b.0, a.1 + b.1)
+}
+
+pub fn complex_sub(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    (a.0 - b.0, a.1 - b.1)
+}
+
+pub fn complex_mul(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    (a.0 * b.0 - a.1 * b.1, a.0 * b.1 + a.1 * b.0)
+}
+
+pub fn complex_div(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    let denominator = b.0 * b.0 + b.1 * b.1;
+    (
+        (a.0 * b.0 + a.1 * b.1) / denominator,
+        (a.1 * b.0 - a.0 * b.1) / denominator,
+    )
+}
+
 // ── Matrices (row-major nested rows) ──────────────────────────────────────
 
 // ── Tensors (flat storage) ────────────────────────────────────────────────
@@ -1240,6 +1263,62 @@ pub fn big_rs_encode(coeffs: &[f64], n: i64, p: &UBig) -> Vec<UBig> {
     big_rs_encode_checked(coeffs, n, p).expect("rs_encode refusal leaked past admission")
 }
 // ── Number theory / finite-field arithmetic ───────────────────────────────
+
+/// Euclid over unsigned magnitudes; gcd(0, 0) = 0 by the
+/// divisibility-lattice convention (0 divides only 0, and gcd is the
+/// lattice meet). The one refusal is the 2^63 magnitude (|i64::MIN|)
+/// paired with 0, whose gcd has no i64 carrier. Codegen parity twin of
+/// the interpreter's `euclidean_gcd` handler (exec-ir native_kernel.rs).
+pub fn gcd_checked(a: i64, b: i64) -> Result<i64, &'static str> {
+    let mut left = u128::from(a.unsigned_abs());
+    let mut right = u128::from(b.unsigned_abs());
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    i64::try_from(left)
+        .map_err(|_| "E-ARITH-OVERFLOW: euclidean-gcd result exceeds the i64 carrier")
+}
+
+/// Least common multiple: lcm(0, x) = 0; otherwise |a|/gcd · |b| in u128
+/// intermediates (|a|, |b| <= 2^63, so the widened product cannot wrap
+/// u128), and a result past i64::MAX refuses typed instead of wrapping.
+/// Codegen parity twin of the interpreter's `checked_lcm` handler.
+pub fn lcm_checked(a: i64, b: i64) -> Result<i64, &'static str> {
+    let left = u128::from(a.unsigned_abs());
+    let right = u128::from(b.unsigned_abs());
+    if left == 0 || right == 0 {
+        return Ok(0);
+    }
+    let mut x = left;
+    let mut y = right;
+    while y != 0 {
+        (x, y) = (y, x % y);
+    }
+    let lcm = left / x * right;
+    i64::try_from(lcm)
+        .map_err(|_| "E-ARITH-OVERFLOW: checked-lcm overflowed the i64 carrier")
+}
+
+/// Euclidean remainder of `value` modulo a positive `modulus`.
+/// Codegen parity twin of the interpreter's `integer_remainder` handler
+/// (i64 carrier route).
+pub fn int_rem_checked(value: i64, modulus: i64) -> Result<i64, &'static str> {
+    if modulus <= 0 {
+        return Err("int-rem: modulus must be positive");
+    }
+    Ok(value.rem_euclid(modulus))
+}
+
+/// Congruence of two exact integers modulo a non-zero modulus (i128
+/// intermediates so `rem_euclid` cannot overflow). Codegen parity twin
+/// of the interpreter's `modular_congruence` handler (i64 route).
+pub fn congruence_checked(left: i64, right: i64, modulus: i64) -> Result<bool, &'static str> {
+    if modulus == 0 {
+        return Err("cong: modulus must be non-zero");
+    }
+    Ok(i128::from(left).rem_euclid(i128::from(modulus))
+        == i128::from(right).rem_euclid(i128::from(modulus)))
+}
 
 /// Factorial of n in [0, 20] (i64 range; panics outside).
 pub fn factorial(n: i64) -> i64 {

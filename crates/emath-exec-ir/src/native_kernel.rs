@@ -823,7 +823,7 @@ fn reed_solomon_encode(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn hamming_distance(args: &[Value]) -> Result<Value, String> {
+pub(crate) fn hamming_distance(args: &[Value]) -> Result<Value, String> {
     match args {
         [Value::Vector(left), Value::Vector(right)] => {
             emath_rt::hamming_distance_checked(left, right)

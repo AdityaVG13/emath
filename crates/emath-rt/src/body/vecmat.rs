@@ -28,6 +28,29 @@ pub fn complex_exp(re: f64, im: f64) -> (f64, f64) {
     (scale * im.cos(), scale * im.sin())
 }
 
+/// Complex scalar arithmetic, codegen parity twins of the interpreter's
+/// complex arm in the scalar apply (`exec-ir interp.rs`): same formulas,
+/// same IEEE-754 operation order, bit-for-bit same output.
+pub fn complex_add(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    (a.0 + b.0, a.1 + b.1)
+}
+
+pub fn complex_sub(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    (a.0 - b.0, a.1 - b.1)
+}
+
+pub fn complex_mul(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    (a.0 * b.0 - a.1 * b.1, a.0 * b.1 + a.1 * b.0)
+}
+
+pub fn complex_div(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    let denominator = b.0 * b.0 + b.1 * b.1;
+    (
+        (a.0 * b.0 + a.1 * b.1) / denominator,
+        (a.1 * b.0 - a.0 * b.1) / denominator,
+    )
+}
+
 // ── Matrices (row-major nested rows) ──────────────────────────────────────
 
 // ── Tensors (flat storage) ────────────────────────────────────────────────

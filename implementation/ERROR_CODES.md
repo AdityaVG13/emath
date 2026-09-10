@@ -1479,7 +1479,7 @@ Not yet documented at generation time: **0**.
 | `E-SCHEMA-001` | crates/emath-schema/src/registry.rs | `1.0.0`<br>`E-SCHEMA-001` |
 | `E-SEC-101` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/clauses.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `inputs`<br>`figures` |
 | `E-SEC-130` | crates/emath-sema/src/admit/declaration/setup.rs<br>crates/emath-syntax/src/scratch/render.rs | `E-SEC-130` |
-| `E-SEC-133` | crates/emath-cli/src/cli_dispatch.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-SEC-133` |
+| `E-SEC-133` | crates/emath-cli/src/cli_dispatch.rs<br>crates/emath-rust-backend/src/generate.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-SEC-133` |
 | `E-SHAKE-001` | crates/emath-exec-ir/src/shake.rs | `E-SHAKE-001` |
 | `E-SHAKE-002` | crates/emath-exec-ir/src/shake.rs | `E-SHAKE-002` |
 | `E-SHAPE-001` | crates/emath-exec-ir/src/interp/helpers.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-ir/src/shapes.rs | `E-SHAPE-001: std.capability.geometry.inner-product requires equal vector lengths`<br>`E-SHAPE-001` |

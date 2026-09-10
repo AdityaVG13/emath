@@ -15,6 +15,8 @@ pub(crate) enum ValueKind {
     BigInt,
     Text,
     Program,
+    /// Complex scalar `(f64, f64)` — the VM's complex carrier.
+    Complex,
     DenseLayout(Box<ValueKind>),
     Result(Box<ValueKind>, Box<ValueKind>),
     Vector(Box<ValueKind>),
@@ -39,6 +41,7 @@ impl ValueKind {
                 "Text" => ValueKind::Text,
                 "Program" => ValueKind::Program,
                 "BigInt" => ValueKind::BigInt,
+                "Complex" | "Complex<Float64>" => ValueKind::Complex,
                 "emath_rt::Tensor" => ValueKind::Tensor,
                 text if text.starts_with("Tensor<") || text.starts_with("SameTensor<") => {
                     ValueKind::Tensor
@@ -75,6 +78,7 @@ impl ValueKind {
         Ok(match self {
             Self::I64 => Ty::I64,
             Self::F64 => Ty::F64,
+            Self::Complex => Ty::Named("(f64, f64)".into()),
             Self::Rational => Ty::Named("emath_rt::ExactRatio".into()),
             Self::Bool => Ty::Bool,
             Self::Text => Ty::Named("String".into()),
@@ -114,7 +118,10 @@ impl ValueKind {
     }
 
     pub(super) fn is_copy(&self) -> bool {
-        matches!(self, Self::I64 | Self::F64 | Self::Rational | Self::Bool)
+        matches!(
+            self,
+            Self::I64 | Self::F64 | Self::Rational | Self::Bool | Self::Complex
+        )
     }
 }
 
@@ -319,8 +326,8 @@ pub(super) fn kind_of_op(
             ValueKind::Matrix(element) => ValueKind::Vector(element),
             _ => ValueKind::F64,
         },
-        EmirOp::ConstComplex(..)
-        | EmirOp::SeriesCreate { .. }
+        EmirOp::ConstComplex(..) => ValueKind::Complex,
+        EmirOp::SeriesCreate { .. }
         | EmirOp::TensorSlice { .. }
         | EmirOp::OptionSome(_)
         | EmirOp::OptionNone
@@ -330,10 +337,18 @@ pub(super) fn kind_of_op(
         | EmirOp::VectorMap { .. }
         | EmirOp::VectorMapScalar { .. }
         | EmirOp::VectorReduce { .. } => ValueKind::Other,
-        EmirOp::SeriesSample { .. }
-        | EmirOp::F64Pow(..)
-        | EmirOp::UnaryBuiltin(..)
-        | EmirOp::BinaryBuiltin(..)
+        EmirOp::SeriesSample { .. } | EmirOp::F64Pow(..) => ValueKind::F64,
+        EmirOp::UnaryBuiltin(_, value) => {
+            // Transcendentals preserve the complex carrier when applied to
+            // a complex operand (`sqrt(-1) = i`); the op_arith renderer
+            // picks the complex builtin for those, others refuse typed.
+            if kind_at(kinds, *value) == ValueKind::Complex {
+                ValueKind::Complex
+            } else {
+                ValueKind::F64
+            }
+        }
+        EmirOp::BinaryBuiltin(..)
         | EmirOp::MatrixIndex { .. }
         | EmirOp::TensorIndex { .. } => ValueKind::F64,
         EmirOp::ApplyCapability {
@@ -365,6 +380,10 @@ pub(super) fn kind_of_op(
                 && kind_at(kinds, *right) == ValueKind::Rational
             {
                 ValueKind::Rational
+            } else if kind_at(kinds, *left) == ValueKind::Complex
+                || kind_at(kinds, *right) == ValueKind::Complex
+            {
+                ValueKind::Complex
             } else {
                 ValueKind::F64
             }
@@ -378,6 +397,10 @@ pub(super) fn kind_of_op(
                 && kind_at(kinds, *right) == ValueKind::Rational
             {
                 ValueKind::Rational
+            } else if kind_at(kinds, *left) == ValueKind::Complex
+                || kind_at(kinds, *right) == ValueKind::Complex
+            {
+                ValueKind::Complex
             } else {
                 ValueKind::F64
             }

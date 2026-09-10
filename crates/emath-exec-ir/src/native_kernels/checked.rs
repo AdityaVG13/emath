@@ -177,6 +177,19 @@ pub const BINDINGS: &[CheckedKernel] = &[
         borrowed: 0,
         semantic_hash: "sha256:670119465dd7c056209dfa8a226ede70c76d6ba91ad7a4f67180cd4e3ae0b987",
     },
+    CheckedKernel {
+        native: NativeKernel {
+            kernel_id: "hamming-distance",
+            signature: "(Vector,Vector)->Int",
+            arity: 2,
+            handler: super::super::native_kernel::hamming_distance,
+        },
+        // The rt twin takes borrowed slices; both operands borrow.
+        rust_function: "hamming_distance_checked",
+        rust_result: "i64",
+        borrowed: 0b11,
+        semantic_hash: "sha256:c55adc8f3cc713024cb0c12cda0afa7c29191cb3fe7874aa662a19d248d6dc09",
+    },
 ];
 
 pub fn verified(capability: &str) -> Option<&'static CheckedKernel> {

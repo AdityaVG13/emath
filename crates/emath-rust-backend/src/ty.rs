@@ -37,6 +37,18 @@ impl BackendInput<'_> {
     pub(super) fn rust_node(&self, node: &TypeNode, owner: &str) -> Result<Ty, BackendError> {
         match node {
             TypeNode::Float64 => Ok(Ty::F64),
+            // The VM's complex carrier is an (f64, f64) pair
+            // (`Value::Complex { re, im }`); only the f64 carrier exists
+            // in the runtime value world (interp.rs complex_parts).
+            TypeNode::Complex(inner) => match inner.as_ref() {
+                TypeNode::Float64 | TypeNode::UnitRef { .. } => {
+                    Ok(Ty::Named("(f64, f64)".into()))
+                }
+                other => Err(BackendError::UnsupportedType(format!(
+                    "`Complex<{}>` has no Phase 1 runtime value (only `Complex<Float64>` computes)",
+                    other.display_name()
+                ))),
+            },
             TypeNode::Other(name) if name.0 == "Text" => Ok(Ty::Named("String".into())),
             TypeNode::Bool => Ok(Ty::Bool),
             TypeNode::Rational => Ok(Ty::Named("emath_rt::ExactRatio".into())),

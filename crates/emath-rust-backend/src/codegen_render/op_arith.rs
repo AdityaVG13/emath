@@ -3,6 +3,25 @@
 use super::*;
 use emath_exec_ir::BuiltinId;
 
+/// Complex binop operand: complex carriers pass through; scalars widen
+/// to the tuple carrier exactly as the VM's `complex_parts` does
+/// (`(x, 0.0)`); anything else refuses typed.
+fn typed_operand_or_complex(
+    program: &EmirProgram,
+    value: EmirValue,
+    kinds: &[ValueKind],
+) -> Expr {
+    let expr = operand(program, value);
+    match kind_at(kinds, value) {
+        ValueKind::Complex => expr,
+        ValueKind::I64 | ValueKind::F64 => {
+            let rendered = render_expr(&expr);
+            Expr::Raw(format!("((({rendered}) as f64), 0.0)"))
+        }
+        _ => expr,
+    }
+}
+
 pub(super) fn op_arith_exprs(
     op: &EmirOp,
     program: &EmirProgram,
@@ -28,6 +47,51 @@ pub(super) fn op_arith_exprs(
     if let EmirOp::Neg(value) = op {
         if kind_at(kinds, *value) == ValueKind::Rational {
             return Ok(map_runtime_result(format!("emath_rt::ratio_sub((0, 1), {})", render_expr(&operand(program, *value)))));
+        }
+    }
+    // Complex-carrier arithmetic: the same EMIR ops the VM's complex arm
+    // handles (interp.rs), routed to the parity-twin rt helpers.
+    let complex_bin = match op {
+        EmirOp::F64Add(a, b) => Some(("complex_add", *a, *b)),
+        EmirOp::F64Sub(a, b) => Some(("complex_sub", *a, *b)),
+        EmirOp::F64Mul(a, b) => Some(("complex_mul", *a, *b)),
+        EmirOp::F64Div(a, b) => Some(("complex_div", *a, *b)),
+        _ => None,
+    };
+    if let Some((function, left, right)) = complex_bin {
+        if kind_at(kinds, left) == ValueKind::Complex
+            || kind_at(kinds, right) == ValueKind::Complex
+        {
+            return Ok(Expr::Raw(format!(
+                "emath_rt::{function}({}, {})",
+                render_expr(&typed_operand_or_complex(program, left, &kinds)),
+                render_expr(&typed_operand_or_complex(program, right, &kinds))
+            )));
+        }
+    }
+    if let EmirOp::Neg(value) = op {
+        if kind_at(kinds, *value) == ValueKind::Complex {
+            let rendered = render_expr(&operand(program, *value));
+            return Ok(Expr::Raw(format!("(-({rendered}).0, -({rendered}).1)")));
+        }
+    }
+    if let EmirOp::UnaryBuiltin(id, value) = op {
+        if kind_at(kinds, *value) == ValueKind::Complex {
+            let function = match id {
+                BuiltinId::Sqrt => "complex_sqrt",
+                BuiltinId::Ln => "complex_ln",
+                BuiltinId::Exp => "complex_exp",
+                other => {
+                    let _ = other;
+                    return Err(BackendError::UnsupportedType(
+                        "unary builtin on a Complex carrier requires sqrt/ln/exp".into(),
+                    ));
+                }
+            };
+            return Ok(Expr::Raw(format!(
+                "emath_rt::{function}(({arg}).0, ({arg}).1)",
+                arg = render_expr(&operand(program, *value))
+            )));
         }
     }
     match op {

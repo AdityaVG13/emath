@@ -296,6 +296,16 @@ pub(crate) fn field_value_kinds(
             Some(TypeNode::Bool) => ValueKind::Bool,
             Some(TypeNode::Other(name)) if name.0 == "Text" => ValueKind::Text,
             Some(TypeNode::Float64) => ValueKind::F64,
+            // Only the f64 complex carrier has a runtime value (the VM's
+            // `Value::Complex` is an (f64, f64) pair).
+            Some(TypeNode::Complex(inner))
+                if matches!(
+                    inner.as_ref(),
+                    TypeNode::Float64 | TypeNode::UnitRef { .. }
+                ) =>
+            {
+                ValueKind::Complex
+            }
             Some(TypeNode::Record(name)) => ValueKind::Record(name.0.clone()),
             Some(TypeNode::Vector { element, .. }) => {
                 ValueKind::Vector(Box::new(carrier(Some(element))))
