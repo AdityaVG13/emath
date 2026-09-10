@@ -119,6 +119,7 @@ pub(crate) fn new_cmd(name: &str, out: &Path, dry_run: bool, force: bool, json: 
         if json {
             let mut obj = JsonWriter::object();
             obj.string("command", "new");
+            obj.string("status", "ok");
             obj.bool("dry_run", true);
             obj.string("name", name);
             obj.string("target_dir", &out.display().to_string());
@@ -176,6 +177,7 @@ pub(crate) fn new_cmd(name: &str, out: &Path, dry_run: bool, force: bool, json: 
     if json {
         let mut obj = JsonWriter::object();
         obj.string("command", "new");
+        obj.string("status", "ok");
         obj.bool("dry_run", false);
         obj.string("name", name);
         obj.string("target_dir", &out.display().to_string());

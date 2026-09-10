@@ -76,6 +76,7 @@ pub(crate) fn migrate_cmd(
         if json {
             let mut obj = JsonWriter::object();
             obj.string("command", "migrate");
+            obj.string("status", "ok");
             obj.bool("dry_run", true);
             obj.string("target", &file.display().to_string());
             obj.bool("would_rewrite", would_rewrite);

@@ -189,6 +189,7 @@ pub fn build(request: BuildRequest) -> CliExit {
         if json {
             let mut obj = emath_artifact::JsonWriter::object();
             obj.string("command", "build");
+            obj.string("status", "ok");
             obj.bool("dry_run", true);
             obj.string("package_id", &package_id.0);
             obj.string("crate", &crate_name);
@@ -225,6 +226,7 @@ pub fn build(request: BuildRequest) -> CliExit {
             if json {
                 let mut object = emath_artifact::JsonWriter::object();
                 object.string("command", "build");
+                object.string("status", "ok");
                 object.string("artifact_id", &report.artifact_id.0);
                 object.string("package_id", &report.package_id.0);
                 object.string("crate", &report.crate_name);

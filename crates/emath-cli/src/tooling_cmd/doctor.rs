@@ -59,6 +59,8 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
         }
         let mut object = JsonWriter::object();
         object.string("schema", "emath.doctor");
+        object.string("command", "doctor");
+        object.string("status", if ok { "ok" } else { "refused" });
         object.bool("ok", ok);
         object.objects("checks", &rows);
         object.string("fork_lock_source", UPSTREAM_LOCK_REL);

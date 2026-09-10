@@ -88,9 +88,12 @@ pub fn json_diagnostics_entries(diagnostics: &Diagnostics) -> Vec<String> {
 }
 
 /// Stdout envelope for `--json` command refusals (`check`/`eval` pattern).
+/// Uniform contract: every envelope carries `command`, a `status` string
+/// (`ok`|`refused`), and `diagnostics`. Deterministic — no timestamps.
 pub fn diagnostics_json_document(command: &str, admitted: bool, entries: &[String]) -> String {
     let mut out = emath_artifact::JsonWriter::object();
     out.string("command", command);
+    out.string("status", if admitted { "ok" } else { "refused" });
     out.bool("admitted", admitted);
     out.objects("diagnostics", entries);
     out.finish()
@@ -128,6 +131,7 @@ pub fn check_json_document(
 ) -> String {
     let mut out = emath_artifact::JsonWriter::object();
     out.string("command", "check");
+    out.string("status", if admitted { "ok" } else { "refused" });
     out.bool("admitted", admitted);
     out.objects("diagnostics", &json_diagnostics_entries(diagnostics));
     out.string("package", package_id);
@@ -162,6 +166,7 @@ pub fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
 pub fn plan_json_document(admitted: bool, goals: &[emath_ir::Goal], plans: u64) -> String {
     let mut object = emath_artifact::JsonWriter::object();
     object.string("command", "plan");
+    object.string("status", if admitted { "ok" } else { "refused" });
     object.bool("admitted", admitted);
     object.int("plans", plans);
     object.objects("goals", &goal_json_rows(goals));
