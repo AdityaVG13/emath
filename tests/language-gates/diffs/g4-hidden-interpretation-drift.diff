@@ -1,6 +1,6 @@
 --- language/grammar/surface.ebnf	2026-08-25 00:39:43
 +++ /tmp/drift-surface.ebnf	2026-08-25 05:12:44
-@@ -147,6 +147,7 @@
+@@ -273,6 +273,7 @@
                   | "fn" , parameter_list , "->" , type_expr
                   | type_primary , "where" , expression ;
  type_operator    = "|" | "&" | "*" | "/" ;
