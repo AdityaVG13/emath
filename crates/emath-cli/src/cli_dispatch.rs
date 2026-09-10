@@ -22,7 +22,7 @@ fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>
     }
 }
 
-fn locate_language_root(anchor: Option<&Path>) -> Result<PathBuf, String> {
+pub(crate) fn locate_language_root(anchor: Option<&Path>) -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     let mut starts = Vec::new();
     if let Some(anchor) = anchor {

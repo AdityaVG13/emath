@@ -29,7 +29,28 @@ pub fn doctor_probes() -> Vec<DoctorProbe> {
         },
     })
     .chain(std::iter::once(source_date_epoch_probe()))
+    .chain(std::iter::once(language_root_probe()))
     .collect()
+}
+
+/// Language-root probe: most doctor consumers are about to run
+/// keep-commands that all gate on a verified Language Image, so the
+/// probe reports whether `language/spec` is discoverable from the
+/// working directory (MISSING elsewhere — the same condition the
+/// E-LANG-IMAGE refusal enforces).
+fn language_root_probe() -> DoctorProbe {
+    match crate::locate_language_root(None) {
+        Ok(root) => DoctorProbe {
+            name: "language-root",
+            ok: true,
+            version: Some(root.display().to_string()),
+        },
+        Err(_) => DoctorProbe {
+            name: "language-root",
+            ok: false,
+            version: None,
+        },
+    }
 }
 
 /// `SOURCE_DATE_EPOCH` probe: unset is fine (artifacts are
