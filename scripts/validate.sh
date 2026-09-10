@@ -168,7 +168,7 @@ echo "== fork-type identity gate (AGENTS.md rule 1) =="
 # other line of every scanned crate still refuses fork identifiers.
 if grep -rniE '(^|[^a-z0-9_.-])(dew|rumoca|wrenfold|franken|modelica)([^a-z0-9_.-]|$)' \
     crates/emath-core crates/emath-ir crates/emath-goal crates/emath-plan \
-    crates/emath-sema crates/emath-runtime crates/emath-provider-api \
+    crates/emath-sema crates/emath-rt crates/emath-provider-api \
     crates/emath-artifact examples/provider-skeleton/src/main.rs \
     --exclude=constellation.rs --exclude=CONTRACT.md \
     >"$TMP_DIR/fork-grep.txt"; then
@@ -211,7 +211,9 @@ if grep -rn "differential_scan" crates/emath-adapter-dew/src >"$TMP_DIR/oracle-g
 fi
 # The CLI provider status table must agree with the in-tree reality: the
 # std-only native lanes are implemented, upstream engines are planned.
-PROVIDER_LIST="$(cargo run -q -p emath-cli -- provider list)"
+# `provider` lives in emath-lab (extracted-command split); the production
+# `emath` binary refuses it with E-CLI-UNKNOWN-COMMAND by design.
+PROVIDER_LIST="$(cargo run -q -p emath-cli-lab -- provider list)"
 for entry in "dew.scalar" "native.causal" "native.euler" "rumoca.subset-import"; do
     if ! printf '%s\n' "$PROVIDER_LIST" | grep -q "^provider $entry: .*\[implemented\]"; then
         echo "FAIL: provider list does not show $entry as implemented" >&2

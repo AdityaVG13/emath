@@ -4,6 +4,10 @@
   "label": "contract docs",
   "bumps": [
     {
+      "date": "2026-09-10",
+      "note": "gauntlet baseline repair: ERROR_CODES annex re-spliced (449 emitted) and issued list completed with the 78 unlisted families (E-CAPSULE/E-CAT/E-CELL-009..011/E-CSV/E-EINSUM/E-EVENT/E-FIT/E-MODEL/E-STD/E-TRANS + E-RAT-002) while retiring 23 stale bullets (E-GRAPH/E-LP/E-PDE/E-SPEC/E-PARETO/E-MIGR-011-012/E-KIND-026/E-LAW-003/E-ODE-004); CRATE_MAP re-pinned (12 consolidated test-suite rows removed, tests/emath-plan + tests/emath-schema added); CLI_REFERENCE re-pinned after the agent-ergonomics 20-pass campaign (stdin pipelines, dry-run gating, explain registry, doctor probes, catalog, exit-class table) - that campaign landed without bumping this pin"
+    },
+    {
       "date": "2026-08-31",
       "note": "docs polish pass: workflow artifact identifiers removed from ERROR_CODES prose; text-only, no error-code semantics changed"
     },
@@ -133,9 +137,9 @@
     }
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "05972399783589f8e1a8cf388d9921941a84505f4ee7490a552e18ca20260637",
-    "implementation/CLI_REFERENCE.md": "81c05db43fb3e439743ff542f606bbbab5cf79b00b42a8cbd84d1c743c1220e2",
-    "implementation/CRATE_MAP.md": "836e9bb7f20ed0d8b077288a578d0ad9e9a3b5989d10f9e688b7373491b87162",
+    "implementation/ERROR_CODES.md": "8d1d0a5200c84036d34e1f5ae8fb16e396dc61d4b5a9c0494e88b00475afe0a2",
+    "implementation/CLI_REFERENCE.md": "6895b32720661822a283abddeecc1f7524184c0780e1239559e1ee87075d71df",
+    "implementation/CRATE_MAP.md": "c6a18e0143d669b1b457abf6e36d96f097ea957acf97d00b117543cff06e5695",
     "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"
   }
 }

@@ -11,5 +11,8 @@ fn main() -> ExitCode {
         emath_cli::CliExit::Ok => ExitCode::SUCCESS,
         emath_cli::CliExit::Refused => ExitCode::from(1),
         emath_cli::CliExit::Usage => ExitCode::from(2),
+        emath_cli::CliExit::Toolchain => ExitCode::from(3),
+        emath_cli::CliExit::Io => ExitCode::from(4),
+        emath_cli::CliExit::Safety => ExitCode::from(5),
     }
 }

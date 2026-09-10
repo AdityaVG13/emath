@@ -139,3 +139,6 @@ archived_mailbox_states/
 # Agent ergonomics audit workspace and skill loop progress (local-only)
 /agent_ergonomics_audit/
 .skill-loop-progress.md
+
+# gauntlet skill-loop progress + ledgers (local-only)
+.gauntlet-progress.md
