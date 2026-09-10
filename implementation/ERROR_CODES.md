@@ -1143,7 +1143,7 @@ regenerated as the registry changes. The workspace test
 `crates/emath-hir/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **449 unique codes** from 497 rust files.
+Emissions: **449 unique codes** from 498 rust files.
 Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |
@@ -1228,8 +1228,8 @@ Not yet documented at generation time: **0**.
 | `E-CTOR-039` | crates/emath-build/src/builder/policy.rs | `default for undeclared parameter `{target}` (E-CTOR-039)` |
 | `E-DOM-001` | crates/emath-ir/src/domains.rs | `{name} value {value} outside domain {self}` |
 | `E-DOM-002` | crates/emath-ir/src/domains.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs<br>crates/emath-sema/src/admit/sections.rs | `ill-formed domain interval [{low}, {high}]`<br>`E-DOM-002` |
-| `E-EINSUM-001` | crates/emath-exec-ir/src/native_kernels/einsum.rs | `E-EINSUM-001: {detail}` |
-| `E-EINSUM-002` | crates/emath-exec-ir/src/native_kernels/einsum.rs | `E-EINSUM-002: einsum index {index} is outside 0..{len}` |
+| `E-EINSUM-001` | crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs | `E-EINSUM-001: {detail}`<br>`{{ let __e = emath_rt::einsum_checked({spec:?}, &[{}]).map_err(|error| match error {{ emath_rt::EinsumError::A` |
+| `E-EINSUM-002` | crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs | `E-EINSUM-002: einsum index {index} is outside 0..{len}`<br>`{{ let __e = emath_rt::einsum_checked({spec:?}, &[{}]).map_err(|error| match error {{ emath_rt::EinsumError::A` |
 | `E-EV-140` | crates/emath-sema/src/admit/declaration/setup.rs | `inputs`<br>`E-EV-140` |
 | `E-EVAL-001` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `E-EVAL-001` |
 | `E-EVAL-002` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli/src/execution.rs | `E-EVAL-002` |
@@ -1237,7 +1237,7 @@ Not yet documented at generation time: **0**.
 | `E-EVAL-004` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `E-EVAL-004` |
 | `E-EVAL-005` | crates/emath-build/src/probe.rs<br>crates/emath-cli-lab/src/eval_cmd/args.rs<br>crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs<br>crates/emath-cli/src/execution.rs | `E-EVAL-005`<br>`duplicate `--set` binding for input `{name}`` |
 | `E-EVAL-006` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `E-EVAL-006` |
-| `E-EVAL-007` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `meaning identity refused: {error:?}`<br>`E-EVAL-007` |
+| `E-EVAL-007` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs<br>crates/emath-sema/src/admit.rs | `meaning identity refused: {error:?}`<br>`E-EVAL-007` |
 | `E-EVAL-008` | crates/emath-build/src/probe.rs<br>crates/emath-cli-lab/src/eval_cmd/args.rs | `E-EVAL-008` |
 | `E-EVENT-001` | crates/emath-sema/src/admit/declaration/events.rs | `E-EVENT-001`<br>`event `{name}` action must be an assignment (`target = expr`)` |
 | `E-EVENT-002` | crates/emath-sema/src/admit/declaration/events.rs | `event `{name}` condition must be Boolean, inferred {cond_infer}` |
@@ -1482,7 +1482,7 @@ Not yet documented at generation time: **0**.
 | `E-SEC-133` | crates/emath-cli/src/cli_dispatch.rs<br>crates/emath-rust-backend/src/generate.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-SEC-133` |
 | `E-SHAKE-001` | crates/emath-exec-ir/src/shake.rs | `E-SHAKE-001` |
 | `E-SHAKE-002` | crates/emath-exec-ir/src/shake.rs | `E-SHAKE-002` |
-| `E-SHAPE-001` | crates/emath-exec-ir/src/interp/helpers.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-ir/src/shapes.rs | `E-SHAPE-001: std.capability.geometry.inner-product requires equal vector lengths`<br>`E-SHAPE-001` |
+| `E-SHAPE-001` | crates/emath-exec-ir/src/interp/helpers.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-ir/src/shapes.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs | `E-SHAPE-001: std.capability.geometry.inner-product requires equal vector lengths`<br>`E-SHAPE-001` |
 | `E-SHAPE-002` | crates/emath-ir/src/shapes.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs | `E-SHAPE-002`<br>`dimension mismatch in matrix-vector multiplication: matrix columns {c_e:?} != vector length {v_e:?}` |
 | `E-SHAPE-003` | crates/emath-ir/src/shapes.rs | `E-SHAPE-003`<br>`slice end {rows_end} exceeds extent {size}` |
 | `E-SHAPE-004` | crates/emath-ir/src/shapes.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs<br>crates/emath-sema/src/admit/types/shape.rs | `E-SHAPE-004`<br>`declared extent `{name}` is not a well-formed shape` |
@@ -1568,7 +1568,7 @@ Not yet documented at generation time: **0**.
 | `E-TYPE-003` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/lowering/sibling_calls.rs | `E-TYPE-003` |
 | `E-TYPE-010` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/equations.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/types.rs | `E-TYPE-010`<br>`state field `{name}` must use `derivative({name}) = rhs`, not `{name} = rhs`` |
 | `E-TYPE-011` | crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/terms.rs | `E-TYPE-011`<br>`non-finite constant `{text}` refused under strict-f64 policy` |
-| `E-TYPE-012` | crates/emath-exec-ir/src/interp.rs<br>crates/emath-exec-ir/src/native_kernel.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-exec-ir/src/native_kernels/category.rs<br>crates/emath-exec-ir/src/native_kernels/checked.rs<br>crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-exec-ir/src/native_kernels/probability.rs<br>crates/emath-exec-ir/src/native_kernels/program_solve.rs<br>crates/emath-rt/src/body/numeric.rs<br>crates/emath-sema/src/admit/declaration/clauses.rs<br>crates/emath-sema/src/admit/declaration/definitions.rs<br>crates/emath-sema/src/admit/declaration/exports_tests.rs<br>crates/emath-sema/src/admit/equations.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/infer.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/lowering/call.rs<br>crates/emath-sema/src/admit/lowering/call/carriers.rs<br>crates/emath-sema/src/admit/lowering/csv.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/goals.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs<br>crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/sibling_calls.rs<br>crates/emath-sema/src/admit/lowering/terms.rs<br>crates/emath-sema/src/admit/sections.rs | `E-TYPE-012: program result must be a real scalar`<br>`E-TYPE-012: program result has the wrong numeric carrier` |
+| `E-TYPE-012` | crates/emath-exec-ir/src/interp.rs<br>crates/emath-exec-ir/src/native_kernel.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-exec-ir/src/native_kernels/category.rs<br>crates/emath-exec-ir/src/native_kernels/checked.rs<br>crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-exec-ir/src/native_kernels/probability.rs<br>crates/emath-exec-ir/src/native_kernels/program_solve.rs<br>crates/emath-rt/src/body/numeric.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs<br>crates/emath-sema/src/admit/declaration/clauses.rs<br>crates/emath-sema/src/admit/declaration/definitions.rs<br>crates/emath-sema/src/admit/declaration/exports_tests.rs<br>crates/emath-sema/src/admit/equations.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/infer.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/lowering/call.rs<br>crates/emath-sema/src/admit/lowering/call/carriers.rs<br>crates/emath-sema/src/admit/lowering/csv.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/goals.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs<br>crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/sibling_calls.rs<br>crates/emath-sema/src/admit/lowering/terms.rs<br>crates/emath-sema/src/admit/sections.rs | `E-TYPE-012: program result must be a real scalar`<br>`E-TYPE-012: program result has the wrong numeric carrier` |
 | `E-TYPE-013` | crates/emath-sema/src/admit/lowering/sibling_calls.rs | `recursive call `{name}` refused (inline cycle in sibling functions)`<br>`sibling-call inlining depth cap {INLINE_DEPTH_CAP} exceeded at `{name}`` |
 | `E-TYPE-101` | crates/emath-adapter-rumoca/src/conformance.rs<br>crates/emath-adapter-rumoca/src/structural.rs | `E-TYPE-101` |
 | `E-TYPE-102` | crates/emath-adapter-rumoca/src/structural.rs | `E-TYPE-102` |

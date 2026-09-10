@@ -2,7 +2,7 @@ use crate::rust_ir::ast::{
     BinOp, Expr, FnDef, ImplDef, Item, Param, RUST_KEYWORDS, Stmt, StructDef, Ty, Visibility,
     escape_ident,
 };
-use emath_exec_ir::{EmirProgram, EmirValue};
+use emath_exec_ir::{EmirOp, EmirProgram, EmirValue};
 use emath_ir::{ExprId, ExprNode, SemanticPackage, TypeNode};
 use std::collections::BTreeSet;
 
@@ -349,5 +349,53 @@ pub(crate) fn comparison(
         op,
         left: Box::new(operand(program, left)),
         right: Box::new(operand(program, right)),
+    }
+}
+
+/// Refine a definition's derived carrier kind for capability
+/// applications whose installed signature spells the output `Tensor`
+/// for every rank (einsum). The interp refines by rank — scalar,
+/// vector, matrix, tensor — and admission type-checked the authored
+/// output against that rank, so the static subscript rank is the
+/// honest carrier. Without the refinement a chained call sees
+/// `ValueKind::Other` for the earlier result and refuses, and the
+/// goal return misses the declared carrier.
+pub(crate) fn refine_capability_result_kind(
+    program: &EmirProgram,
+    derived: ValueKind,
+) -> ValueKind {
+    if !matches!(derived, ValueKind::Other) {
+        return derived;
+    }
+    let Some((op, _)) = program.ops.get(program.result.0 as usize) else {
+        return derived;
+    };
+    let EmirOp::ApplyCapability {
+        capability, args, ..
+    } = op
+    else {
+        return derived;
+    };
+    let Ok(binding) =
+        emath_exec_ir::native_kernel::verified_kernel_binding(capability)
+    else {
+        return derived;
+    };
+    if binding.kernel_id != "einsum-contract" {
+        return derived;
+    }
+    let Some(subscripts) = args.first() else {
+        return derived;
+    };
+    let Some((EmirOp::ConstText(spec), _)) =
+        program.ops.get(subscripts.0 as usize)
+    else {
+        return derived;
+    };
+    match crate::codegen_render::kernels::einsum_output_rank(spec) {
+        0 => ValueKind::F64,
+        1 => ValueKind::Vector(Box::new(ValueKind::F64)),
+        2 => ValueKind::Matrix(Box::new(ValueKind::F64)),
+        _ => ValueKind::Tensor,
     }
 }

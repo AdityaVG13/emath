@@ -41,6 +41,39 @@ pub(super) fn op_data_exprs(
             vec![operand_ref(program, *series), operand(program, *time)],
         )),
         EmirOp::SetCreate { elements, guards } => {
+            // Carrier-element sets (the packed Sequence of an einsum
+            // call) render as a Vec<emath_rt::Tensor>: the scalar
+            // flatten form cannot hold Vector/Matrix/Tensor elements.
+            let kinds = value_kinds(program, names, states, input_kinds);
+            let carrier_elements = elements.iter().any(|element| {
+                matches!(
+                    kind_at(&kinds, *element),
+                    ValueKind::Vector(_) | ValueKind::Matrix(_) | ValueKind::Tensor
+                )
+            });
+            if carrier_elements {
+                let mut entries = Vec::new();
+                for (index, element) in elements.iter().enumerate() {
+                    let Some(converted) =
+                        element_tensor_expr(*element, program, &kinds, 4)
+                    else {
+                        return Err(BackendError::UnsupportedType(
+                            "set of mixed carrier elements has no Phase 1 rendering".into(),
+                        ));
+                    };
+                    match guards.get(index).copied().flatten() {
+                        Some(guard) => entries.push(format!(
+                            "if {} {{ Some({converted}) }} else {{ None }}",
+                            render_expr(&operand(program, guard))
+                        )),
+                        None => entries.push(format!("Some({converted})")),
+                    }
+                }
+                return Ok(Expr::Raw(format!(
+                    "vec![{}].into_iter().flatten().collect::<Vec<emath_rt::Tensor>>()",
+                    entries.join(", ")
+                )));
+            }
             let mut entries = Vec::new();
             for (index, element) in elements.iter().enumerate() {
                 let value = render_expr(&operand(program, *element));

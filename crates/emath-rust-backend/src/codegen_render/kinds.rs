@@ -542,7 +542,7 @@ pub(super) fn cmp_expr(
 ) -> Expr {
     let lk = operand_kind(kinds, left);
     let rk = operand_kind(kinds, right);
-    match (lk, rk) {
+    match (&lk, &rk) {
         (ValueKind::I64, ValueKind::I64) | (ValueKind::Bool, ValueKind::Bool) => Expr::Bin {
             op,
             left: Box::new(operand(program, left)),
@@ -570,11 +570,47 @@ pub(super) fn cmp_expr(
             left: Box::new(typed_operand(program, left, ValueKind::F64, kinds)),
             right: Box::new(as_f64(operand(program, right))),
         },
-        _ => Expr::Bin {
-            op,
-            left: Box::new(operand(program, left)),
-            right: Box::new(operand(program, right)),
-        },
+        _ => {
+            let left = operand(program, left);
+            let right = operand(program, right);
+            if matches!(
+                &lk,
+                ValueKind::I64 | ValueKind::Bool | ValueKind::F64 | ValueKind::Complex | ValueKind::Rational
+            ) && matches!(
+                &rk,
+                ValueKind::I64 | ValueKind::Bool | ValueKind::F64 | ValueKind::Complex | ValueKind::Rational
+            ) {
+                Expr::Bin {
+                    op,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                }
+            } else {
+                // Non-copy carriers compare through a common view: the
+                // observed binding renders as a borrow (`&Vec<f64>`)
+                // and the expected literal as an owned value
+                // (`Vec<f64>`), and `&T == T` has no `PartialEq` impl.
+                // Both sides project to the same slice/str view, which
+                // compares elementwise exactly like the interp's carrier
+                // comparison.
+                let view = |kind: &ValueKind, expr: Expr| {
+                    let rendered = render_expr(&expr);
+                    match kind {
+                        ValueKind::Text => format!("({rendered}).as_str()"),
+                        ValueKind::Tensor => format!("({rendered}).data.as_slice()"),
+                        ValueKind::Vector(_) | ValueKind::Matrix(_) => {
+                            format!("({rendered}).as_slice()")
+                        }
+                        _ => format!("&({rendered})"),
+                    }
+                };
+                Expr::Bin {
+                    op,
+                    left: Box::new(Expr::Raw(view(&lk, left))),
+                    right: Box::new(Expr::Raw(view(&rk, right))),
+                }
+            }
+        }
     }
 }
 

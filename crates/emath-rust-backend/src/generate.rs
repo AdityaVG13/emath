@@ -385,6 +385,7 @@ impl BackendInput<'_> {
                             expr
                         }));
                     } else {
+                        let kind = refine_capability_result_kind(&program, kind);
                         eval_kinds.insert(def_name.clone(), kind);
                         body_stmts.push(Stmt::Let {
                             pattern: escape_ident(def_name),

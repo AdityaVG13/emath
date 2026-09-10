@@ -85,6 +85,7 @@ pub(crate) fn program_may_fault(program: &EmirProgram) -> bool {
         EmirOp::Fold { body, .. } => program_may_fault(body),
         EmirOp::ApplyCapability { capability, .. } => {
             if emath_exec_ir::native_kernel::checked::verified(capability).is_some() { return true; }
+            if super::artifact_may_fault(capability) { return true; }
             emath_exec_ir::native_kernel::installed_reference_cell(capability).is_some_and(|cell| {
                 emath_exec_ir::native_kernel::installed_signature(capability).is_some_and(|signature| signature.inputs.iter().chain(std::iter::once(&signature.output)).any(|ty| matches!(ty.as_str(), "Int" | "Nat" | "I64")))
                     || cell.program.ops.iter().any(|(op, _)| matches!(op, EmirOp::ConstI64(_)))

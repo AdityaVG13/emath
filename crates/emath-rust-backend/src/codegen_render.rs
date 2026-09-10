@@ -21,11 +21,13 @@ use op_flow::{op_flow_exprs, authored_control_expr};
 mod carrier;
 mod flat;
 mod kinds;
+pub(crate) mod kernels;
 mod rtcalls;
 
 pub(crate) use carrier::*;
 pub(crate) use flat::*;
 pub(crate) use kinds::*;
+pub(crate) use kernels::{einsum_output_rank, element_tensor_expr};
 pub(crate) use rtcalls::*;
 
 pub(crate) fn op_expr(
@@ -379,6 +381,35 @@ enum KernelArtifactKind {
     Sampling(u8),
     DensePointIndex,
     CheckedAdd,
+    ForwardDifference,
+    EinsumContract,
+    RsEncode,
+}
+
+impl KernelArtifactKind {
+    /// Whether the artifact's rendered form can produce a runtime fault
+    /// (`Result`-typed render). The sampling kernels return plain
+    /// values; every checked/kernel-ABI render propagates typed
+    /// refusals.
+    fn faults(&self) -> bool {
+        !matches!(self, Self::Sampling(_))
+    }
+}
+
+/// Whether a capability's codegen artifact can produce a runtime fault,
+/// for `program_may_fault` (the goal return's `Result` decision).
+pub(super) fn artifact_may_fault(capability: &str) -> bool {
+    let Ok(binding) =
+        emath_exec_ir::native_kernel::verified_kernel_binding(capability)
+    else {
+        return false;
+    };
+    KERNEL_ARTIFACTS.iter().any(|artifact| {
+        artifact.kernel_id == binding.kernel_id
+            && artifact.signature == binding.signature
+            && artifact.semantic_hash == binding.semantic_hash
+            && artifact.kind.faults()
+    })
 }
 
 impl KernelArtifact {
@@ -396,6 +427,15 @@ impl KernelArtifact {
                 return Some(Expr::Raw(format!(
                     "({left}).checked_add({right}).ok_or_else(|| String::from(\"E-ARITH-OVERFLOW: checked integer addition overflowed\"))?"
                 )));
+            }
+            KernelArtifactKind::ForwardDifference => {
+                return kernels::forward_difference_expr(args, program, kinds);
+            }
+            KernelArtifactKind::EinsumContract => {
+                return kernels::einsum_contract_expr(args, program, kinds);
+            }
+            KernelArtifactKind::RsEncode => {
+                return kernels::rs_encode_expr(args, program, kinds);
             }
             KernelArtifactKind::Sampling(kind) => kind,
         };
@@ -456,6 +496,24 @@ const KERNEL_ARTIFACTS: &[KernelArtifact] = &[
         signature: SAMPLING_SIGNATURE,
         semantic_hash: "sha256:9b3fe206334c592da948e6ccb4b15baa75aec7df35b43795125820b28eafbf23",
         kind: KernelArtifactKind::Sampling(2),
+    },
+    KernelArtifact {
+        kernel_id: "program-forward-difference",
+        signature: "(Program,Vector<Float64>,I64)->Float64",
+        semantic_hash: "sha256:2d66f6359265754f8f0db969186c15af3ad9e7c616ba0ea57e7f5480c3c1c118",
+        kind: KernelArtifactKind::ForwardDifference,
+    },
+    KernelArtifact {
+        kernel_id: "einsum-contract",
+        signature: "(Text,Sequence)->Tensor",
+        semantic_hash: "sha256:b9586ff08f5ace59f2b7794c1ad138220b395c2da50b681f983939c2c24f14f8",
+        kind: KernelArtifactKind::EinsumContract,
+    },
+    KernelArtifact {
+        kernel_id: "modular-evaluation-sequence",
+        signature: "(Vector<ExactInt>,Nat,PositiveExactInt)->Vector<ExactInt>",
+        semantic_hash: "sha256:7dea40cb0d61f2dab74ee6d9d881c6c70bb052717bfca40a9b2ebd2acff8cac8",
+        kind: KernelArtifactKind::RsEncode,
     },
 ];
 
