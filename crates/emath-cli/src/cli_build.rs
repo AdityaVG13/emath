@@ -131,18 +131,6 @@ pub fn build(request: BuildRequest) -> CliExit {
     };
     match build_file(&spec, &out, options) {
         Ok(report) => {
-            println!(
-                "artifact {} (crate {}) → {}",
-                report.artifact_id.0,
-                report.crate_name,
-                report.artifact_dir.display()
-            );
-            for assumption in &report.assumptions {
-                println!("  assumption: {assumption}");
-            }
-            if let Some(probe) = &report.probe_binary {
-                println!("compiled-probe → {}", probe.display());
-            }
             if json {
                 let mut object = emath_artifact::JsonWriter::object();
                 object.string("command", "build");
@@ -156,6 +144,19 @@ pub fn build(request: BuildRequest) -> CliExit {
                 object.strings("plan_ids", &report.plan_ids);
                 object.strings("exports", &report.exports);
                 println!("{}", object.finish());
+            } else {
+                println!(
+                    "artifact {} (crate {}) → {}",
+                    report.artifact_id.0,
+                    report.crate_name,
+                    report.artifact_dir.display()
+                );
+                for assumption in &report.assumptions {
+                    println!("  assumption: {assumption}");
+                }
+                if let Some(probe) = &report.probe_binary {
+                    println!("compiled-probe → {}", probe.display());
+                }
             }
             EXIT_OK
         }

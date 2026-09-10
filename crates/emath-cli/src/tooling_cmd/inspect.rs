@@ -52,6 +52,17 @@ pub(crate) fn inspect_cmd(dir: &Path, json: bool) -> CliExit {
     }
     if inspected == 0 {
         eprintln!("error: E-TLT-005: no artifacts under {}", root.display());
+        if json {
+            crate::print_json_diagnostics(
+                "inspect",
+                false,
+                &[crate::json_diagnostic_entry(
+                    "E-TLT-005",
+                    "error",
+                    &format!("no artifacts under {}", root.display()),
+                )],
+            );
+        }
         EXIT_USAGE
     } else if json {
         let mut object = JsonWriter::object();
@@ -89,7 +100,20 @@ pub(crate) fn diff_cmd(a: &Path, b: &Path, json: bool) -> CliExit {
             }
             if identical { EXIT_OK } else { EXIT_REFUSED }
         }
-        (Err(()), _) | (_, Err(())) => EXIT_REFUSED,
+        (Err(()), _) | (_, Err(())) => {
+            if json {
+                crate::print_json_diagnostics(
+                    "diff",
+                    false,
+                    &[crate::json_diagnostic_entry(
+                        "E-DIFF-FAILED",
+                        "error",
+                        "fingerprint comparison failed: cannot read input file",
+                    )],
+                );
+            }
+            EXIT_REFUSED
+        }
     }
 }
 
