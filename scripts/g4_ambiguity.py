@@ -315,6 +315,8 @@ def apply_diff(base: str, diff: str) -> str:
         index = hunk["start"] - 1
         for op, text in hunk["ops"]:
             if op == " ":
+                if index >= len(lines) or lines[index] != text:
+                    raise ValueError(f"diff context mismatch at line {index + 1}")
                 index += 1
             elif op == "-":
                 if index >= len(lines) or lines[index] != text:
