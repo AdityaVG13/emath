@@ -276,7 +276,7 @@ pub fn version_text() -> String {
 
 #[must_use]
 pub fn wants_help(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--help" || arg == "-h")
+    args.iter().any(|arg| arg == "--help" || arg == "-h" || arg == "help")
 }
 
 #[must_use]
@@ -284,14 +284,288 @@ pub fn wants_json(args: &[String]) -> bool {
     args.iter().any(|arg| arg == "--json")
 }
 
+#[must_use]
+pub fn flag_description(flag: &str) -> &'static str {
+    match flag {
+        "--json" => "emit machine-readable JSON output to stdout",
+        "--help" | "-h" => "print help information",
+        "--verify-data" => "re-hash declared sha256 provenance data files",
+        "--out" | "-o" => "output directory or file path",
+        "--verify" => "run verification gates during build",
+        "--bin" => "specify binary entrypoint",
+        "--parametric" => "lift missing operators during planning",
+        "--method" => "solver method: euler, rk4, rk45, backward-euler, velocity-verlet",
+        "--dt" => "integration time step size",
+        "--t0" => "simulation start time",
+        "--t1" => "simulation stop time",
+        "--model" => "target model name in multi-model source",
+        "--atol" => "absolute error tolerance",
+        "--rtol" => "relative error tolerance",
+        "--dt-max" => "maximum allowed adaptive step size",
+        "--event" => "event trigger specification (name=value)",
+        "--set" => "parameter override (name=value)",
+        "--value" => "literal value to format",
+        "--sf" => "number of significant figures",
+        "--from" => "source unit dimension",
+        "--format" => "display format template",
+        "--fix" => "apply verified lossless migrations in-place",
+        "--check" => "dry-run check without modifying files",
+        "--receipt" => "path to write migration receipt JSON artifact",
+        "--list-rules" => "list registered migration rules",
+        "--provenance" => "show binding provenance DAG",
+        "--show-defaults" => "show implicit and inferred default assumptions",
+        "--search" => "search query text",
+        "--offset" => "pagination offset",
+        "--limit" => "pagination limit",
+        "--source" => "source file filter",
+        "--function" => "function name to execute or search",
+        "--candidate" => "candidate function name",
+        "--work" => "maximum work units to execute",
+        "--expect-revision" => "concurrency guard: fail if revision differs",
+        "--cancel-file" => "stop execution if sentinel file exists",
+        "--measure" => "record execution timing across N runs",
+        "--branch-from" => "branch execution from prior checkpoint",
+        "--relation" => "branch relation descriptor",
+        "--guide" | "guide" => "handbook guide section",
+        "--port" => "HTTP port for localhost server",
+        "--no-open" => "do not automatically open web browser",
+        "--dist" => "path to custom web distribution assets",
+        "--emit" => "emission format",
+        "--grid" => "parameter sweep grid (name=v1,v2,...)",
+        "--expect" => "expected outcome specification",
+        "--apply" => "apply labeled completion to goal",
+        "--raise" => "raise meaning dimension",
+        "--forest" => "bounded parse forest output",
+        "--world" => "target world label",
+        "--dir" => "directory path",
+        "--hole" => "semantic hole descriptor",
+        "--declaration" => "declaration name",
+        "--cap" => "capability identifier",
+        "--dry-run" => "dry-run without modifying state",
+        _ => "command-specific option",
+    }
+}
+
+#[must_use]
+pub fn command_examples(command: &str) -> &'static [&'static str] {
+    match command {
+        "check" => &[
+            "emath check model.emath",
+            "emath check model.emath --verify-data",
+            "emath check model.emath --json",
+        ],
+        "plan" => &[
+            "emath plan model.emath",
+            "emath plan model.emath --json",
+        ],
+        "planner" => &[
+            "emath planner model.emath",
+            "emath planner model.emath --parametric",
+            "emath planner model.emath --json",
+        ],
+        "build" => &[
+            "emath build model.emath",
+            "emath build model.emath --out dist/",
+            "emath build model.emath --verify --json",
+        ],
+        "simulate" => &[
+            "emath simulate model.emath --method rk4",
+            "emath simulate model.emath --dt 0.01 --t1 10.0 --json",
+            "emath simulate model.emath --set gravity=9.81",
+        ],
+        "new" => &[
+            "emath new my_project",
+            "emath new my_project --out models/",
+        ],
+        "fmt" => &[
+            "emath fmt model.emath",
+            "emath fmt --value 3.14159265 --sf 4",
+            "emath fmt --value 100 --from m --format \"0.1 %\"",
+        ],
+        "migrate" => &[
+            "emath migrate model.emath --check",
+            "emath migrate model.emath --fix",
+            "emath migrate model.emath --receipt receipt.json",
+            "emath migrate --list-rules",
+        ],
+        "explain" => &[
+            "emath explain model.emath",
+            "emath explain model.emath my_symbol --provenance",
+            "emath explain E-LAW-001 --json",
+        ],
+        "api" => &[
+            "emath api --json",
+            "emath api --search \"integral\" --json",
+            "emath api --source model.emath --json",
+        ],
+        "search" => &[
+            "emath search --function optimize --json",
+            "emath search --function integrate --candidate rk4",
+        ],
+        "run" => &[
+            "emath run model.emath",
+            "emath run model.emath --function main --json",
+            "emath run model.emath --set alpha=1.5 --measure 10",
+        ],
+        "step" => &[
+            "emath step checkpoint.json --work 100",
+            "emath step checkpoint.json --out target/step --json",
+        ],
+        "test" => &[
+            "emath test model.emath",
+            "emath test model.emath --out target/test",
+        ],
+        "verify" => &[
+            "emath verify target/emath",
+            "emath verify checkpoint.json --json",
+        ],
+        "inspect" => &[
+            "emath inspect target/emath",
+            "emath inspect checkpoint.json --json",
+        ],
+        "diff" => &[
+            "emath diff model_a.emath model_b.emath",
+            "emath diff model_a.emath model_b.emath --json",
+        ],
+        "doctor" => &[
+            "emath doctor",
+            "emath doctor --json",
+        ],
+        "triage" => &[
+            "emath triage",
+            "emath triage model.emath",
+            "emath triage --json",
+        ],
+        "capabilities" => &[
+            "emath capabilities",
+            "emath capabilities --json",
+        ],
+        "robot-docs" => &[
+            "emath robot-docs guide",
+            "emath robot-docs --json",
+        ],
+        "help" => &[
+            "emath help",
+            "emath help check",
+            "emath check --help",
+            "emath help --json",
+        ],
+        "web" | "serve" => &[
+            "emath web",
+            "emath web --port 8080 --no-open",
+        ],
+        "architecture" => &[
+            "emath architecture",
+            "emath architecture --json",
+        ],
+        "coverage" => &[
+            "emath coverage",
+            "emath coverage --emit json",
+        ],
+        _ => &[],
+    }
+}
+
 /// Usage + one-line summary for a single command. Returns `None` if unknown.
 #[must_use]
 pub fn command_help_text(command: &str) -> Option<String> {
     let usage = command_usage(command)?;
     let summary = command_summary(command)?;
-    Some(format!(
-        "emath {usage}\n{summary}\n\nexit codes: 0 ok, 1 refused/admission diagnostics, 2 usage or io error\nrun `emath help` for the full command list, or `emath api --json` for the machine contract\n"
-    ))
+    let flags = flags_for(command);
+    let examples = command_examples(command);
+
+    let mut out = String::new();
+    out.push_str(&format!("Usage:\n  emath {usage}\n\n"));
+    out.push_str(&format!("Summary:\n  {summary}\n\n"));
+
+    if !flags.is_empty() {
+        out.push_str("Flags:\n");
+        for flag in flags {
+            let desc = flag_description(flag);
+            out.push_str(&format!("  {:<20} {}\n", flag, desc));
+        }
+        out.push('\n');
+    }
+
+    if !examples.is_empty() {
+        out.push_str("Examples:\n");
+        for ex in examples {
+            out.push_str(&format!("  {ex}\n"));
+        }
+        out.push('\n');
+    }
+
+    out.push_str(
+        "Exit Codes:\n  0    Ok (operation succeeded)\n  1    Refused (mathematical / admission error)\n  2    Usage (syntax or argument error)\n  3    Toolchain (missing rustc/cargo/tools)\n  4    Io (file not found / read/write error)\n  5    Safety (overwrite guard refusal)\n\n",
+    );
+    out.push_str("See Also:\n  Run `emath help` for full command index, or `emath capabilities --json` for machine contract.\n");
+
+    Some(out)
+}
+
+/// Structured JSON representation of single command help.
+#[must_use]
+pub fn command_help_json(command: &str) -> Option<String> {
+    let usage = command_usage(command)?;
+    let summary = command_summary(command)?;
+    let flags = flags_for(command);
+    let examples = command_examples(command);
+
+    let mut obj = emath_core::JsonWriter::object();
+    obj.string("status", "ok");
+    obj.string("command", command);
+    let full_usage = format!("emath {usage}");
+    obj.string("usage", &full_usage);
+    obj.string("summary", summary);
+
+    let mut flag_items = Vec::new();
+    for flag in flags {
+        let mut flag_obj = emath_core::JsonWriter::object();
+        flag_obj.string("flag", flag);
+        flag_obj.string("description", flag_description(flag));
+        flag_items.push(flag_obj.finish());
+    }
+    obj.objects("flags", &flag_items);
+
+    let ex_strings: Vec<String> = examples.iter().map(|s| s.to_string()).collect();
+    obj.strings("examples", &ex_strings);
+
+    let mut exits = emath_core::JsonWriter::object();
+    exits.string("0", "Ok (operation succeeded)");
+    exits.string("1", "Refused (mathematical / admission error)");
+    exits.string("2", "Usage (syntax or argument error)");
+    exits.string("3", "Toolchain (missing rustc/cargo/tools)");
+    exits.string("4", "Io (file not found / read/write error)");
+    exits.string("5", "Safety (overwrite guard refusal)");
+    let exits_body = exits.finish();
+    obj.object_field("exit_codes", exits_body.trim());
+
+    Some(obj.finish())
+}
+
+/// Structured JSON representation of full command catalog.
+#[must_use]
+pub fn catalog_help_json() -> String {
+    let mut obj = emath_core::JsonWriter::object();
+    obj.string("status", "ok");
+    obj.string("description", "emath compiler command catalog");
+    let mut cmd_items = Vec::new();
+    for &command in COMMANDS {
+        let Some(usage) = command_usage(command) else {
+            continue;
+        };
+        let Some(summary) = command_summary(command) else {
+            continue;
+        };
+        let mut c_obj = emath_core::JsonWriter::object();
+        c_obj.string("name", command);
+        let full_usage = format!("emath {usage}");
+        c_obj.string("usage", &full_usage);
+        c_obj.string("summary", summary);
+        cmd_items.push(c_obj.finish());
+    }
+    obj.objects("commands", &cmd_items);
+    obj.finish()
 }
 
 /// Machine contract. `emath capabilities` and `emath capabilities --json`

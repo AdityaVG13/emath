@@ -28,7 +28,7 @@ pub fn run(args: &[String]) -> CliExit {
             EXIT_OK
         }),
         ParsedCli::MetaTriage { target, json } => triage::triage_cmd(target, json),
-        ParsedCli::CommandHelp { name } => print_command_help(name),
+        ParsedCli::CommandHelp { name, json } => print_command_help(name, json),
         ParsedCli::UnknownFlag { code } => code,
         ParsedCli::Pedagogic(err) => err.emit(catalog::wants_json(args)),
         ParsedCli::Usage(message) => {
@@ -55,7 +55,7 @@ pub(super) enum ParsedCli<'a> {
     MetaCapabilities { rest: &'a [String] },
     MetaRobotDocs { rest: &'a [String] },
     MetaTriage { target: Option<PathBuf>, json: bool },
-    CommandHelp { name: &'a str },
+    CommandHelp { name: &'a str, json: bool },
     UnknownFlag { code: CliExit },
     Pedagogic(PedagogicError),
     Usage(&'static str),
@@ -145,7 +145,10 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
         "robot-docs" | "--robot-help" => return ParsedCli::MetaRobotDocs { rest },
         "triage" | "--robot-triage" => {
             if catalog::wants_help(rest) {
-                return ParsedCli::CommandHelp { name: "triage" };
+                return ParsedCli::CommandHelp {
+                    name: "triage",
+                    json: catalog::wants_json(rest),
+                };
             }
             if let Some(code) = catalog::reject_unknown_flags("triage", rest) {
                 return ParsedCli::UnknownFlag { code };
@@ -174,7 +177,10 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
         _ => {}
     }
     if catalog::wants_help(rest) {
-        return ParsedCli::CommandHelp { name: first };
+        return ParsedCli::CommandHelp {
+            name: first,
+            json: catalog::wants_json(rest),
+        };
     }
     if !catalog::is_known_command(first.as_str()) {
         return ParsedCli::Unknown(first);

@@ -290,7 +290,7 @@ pub(super) fn catalog_read_cmd(
     emit: impl FnOnce() -> CliExit,
 ) -> CliExit {
     if catalog::wants_help(args) {
-        return print_command_help(command);
+        return print_command_help(command, catalog::wants_json(args));
     }
     if let Some(code) = catalog::reject_unknown_flags(command, args) {
         return code;
@@ -302,27 +302,49 @@ pub(super) fn catalog_read_cmd(
 }
 
 pub(super) fn help_cmd(args: &[String]) -> CliExit {
-    match args {
-        [] => {
-            print!("{}", help_text());
+    let json = catalog::wants_json(args);
+    let mut command: Option<&str> = None;
+    for arg in args {
+        if arg == "--json" || arg == "--help" || arg == "-h" || arg == "help" {
+            continue;
+        }
+        if !arg.starts_with('-') && command.is_none() {
+            command = Some(arg.as_str());
+        } else {
+            return usage("help [<command>] [--json]");
+        }
+    }
+
+    match command {
+        None => {
+            if json {
+                println!("{}", catalog::catalog_help_json());
+            } else {
+                print!("{}", help_text());
+            }
             EXIT_OK
         }
-        [flag] if flag == "--help" || flag == "-h" => {
-            print!("{}", help_text());
-            EXIT_OK
-        }
-        [command] => print_command_help(command),
-        _ => usage("help [<command>]"),
+        Some(cmd) => print_command_help(cmd, json),
     }
 }
 
-pub(super) fn print_command_help(command: &str) -> CliExit {
-    match catalog::command_help_text(command) {
-        Some(text) => {
-            print!("{text}");
-            EXIT_OK
+pub(super) fn print_command_help(command: &str, json: bool) -> CliExit {
+    if json {
+        match catalog::command_help_json(command) {
+            Some(json_text) => {
+                println!("{json_text}");
+                EXIT_OK
+            }
+            None => unknown_command(command, true),
         }
-        None => unknown_command(command, false),
+    } else {
+        match catalog::command_help_text(command) {
+            Some(text) => {
+                print!("{text}");
+                EXIT_OK
+            }
+            None => unknown_command(command, false),
+        }
     }
 }
 
