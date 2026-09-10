@@ -62,6 +62,12 @@ impl BackendInput<'_> {
             // Stage-2 (emath-t63iz): the exact big field-element type maps
             // onto the embedded runtime's UBig (verbatim SOURCE module).
             TypeNode::BigInt => Ok(Ty::Named("emath_rt::UBig".to_string())),
+            // Prime field `Field<p>` / `GF<p>`: the node's own contract
+            // (types.rs) is "values are exact i64 integers; modular
+            // reduction and inversion remain operational concerns of the
+            // builtins" — the carrier is i64, the modularity rides the
+            // registered exact-int kernels (int_rem/field_inv/...).
+            TypeNode::FieldPrime { .. } => Ok(Ty::I64),
             TypeNode::Vector { element, .. } => match element.as_ref() {
                 // Nested vectors map onto the row-major matrix runtime
                 // representation (Vector<Vector<Float64>> values ARE

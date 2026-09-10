@@ -139,10 +139,11 @@
       "date": "2026-08-17",
       "note": "AGENTS.md operating-contract update: HANDOFF gained the contract-delta/tuning section; BUILD_STATUS gained the DSR/targeted-tests operating-contract note"
     },
-    "gauntlet pass 8: kernel artifact codegen (fd/einsum/rs-encode) + cmp/may-fault alignment"
+    "gauntlet pass 8: kernel artifact codegen (fd/einsum/rs-encode) + cmp/may-fault alignment",
+    "gauntlet pass 9: Field<7> carrier (FieldPrime\u2192i64) + E-SEC-133 default skips carrier-typed-input declarations; E-SEC-133 emitter list gains session/requests.rs; annex re-spliced (449 emitted, 0 newly covered). No new codes."
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "864493f417b9d412196227857f208c79e386e42fcce75c6b43ab0cabdef16dd2",
+    "implementation/ERROR_CODES.md": "a15af8553af124d00adde9a5ef98eb2d96bce0669d55b70b8f234c5cadebb8ec",
     "implementation/CLI_REFERENCE.md": "6895b32720661822a283abddeecc1f7524184c0780e1239559e1ee87075d71df",
     "implementation/CRATE_MAP.md": "c6a18e0143d669b1b457abf6e36d96f097ea957acf97d00b117543cff06e5695",
     "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"

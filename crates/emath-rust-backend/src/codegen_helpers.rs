@@ -314,6 +314,10 @@ pub(crate) fn field_value_kinds(
                 ValueKind::Matrix(Box::new(carrier(Some(element))))
             }
             Some(TypeNode::Tensor { .. }) => ValueKind::Tensor,
+            // Prime field elements are exact i64 (the TypeNode's own
+            // contract); modularity rides the registered exact-int
+            // kernels, not the carrier.
+            Some(TypeNode::FieldPrime { .. }) => ValueKind::I64,
             Some(TypeNode::Refinement { base, .. }) => carrier(Some(base)),
             _ => ValueKind::Other,
         }

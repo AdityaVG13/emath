@@ -24,6 +24,26 @@ pub fn elaborate_requests(
         else {
             return requests;
         };
+        // The default only mints goals that can exist. Carrier-typed
+        // INPUTS (`Option<T>`, `Result<T, E>`) have no runtime binding
+        // story — the input boundary refuses them
+        // (`carrier_field_decl_refuses_typed`) — so a declaration whose
+        // inputs are all/any carriers is a check-only surface: minting
+        // the implicit `evaluate` goal would force its codegen to refuse
+        // and make every such admission unbuildable. The E-SEC-133
+        // warning (raised at setup) stays the visible trace of the
+        // default; an explicit `goals:` section still pins real intent
+        // and still refuses at the input boundary, as pinned.
+        let inputs_carry_typed = declaration.inputs.iter().any(|field| {
+            matches!(
+                package.ty(field.ty),
+                Some(emath_ir::TypeNode::OptionType(_))
+                    | Some(emath_ir::TypeNode::Result { .. })
+            )
+        });
+        if inputs_carry_typed {
+            return requests;
+        }
         for target in declaration.definitions.keys() {
             requests.push(RequestSpec {
                 kind: "evaluate".into(),
