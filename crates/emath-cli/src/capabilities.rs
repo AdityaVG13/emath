@@ -27,13 +27,13 @@ pub fn capabilities_json() -> String {
     );
 
     let commands: &[(&str, &str, &str)] = &[
-        ("check", "Semantic admission and typecheck", "check <file.emath> [--verify-data] [--json]"),
+        ("check", "Semantic admission and typecheck", "check <file.emath|-> [--verify-data] [--json]"),
         ("plan", "Deterministic resolution plan", "plan <file.emath> [--json]"),
         ("planner", "Low-level planner inspection", "planner <file.emath> [--json] [--parametric]"),
         ("build", "Generate and verify Cargo artifact", "build <file.emath> [--out <dir>] [--verify] [--bin <entry>] [--dry-run] [--json]"),
         ("simulate", "Integrate admitted ODE/DAE models", "simulate <file.emath> [--model NAME] [--dt N] [--method euler|rk4|rk45] [--json]"),
         ("new", "Deterministic project scaffold", "new <name> [--out <dir>] [--dry-run] [--force] [--json]"),
-        ("fmt", "Canonical formatting and unit-preserving display", "fmt <file.emath> | fmt --value <literal> [--sf N] [--from UNIT]"),
+        ("fmt", "Canonical formatting and unit-preserving display", "fmt <file.emath|-> | fmt --value <literal> [--sf N] [--from UNIT]"),
         ("migrate", "Lossless receipt-driven syntax migrations", "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json]"),
         ("explain", "Plan explanation, provenance DAG, or error code", "explain <file.emath> [<symbol>] | explain <E-CODE> [--json]"),
         ("run", "Execute source mathematics with saved authored methods", "run <file.emath> [--function NAME] [--set name=value] [--json]"),
@@ -113,6 +113,7 @@ pub fn capabilities_json() -> String {
         "next_action_engine".to_string(),
         "provable_artifacts".to_string(),
         "safe_mutation_dry_run".to_string(),
+        "stdin_pipelines".to_string(),
     ];
     root.strings("features", &features);
 
@@ -130,6 +131,7 @@ fn print_human_summary() {
     println!("  • Structured exit code contracts and error pedagogy");
     println!("  • Single-letter and intuitive command aliases (c, b, p, sim, doc, fmt)");
     println!("  • Environment conventions (NO_COLOR, CI, TERM=dumb, --color control)");
+    println!("  • Stdin pipelines: `check -` and `fmt -` read source from stdin");
     println!();
     println!("For machine-readable JSON schema contract, run: emath capabilities --json");
 }

@@ -15,7 +15,17 @@ pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
     };
     let result = session.check(package.file);
     let package_id = result.package.content_id().0;
-    (result.diagnostics, package_id, Vec::new())
+    (result.diagnostics, package_id, result.units_profiles)
+}
+
+/// Stdin variant of [`run_check`] (`check -`): same shape, source read
+/// from a string. Deterministic; the package id derives from the source
+/// bytes alone, so piped and on-disk checks of identical text agree.
+pub fn run_check_source(name: &str, source: &str) -> (Diagnostics, String, Vec<(String, String)>) {
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    let result = session.check_owned(name, source);
+    let package_id = result.package.content_id().0;
+    (result.diagnostics, package_id, result.units_profiles)
 }
 
 /// `plan <file> [--json]`: check + goals + plans, no artifact.

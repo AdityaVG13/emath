@@ -609,7 +609,10 @@ pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownEr
                 format = Some(rest[i..].join(" "));
                 break;
             }
-            other if !other.starts_with('-') && path.is_none() && value.is_none() => {
+            other if (other == "-" || !other.starts_with('-'))
+                && path.is_none()
+                && value.is_none() =>
+            {
                 path = Some(PathBuf::from(other));
             }
             _ => {

@@ -130,7 +130,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
     Some(match resolved {
         "search" => crate::compiled_search::USAGE,
         "api" => "api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]",
-        "check" => "check <file.emath> [--verify-data] [--json]",
+        "check" => "check <file.emath|-> [--verify-data] [--json]",
         "plan" => "plan <file.emath> [--json]",
         "planner" => "planner <file.emath> [--json] [--parametric]",
         "build" => "build <file.emath> [--out <dir>] [--verify] [--bin <entrypoint>] [--dry-run] [--json]",
@@ -166,7 +166,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "serve" => "serve [--port N] [--no-open] [--dist PATH]",
         "new" => "new <name> [--out <dir>] [--dry-run] [--force] [--json]",
         "fmt" => {
-            "fmt <file.emath> | fmt --value <literal> [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]"
+            "fmt <file.emath|-> | fmt --value <literal> [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]"
         }
         "migrate" => {
             "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate --list-rules"
@@ -210,7 +210,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
             "discover commands, source syntax, and active Language Image features; executable status comes from installed reference/native implementations"
         }
         "check" => {
-            "parse + admit, no codegen; `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission"
+            "parse + admit, no codegen; `-` reads source from stdin (pipelines); `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission"
         }
         "plan" => "admit + goals + deterministic native resolution plan",
         "planner" => "provider-registry planning; `--parametric` lifts missing operators",
@@ -261,7 +261,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "serve" => "localhost web playground on 127.0.0.1; Ctrl-C to stop (alias for `web`)",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011) unless --force is specified; --dry-run simulates actions",
         "fmt" => {
-            "canonical-form check (full rewrite is Phase 4); --value mode: sig-fig rounding + unit-preserving display (E-UNIT-FMT)"
+            "canonical-form check (full rewrite is Phase 4); `-` reads source from stdin (pipelines, never rewritten); --value mode: sig-fig rounding + unit-preserving display (E-UNIT-FMT)"
         }
         "migrate" => {
             "lossless receipt-driven rewrites (05 section 5): `--check` reports without rewriting, `--dry-run` checks rewrites in-memory, `--fix` applies verified respells only (identity verified by re-lowering both sides), `--receipt <path>` writes the emath.migration-receipt v1 artifact; `--list-rules` prints the registry. Never rewrites a refusing source; identity-changing rewrites refuse"
@@ -421,6 +421,7 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
     match resolved {
         "check" => &[
             "emath check model.emath",
+            "emath check - < model.emath",
             "emath check model.emath --verify-data",
             "emath check model.emath --json",
         ],
@@ -452,6 +453,7 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
         ],
         "fmt" => &[
             "emath fmt model.emath",
+            "emath fmt - < model.emath",
             "emath fmt --value 3.14159265 --sf 4",
             "emath fmt --value 100 --from m --format \"0.1 %\"",
         ],

@@ -7,6 +7,9 @@ use super::*;
 /// `sha256` declared in InstrumentRun provenance against the file on
 /// disk, relative to the source file; drift refuses `E-OBS-HASH`.
 pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
+    if path.as_os_str() == "-" {
+        return check_stdin(json, verify_data);
+    }
     if let Some(code) = refuse_malformed_project_lock(path) {
         return code;
     }
@@ -34,6 +37,70 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
         // The diagnostics array carries codes and messages, not counts:
         // a checker lane must be able to assert the exact E-* code the
         // CLI refused with.
+        println!(
+            "{}",
+            check_json_document(
+                !diagnostics.has_errors(),
+                &package_id,
+                &diagnostics,
+                meaning_id.as_ref().map(|id| id.as_str()),
+                &units_profiles,
+            )
+        );
+    }
+    exit_from_diagnostics(diagnostics.has_errors())
+}
+
+/// `check -`: read `.emath` source from stdin (unix pipeline
+/// composability, e.g. `emath fmt - < f.emath | emath check -`).
+/// Deterministic; the package id derives from the source bytes, so a
+/// piped check matches the same text checked from disk.
+///
+/// No project lock or data-file base directory exists for stdin, so
+/// `--verify-data` is refused (`E-CLI-USAGE`): InstrumentRun digests
+/// resolve relative to a source file on disk.
+fn check_stdin(json: bool, verify_data: bool) -> CliExit {
+    use std::io::Read;
+    if verify_data {
+        let message =
+            "--verify-data requires a file path; stdin source has no data-file base directory";
+        eprintln!("error: E-CLI-USAGE: {message}");
+        if json {
+            print_json_diagnostics(
+                "check",
+                false,
+                &[json_diagnostic_entry("E-CLI-USAGE", "error", message)],
+            );
+        }
+        return EXIT_USAGE;
+    }
+    let mut source = String::new();
+    if std::io::stdin().read_to_string(&mut source).is_err() {
+        let message = "cannot read `.emath` source from stdin";
+        eprintln!("error: E-PKG-080: {message}");
+        if json {
+            print_json_diagnostics(
+                "check",
+                false,
+                &[json_diagnostic_entry("E-PKG-080", "error", message)],
+            );
+        }
+        return EXIT_IO;
+    }
+    let (diagnostics, package_id, units_profiles) = run_check_source("<stdin>", &source);
+    let meaning_id = if diagnostics.has_errors() {
+        None
+    } else {
+        admitted_meaning_id(Path::new("<stdin>"), &source)
+    };
+    print_diagnostics(&diagnostics);
+    if !json && !units_profiles.is_empty() {
+        // §6.5 pack-table, same contract as file mode.
+        for (declaration, profile) in &units_profiles {
+            println!("honesty: units_profile {declaration}={profile}");
+        }
+    }
+    if json {
         println!(
             "{}",
             check_json_document(

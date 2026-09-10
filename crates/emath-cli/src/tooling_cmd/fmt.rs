@@ -94,6 +94,9 @@ pub(crate) fn fmt_value_cmd(
 }
 
 pub(crate) fn fmt_cmd(file: &Path) -> CliExit {
+    if file.as_os_str() == "-" {
+        return fmt_stdin();
+    }
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(file) else {
         eprintln!("error: cannot read {}", file.display());
@@ -121,6 +124,45 @@ pub(crate) fn fmt_cmd(file: &Path) -> CliExit {
         for (line_no, (expected, actual)) in canonical
             .lines()
             .zip(package.text.lines())
+            .enumerate()
+            .filter(|(_, (expected, actual))| expected != actual)
+            .take(10)
+        {
+            eprintln!(
+                "  line {}: expected `{expected}`, found `{actual}`",
+                line_no + 1
+            );
+        }
+        EXIT_REFUSED
+    }
+}
+
+/// `fmt -`: canonical-form check on stdin (pipelines). Same lossless
+/// round-trip contract as file mode: stdin is never rewritten, parse
+/// errors refuse before the round-trip comparison, and a non-canonical
+/// diff is reported on stderr.
+fn fmt_stdin() -> CliExit {
+    use std::io::Read;
+    let mut source = String::new();
+    if std::io::stdin().read_to_string(&mut source).is_err() {
+        eprintln!("error: cannot read `.emath` source from stdin");
+        return EXIT_IO;
+    }
+    let limits = emath_core::limits::Limits::default();
+    let lossless = emath_syntax::parse_lossless(&source, emath_core::FileId(0), &limits);
+    if lossless.diagnostics.has_errors() {
+        print_diagnostics(&lossless.diagnostics);
+        return EXIT_REFUSED;
+    }
+    let canonical = emath_syntax::format(&lossless.tree, &lossless.comments);
+    if canonical == source {
+        println!("fmt: <stdin>: canonical form (lossless round-trip)");
+        EXIT_OK
+    } else {
+        eprintln!("fmt: <stdin>: NOT canonical; expected lossless formatter output");
+        for (line_no, (expected, actual)) in canonical
+            .lines()
+            .zip(source.lines())
             .enumerate()
             .filter(|(_, (expected, actual))| expected != actual)
             .take(10)
