@@ -327,57 +327,46 @@ pub(super) fn print_command_help(command: &str) -> CliExit {
 }
 
 pub(super) fn unknown_command(other: &str, json: bool) -> CliExit {
-    if json {
-        let mut obj = emath_artifact::JsonWriter::object();
-        obj.string("status", "error");
-        obj.string("code", "E-CLI-UNKNOWN-COMMAND");
-        if catalog::EXTRACTED_COMMANDS.contains(&other) {
-            let msg = format!("`{other}` lives in `emath-lab`, not production `emath`");
-            obj.string("message", &msg);
-            let dym = format!("emath-lab {other}");
-            obj.string("did_you_mean", &dym);
-            let t = format!("emath-lab help {other}");
-            obj.string("try", &t);
-        } else {
-            let msg = format!("unknown command `{other}`");
-            obj.string("message", &msg);
-            if let Some(hint) = catalog::suggest_command(other) {
-                if catalog::EXTRACTED_COMMANDS.contains(&hint) {
-                    let dym = format!("emath-lab {hint}");
-                    obj.string("did_you_mean", &dym);
-                    let t = format!("emath-lab help {hint}");
-                    obj.string("try", &t);
-                } else {
-                    let dym = format!("emath {hint}");
-                    obj.string("did_you_mean", &dym);
-                    let t = format!("emath help {hint}");
-                    obj.string("try", &t);
-                }
-            } else {
-                obj.string("try", "emath help");
-            }
-        }
-        println!("{}", obj.finish());
-        return EXIT_USAGE;
-    }
     if catalog::EXTRACTED_COMMANDS.contains(&other) {
-        eprintln!("error: `{other}` lives in `emath-lab`, not production `emath`");
-        eprintln!("try: emath-lab {other}");
-        return EXIT_USAGE;
+        let err = PedagogicError::new(
+            "E-CLI-UNKNOWN-COMMAND",
+            format!("`{other}` lives in `emath-lab`, not production `emath`"),
+            format!("command position 1 (`{other}`)"),
+            format!("emath-lab {other}"),
+        )
+        .with_did_you_mean(format!("emath-lab {other}"))
+        .with_help(format!("emath-lab help {other}"));
+        return err.emit(json);
     }
-    eprintln!("error: unknown command `{other}`");
-    if let Some(hint) = catalog::suggest_command(other) {
-        if catalog::EXTRACTED_COMMANDS.contains(&hint) {
-            eprintln!("did you mean `emath-lab {hint}`?");
-            eprintln!("try: emath-lab help {hint}");
-        } else {
-            eprintln!("did you mean `emath {hint}`?");
-            eprintln!("try: emath help {hint}");
-        }
-    } else {
-        eprintln!("try: emath help");
+    let hint = catalog::suggest_command(other);
+    let (remediation, did_you_mean, help) = match hint {
+        Some(h) if catalog::EXTRACTED_COMMANDS.contains(&h) => (
+            format!("emath-lab {h}"),
+            Some(format!("emath-lab {h}")),
+            format!("emath-lab help {h}"),
+        ),
+        Some(h) => (
+            format!("emath {h}"),
+            Some(format!("emath {h}")),
+            format!("emath help {h}"),
+        ),
+        None => (
+            "run `emath help` or `emath capabilities` to list available commands".to_string(),
+            None,
+            "emath help".to_string(),
+        ),
+    };
+    let mut err = PedagogicError::new(
+        "E-CLI-UNKNOWN-COMMAND",
+        format!("unknown command `{other}`"),
+        format!("command position 1 (`{other}`)"),
+        remediation,
+    )
+    .with_help(help);
+    if let Some(dym) = did_you_mean {
+        err = err.with_did_you_mean(dym);
     }
-    EXIT_USAGE
+    err.emit(json)
 }
 
 pub(super) fn next_arg<'a>(args: &'a [String], index: &mut usize) -> Option<&'a str> {
@@ -534,11 +523,16 @@ pub fn parse_genesis_args(
 }
 
 pub fn usage(message: &str) -> CliExit {
-    eprintln!("error: missing or invalid arguments for this command");
-    eprintln!("usage: emath {message}");
     let command = message.split_whitespace().next().unwrap_or("help");
-    eprintln!("try: emath help {command}");
-    EXIT_USAGE
+    let err = PedagogicError::new(
+        "E-CLI-USAGE",
+        format!("invalid or missing arguments for `emath {command}`"),
+        format!("arguments for `emath {command}`"),
+        format!("emath {message}"),
+    )
+    .with_command(command)
+    .with_usage(format!("emath {message}"));
+    err.emit(false)
 }
 
 /// JSON pretty-helper used by tests.

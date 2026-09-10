@@ -30,24 +30,18 @@ pub fn run(args: &[String]) -> CliExit {
         ParsedCli::MetaTriage { target, json } => triage::triage_cmd(target, json),
         ParsedCli::CommandHelp { name } => print_command_help(name),
         ParsedCli::UnknownFlag { code } => code,
+        ParsedCli::Pedagogic(err) => err.emit(catalog::wants_json(args)),
         ParsedCli::Usage(message) => {
-            if catalog::wants_json(args) {
-                let mut obj = emath_artifact::JsonWriter::object();
-                obj.string("status", "error");
-                obj.string("code", "E-CLI-USAGE");
-                obj.string("message", message);
-                let cmd = args.first().map(String::as_str).unwrap_or("help");
-                if let Some(usage_text) = catalog::command_usage(cmd) {
-                    let u = format!("emath {usage_text}");
-                    obj.string("usage", &u);
-                }
-                let t = format!("emath help {cmd}");
-                obj.string("try", &t);
-                println!("{}", obj.finish());
-                EXIT_USAGE
-            } else {
-                usage(message)
-            }
+            let cmd = args.first().map(String::as_str).unwrap_or("help");
+            let err = PedagogicError::new(
+                "E-CLI-USAGE",
+                format!("invalid or missing arguments for `emath {cmd}`"),
+                format!("arguments for `emath {cmd}`"),
+                format!("emath {message}"),
+            )
+            .with_command(cmd)
+            .with_usage(format!("emath {message}"));
+            err.emit(catalog::wants_json(args))
         }
         ParsedCli::Unknown(name) => unknown_command(name, catalog::wants_json(args)),
         ParsedCli::Known(command) => run_command(command),
@@ -63,6 +57,7 @@ pub(super) enum ParsedCli<'a> {
     MetaTriage { target: Option<PathBuf>, json: bool },
     CommandHelp { name: &'a str },
     UnknownFlag { code: CliExit },
+    Pedagogic(PedagogicError),
     Usage(&'static str),
     Known(Command),
     Unknown(&'a str),
@@ -133,6 +128,7 @@ pub(crate) enum ExplainRequest {
 }
 
 pub(super) enum ParseKnownError {
+    Pedagogic(PedagogicError),
     Usage(&'static str),
     Unknown,
 }
@@ -159,7 +155,16 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
             for arg in rest {
                 if !arg.starts_with('-') {
                     if target.is_some() {
-                        return ParsedCli::Usage("triage accepts at most one target file");
+                        return ParsedCli::Pedagogic(
+                            PedagogicError::new(
+                                "E-CLI-USAGE",
+                                "triage accepts at most one target file",
+                                "arguments for `emath triage`",
+                                "emath triage [<file.emath>] [--json]",
+                            )
+                            .with_command("triage")
+                            .with_usage("emath triage [<file.emath>] [--json]"),
+                        );
                     }
                     target = Some(PathBuf::from(arg));
                 }
@@ -179,86 +184,285 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
     }
     match parse_known(first.as_str(), rest) {
         Ok(command) => ParsedCli::Known(command),
+        Err(ParseKnownError::Pedagogic(err)) => ParsedCli::Pedagogic(err),
         Err(ParseKnownError::Usage(message)) => ParsedCli::Usage(message),
         Err(ParseKnownError::Unknown) => ParsedCli::Unknown(first),
     }
 }
 
+fn require_single_file<T>(
+    cmd: &'static str,
+    usage: &'static str,
+    rest: &[String],
+    f: impl FnOnce(&[String]) -> Option<T>,
+) -> Result<T, ParseKnownError> {
+    if let Some(val) = f(rest) {
+        return Ok(val);
+    }
+    let positionals: Vec<&str> = rest
+        .iter()
+        .filter(|arg| !arg.starts_with('-') || *arg == "-")
+        .map(String::as_str)
+        .collect();
+    if positionals.is_empty() {
+        Err(ParseKnownError::Pedagogic(
+            PedagogicError::new(
+                "E-CLI-USAGE",
+                format!("missing required argument `<file.emath>` for `emath {cmd}`"),
+                "positional argument 1 (expected path to `.emath` source file)",
+                format!("emath {cmd} <file.emath>"),
+            )
+            .with_command(cmd)
+            .with_usage(format!("emath {usage}")),
+        ))
+    } else if positionals.len() > 1 {
+        Err(ParseKnownError::Pedagogic(
+            PedagogicError::new(
+                "E-CLI-USAGE",
+                format!(
+                    "unexpected positional argument `{}` for `emath {cmd}`",
+                    positionals[1]
+                ),
+                format!(
+                    "argument `{}` (expected exactly 1 `.emath` source file)",
+                    positionals[1]
+                ),
+                format!("emath {cmd} {}", positionals[0]),
+            )
+            .with_command(cmd)
+            .with_usage(format!("emath {usage}")),
+        ))
+    } else {
+        Err(ParseKnownError::Usage(usage))
+    }
+}
+
 pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> {
     match name {
-        "check" => parse_check_request(rest)
-            .map(Command::Check)
-            .ok_or(ParseKnownError::Usage(
-                "check <file.emath> [--verify-data] [--json]",
-            )),
-        "plan" => parse_file_json_request(rest)
-            .map(Command::Plan)
-            .ok_or(ParseKnownError::Usage("plan <file.emath> [--json]")),
-        "planner" => {
-            parse_planner_request(rest)
-                .map(Command::Planner)
-                .ok_or(ParseKnownError::Usage(
-                    "planner <file.emath> [--json] [--parametric]",
-                ))
-        }
-        "build" => parse_build_request(rest)
-            .map(Command::Build)
-            .ok_or(ParseKnownError::Usage(
-                "build <file.emath> [--out <dir>] [--verify] [--json]",
-            )),
+        "check" => require_single_file(
+            "check",
+            "check <file.emath> [--verify-data] [--json]",
+            rest,
+            parse_check_request,
+        )
+        .map(Command::Check),
+        "plan" => require_single_file(
+            "plan",
+            "plan <file.emath> [--json]",
+            rest,
+            parse_file_json_request,
+        )
+        .map(Command::Plan),
+        "planner" => require_single_file(
+            "planner",
+            "planner <file.emath> [--json] [--parametric]",
+            rest,
+            parse_planner_request,
+        )
+        .map(Command::Planner),
+        "build" => require_single_file(
+            "build",
+            "build <file.emath> [--out <dir>] [--verify] [--json]",
+            rest,
+            parse_build_request,
+        )
+        .map(Command::Build),
         "simulate" => match simulate_cmd::parse_simulate_args(rest) {
             Ok(parsed) => Ok(Command::Simulate(parsed)),
             Err(message) => {
-                eprintln!("error: {message}");
-                Err(ParseKnownError::Usage(
-                    "simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]",
+                let positionals: Vec<&str> = rest
+                    .iter()
+                    .filter(|arg| !arg.starts_with('-') || *arg == "-")
+                    .map(String::as_str)
+                    .collect();
+                if positionals.is_empty() {
+                    Err(ParseKnownError::Pedagogic(
+                        PedagogicError::new(
+                            "E-CLI-USAGE",
+                            "missing required argument `<file.emath>` for `emath simulate`",
+                            "positional argument 1 (expected path to `.emath` source file)",
+                            "emath simulate <file.emath> [--method rk4] [--json]",
+                        )
+                        .with_command("simulate")
+                        .with_usage("emath simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"),
+                    ))
+                } else {
+                    Err(ParseKnownError::Pedagogic(
+                        PedagogicError::new(
+                            "E-CLI-USAGE",
+                            format!("invalid simulation argument: {message}"),
+                            "arguments for `emath simulate`",
+                            "emath simulate <file.emath> [--method rk4] [--json]",
+                        )
+                        .with_command("simulate")
+                        .with_usage("emath simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"),
+                    ))
+                }
+            }
+        },
+        "new" => match parse_new_request(rest) {
+            Some((name, out)) => Ok(Command::New { name, out }),
+            None => Err(ParseKnownError::Pedagogic(
+                PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "missing required argument `<name>` for `emath new`",
+                    "positional argument 1 (expected model name)",
+                    "emath new <model_name> [--out <dir>]",
+                )
+                .with_command("new")
+                .with_usage("emath new <name> [--out <dir>]"),
+            )),
+        },
+        "fmt" => parse_fmt_request(rest),
+        "migrate" => parse_migrate_request(rest),
+        "explain" => match parse_explain_request(rest) {
+            Some(req) => Ok(Command::Explain(req)),
+            None => Err(ParseKnownError::Pedagogic(
+                PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "missing target for `emath explain`",
+                    "positional argument 1 (expected `.emath` file or diagnostic code such as `E-LAW-001`)",
+                    "emath explain <file.emath> [<symbol>] or emath explain E-LAW-001 [--json]",
+                )
+                .with_command("explain")
+                .with_usage("emath explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain E-LAW-001 [--json]"),
+            )),
+        },
+        "api" => match language_cmd::ApiRequest::parse(rest) {
+            Some(req) => Ok(Command::Api(req)),
+            None => Err(ParseKnownError::Pedagogic(
+                PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "invalid arguments for `emath api`",
+                    "arguments for `emath api`",
+                    "emath api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]",
+                )
+                .with_command("api")
+                .with_usage("emath api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]"),
+            )),
+        },
+        "search" => match compiled_search::SearchRequest::parse(rest) {
+            Some(req) => Ok(Command::Search(req)),
+            None => Err(ParseKnownError::Pedagogic(
+                PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "invalid arguments for `emath search`",
+                    "arguments for `emath search`",
+                    "emath search --function <name> [--candidate <name>] [--out <dir>] [--json]",
+                )
+                .with_command("search")
+                .with_usage(format!("emath {}", compiled_search::USAGE)),
+            )),
+        },
+        "run" => require_single_file(
+            "run",
+            "run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]",
+            rest,
+            |r| execution::RunRequest::parse(r, false),
+        )
+        .map(Command::Run),
+        "step" => match execution::RunRequest::parse(rest, true) {
+            Some(req) => Ok(Command::Step(req)),
+            None => Err(ParseKnownError::Pedagogic(
+                PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "missing required argument `<checkpoint.json>` for `emath step`",
+                    "positional argument 1 (expected path to checkpoint JSON file)",
+                    "emath step <checkpoint.json> [--work N] [--out <dir>] [--json]",
+                )
+                .with_command("step")
+                .with_usage("emath step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"),
+            )),
+        },
+        "test" => require_single_file(
+            "test",
+            "test <file.emath> [--out <dir>]",
+            rest,
+            |r| parse_path_out_request(r).map(|(path, out)| (path, out)),
+        )
+        .map(|(path, out)| Command::Test { path, out }),
+        "verify" => match parse_required_path(rest) {
+            Some(dir) => Ok(Command::Verify {
+                dir,
+                json: catalog::wants_json(rest),
+            }),
+            None => Err(ParseKnownError::Pedagogic(
+                PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "missing required argument `<artifact-dir>` for `emath verify`",
+                    "positional argument 1 (expected path to artifact directory or checkpoint.json)",
+                    "emath verify target/emath [--json]",
+                )
+                .with_command("verify")
+                .with_usage("emath verify <artifact-dir> | verify <checkpoint.json> [--json]"),
+            )),
+        },
+        "inspect" => match parse_inspect_request(rest) {
+            Some((dir, json)) => Ok(Command::Inspect { dir, json }),
+            None => Err(ParseKnownError::Pedagogic(
+                PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "missing required argument `<artifact-dir>` for `emath inspect`",
+                    "positional argument 1 (expected path to artifact directory or checkpoint.json)",
+                    "emath inspect target/emath [--json]",
+                )
+                .with_command("inspect")
+                .with_usage("emath inspect <artifact-dir> [--json]"),
+            )),
+        },
+        "diff" => match parse_diff_request(rest) {
+            Some((a, b, json)) => Ok(Command::Diff { a, b, json }),
+            None => {
+                let positionals: Vec<&str> = rest
+                    .iter()
+                    .filter(|arg| !arg.starts_with('-') || *arg == "-")
+                    .map(String::as_str)
+                    .collect();
+                let err = match positionals.len() {
+                    0 => PedagogicError::new(
+                        "E-CLI-USAGE",
+                        "missing required arguments `<a.emath>` and `<b.emath>` for `emath diff`",
+                        "positional arguments 1 and 2 (expected two file paths to compare)",
+                        "emath diff <a.emath> <b.emath> [--json]",
+                    ),
+                    1 => PedagogicError::new(
+                        "E-CLI-USAGE",
+                        "missing second comparison file `<b.emath>` for `emath diff`",
+                        "positional argument 2 (expected second file path)",
+                        format!("emath diff {} <b.emath> [--json]", positionals[0]),
+                    ),
+                    _ => PedagogicError::new(
+                        "E-CLI-USAGE",
+                        format!(
+                            "unexpected extra positional argument `{}` for `emath diff`",
+                            positionals[2]
+                        ),
+                        "positional arguments (expected exactly two files to compare)",
+                        format!("emath diff {} {} [--json]", positionals[0], positionals[1]),
+                    ),
+                };
+                Err(ParseKnownError::Pedagogic(
+                    err.with_command("diff")
+                        .with_usage("emath diff <a.emath> <b.emath> [--json]"),
                 ))
             }
         },
-        "new" => parse_new_request(rest)
-            .map(|(name, out)| Command::New { name, out })
-            .ok_or(ParseKnownError::Usage("new <name> [--out <dir>]")),
-        "fmt" => parse_fmt_request(rest),
-        "migrate" => parse_migrate_request(rest),
-        "explain" => {
-            parse_explain_request(rest)
-                .map(Command::Explain)
-                .ok_or(ParseKnownError::Usage(
-                    "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain \
-                     E-LAW-001 [--json]",
-                ))
-        }
-        "api" => language_cmd::ApiRequest::parse(rest)
-            .map(Command::Api)
-            .ok_or(ParseKnownError::Usage("api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]")),
-        "search" => compiled_search::SearchRequest::parse(rest)
-            .map(Command::Search)
-            .ok_or(ParseKnownError::Usage(compiled_search::USAGE)),
-        "run" => execution::RunRequest::parse(rest, false)
-            .map(Command::Run)
-            .ok_or(ParseKnownError::Usage("run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]")),
-        "step" => execution::RunRequest::parse(rest, true)
-            .map(Command::Step)
-            .ok_or(ParseKnownError::Usage("step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]")),
-        "test" => parse_path_out_request(rest)
-            .map(|(path, out)| Command::Test { path, out })
-            .ok_or(ParseKnownError::Usage("test <file.emath> [--out <dir>]")),
-        "verify" => parse_required_path(rest)
-            .map(|dir| Command::Verify { dir, json: catalog::wants_json(rest) })
-            .ok_or(ParseKnownError::Usage("verify <artifact-dir> | verify <checkpoint.json> [--json]")), 
-        "inspect" => parse_inspect_request(rest)
-            .map(|(dir, json)| Command::Inspect { dir, json })
-            .ok_or(ParseKnownError::Usage("inspect <artifact-dir> [--json]")),
-        "diff" => parse_diff_request(rest)
-            .map(|(a, b, json)| Command::Diff { a, b, json })
-            .ok_or(ParseKnownError::Usage("diff <a.emath> <b.emath> [--json]")),
         "doctor" => {
             if no_extra_positionals(rest) {
                 Ok(Command::Doctor {
                     json: catalog::wants_json(rest),
                 })
             } else {
-                Err(ParseKnownError::Usage("doctor [--json]"))
+                Err(ParseKnownError::Pedagogic(
+                    PedagogicError::new(
+                        "E-CLI-USAGE",
+                        "unexpected positional arguments for `emath doctor`",
+                        "positional arguments (`emath doctor` accepts only flags)",
+                        "emath doctor [--json]",
+                    )
+                    .with_command("doctor")
+                    .with_usage("emath doctor [--json]"),
+                ))
             }
         }
         _ => Err(ParseKnownError::Unknown),
@@ -282,27 +486,69 @@ pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownEr
                 i += 1;
                 value = rest.get(i).map(|s| s.to_string());
                 if value.is_none() {
-                    return Err(ParseKnownError::Usage(USAGE));
+                    return Err(ParseKnownError::Pedagogic(
+                        PedagogicError::new(
+                            "E-CLI-MISSING-VALUE",
+                            "flag `--value` requires a literal value",
+                            "flag `--value` in `emath fmt`",
+                            "emath fmt --value 3.14159 [--sf 3]",
+                        )
+                        .with_command("fmt")
+                        .with_flag("--value")
+                        .with_usage(format!("emath {USAGE}")),
+                    ));
                 }
             }
             "--sf" => {
                 i += 1;
                 match rest.get(i).and_then(|s| s.parse::<u32>().ok()) {
                     Some(n) => sf = Some(n),
-                    None => return Err(ParseKnownError::Usage(USAGE)),
+                    None => {
+                        return Err(ParseKnownError::Pedagogic(
+                            PedagogicError::new(
+                                "E-CLI-MISSING-VALUE",
+                                "flag `--sf` requires a positive integer",
+                                "flag `--sf` in `emath fmt`",
+                                "emath fmt --value 3.14159 --sf 3",
+                            )
+                            .with_command("fmt")
+                            .with_flag("--sf")
+                            .with_usage(format!("emath {USAGE}")),
+                        ));
+                    }
                 }
             }
             "--from" => {
                 i += 1;
                 from = rest.get(i).map(|s| s.to_string());
                 if from.is_none() {
-                    return Err(ParseKnownError::Usage(USAGE));
+                    return Err(ParseKnownError::Pedagogic(
+                        PedagogicError::new(
+                            "E-CLI-MISSING-VALUE",
+                            "flag `--from` requires a unit name",
+                            "flag `--from` in `emath fmt`",
+                            "emath fmt --value 100 --from m",
+                        )
+                        .with_command("fmt")
+                        .with_flag("--from")
+                        .with_usage(format!("emath {USAGE}")),
+                    ));
                 }
             }
             "--format" => {
                 i += 1;
                 if rest.get(i).is_none() {
-                    return Err(ParseKnownError::Usage(USAGE));
+                    return Err(ParseKnownError::Pedagogic(
+                        PedagogicError::new(
+                            "E-CLI-MISSING-VALUE",
+                            "flag `--format` requires a format string",
+                            "flag `--format` in `emath fmt`",
+                            "emath fmt --value 0.5 --format \"0.1 %\"",
+                        )
+                        .with_command("fmt")
+                        .with_flag("--format")
+                        .with_usage(format!("emath {USAGE}")),
+                    ));
                 }
                 format = Some(rest[i..].join(" "));
                 break;
@@ -310,13 +556,33 @@ pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownEr
             other if !other.starts_with('-') && path.is_none() && value.is_none() => {
                 path = Some(PathBuf::from(other));
             }
-            _ => return Err(ParseKnownError::Usage(USAGE)),
+            _ => {
+                return Err(ParseKnownError::Pedagogic(
+                    PedagogicError::new(
+                        "E-CLI-USAGE",
+                        "invalid arguments for `emath fmt`",
+                        "arguments for `emath fmt`",
+                        "emath fmt <file.emath> or emath fmt --value <literal> [--sf N]",
+                    )
+                    .with_command("fmt")
+                    .with_usage(format!("emath {USAGE}")),
+                ));
+            }
         }
         i += 1;
     }
     // Exactly one of file mode or value mode.
     if value.is_some() == path.is_some() {
-        return Err(ParseKnownError::Usage(USAGE));
+        return Err(ParseKnownError::Pedagogic(
+            PedagogicError::new(
+                "E-CLI-USAGE",
+                "fmt requires either a file path or `--value <literal>` (not both or neither)",
+                "arguments for `emath fmt`",
+                "emath fmt <file.emath> or emath fmt --value 3.14159 [--sf 3]",
+            )
+            .with_command("fmt")
+            .with_usage(format!("emath {USAGE}")),
+        ));
     }
     Ok(Command::Fmt {
         path,
@@ -355,22 +621,59 @@ pub(super) fn parse_migrate_request(rest: &[String]) -> Result<Command, ParseKno
                 i += 1;
                 receipt = rest.get(i).map(PathBuf::from);
                 if receipt.is_none() {
-                    return Err(ParseKnownError::Usage(USAGE));
+                    return Err(ParseKnownError::Pedagogic(
+                        PedagogicError::new(
+                            "E-CLI-MISSING-VALUE",
+                            "flag `--receipt` requires a file path",
+                            "flag `--receipt` in `emath migrate`",
+                            "emath migrate <file.emath> --receipt receipt.json",
+                        )
+                        .with_command("migrate")
+                        .with_flag("--receipt")
+                        .with_usage(format!("emath {USAGE}")),
+                    ));
                 }
             }
             other if !other.starts_with('-') && path.is_none() => {
                 path = Some(PathBuf::from(other));
             }
-            _ => return Err(ParseKnownError::Usage(USAGE)),
+            _ => {
+                return Err(ParseKnownError::Pedagogic(
+                    PedagogicError::new(
+                        "E-CLI-USAGE",
+                        "invalid arguments for `emath migrate`",
+                        "arguments for `emath migrate`",
+                        "emath migrate <file.emath> [--check|--fix]",
+                    )
+                    .with_command("migrate")
+                    .with_usage(format!("emath {USAGE}")),
+                ));
+            }
         }
         i += 1;
     }
     let Some(path) = path else {
-        return Err(ParseKnownError::Usage(USAGE));
+        return Err(ParseKnownError::Pedagogic(
+            PedagogicError::new(
+                "E-CLI-USAGE",
+                "missing required argument `<file.emath>` for `emath migrate`",
+                "positional argument 1 (expected path to `.emath` source file)",
+                "emath migrate <file.emath> --check",
+            )
+            .with_command("migrate")
+            .with_usage(format!("emath {USAGE}")),
+        ));
     };
     if check_only && fix {
-        return Err(ParseKnownError::Usage(
-            "migrate: --check and --fix are mutually exclusive",
+        return Err(ParseKnownError::Pedagogic(
+            PedagogicError::new(
+                "E-CLI-USAGE",
+                "conflicting flags: `--check` and `--fix` cannot be used together",
+                "flags `--check` and `--fix` in `emath migrate`",
+                "choose either `--check` (dry run) or `--fix` (in-place modification)",
+            )
+            .with_command("migrate")
+            .with_usage(format!("emath {USAGE}")),
         ));
     }
     Ok(Command::Migrate {

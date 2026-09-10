@@ -14,6 +14,7 @@ mod provenance_cmd;
 pub mod simulate_cmd;
 pub mod tooling_cmd;
 pub mod triage;
+pub mod pedagogy;
 
 mod cli_artifacts;
 mod cli_build;
@@ -23,6 +24,8 @@ mod cli_json;
 mod cli_parse;
 mod compiled_search;
 mod project_lock;
+
+pub use pedagogy::PedagogicError;
 
 pub use cli_artifacts::*;
 pub use cli_build::*;

@@ -416,12 +416,13 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "fork" => &["--dry-run", "--json", "--help", "-h"],
         "robot-docs" => &["--guide", "guide", "--json", "--help", "-h"],
         "web" | "serve" => &["--port", "--no-open", "--dist", "--help", "-h"],
-        "fmt" => &["--value", "--sf", "--from", "--format", "--help", "-h"],
+        "fmt" => &["--value", "--sf", "--from", "--format", "--json", "--help", "-h"],
         "migrate" => &[
             "--fix",
             "--check",
             "--receipt",
             "--list-rules",
+            "--json",
             "--help",
             "-h",
         ],
@@ -475,29 +476,18 @@ fn value_looks_like_flag(value: &str, known: &[&str]) -> bool {
 }
 
 fn missing_value_exit(command: &str, arg: &str, json: bool) -> CliExit {
-    if json {
-        let mut obj = emath_artifact::JsonWriter::object();
-        obj.string("status", "error");
-        obj.string("code", "E-CLI-MISSING-VALUE");
-        let msg = format!("`{arg}` needs a value for `emath {command}`");
-        obj.string("message", &msg);
-        obj.string("flag", arg);
-        obj.string("command", command);
-        if let Some(usage) = command_usage(command) {
-            let u = format!("emath {usage}");
-            obj.string("usage", &u);
-        }
-        let t = format!("emath help {command}");
-        obj.string("try", &t);
-        println!("{}", obj.finish());
-        return CliExit::Usage;
-    }
-    eprintln!("error: `{arg}` needs a value for `emath {command}`");
+    let mut err = crate::pedagogy::PedagogicError::new(
+        "E-CLI-MISSING-VALUE",
+        format!("flag `{arg}` requires a value for `emath {command}`"),
+        format!("flag `{arg}` for `emath {command}` (expected value following `{arg}`)"),
+        format!("pass a value following `{arg}`, e.g. `emath {command} ... {arg} <value>`"),
+    )
+    .with_command(command)
+    .with_flag(arg);
     if let Some(usage) = command_usage(command) {
-        eprintln!("usage: emath {usage}");
+        err = err.with_usage(format!("emath {usage}"));
     }
-    eprintln!("try: emath help {command}");
-    CliExit::Usage
+    err.emit(json)
 }
 
 /// Refuse unknown flags instead of silently ignoring them.
@@ -511,33 +501,26 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<CliExit> {
             break;
         }
         if arg.starts_with('-') && arg != "-" && !known.contains(&arg) {
-            if json {
-                let mut obj = emath_artifact::JsonWriter::object();
-                obj.string("status", "error");
-                obj.string("code", "E-CLI-UNKNOWN-FLAG");
-                let msg = format!("unknown flag `{arg}` for `emath {command}`");
-                obj.string("message", &msg);
-                if let Some(hint) = suggest_flag(arg, known) {
-                    obj.string("did_you_mean", hint);
-                }
-                if let Some(usage) = command_usage(command) {
-                    let u = format!("emath {usage}");
-                    obj.string("usage", &u);
-                }
-                let t = format!("emath help {command}");
-                obj.string("try", &t);
-                println!("{}", obj.finish());
-                return Some(CliExit::Usage);
-            }
-            eprintln!("error: unknown flag `{arg}` for `emath {command}`");
-            if let Some(hint) = suggest_flag(arg, known) {
-                eprintln!("did you mean `{hint}`?");
+            let hint = suggest_flag(arg, known);
+            let remediation = match hint {
+                Some(h) => format!("replace `{arg}` with `{h}`: `emath {command} {h}`"),
+                None => format!("remove `{arg}` or run `emath help {command}` to see supported flags"),
+            };
+            let mut err = crate::pedagogy::PedagogicError::new(
+                "E-CLI-UNKNOWN-FLAG",
+                format!("unknown flag `{arg}` for `emath {command}`"),
+                format!("flag `{arg}` in arguments for `emath {command}`"),
+                remediation,
+            )
+            .with_command(command)
+            .with_flag(arg);
+            if let Some(h) = hint {
+                err = err.with_did_you_mean(h);
             }
             if let Some(usage) = command_usage(command) {
-                eprintln!("usage: emath {usage}");
+                err = err.with_usage(format!("emath {usage}"));
             }
-            eprintln!("try: emath help {command}");
-            return Some(CliExit::Usage);
+            return Some(err.emit(json));
         }
         if flag_takes_value(arg) {
             // Value-taking flags at EOL used to fall through to silent
