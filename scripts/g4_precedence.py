@@ -81,6 +81,8 @@ def operator_glyphs(text: str):
     current = None
     for line in text.splitlines():
         stripped = line.strip()
+        if stripped.startswith("--"):
+            continue  # EBNF comment: prose may quote operator glyphs
         prod = next(
             (
                 p
