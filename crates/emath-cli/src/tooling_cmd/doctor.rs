@@ -28,7 +28,43 @@ pub fn doctor_probes() -> Vec<DoctorProbe> {
             version: None,
         },
     })
+    .chain(std::iter::once(source_date_epoch_probe()))
     .collect()
+}
+
+/// `SOURCE_DATE_EPOCH` probe: unset is fine (artifacts are
+/// content-addressed, never stamped with wall-clock time); set must be a
+/// decimal UNIX timestamp, or reproducible-build drivers are feeding
+/// garbage into the environment contract.
+fn source_date_epoch_probe() -> DoctorProbe {
+    match std::env::var("SOURCE_DATE_EPOCH") {
+        Err(_) => DoctorProbe {
+            name: "SOURCE_DATE_EPOCH",
+            ok: true,
+            version: Some("unset (artifacts are content-addressed)".to_string()),
+        },
+        Ok(value) => {
+            let valid = !value.is_empty()
+                && value.chars().all(|c| c.is_ascii_digit())
+                && value.parse::<u64>().is_ok();
+            if valid {
+                DoctorProbe {
+                    name: "SOURCE_DATE_EPOCH",
+                    ok: true,
+                    version: Some(format!("set to {value} (valid UNIX timestamp)")),
+                }
+            } else {
+                DoctorProbe {
+                    name: "SOURCE_DATE_EPOCH",
+                    ok: false,
+                    version: Some(format!(
+                        "invalid: `{value}` (must be a decimal UNIX timestamp)"
+                    ),
+                    ),
+                }
+            }
+        }
+    }
 }
 
 /// `doctor`: toolchain presence checks.
@@ -91,12 +127,16 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
         println!("{}", object.finish());
     } else {
         for probe in &probes {
-            match &probe.version {
-                Some(version) => {
+            match (&probe.version, probe.ok) {
+                (Some(version), true) => {
                     let status = crate::terminal::stdout_green("ok");
                     println!("doctor: {}: {status} ({version})", probe.name);
                 }
-                None => {
+                (Some(version), false) => {
+                    let status = crate::terminal::stdout_bold_red("INVALID");
+                    println!("doctor: {}: {status} ({version})", probe.name);
+                }
+                (None, _) => {
                     let status = crate::terminal::stdout_bold_red("MISSING");
                     println!("doctor: {}: {status}", probe.name);
                 }
