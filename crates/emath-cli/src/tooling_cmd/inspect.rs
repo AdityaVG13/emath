@@ -112,7 +112,7 @@ pub(crate) fn diff_cmd(a: &Path, b: &Path, json: bool) -> CliExit {
                     )],
                 );
             }
-            EXIT_REFUSED
+            EXIT_IO
         }
     }
 }

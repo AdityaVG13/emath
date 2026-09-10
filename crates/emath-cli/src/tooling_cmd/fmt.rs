@@ -97,7 +97,7 @@ pub(crate) fn fmt_cmd(file: &Path) -> CliExit {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(file) else {
         eprintln!("error: cannot read {}", file.display());
-        return EXIT_USAGE;
+        return EXIT_IO;
     };
     let result = session.check(package.file);
     print_diagnostics(&result.diagnostics);

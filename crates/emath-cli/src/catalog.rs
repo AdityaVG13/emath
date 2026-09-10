@@ -314,10 +314,13 @@ Identity
   First command to try: emath capabilities --json
   Human help: emath help [<command>]   or   emath <command> --help
 
-Exit codes (stable)
-  0  success
-  1  refused / admission or build diagnostics (look for E-* codes)
-  2  usage or io error (stderr names the exact next command)
+Exit codes (stable contract)
+  0  success (contract met)
+  1  refused (admission / check / math refusal; look for E-* codes)
+  2  usage (invalid syntax, missing arguments, unknown flag)
+  3  toolchain (environment or toolchain missing; run `emath doctor`)
+  4  io (file not found, cannot read/write, disk IO failure)
+  5  safety (destructive mutation refused, overwrite blocked)
 
 Canonical agent loop
   1. emath capabilities --json

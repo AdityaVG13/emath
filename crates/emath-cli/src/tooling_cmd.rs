@@ -13,7 +13,8 @@ use emath_core::content_id_of_str;
 use emath_sema::CompilerSession;
 
 use crate::{
-    CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, ExplainRequest, artifact_check, print_diagnostics,
+    CliExit, EXIT_IO, EXIT_OK, EXIT_REFUSED, EXIT_SAFETY, EXIT_TOOLCHAIN, EXIT_USAGE,
+    ExplainRequest, artifact_check, print_diagnostics,
 };
 
 mod doctor;

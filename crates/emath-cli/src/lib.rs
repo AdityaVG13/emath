@@ -49,19 +49,30 @@ use emath_sema::CompilerSession;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// Closed 3-way host exit. `repr(u8)` is the process mapping (0/1/2), not a
-/// public `u8` return; [`run`] returns `CliExit` and `main` matches exhaustively.
+/// Host process exit code mapping:
+/// - 0: Success (Ok)
+/// - 1: Refused (mathematical refusal, check failure, or verification error)
+/// - 2: Usage (syntax error, unknown flag, missing required arguments)
+/// - 3: Toolchain (environment or toolchain prerequisite missing / doctor failure)
+/// - 4: Io (file not found, cannot read/write file, or disk I/O error)
+/// - 5: Safety (destructive action rejected, safety boundary check failed)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CliExit {
     Ok = 0,
     Refused = 1,
     Usage = 2,
+    Toolchain = 3,
+    Io = 4,
+    Safety = 5,
 }
 
 pub const EXIT_OK: CliExit = CliExit::Ok;
 pub const EXIT_REFUSED: CliExit = CliExit::Refused;
 pub const EXIT_USAGE: CliExit = CliExit::Usage;
+pub const EXIT_TOOLCHAIN: CliExit = CliExit::Toolchain;
+pub const EXIT_IO: CliExit = CliExit::Io;
+pub const EXIT_SAFETY: CliExit = CliExit::Safety;
 
 pub fn exit_from_diagnostics(has_errors: bool) -> CliExit {
     if has_errors { EXIT_REFUSED } else { EXIT_OK }

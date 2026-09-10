@@ -106,7 +106,7 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
             Err(error) => println!("doctor: fork lock: INVALID ({error})"),
         }
     }
-    if ok { EXIT_OK } else { EXIT_REFUSED }
+    if ok { EXIT_OK } else { EXIT_TOOLCHAIN }
 }
 
 pub(super) fn parse_upstream_pins(

@@ -27,7 +27,7 @@ pub(crate) fn migrate_cmd(
     }
     let Ok(source) = std::fs::read_to_string(file) else {
         eprintln!("error: cannot read {}", file.display());
-        return EXIT_USAGE;
+        return EXIT_IO;
     };
     // The registered rewrite: canonical-format respell (lossless
     // formatter). The verify engine owns admission + identity checking.
@@ -45,7 +45,7 @@ pub(crate) fn migrate_cmd(
         .unwrap_or_else(|| file.with_extension("migrate.json"));
     if std::fs::write(&receipt_path, outcome.receipt.to_canonical_json()).is_err() {
         eprintln!("error: cannot write receipt {}", receipt_path.display());
-        return EXIT_USAGE;
+        return EXIT_IO;
     }
     if check_only {
         // Never rewrites: report whether a rule would fire.
@@ -86,7 +86,7 @@ pub(crate) fn migrate_cmd(
         (true, Some(rewritten)) => {
             if std::fs::write(file, rewritten).is_err() {
                 eprintln!("error: cannot rewrite {}", file.display());
-                return EXIT_USAGE;
+                return EXIT_IO;
             }
             println!(
                 "migrate: {}: rewritten (receipt: {})",
