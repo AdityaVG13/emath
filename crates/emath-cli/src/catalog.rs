@@ -172,8 +172,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
             "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate --list-rules"
         }
         "explain" => {
-            "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain \
-                      E-LAW-001 [--json]"
+            "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain <E-CODE> [--list-codes] [--json]"
         }
         "run" => {
             "run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]"
@@ -267,7 +266,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
             "lossless receipt-driven rewrites (05 section 5): `--check` reports without rewriting, `--dry-run` checks rewrites in-memory, `--fix` applies verified respells only (identity verified by re-lowering both sides), `--receipt <path>` writes the emath.migration-receipt v1 artifact; `--list-rules` prints the registry. Never rewrites a refusing source; identity-changing rewrites refuse"
         }
         "explain" => {
-            "plan/provider explanation, binding provenance DAG, or `E-LAW-001` checker witness"
+            "plan/provider explanation, binding provenance DAG, or diagnostic-code lookup: `explain E-TLT-011` prints cause and copy-pasteable fix, `--list-codes` dumps the registry"
         }
         "run" => {
             "execute source mathematics with saved authored method states; --cancel-file stops between work units; --measure N records reference timings; changed-problem branches never satisfy the original goal"
@@ -378,6 +377,7 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--check" => "dry-run check without modifying files",
         "--receipt" => "path to write migration receipt JSON artifact",
         "--list-rules" => "list registered migration rules",
+        "--list-codes" => "list the CLI diagnostic code registry",
         "--provenance" => "show binding provenance DAG",
         "--show-defaults" => "show implicit and inferred default assumptions",
         "--search" => "search query text",
@@ -467,7 +467,9 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
         "explain" => &[
             "emath explain model.emath",
             "emath explain model.emath my_symbol --provenance",
-            "emath explain E-LAW-001 --json",
+            "emath explain E-TLT-011",
+            "emath explain E-TLT-011 --json",
+            "emath explain --list-codes",
         ],
         "api" => &[
             "emath api --json",
@@ -775,7 +777,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "-h",
         ],
         "verify" => &["--json", "--help", "-h"],
-        "explain" => &["--json", "--provenance", "--show-defaults", "--help", "-h"],
+        "explain" => &["--json", "--provenance", "--show-defaults", "--list-codes", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" => &["--json", "--verify-data", "--help", "-h"],
         "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "triage" | "next" | "import"

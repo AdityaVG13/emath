@@ -137,6 +137,10 @@ pub(crate) enum ExplainRequest {
     Law {
         json: bool,
     },
+    Code {
+        code: Option<String>,
+        json: bool,
+    },
 }
 
 pub(super) enum ParseKnownError {

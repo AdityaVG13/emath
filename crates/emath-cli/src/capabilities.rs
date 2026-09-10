@@ -35,7 +35,7 @@ pub fn capabilities_json() -> String {
         ("new", "Deterministic project scaffold", "new <name> [--out <dir>] [--dry-run] [--force] [--json]"),
         ("fmt", "Canonical formatting and unit-preserving display", "fmt <file.emath|-> | fmt --value <literal> [--sf N] [--from UNIT]"),
         ("migrate", "Lossless receipt-driven syntax migrations", "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json]"),
-        ("explain", "Plan explanation, provenance DAG, or error code", "explain <file.emath> [<symbol>] | explain <E-CODE> [--json]"),
+        ("explain", "Plan explanation, provenance DAG, or error code", "explain <file.emath> [<symbol>] | explain <E-CODE> [--list-codes] [--json]"),
         ("run", "Execute source mathematics with saved authored methods", "run <file.emath> [--function NAME] [--set name=value] [--json]"),
         ("search", "Semantic search across compiled capabilities", "search <query> [--json]"),
         ("step", "Continue execution with single work-unit commits", "step <checkpoint.json> [--work N] [--json]"),
@@ -114,6 +114,7 @@ pub fn capabilities_json() -> String {
         "provable_artifacts".to_string(),
         "safe_mutation_dry_run".to_string(),
         "stdin_pipelines".to_string(),
+        "diagnostic_code_explainer".to_string(),
     ];
     root.strings("features", &features);
 

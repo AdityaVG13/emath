@@ -283,20 +283,30 @@ pub(super) fn parse_explain_request(args: &[String]) -> Option<ExplainRequest> {
     let mut json = false;
     let mut provenance = false;
     let mut show_defaults = false;
+    let mut list_codes = false;
     for arg in args {
         match arg.as_str() {
             "--json" => json = true,
             "--provenance" => provenance = true,
             "--show-defaults" => show_defaults = true,
+            "--list-codes" => list_codes = true,
             other if other.starts_with('-') && other != "-" => return None,
             other if path.is_none() => path = Some(other.to_string()),
             other if symbol.is_none() => symbol = Some(other.to_string()),
             _ => return None,
         }
     }
+    if list_codes {
+        return Some(ExplainRequest::Code { code: None, json });
+    }
     let path = path?;
     if path.starts_with("E-LAW-") || path == crate::diagnostics::E_LAW_001 {
         Some(ExplainRequest::Law { json })
+    } else if is_diagnostic_code(&path) {
+        Some(ExplainRequest::Code {
+            code: Some(path),
+            json,
+        })
     } else {
         Some(ExplainRequest::File {
             path: PathBuf::from(path),
@@ -306,6 +316,18 @@ pub(super) fn parse_explain_request(args: &[String]) -> Option<ExplainRequest> {
             show_defaults,
         })
     }
+}
+
+/// True when the token has the shape of a diagnostic code (`E-SEC-133`):
+/// `E-` prefix, then uppercase alphanumeric namespace/number segments.
+/// Such tokens route to the registry explainer instead of the filesystem.
+fn is_diagnostic_code(token: &str) -> bool {
+    let body = token.strip_prefix("E-").unwrap_or(token);
+    !body.is_empty()
+        && body
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-')
+        && body.contains('-')
 }
 
 pub(super) fn catalog_read_cmd(
