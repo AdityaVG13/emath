@@ -133,7 +133,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "check" => "check <file.emath> [--verify-data] [--json]",
         "plan" => "plan <file.emath> [--json]",
         "planner" => "planner <file.emath> [--json] [--parametric]",
-        "build" => "build <file.emath> [--out <dir>] [--verify] [--bin <entrypoint>] [--json]",
+        "build" => "build <file.emath> [--out <dir>] [--verify] [--bin <entrypoint>] [--dry-run] [--json]",
         "parse" => "parse --forest <file.emath> [--out <dir>]",
         "expand" => "expand <file.emath> [--json]",
         "solve" => "solve --check <file.emath> [--json] [--apply <label>]",
@@ -164,12 +164,12 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "coverage" => "coverage [--emit json] [--check <ledger-file>]",
         "web" => "web [--port N] [--no-open] [--dist PATH]",
         "serve" => "serve [--port N] [--no-open] [--dist PATH]",
-        "new" => "new <name> [--out <dir>]",
+        "new" => "new <name> [--out <dir>] [--dry-run] [--force] [--json]",
         "fmt" => {
             "fmt <file.emath> | fmt --value <literal> [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]"
         }
         "migrate" => {
-            "migrate <file.emath> [--fix] [--check] [--receipt <path>] | migrate --list-rules"
+            "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate --list-rules"
         }
         "explain" => {
             "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain \
@@ -214,7 +214,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         }
         "plan" => "admit + goals + deterministic native resolution plan",
         "planner" => "provider-registry planning; `--parametric` lifts missing operators",
-        "build" => "full pipeline to a published artifact (default out: target/emath)",
+        "build" => "full pipeline to a published artifact (default out: target/emath); --dry-run simulates planning without emitting files",
         "parse" => "genesis glyphs + bounded parse forest",
         "expand" => {
             "print the contracted form of L0/L1 scratch and L2 named shorthand; `--json` includes inferred-default notes"
@@ -259,12 +259,12 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         }
         "web" => "localhost web playground on 127.0.0.1; Ctrl-C to stop",
         "serve" => "localhost web playground on 127.0.0.1; Ctrl-C to stop (alias for `web`)",
-        "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011)",
+        "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011) unless --force is specified; --dry-run simulates actions",
         "fmt" => {
             "canonical-form check (full rewrite is Phase 4); --value mode: sig-fig rounding + unit-preserving display (E-UNIT-FMT)"
         }
         "migrate" => {
-            "lossless receipt-driven rewrites (05 section 5): `--check` reports without rewriting, `--fix` applies verified respells only (identity verified by re-lowering both sides), `--receipt <path>` writes the emath.migration-receipt v1 artifact; `--list-rules` prints the registry. Never rewrites a refusing source; identity-changing rewrites refuse"
+            "lossless receipt-driven rewrites (05 section 5): `--check` reports without rewriting, `--dry-run` checks rewrites in-memory, `--fix` applies verified respells only (identity verified by re-lowering both sides), `--receipt <path>` writes the emath.migration-receipt v1 artifact; `--list-rules` prints the registry. Never rewrites a refusing source; identity-changing rewrites refuse"
         }
         "explain" => {
             "plan/provider explanation, binding provenance DAG, or `E-LAW-001` checker witness"
@@ -410,6 +410,7 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--declaration" => "declaration name",
         "--cap" => "capability identifier",
         "--dry-run" => "dry-run without modifying state",
+        "--force" => "force overwrite of existing project directories or files",
         _ => "command-specific option",
     }
 }
@@ -435,6 +436,7 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
         "build" => &[
             "emath build model.emath",
             "emath build model.emath --out dist/",
+            "emath build model.emath --dry-run",
             "emath build model.emath --verify --json",
         ],
         "simulate" => &[
@@ -445,6 +447,8 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
         "new" => &[
             "emath new my_project",
             "emath new my_project --out models/",
+            "emath new my_project --dry-run",
+            "emath new my_project --force",
         ],
         "fmt" => &[
             "emath fmt model.emath",
@@ -453,6 +457,7 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
         ],
         "migrate" => &[
             "emath migrate model.emath --check",
+            "emath migrate model.emath --dry-run",
             "emath migrate model.emath --fix",
             "emath migrate model.emath --receipt receipt.json",
             "emath migrate --list-rules",
@@ -778,8 +783,11 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "freeze" => &["--json", "--out", "-o", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
         "fit" => &["--json", "--help", "-h"],
-        "build" => &["--json", "--out", "-o", "--verify", "--bin", "--help", "-h"],
-        "test" | "new" | "vendor" | "agent" | "signature" | "genesis" => {
+        "build" => &[
+            "--json", "--out", "-o", "--verify", "--bin", "--dry-run", "--help", "-h",
+        ],
+        "new" => &["--out", "-o", "--dry-run", "--force", "--json", "--help", "-h"],
+        "test" | "vendor" | "agent" | "signature" | "genesis" => {
             &["--out", "-o", "--help", "-h"]
         }
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],
@@ -817,6 +825,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "migrate" => &[
             "--fix",
             "--check",
+            "--dry-run",
             "--receipt",
             "--list-rules",
             "--json",
@@ -865,6 +874,7 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--raise"
             | "--apply"
             | "--receipt"
+            | "--bin"
     )
 }
 

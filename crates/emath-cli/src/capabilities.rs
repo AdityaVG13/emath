@@ -30,11 +30,11 @@ pub fn capabilities_json() -> String {
         ("check", "Semantic admission and typecheck", "check <file.emath> [--verify-data] [--json]"),
         ("plan", "Deterministic resolution plan", "plan <file.emath> [--json]"),
         ("planner", "Low-level planner inspection", "planner <file.emath> [--json] [--parametric]"),
-        ("build", "Generate and verify Cargo artifact", "build <file.emath> [--out <dir>] [--verify] [--bin <entry>] [--json]"),
+        ("build", "Generate and verify Cargo artifact", "build <file.emath> [--out <dir>] [--verify] [--bin <entry>] [--dry-run] [--json]"),
         ("simulate", "Integrate admitted ODE/DAE models", "simulate <file.emath> [--model NAME] [--dt N] [--method euler|rk4|rk45] [--json]"),
-        ("new", "Deterministic project scaffold", "new <name> [--out <dir>]"),
+        ("new", "Deterministic project scaffold", "new <name> [--out <dir>] [--dry-run] [--force] [--json]"),
         ("fmt", "Canonical formatting and unit-preserving display", "fmt <file.emath> | fmt --value <literal> [--sf N] [--from UNIT]"),
-        ("migrate", "Lossless receipt-driven syntax migrations", "migrate <file.emath> [--fix] [--check] [--receipt <path>]"),
+        ("migrate", "Lossless receipt-driven syntax migrations", "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json]"),
         ("explain", "Plan explanation, provenance DAG, or error code", "explain <file.emath> [<symbol>] | explain <E-CODE> [--json]"),
         ("run", "Execute source mathematics with saved authored methods", "run <file.emath> [--function NAME] [--set name=value] [--json]"),
         ("search", "Semantic search across compiled capabilities", "search <query> [--json]"),
@@ -112,6 +112,7 @@ pub fn capabilities_json() -> String {
         "ansi_color_control".to_string(),
         "next_action_engine".to_string(),
         "provable_artifacts".to_string(),
+        "safe_mutation_dry_run".to_string(),
     ];
     root.strings("features", &features);
 

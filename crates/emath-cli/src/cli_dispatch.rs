@@ -124,7 +124,13 @@ pub(super) fn run_command(command: Command) -> CliExit {
         Command::Planner(request) => planner_cmd(request),
         Command::Build(request) => build(request),
         Command::Simulate(args) => simulate_cmd::dispatch_simulate(&args),
-        Command::New { name, out } => tooling_cmd::new_cmd(&name, &out),
+        Command::New {
+            name,
+            out,
+            dry_run,
+            force,
+            json,
+        } => tooling_cmd::new_cmd(&name, &out, dry_run, force, json),
         Command::Fmt {
             path,
             value,
@@ -139,9 +145,19 @@ pub(super) fn run_command(command: Command) -> CliExit {
             path,
             fix,
             check_only,
+            dry_run,
             receipt,
             list_rules,
-        } => tooling_cmd::migrate_cmd(&path, fix, check_only, receipt.as_deref(), list_rules),
+            json,
+        } => tooling_cmd::migrate_cmd(
+            &path,
+            fix,
+            check_only,
+            dry_run,
+            receipt.as_deref(),
+            list_rules,
+            json,
+        ),
         Command::Explain(request) => tooling_cmd::explain_cmd(request),
         Command::Run(request) => execution::run(request),
         Command::Search(request) => compiled_search::run(request),
@@ -184,9 +200,14 @@ pub fn parse_show_named(rest: &[String]) -> Option<(String, PathBuf)> {
     Some((id, dir?))
 }
 
-pub(super) fn parse_new_request(args: &[String]) -> Option<(String, PathBuf)> {
+pub(super) fn parse_new_request(
+    args: &[String],
+) -> Option<(String, PathBuf, bool, bool, bool)> {
     let mut name = None;
     let mut out = None;
+    let mut dry_run = false;
+    let mut force = false;
+    let mut json = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -196,6 +217,9 @@ pub(super) fn parse_new_request(args: &[String]) -> Option<(String, PathBuf)> {
                     PathBuf::from(take_nonflag_value(args, &mut index)?),
                 )?;
             }
+            "--dry-run" => dry_run = true,
+            "--force" => force = true,
+            "--json" => json = true,
             other if other.starts_with('-') && other != "-" => return None,
             other => assign_once(&mut name, other.to_string())?,
         }
@@ -203,7 +227,7 @@ pub(super) fn parse_new_request(args: &[String]) -> Option<(String, PathBuf)> {
     }
     let name = name?;
     let out = out.unwrap_or_else(|| PathBuf::from(&name));
-    Some((name, out))
+    Some((name, out, dry_run, force, json))
 }
 
 pub(super) fn parse_path_out_request(args: &[String]) -> Option<(PathBuf, PathBuf)> {

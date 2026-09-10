@@ -2,22 +2,26 @@
 
 use super::*;
 
-/// `migrate <file.emath> [--fix] [--check] [--receipt <path>] | migrate
+/// `migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate
 /// --list-rules` (05 §5). Lossless rewrites only, receipt-driven.
 ///
 /// The canonical-format rule (E-MIG-RULE-001) is the registered rule
 /// wired here: the lossless formatter rewrite, verified by re-lowering
 /// both sides via the migrate contract engine. The file is rewritten
-/// ONLY under `--fix` and only when identity verified; the receipt is
-/// written to `--receipt` (default: beside the source). `--check`
+/// ONLY under `--fix` (when not `--dry-run`) and only when identity verified;
+/// the receipt is written to `--receipt` (default: beside the source). `--check`
 /// never rewrites; exit 1 means a rule would fire (or the source
-/// refuses). Determinism: same input = byte-identical receipt.
+/// refuses). `--dry-run` performs identity checking in-memory without writing
+/// to disk or creating a receipt file, and returns EXIT_OK if valid.
+/// Determinism: same input = byte-identical receipt.
 pub(crate) fn migrate_cmd(
     file: &Path,
     fix: bool,
     check_only: bool,
+    dry_run: bool,
     receipt: Option<&Path>,
     list_rules: bool,
+    json: bool,
 ) -> CliExit {
     if list_rules {
         for rule in emath_sema::migrate::registered_rules() {
@@ -27,6 +31,17 @@ pub(crate) fn migrate_cmd(
     }
     let Ok(source) = std::fs::read_to_string(file) else {
         eprintln!("error: cannot read {}", file.display());
+        if json {
+            print_json_diagnostics(
+                "migrate",
+                false,
+                &[json_diagnostic_entry(
+                    "E-PKG-080",
+                    "error",
+                    &format!("cannot read source file ({})", file.display()),
+                )],
+            );
+        }
         return EXIT_IO;
     };
     // The registered rewrite: canonical-format respell (lossless
@@ -40,6 +55,65 @@ pub(crate) fn migrate_cmd(
         &rewritten,
         emath_sema::migrate::RULE_CANONICAL_FORMAT.id,
     );
+
+    if dry_run {
+        // In dry-run mode, we verify the rewrites and identity in-memory,
+        // but do not write any files or receipts to disk.
+        let rules: Vec<String> = outcome
+            .receipt
+            .rules_applied
+            .iter()
+            .map(|r| format!("{}: {}", r.rule, r.kind.as_str()))
+            .collect();
+        let refusals: Vec<String> = outcome
+            .receipt
+            .refusals
+            .iter()
+            .map(|r| format!("{}: {}", r.code, r.reason))
+            .collect();
+        let would_rewrite = fix && outcome.rewritten_source.is_some();
+
+        if json {
+            let mut obj = JsonWriter::object();
+            obj.string("command", "migrate");
+            obj.bool("dry_run", true);
+            obj.string("target", &file.display().to_string());
+            obj.bool("would_rewrite", would_rewrite);
+            obj.strings("rules_applied", &rules);
+            obj.strings("refusals", &refusals);
+            obj.bool("identity_verified", outcome.rewritten_source.is_some());
+            println!("{}", obj.finish());
+        } else {
+            println!("dry-run: emath migrate `{}`", file.display());
+            if would_rewrite {
+                println!("action: would rewrite source file losslessly (--fix active)");
+            } else if fix {
+                println!("action: rewrite refused or no changes required");
+            } else {
+                println!("action: inspection only (--fix not passed)");
+            }
+            if !rules.is_empty() {
+                println!("rules that would apply:");
+                for r in &rules {
+                    println!("  - {r}");
+                }
+            } else {
+                println!("rules: source is canonical, no rules apply");
+            }
+            if !refusals.is_empty() {
+                println!("refusals encountered:");
+                for rf in &refusals {
+                    println!("  - {rf}");
+                }
+            }
+        }
+        return if outcome.receipt.refusals.is_empty() {
+            EXIT_OK
+        } else {
+            EXIT_REFUSED
+        };
+    }
+
     let receipt_path = receipt
         .map(Path::to_path_buf)
         .unwrap_or_else(|| file.with_extension("migrate.json"));

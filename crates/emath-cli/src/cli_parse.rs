@@ -79,6 +79,9 @@ pub(super) enum Command {
     New {
         name: String,
         out: PathBuf,
+        dry_run: bool,
+        force: bool,
+        json: bool,
     },
     Fmt {
         path: Option<PathBuf>,
@@ -91,8 +94,10 @@ pub(super) enum Command {
         path: PathBuf,
         fix: bool,
         check_only: bool,
+        dry_run: bool,
         receipt: Option<PathBuf>,
         list_rules: bool,
+        json: bool,
     },
     Explain(ExplainRequest),
     Run(execution::RunRequest),
@@ -307,7 +312,7 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         .map(Command::Planner),
         "build" => require_single_file(
             "build",
-            "build <file.emath> [--out <dir>] [--verify] [--json]",
+            "build <file.emath> [--out <dir>] [--verify] [--bin <entrypoint>] [--dry-run] [--json]",
             rest,
             parse_build_request,
         )
@@ -346,16 +351,22 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
             }
         },
         "new" => match parse_new_request(rest) {
-            Some((name, out)) => Ok(Command::New { name, out }),
+            Some((name, out, dry_run, force, json)) => Ok(Command::New {
+                name,
+                out,
+                dry_run,
+                force,
+                json,
+            }),
             None => Err(ParseKnownError::Pedagogic(
                 PedagogicError::new(
                     "E-CLI-USAGE",
                     "missing required argument `<name>` for `emath new`",
                     "positional argument 1 (expected model name)",
-                    "emath new <model_name> [--out <dir>]",
+                    "emath new <model_name> [--out <dir>] [--dry-run] [--force] [--json]",
                 )
                 .with_command("new")
-                .with_usage("emath new <name> [--out <dir>]"),
+                .with_usage("emath new <name> [--out <dir>] [--dry-run] [--force] [--json]"),
             )),
         },
         "fmt" => parse_fmt_request(rest),
@@ -638,30 +649,36 @@ pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownEr
     })
 }
 
-/// `migrate <file.emath> [--fix] [--check] [--receipt <path>] | migrate --list-rules`
+/// `migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate --list-rules`
 /// (05 §5, / ). Lossless
 /// rewrites only; the receipt is the canonical stable-JSON artifact.
 pub(super) fn parse_migrate_request(rest: &[String]) -> Result<Command, ParseKnownError> {
-    const USAGE: &str = "migrate <file.emath> [--fix] [--check] [--receipt <path>] | \
+    const USAGE: &str = "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | \
                          migrate --list-rules";
     if matches!(rest, [flag] if flag == "--list-rules") {
         return Ok(Command::Migrate {
             path: PathBuf::new(),
             fix: false,
             check_only: false,
+            dry_run: false,
             receipt: None,
             list_rules: true,
+            json: false,
         });
     }
     let mut path: Option<PathBuf> = None;
     let mut fix = false;
     let mut check_only = false;
+    let mut dry_run = false;
     let mut receipt: Option<PathBuf> = None;
+    let mut json = false;
     let mut i = 0;
     while i < rest.len() {
         match rest[i].as_str() {
             "--fix" => fix = true,
             "--check" => check_only = true,
+            "--dry-run" => dry_run = true,
+            "--json" => json = true,
             "--receipt" => {
                 i += 1;
                 receipt = rest.get(i).map(PathBuf::from);
@@ -688,7 +705,7 @@ pub(super) fn parse_migrate_request(rest: &[String]) -> Result<Command, ParseKno
                         "E-CLI-USAGE",
                         "invalid arguments for `emath migrate`",
                         "arguments for `emath migrate`",
-                        "emath migrate <file.emath> [--check|--fix]",
+                        "emath migrate <file.emath> [--check|--fix] [--dry-run] [--json]",
                     )
                     .with_command("migrate")
                     .with_usage(format!("emath {USAGE}")),
@@ -725,7 +742,9 @@ pub(super) fn parse_migrate_request(rest: &[String]) -> Result<Command, ParseKno
         path,
         fix,
         check_only,
+        dry_run,
         receipt,
         list_rules: false,
+        json,
     })
 }

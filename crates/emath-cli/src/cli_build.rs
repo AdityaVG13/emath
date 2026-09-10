@@ -66,6 +66,7 @@ pub enum BuildRequest {
         out: PathBuf,
         verify: bool,
         bin: Option<String>,
+        dry_run: bool,
         json: bool,
     },
 }
@@ -75,6 +76,7 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
     let mut out = None;
     let mut verify = false;
     let mut bin = None;
+    let mut dry_run = false;
     let mut json = false;
     let mut index = 0;
     while index < args.len() {
@@ -93,6 +95,7 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
                 assign_once(&mut bin, value.to_string())?;
             }
             "--verify" => verify = true,
+            "--dry-run" => dry_run = true,
             "--json" => json = true,
             other if other.starts_with('-') => return None,
             other => assign_once(&mut path, PathBuf::from(other))?,
@@ -108,11 +111,12 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
         out,
         verify,
         bin,
+        dry_run,
         json,
     })
 }
 
-/// `build <file> [--out <dir>] [--verify] [--bin <entrypoint>] [--json]`
+/// `build <file> [--out <dir>] [--verify] [--bin <entrypoint>] [--dry-run] [--json]`
 /// (default out: `target/emath` under the working directory).
 pub fn build(request: BuildRequest) -> CliExit {
     let BuildRequest::Ready {
@@ -120,10 +124,87 @@ pub fn build(request: BuildRequest) -> CliExit {
         out,
         verify,
         bin,
+        dry_run,
         json,
     } = request;
     if let Some(code) = refuse_malformed_project_lock(&spec) {
         return code;
+    }
+    if dry_run {
+        let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+        let Ok(package) = session.load_package(&spec) else {
+            return refuse_coded(
+                "build",
+                json,
+                EXIT_USAGE,
+                "E-PKG-080",
+                &format!("cannot read spec: {}", spec.display()),
+            );
+        };
+        let plan_result = session.plan(package.file);
+        if plan_result.diagnostics.has_errors() {
+            crate::print_diagnostics(&plan_result.diagnostics);
+            if json {
+                let items: Vec<String> = plan_result
+                    .diagnostics
+                    .items()
+                    .iter()
+                    .map(|d| {
+                        crate::json_diagnostic_entry(
+                            &d.code,
+                            match d.severity {
+                                emath_core::Severity::Error => "error",
+                                emath_core::Severity::Warning => "warning",
+                                emath_core::Severity::Note => "note",
+                            },
+                            &d.message,
+                        )
+                    })
+                    .collect();
+                crate::print_json_diagnostics("build", false, &items);
+            }
+            return EXIT_REFUSED;
+        }
+        let package_id = plan_result.package.content_id();
+        let crate_name = plan_result
+            .package
+            .identity
+            .as_ref()
+            .map_or_else(|| "package".to_string(), |id| id.name.clone());
+        let plan_ids: Vec<String> = plan_result
+            .plans
+            .iter()
+            .map(|p| p.plan_id.0.clone())
+            .collect();
+        if json {
+            let mut obj = emath_artifact::JsonWriter::object();
+            obj.string("command", "build");
+            obj.bool("dry_run", true);
+            obj.string("package_id", &package_id.0);
+            obj.string("crate", &crate_name);
+            obj.string("target_dir", &out.display().to_string());
+            obj.strings("plan_ids", &plan_ids);
+            obj.bool("verify", verify);
+            if let Some(ref b) = bin {
+                obj.string("bin_entrypoint", b);
+            }
+            println!("{}", obj.finish());
+        } else {
+            println!("dry-run: emath build `{}`", spec.display());
+            println!("target directory: {}", out.display());
+            println!("crate: {crate_name} (package {})", package_id.0);
+            println!("planned plans: {}", plan_ids.len());
+            for pid in &plan_ids {
+                println!("  - plan {pid}");
+            }
+            if verify {
+                println!("verification: crate test gate enabled");
+            }
+            if let Some(ref b) = bin {
+                println!("entrypoint probe: {b}");
+            }
+        }
+        return EXIT_OK;
     }
     let options = BuildOptions {
         verify_generated_crate: verify,
