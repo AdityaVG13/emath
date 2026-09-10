@@ -21,6 +21,9 @@ pub fn run(args: &[String]) -> CliExit {
         ParsedCli::MetaCapabilities { rest } => catalog_read_cmd("capabilities", rest, || {
             capabilities::capabilities_cmd(catalog::wants_json(rest))
         }),
+        ParsedCli::MetaCatalog { rest } => catalog_read_cmd("catalog", rest, || {
+            catalog::catalog_cmd(catalog::wants_json(rest))
+        }),
         ParsedCli::MetaRobotDocs { rest } => catalog_read_cmd("robot-docs", rest, || {
             if catalog::wants_json(rest) {
                 let mut obj = emath_core::JsonWriter::object();
@@ -59,6 +62,7 @@ pub(super) enum ParsedCli<'a> {
     MetaHelp { rest: &'a [String] },
     MetaVersion { rest: &'a [String] },
     MetaCapabilities { rest: &'a [String] },
+    MetaCatalog { rest: &'a [String] },
     MetaRobotDocs { rest: &'a [String] },
     MetaTriage { target: Option<PathBuf>, json: bool },
     MetaNext { target: Option<PathBuf>, json: bool },
@@ -159,6 +163,7 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
         "help" | "--help" | "-h" => return ParsedCli::MetaHelp { rest },
         "version" | "--version" | "-V" => return ParsedCli::MetaVersion { rest },
         "capabilities" | "--capabilities" => return ParsedCli::MetaCapabilities { rest },
+        "catalog" => return ParsedCli::MetaCatalog { rest },
         "robot-docs" | "--robot-help" => return ParsedCli::MetaRobotDocs { rest },
         "triage" | "--robot-triage" => {
             if catalog::wants_help(rest) {

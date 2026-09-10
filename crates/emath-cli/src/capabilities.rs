@@ -46,6 +46,7 @@ pub fn capabilities_json() -> String {
         ("diff", "Content-id fingerprint comparison", "diff <a.emath> <b.emath> [--json]"),
         ("doctor", "Toolchain presence and environment health", "doctor [--json]"),
         ("capabilities", "Machine-readable contract and capabilities export", "capabilities [--json]"),
+        ("catalog", "Full command matrix export with flags and examples", "catalog [--json]"),
         ("triage", "Mega-command to orient, check health, and get recommendations", "triage [<file.emath>] [--json]"),
         ("next", "Next-action engine returning top action and claim command", "next [<file.emath>] [--json]"),
         ("help", "Command catalog and help text", "help [<command>]"),

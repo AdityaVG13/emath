@@ -24,6 +24,7 @@ pub const COMMANDS: &[&str] = &[
     "inspect",
     "diff",
     "doctor",
+    "catalog",
     "capabilities",
     "robot-docs",
     "triage",
@@ -186,6 +187,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "inspect" => "inspect <artifact-dir-or-checkpoint.json> [--json]",
         "diff" => "diff <a.emath> <b.emath> [--json]",
         "doctor" => "doctor [--json]",
+        "catalog" => "catalog [--json]",
         "vendor" => "vendor --out <dir>",
         "provider" => "provider list|inspect <id>|test <id> [--json]",
         "fork" => "fork status|sync [--dry-run] [--json]",
@@ -291,6 +293,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "help" => "this catalog; `emath help <command>` prints one command",
         "version" | "--version" | "-V" => "print the emath-cli crate version",
         "capabilities" => "machine contract: commands, flags, exit codes, env vars",
+        "catalog" => "full command matrix export: usage, summary, aliases, flags, examples per command",
         "robot-docs" => "paste-ready agent handbook (`guide`)",
         "triage" => "mega-command: orient, inspect health, and get ranked next actions",
         "next" => "next-action engine: return highest-priority next step and claim command",
@@ -522,6 +525,10 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
         "capabilities" => &[
             "emath capabilities",
             "emath capabilities --json",
+        ],
+        "catalog" => &[
+            "emath catalog",
+            "emath catalog --json",
         ],
         "robot-docs" => &[
             "emath robot-docs guide",
@@ -780,7 +787,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "explain" => &["--json", "--provenance", "--show-defaults", "--list-codes", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" => &["--json", "--verify-data", "--help", "-h"],
-        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "triage" | "next" | "import"
+        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "catalog" | "triage" | "next" | "import"
         | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
         "coverage" => &["--emit", "--check", "--help", "-h"],
         "solve" => &["--check", "--json", "--apply", "--help", "-h"],
@@ -884,6 +891,59 @@ fn flag_takes_value(flag: &str) -> bool {
 
 fn value_looks_like_flag(value: &str, known: &[&str]) -> bool {
     value.starts_with("--") || known.contains(&value)
+}
+
+/// `catalog [--json]`: the full command matrix. Human mode prints one
+/// line per production command (name, summary, usage); JSON mode emits
+/// `emath.catalog` with per-command `flags`, `aliases`, and `examples`
+/// so an agent can plan invocations without parsing help text.
+pub fn catalog_cmd(json: bool) -> CliExit {
+    if json {
+        use emath_core::JsonWriter;
+        let mut out = JsonWriter::object();
+        out.string("command", "catalog");
+        out.string("schema", "emath.catalog");
+        out.string("status", "ok");
+        let mut rows = Vec::new();
+        for &name in COMMANDS {
+            let mut row = JsonWriter::object();
+            row.string("name", name);
+            if let Some(usage) = command_usage(name) {
+                row.string("usage", usage);
+            }
+            if let Some(summary) = command_summary(name) {
+                row.string("summary", summary);
+            }
+            let aliases = command_aliases(name);
+            if !aliases.is_empty() {
+                let alias_strings: Vec<String> = aliases.iter().map(|s| s.to_string()).collect();
+                row.strings("aliases", &alias_strings);
+            }
+            let flags = flags_for(name);
+            let flag_strings: Vec<String> = flags.iter().map(|s| s.to_string()).collect();
+            row.strings("flags", &flag_strings);
+            let examples: Vec<String> = command_examples(name)
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            row.strings("examples", &examples);
+            rows.push(row.finish().trim_end().to_string());
+        }
+        out.objects("commands", &rows);
+        println!("{}", out.finish());
+        return crate::EXIT_OK;
+    }
+    for &name in COMMANDS {
+        let usage = command_usage(name).unwrap_or(name);
+        let summary = command_summary(name).unwrap_or("");
+        println!("{name}: {summary}");
+        println!("  usage: emath {usage}");
+    }
+    println!(
+        "moved to emath-lab: {}",
+        EXTRACTED_COMMANDS.join(", ")
+    );
+    crate::EXIT_OK
 }
 
 fn missing_value_exit(command: &str, arg: &str, json: bool) -> CliExit {
