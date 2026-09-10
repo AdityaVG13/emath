@@ -90,8 +90,14 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
     } else {
         for probe in &probes {
             match &probe.version {
-                Some(version) => println!("doctor: {}: ok ({version})", probe.name),
-                None => println!("doctor: {}: MISSING", probe.name),
+                Some(version) => {
+                    let status = crate::terminal::stdout_green("ok");
+                    println!("doctor: {}: {status} ({version})", probe.name);
+                }
+                None => {
+                    let status = crate::terminal::stdout_bold_red("MISSING");
+                    println!("doctor: {}: {status}", probe.name);
+                }
             }
         }
         match &fork_lock {
@@ -103,7 +109,10 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
                     );
                 }
             }
-            Err(error) => println!("doctor: fork lock: INVALID ({error})"),
+            Err(error) => {
+                let status = crate::terminal::stdout_bold_red("INVALID");
+                println!("doctor: fork lock: {status} ({error})");
+            }
         }
     }
     if ok { EXIT_OK } else { EXIT_TOOLCHAIN }

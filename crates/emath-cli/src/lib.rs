@@ -15,6 +15,7 @@ pub mod simulate_cmd;
 pub mod tooling_cmd;
 pub mod triage;
 pub mod pedagogy;
+pub mod terminal;
 
 mod cli_artifacts;
 mod cli_build;
@@ -26,6 +27,10 @@ mod compiled_search;
 mod project_lock;
 
 pub use pedagogy::PedagogicError;
+pub use terminal::{
+    color_mode, is_ci, is_interactive, set_color_mode, set_no_color, should_color_stderr,
+    should_color_stdout,
+};
 
 pub use cli_artifacts::*;
 pub use cli_build::*;

@@ -84,6 +84,7 @@ pub fn capabilities_json() -> String {
 
     let env_vars: &[(&str, &str)] = &[
         ("NO_COLOR", "Suppress all ANSI terminal colors and formatting"),
+        ("TERM", "Terminal type; TERM=dumb suppresses ANSI styling and cursor movement"),
         ("CI", "Continuous integration flag; suppresses interactive prompts"),
         ("EMATH_LOG", "Diagnostics logging level (error, warn, info, debug)"),
         ("EMATH_WEB_DIST", "Override path to web playground assets"),
@@ -105,6 +106,8 @@ pub fn capabilities_json() -> String {
         "robot_mode".to_string(),
         "intent_recovery".to_string(),
         "command_aliases".to_string(),
+        "environment_conventions".to_string(),
+        "ansi_color_control".to_string(),
         "provable_artifacts".to_string(),
     ];
     root.strings("features", &features);
@@ -122,6 +125,7 @@ fn print_human_summary() {
     println!("  • Machine-readable JSON streaming on all inspection commands");
     println!("  • Structured exit code contracts and error pedagogy");
     println!("  • Single-letter and intuitive command aliases (c, b, p, sim, doc, fmt)");
+    println!("  • Environment conventions (NO_COLOR, CI, TERM=dumb, --color control)");
     println!();
     println!("For machine-readable JSON schema contract, run: emath capabilities --json");
 }

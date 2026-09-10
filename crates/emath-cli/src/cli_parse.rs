@@ -4,7 +4,11 @@ use super::*;
 
 /// Entry used by main; keeps the CLI testable.
 pub fn run(args: &[String]) -> CliExit {
-    match parse_cli(args) {
+    let cleaned_args = match terminal::extract_color_flags(args) {
+        Ok(c) => c,
+        Err(err) => return err.emit(catalog::wants_json(args)),
+    };
+    match parse_cli(&cleaned_args) {
         ParsedCli::Empty => {
             print!("{}", help_text());
             EXIT_OK
@@ -30,9 +34,9 @@ pub fn run(args: &[String]) -> CliExit {
         ParsedCli::MetaTriage { target, json } => triage::triage_cmd(target, json),
         ParsedCli::CommandHelp { name, json } => print_command_help(name, json),
         ParsedCli::UnknownFlag { code } => code,
-        ParsedCli::Pedagogic(err) => err.emit(catalog::wants_json(args)),
+        ParsedCli::Pedagogic(err) => err.emit(catalog::wants_json(&cleaned_args)),
         ParsedCli::Usage(message) => {
-            let cmd = args.first().map(String::as_str).unwrap_or("help");
+            let cmd = cleaned_args.first().map(String::as_str).unwrap_or("help");
             let canonical = catalog::resolve_alias(cmd).unwrap_or(cmd);
             let err = PedagogicError::new(
                 "E-CLI-USAGE",
@@ -42,9 +46,9 @@ pub fn run(args: &[String]) -> CliExit {
             )
             .with_command(canonical)
             .with_usage(format!("emath {message}"));
-            err.emit(catalog::wants_json(args))
+            err.emit(catalog::wants_json(&cleaned_args))
         }
-        ParsedCli::Unknown(name) => unknown_command(name, catalog::wants_json(args)),
+        ParsedCli::Unknown(name) => unknown_command(name, catalog::wants_json(&cleaned_args)),
         ParsedCli::Known(command) => run_command(command),
     }
 }

@@ -94,17 +94,24 @@ impl PedagogicError {
             }
             println!("{}", obj.finish());
         } else {
-            eprintln!("error [{}]: {}", self.code, self.what);
-            eprintln!("  where:       {}", self.where_context);
+            let err_tag = crate::terminal::bold_red(&format!("error [{}]", self.code));
+            let where_tag = crate::terminal::yellow("where:");
+            let rem_tag = crate::terminal::bold_green("remediation:");
+            let usage_tag = crate::terminal::dim("usage:");
+            let try_tag = crate::terminal::cyan("try:");
+            let dym_tag = crate::terminal::cyan("did you mean:");
+
+            eprintln!("{err_tag}: {}", self.what);
+            eprintln!("  {where_tag}       {}", self.where_context);
             if let Some(hint) = &self.did_you_mean {
-                eprintln!("  did you mean: `{hint}`");
+                eprintln!("  {dym_tag} `{hint}`");
             }
-            eprintln!("  remediation: {}", self.remediation);
+            eprintln!("  {rem_tag} {}", self.remediation);
             if let Some(usage) = &self.usage {
-                eprintln!("  usage:       {}", usage);
+                eprintln!("  {usage_tag}       {}", usage);
             }
             if let Some(help) = &self.help_cmd {
-                eprintln!("  try:         {}", help);
+                eprintln!("  {try_tag}         {}", help);
             }
         }
         CliExit::Usage

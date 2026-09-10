@@ -376,9 +376,11 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--provenance" => "show binding provenance DAG",
         "--show-defaults" => "show implicit and inferred default assumptions",
         "--search" => "search query text",
-        "--offset" => "pagination offset",
+        "--offset" => "pagination limit",
         "--limit" => "pagination limit",
         "--source" => "source file filter",
+        "--color" => "control ANSI color output: auto, always, never",
+        "--no-color" => "suppress ANSI color output (conforms to NO_COLOR)",
         "--function" => "function name to execute or search",
         "--candidate" => "candidate function name",
         "--work" => "maximum work units to execute",
@@ -552,6 +554,10 @@ pub fn command_help_text(command: &str) -> Option<String> {
             let desc = flag_description(flag);
             out.push_str(&format!("  {:<20} {}\n", flag, desc));
         }
+        if !flags.contains(&"--color") {
+            out.push_str(&format!("  {:<20} {}\n", "--color", flag_description("--color")));
+            out.push_str(&format!("  {:<20} {}\n", "--no-color", flag_description("--no-color")));
+        }
         out.push('\n');
     }
 
@@ -565,6 +571,9 @@ pub fn command_help_text(command: &str) -> Option<String> {
 
     out.push_str(
         "Exit Codes:\n  0    Ok (operation succeeded)\n  1    Refused (mathematical / admission error)\n  2    Usage (syntax or argument error)\n  3    Toolchain (missing rustc/cargo/tools)\n  4    Io (file not found / read/write error)\n  5    Safety (overwrite guard refusal)\n\n",
+    );
+    out.push_str(
+        "Environment Conventions:\n  NO_COLOR=1          Suppress ANSI colors and formatting (https://no-color.org)\n  TERM=dumb           Suppress terminal styling and interactive codes\n  CI=1                Force non-interactive batch mode\n\n",
     );
     out.push_str("See Also:\n  Run `emath help` for full command index, or `emath capabilities --json` for machine contract.\n");
 
@@ -599,6 +608,14 @@ pub fn command_help_json(command: &str) -> Option<String> {
         flag_obj.string("flag", flag);
         flag_obj.string("description", flag_description(flag));
         flag_items.push(flag_obj.finish());
+    }
+    if !flags.contains(&"--color") {
+        for common in ["--color", "--no-color"] {
+            let mut flag_obj = emath_core::JsonWriter::object();
+            flag_obj.string("flag", common);
+            flag_obj.string("description", flag_description(common));
+            flag_items.push(flag_obj.finish());
+        }
     }
     obj.objects("flags", &flag_items);
 
@@ -682,6 +699,13 @@ Exit codes (stable contract)
   4  io (file not found, cannot read/write, disk IO failure)
   5  safety (destructive mutation refused, overwrite blocked)
 
+Environment conventions
+  NO_COLOR=1          Suppress all ANSI colors and formatting (https://no-color.org)
+  TERM=dumb           Suppress terminal styling and interactive codes
+  CI=1                Force non-interactive batch mode
+  --color <mode>      Explicit override: auto (default), always, never
+  --no-color          Explicit alias for --color never
+
 Canonical agent loop
   1. emath capabilities --json
   2. emath check <file.emath> --json
@@ -695,6 +719,7 @@ Rules
   - fork sync is offline-refused (E-TLT-006); use --dry-run.
   - Typos print `did you mean` on stderr; do not grep a catalog dump.
   - JSON is deterministic (in-tree writer). stdout is data; stderr is diagnostics.
+  - ANSI escapes are automatically suppressed when piped, under NO_COLOR, or with TERM=dumb.
 ",
         version_text()
     )
@@ -861,6 +886,23 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<CliExit> {
         if arg == "--" {
             break;
         }
+        if arg == "--no-color" {
+            index += 1;
+            continue;
+        }
+        if arg.starts_with("--color=") {
+            index += 1;
+            continue;
+        }
+        if arg == "--color" {
+            let missing =
+                index + 1 >= args.len() || value_looks_like_flag(args[index + 1].as_str(), known);
+            if missing {
+                return Some(missing_value_exit(command, arg, json));
+            }
+            index += 2;
+            continue;
+        }
         if arg.starts_with('-') && arg != "-" && !known.contains(&arg) {
             let hint = suggest_flag(arg, known);
             let remediation = match hint {
@@ -902,7 +944,7 @@ pub fn reject_unknown_flags(command: &str, args: &[String]) -> Option<CliExit> {
 fn suggest_flag(unknown: &str, known: &'static [&'static str]) -> Option<&'static str> {
     let needle = unknown.trim_start_matches('-');
     let mut best: Option<(&'static str, usize)> = None;
-    for flag in known {
+    for &flag in known.iter().chain(&["--color", "--no-color"]) {
         let flag_needle = flag.trim_start_matches('-');
         if needle.is_empty() || flag_needle.is_empty() {
             continue;

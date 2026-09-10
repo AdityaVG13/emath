@@ -268,25 +268,45 @@ fn print_triage_human(
     plans_count: usize,
     recommendations: &[TriageRecommendation],
 ) {
-    println!("emath triage: orientation & action report");
+    let title = crate::terminal::stdout_bold("emath triage: orientation & action report");
+    println!("{title}");
     println!("=========================================");
     println!();
     println!(
-        "Target: {}",
+        "{}: {}",
+        crate::terminal::stdout_bold("Target"),
         target.map(|p| p.display().to_string()).unwrap_or_else(|| "(none)".to_string())
     );
     let ok_count = probes.iter().filter(|p| p.ok).count();
-    println!("Toolchain Health: {}/{} probes ok", ok_count, probes.len());
+    let health_str = if ok_count == probes.len() {
+        crate::terminal::stdout_green(&format!("{ok_count}/{} probes ok", probes.len()))
+    } else {
+        crate::terminal::stdout_yellow(&format!("{ok_count}/{} probes ok", probes.len()))
+    };
+    println!("{}: {}", crate::terminal::stdout_bold("Toolchain Health"), health_str);
     if target.is_some() {
-        println!("Admission: {}", if admitted { "admitted" } else { "refused (diagnostics pending)" });
-        println!("Open Goals: {}, Plans Available: {}", goals_count, plans_count);
+        let adm_str = if admitted {
+            crate::terminal::stdout_green("admitted")
+        } else {
+            crate::terminal::stdout_bold_red("refused (diagnostics pending)")
+        };
+        println!("{}: {}", crate::terminal::stdout_bold("Admission"), adm_str);
+        println!(
+            "{}: {}, {}: {}",
+            crate::terminal::stdout_bold("Open Goals"),
+            goals_count,
+            crate::terminal::stdout_bold("Plans Available"),
+            plans_count
+        );
     }
     println!();
-    println!("Recommended Next Actions:");
+    println!("{}", crate::terminal::stdout_bold("Recommended Next Actions:"));
     for rec in recommendations {
-        println!("  {}. [{}] {}", rec.priority, rec.action, rec.command);
+        let action_tag = crate::terminal::stdout_cyan(&format!("[{}]", rec.action));
+        let cmd_text = crate::terminal::stdout_bold(&rec.command);
+        println!("  {}. {action_tag} {cmd_text}", rec.priority);
         println!("     -> {}", rec.reason);
     }
     println!();
-    println!("Run with --json for machine-readable output.");
+    println!("{}", crate::terminal::stdout_dim("Run with --json for machine-readable output."));
 }
