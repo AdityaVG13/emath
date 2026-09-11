@@ -2639,6 +2639,18 @@ pub struct EmathRecord_CarlsonRjState {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct EmathRecord_CategoryCarrier {
+    pub k: i64,
+    pub objects: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EmathRecord_CategoryFace {
+    pub cursor: i64,
+    pub mask: Vec<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct EmathRecord_CharState {
     pub m: Vec<f64>,
     pub coeffs: Vec<f64>,
