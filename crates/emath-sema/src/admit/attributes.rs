@@ -7,7 +7,7 @@
 //! below is a typed refusal or a declared admit.
 
 use emath_core::tree::{
-    ArgumentValue, Attribute, CommandArgument, Declaration, Expr, ExprKind, Item, Section, Stmt,
+    ArgumentValue, Attribute, CommandArgument, Declaration, Expr, ExprKind, Item, Stmt,
     StmtKind,
 };
 use emath_core::Diagnostics;

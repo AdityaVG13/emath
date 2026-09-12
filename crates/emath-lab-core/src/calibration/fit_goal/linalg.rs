@@ -1,6 +1,5 @@
 //! Small dense linear algebra: Jacobi eigenvalues, inversion.
 
-use super::*;
 
 /// Eigenvalues of a real symmetric matrix via the classic Jacobi
 /// rotation sweep (small dense matrices; deterministic, no

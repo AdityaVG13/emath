@@ -1,6 +1,5 @@
 //! Macro expansion for build scripts.
 
-use super::*;
 
 /// Expansion of the `emath!` proc macro: the parsed source literal plus its
 /// deterministic identity. Parsing lives here (a normal crate) so it is

@@ -322,7 +322,7 @@ impl UBig {
     /// representation; same algorithm as the stage-1 i128 kernel).
     fn mod_pow(base: &UBig, exp: &UBig, m: &UBig) -> UBig {
         let mut result = UBig::rem(&UBig::one(), m);
-        let mut b = UBig::rem(base, m);
+        let b = UBig::rem(base, m);
         for i in (0..exp.bits()).rev() {
             result = UBig::mul_mod(&result, &result, m);
             if exp.bit(i) {

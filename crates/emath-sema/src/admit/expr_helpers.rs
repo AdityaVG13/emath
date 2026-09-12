@@ -4,7 +4,7 @@
 use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
 use emath_ir::{ExprId, ExprNode, Extent, Literal};
 
-use super::infer::{Infer, is_index_type, is_numeric_element};
+use super::infer::{is_index_type, is_numeric_element};
 use super::{Admitter, expr_number};
 
 pub(super) enum IndexAxis {

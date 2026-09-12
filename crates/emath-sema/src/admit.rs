@@ -2,7 +2,7 @@
 //! diagnostics and a source-to-SIR trace.
 
 use emath_core::tree::{Expr, ExprKind, Stmt, UnaryOp as SynUnOp};
-use emath_core::{Diagnostics, QualifiedName, Span};
+use emath_core::{Diagnostics, Span};
 use emath_ir::{
     BinaryOp, EventDecl, ExprId, ExprNode, Literal, ModelResidual, TransitionDecl, TypeId, TypeNode,
 };

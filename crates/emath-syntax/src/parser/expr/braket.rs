@@ -7,7 +7,7 @@ impl super::super::Parser {
     /// `⟨φ|ψ⟩` (inner product), `⟨φ|P|ψ⟩` (sandwich), or the standalone
     /// bra `⟨φ|` (the conjugated vector; the conjugate is the identity
     /// on the pack's real carrier, so the bra desugars to its operand).
-    pub(super) fn parse_bra_form(&mut self, start: Span, depth: usize) -> Option<Expr> {
+    pub(super) fn parse_bra_form(&mut self, start: Span, _depth: usize) -> Option<Expr> {
         let bra = self.parse_braket_operand(start)?;
         if !self.eat(&TokenKind::Pipe) {
             self.error_here("E-SYN-101", "expected `|` to close the bra");

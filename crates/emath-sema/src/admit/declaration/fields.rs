@@ -119,7 +119,7 @@ pub(super) fn admit_declaration_fields(
 
     let inputs = fields_by_section.get("inputs").cloned().unwrap_or_default();
     let outputs_omitted = !by_name.contains_key("outputs") && !outputs_from_head;
-    let mut outputs_raw = fields_by_section
+    let outputs_raw = fields_by_section
         .get("outputs")
         .cloned()
         .unwrap_or_default();

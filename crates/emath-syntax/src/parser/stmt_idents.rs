@@ -215,7 +215,7 @@ impl super::Parser {
                     return None;
                 }
                 self.advance(); // `to`
-                let TokenKind::Ident(observable) = self.peek().clone() else {
+                let TokenKind::Ident(_observable) = self.peek().clone() else {
                     self.error_here(
                         "E-SYN-101",
                         "expected an observable name after `to` (`fit <params> to <observable>:`)",

@@ -7,7 +7,7 @@
 use crate::token::Comment;
 use crate::tree::{
     Argument, ArgumentValue, Attribute, Binder, BinderKind, CommandArgument, Declaration,
-    GenericArg, Item, NotationDecl, NotationFixity, Param, Place, ReactionArrow, ReactionTerm,
+    GenericArg, Item, NotationDecl, NotationFixity, Param, Place, ReactionTerm,
     Section, Stmt, StmtKind, Suite, SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
 };
 

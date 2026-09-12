@@ -25,7 +25,7 @@ use crate::{
 use emath_cli::catalog::{self as core_catalog, wants_help, wants_json};
 use crate::genesis_cmd;
 use crate::meaning_cmd::{self, MeaningRequest};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 enum ParsedCli<'a> {
     Empty,

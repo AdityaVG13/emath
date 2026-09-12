@@ -1,6 +1,5 @@
 //! The generated-crate source template.
 
-use super::*;
 
 pub(super) const LIB_TEMPLATE: &str = r#"#![forbid(unsafe_code)]
 

@@ -4,7 +4,6 @@ use emath_artifact::JsonWriter;
 use emath_cli::tooling_cmd::{PROVIDERS, upstream_lock_path};
 use emath_cli::{CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 use emath_core::content_id_of_str;
-use std::path::Path;
 
 pub(crate) enum ProviderRequest {
     List { json: bool },

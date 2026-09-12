@@ -7,7 +7,7 @@
 
 use crate::admit::SemanticTrace;
 use emath_core::Diagnostics;
-use emath_core::tree::{Expr, ExprKind, Item, Section, StmtKind, UseTree};
+use emath_core::tree::{Expr, ExprKind, Item, StmtKind, UseTree};
 use emath_ir::{ImportEntry, ImportSelection};
 use std::collections::BTreeMap;
 
@@ -23,11 +23,7 @@ mod sections;
 mod text;
 
 pub use declaration::admit_declaration;
-pub(crate) use capability::admit_capability;
-pub(crate) use declaration::{admit_field_pack, validate_kind_application};
-pub(super) use declaration::*;
-pub(crate) use feature_capsule::admit_feature_capsule;
-pub(crate) use reaction::admit_reaction_network;
+pub(crate) use declaration::validate_kind_application;
 pub(super) use sections::*;
 
 pub use schema::{KindDef, SchemaRule};

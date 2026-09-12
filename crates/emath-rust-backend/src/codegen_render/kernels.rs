@@ -518,7 +518,7 @@ pub(crate) fn einsum_output_rank(spec: &str) -> usize {    match spec.split_once
                 spec.chars().filter(|c| c.is_alphabetic()).collect();
             letters.sort_unstable();
             let mut rank = 0;
-            let mut runs = letters.len();
+            let runs = letters.len();
             let mut index = 0;
             while index < runs {
                 let mut run = 1;

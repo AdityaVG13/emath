@@ -190,7 +190,7 @@ impl Parser {
                             }
                         }
                         self.mounted_packs.insert(pack.clone());
-                        if let Some((name, value)) = param {
+                        if let Some((_name, value)) = param {
                             self.pack_parameters.insert(pack, value);
                         }
                     }

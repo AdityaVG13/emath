@@ -27,7 +27,7 @@ mod rtcalls;
 pub(crate) use carrier::*;
 pub(crate) use flat::*;
 pub(crate) use kinds::*;
-pub(crate) use kernels::{einsum_output_rank, element_tensor_expr};
+pub(crate) use kernels::element_tensor_expr;
 pub(crate) use rtcalls::*;
 
 pub(crate) fn op_expr(

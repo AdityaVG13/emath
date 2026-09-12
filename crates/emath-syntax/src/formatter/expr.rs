@@ -210,7 +210,7 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
         }
         ExprKind::SetComprehension {
             element,
-            var,
+            var: _,
             domain,
             guard,
         } => {

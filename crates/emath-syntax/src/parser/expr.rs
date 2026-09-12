@@ -1,7 +1,7 @@
-use super::{MAX_EXPR_DEPTH, binder_kind, comparison_operator};
+use super::{MAX_EXPR_DEPTH, comparison_operator};
 use crate::token::{Keyword, NablaForm, TokenKind};
 use crate::tree::{
-    ApproxTolerance, BinaryOp, Binder, BinderKind, Expr, ExprKind, NotationFixity,
+    ApproxTolerance, BinaryOp, Expr, ExprKind, NotationFixity,
     UnaryOp, UnitExpr, UnitQueryKind,
 };
 use emath_core::Span;

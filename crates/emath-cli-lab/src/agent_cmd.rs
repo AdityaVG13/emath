@@ -16,7 +16,7 @@ use emath_cli::{
 use emath_genesis::tuning::{ExecutionDelta, SemanticChange, SemanticVariableKind, WorldDelta};
 use emath_sema::CompilerSession;
 use emath_world_ir::WorldId;
-use emath_world_ir::{EvidenceHandle, WorldMorphism};
+use emath_world_ir::EvidenceHandle;
 
 pub(crate) enum AgentRequest {
     Check { path: PathBuf },

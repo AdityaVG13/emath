@@ -10,7 +10,7 @@ pub(super) fn admit_declaration_exports_tests(
     kind_label: &str,
     is_policy: bool,
     is_model: bool,
-    inputs: &[Field],
+    _inputs: &[Field],
     outputs_raw: &[Field],
     state: &[Field],
     definitions: &BTreeMap<String, ExprId>,

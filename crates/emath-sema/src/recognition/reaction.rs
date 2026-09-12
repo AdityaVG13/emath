@@ -475,7 +475,7 @@ pub(crate) fn admit_reaction_network(decl: &Declaration, diagnostics: &mut Diagn
                     );
                 }
             }
-            other => {
+            _other => {
                 diagnostics.error(
                     "E-KIND-027",
                     "a `reaction_network` body is `species:` and `reactions:` sections",

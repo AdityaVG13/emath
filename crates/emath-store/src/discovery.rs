@@ -16,11 +16,10 @@
 //! with a ranker ⇒ descending rank, ties broken by id. Rank values are
 //! display metadata carried on the hit.
 
-use std::collections::BTreeSet;
 
 use emath_core::{MeaningId, ObjectId};
 
-use crate::object_graph::{LibraryObject, ObjectGraph, ObjectKind, RelationKind};
+use crate::object_graph::{ObjectKind, RelationKind};
 
 /// One exact structural filter. All filters on a query must hold
 /// (conjunction); the empty query matches every stored object.

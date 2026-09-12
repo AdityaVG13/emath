@@ -19,10 +19,9 @@ pub use desugar::prepare_source;
 use emath_artifact::{JsonValue, JsonWriter, parse_json_document};
 use emath_core::{Diagnostics, FileId, Severity, limits::Limits};
 use emath_exec_ir::interp::{Value, format_f64};
-use emath_exec_ir::runner::{DeclarationRun, RunReport, TestRun, run_package_with_given};
+use emath_exec_ir::runner::{DeclarationRun, RunReport, TestRun};
 use emath_genesis::{Disposition, ResultBundle, WorldResult};
 use emath_ir::Mig;
-use emath_rust_backend::BackendInput;
 use emath_sema::session::CompilerSession;
 use emath_syntax::{format_lossless, install_source_parser, parse_lossless};
 use std::borrow::Cow;
@@ -41,5 +40,3 @@ pub use payload::*;
 use serialize::*;
 use solve::*;
 
-use examples::*;
-use payload::*;

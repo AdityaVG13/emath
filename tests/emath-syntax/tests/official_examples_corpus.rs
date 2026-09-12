@@ -10,8 +10,8 @@ fn corpora_and_language_gaps() {
         boot();
         for (name, rel, args, expected) in [
             (
-                "run newton-second",
-                "language/examples/physics/newton-second.emath",
+                "run heat",
+                "language/examples/applied/heat.emath",
                 &["run"][..],
                 CliExit::Ok,
             ),
@@ -19,6 +19,48 @@ fn corpora_and_language_gaps() {
                 "run add-exact",
                 "language/examples/intro/add-exact.emath",
                 &["run"][..],
+                CliExit::Ok,
+            ),
+            (
+                "check object-basics",
+                "language/examples/objects/object-basics.emath",
+                &["check"][..],
+                CliExit::Ok,
+            ),
+            (
+                "check sequence-fold",
+                "language/examples/recursion/sequence-fold.emath",
+                &["check"][..],
+                CliExit::Ok,
+            ),
+            (
+                "check quote-view",
+                "language/examples/code/quote-view.emath",
+                &["check"][..],
+                CliExit::Ok,
+            ),
+            (
+                "check quote-substitute",
+                "language/examples/code/quote-substitute.emath",
+                &["check"][..],
+                CliExit::Ok,
+            ),
+            (
+                "check certified-enclosure",
+                "language/examples/queries/certified-enclosure.emath",
+                &["check"][..],
+                CliExit::Ok,
+            ),
+            (
+                "check zero-normalizer",
+                "language/examples/queries/zero-normalizer.emath",
+                &["check"][..],
+                CliExit::Ok,
+            ),
+            (
+                "check code-answer",
+                "language/examples/queries/code-answer.emath",
+                &["check"][..],
                 CliExit::Ok,
             ),
         ] {

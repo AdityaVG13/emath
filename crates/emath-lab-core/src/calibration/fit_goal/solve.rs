@@ -8,7 +8,7 @@ use super::*;
 /// Model evaluation faults propagate as `Err`.
 #[must_use]
 pub fn weighted_residuals(
-    goal: &FitGoal,
+    _goal: &FitGoal,
     model: &dyn FitModel,
     data: &[FitRow],
     parameters: &BTreeMap<SymbolId, f64>,

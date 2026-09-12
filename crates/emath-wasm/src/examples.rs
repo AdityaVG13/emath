@@ -1,6 +1,5 @@
 //! Curated example sources embedded in the wasm surface.
 
-use super::*;
 
 /// ABI version carried by the `version` op.
 pub const ABI_VERSION: u32 = 1;
