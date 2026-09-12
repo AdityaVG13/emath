@@ -28,11 +28,11 @@ pub const FORALL_EXISTS: &str =
 /// Integral fixture served by the `examples` op.
 pub const INTEGRAL: &str = include_str!("../../../tests/fixtures/language/intro/integral.emath");
 /// Autodiff example served by the `examples` op.
-pub const AUTODIFF: &str = include_str!("../../../language/examples/intro/autodiff.emath");
+pub const AUTODIFF: &str = include_str!("../../../language/examples/code/autodiff.emath");
 /// Equation-solving example served by the `examples` op.
 pub const SOLVE: &str = include_str!("../../../tests/fixtures/language/intro/solve.emath");
 /// Optimization example served by the `examples` op.
-pub const OPTIMIZE: &str = include_str!("../../../language/examples/intro/optimize.emath");
+pub const OPTIMIZE: &str = include_str!("../../../language/examples/functions/optimize.emath");
 /// Constrained-optimization fixture served by the `examples` op.
 pub const CONSTRAINED_OPT: &str =
     include_str!("../../../tests/fixtures/language/intro/constrained-optimization.emath");
