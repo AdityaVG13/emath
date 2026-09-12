@@ -4181,15 +4181,23 @@ pub fn evaluate_tree_at(
             continue;
         };
         for section in decl.sections().filter(|section| section.name == "tests") {
-            let mut label = decl.name.clone();
-            let mut givens = BTreeMap::new();
-            let mut expects = Vec::new();
+            // §3.1: every `example <label>:` block is its own case. Loose
+            // givens/expects outside any example form one anonymous case.
+            // Never merge examples: later givens must not leak into earlier
+            // expects (constitution §6.3: separately identified cases).
+            let mut cases: Vec<(String, BTreeMap<String, CValue>, Vec<Expr>)> = Vec::new();
+            let mut loose_givens = BTreeMap::new();
+            let mut loose_expects: Vec<Expr> = Vec::new();
+            let mut has_loose = false;
             for stmt in &section.suite.statements {
                 match &stmt.kind {
                     StmtKind::Section(example) if example.name == "example" => {
+                        let mut label = decl.name.clone();
                         if let Some(generic) = &example.generic {
                             label = generic.clone();
                         }
+                        let mut givens = BTreeMap::new();
+                        let mut expects = Vec::new();
                         for inner in &example.suite.statements {
                             match &inner.kind {
                                 StmtKind::Given { name, value } => {
@@ -4202,15 +4210,24 @@ pub fn evaluate_tree_at(
                                 _ => {}
                             }
                         }
+                        cases.push((label, givens, expects));
                     }
                     StmtKind::Given { name, value } => {
-                        givens.insert(name.clone(), engine.eval(value)?);
+                        has_loose = true;
+                        loose_givens.insert(name.clone(), engine.eval(value)?);
                     }
-                    StmtKind::Expect(expr) => expects.push(expr.clone()),
+                    StmtKind::Expect(expr) => {
+                        has_loose = true;
+                        loose_expects.push(expr.clone());
+                    }
                     _ => {}
                 }
             }
-            if decl.as_kind == "query" {
+            if has_loose {
+                cases.push((decl.name.clone(), loose_givens, loose_expects));
+            }
+            for (label, givens, expects) in cases {
+                if decl.as_kind == "query" {
                 let receipt = engine.run_query(&decl.name, &givens)?;
                 for (name, value) in &givens {
                     engine.env.insert(name.clone(), value.clone());
@@ -4324,6 +4341,7 @@ pub fn evaluate_tree_at(
                     detail,
                     receipt: None,
                 });
+                }
             }
         }
     }
