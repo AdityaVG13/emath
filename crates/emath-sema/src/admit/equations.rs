@@ -52,22 +52,9 @@ pub(super) fn is_der_call(function: &Expr) -> bool {
     })
 }
 
-/// Explicit `derivative(state)` / `der(state)` / `derivative state wrt t`.
+/// Explicit `derivative(state)` / `der(state)` as an ordinary call.
 pub(super) fn unwrap_derivative(expr: &Expr) -> Option<(&Expr, Option<&[Expr]>)> {
     match &expr.kind {
-        ExprKind::Derivative { value, wrt, .. } => {
-            let wrt = wrt.as_deref();
-            if let ExprKind::Derivative {
-                value: inner,
-                wrt: None,
-                ..
-            } = &value.kind
-            {
-                Some((inner, wrt))
-            } else {
-                Some((value.as_ref(), wrt))
-            }
-        }
         ExprKind::Call { function, args } if args.len() == 1 && is_der_call(function) => {
             Some((&args[0], None))
         }
@@ -212,7 +199,7 @@ pub(super) fn admit_equations(
         if !is_model {
             admitter.error(
                 "E-KIND-010",
-                "`equations:` (with `derivative(state) = rhs` rows) describes continuous dynamics and is only admitted on `emath model` declarations; a stateless formula uses `definitions:` on `emath function`, a stateful object uses `emath policy`",
+                "`equations:` is not a constructor section; write rates and residuals as ordinary `definitions:` on `emath function` or fields on `emath object`",
                 section.source,
             );
             continue;

@@ -317,7 +317,7 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
     }
     let mut commands = Vec::new();
     for name in [
-        "api", "new", "check", "run", "step", "inspect", "verify", "build", "simulate",
+        "api", "check", "run", "step", "inspect", "verify", "test", "build",
     ] {
         let mut command = emath_artifact::JsonWriter::object();
         command.string("name", name);
@@ -340,7 +340,7 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
         out.string("source_of_truth", "language/");
         out.string(
             "starter_source",
-            "emath function Answer:\n    definitions:\n        result = 2 + 1\n",
+            "emath function Answer:\n    inputs:\n\n    outputs:\n        result: Int\n\n    definitions:\n        result = 2 + 1\n",
         );
         out.strings(
             "workflow",
@@ -351,13 +351,13 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
         );
         out.string(
             "run_results",
-            "emath.run.v1: typed values, evidence scope, goal_met, remaining cases and checkpoint",
+            "emath.constructor.v1: execution, fulfillment, representation, payload, evidence, remaining",
         );
         out.string(
             "continuation",
-            "completed examples/declaration calls only; no opaque solver-internal suspension",
+            "constructor-layer checkpoint; `emath step` resumes the saved continuation",
         );
-        out.string("parameter_values", "--set supports Float64, Int, Nat, BigInt, Bool and numeric vectors; other carriers use source examples");
+        out.string("parameter_values", "--set supports Bool, Int, Rat, and Float64; other carriers use source examples");
         out.objects("commands", &commands);
         out.string("search", &request.search);
         out.int("offset", request.offset as u64);

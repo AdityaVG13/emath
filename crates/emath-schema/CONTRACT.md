@@ -99,8 +99,9 @@ nine are disclosed envelope-only.
 
 ## Authored reference defaults
 
-Feature capsules retain optional `reference_defaults` with the required
-`reference_body`, `reference_params`, and `reference_signature` fields.
+Feature capsules retain optional `reference_defaults` with required
+`reference_body` and `reference_params`. `reference_signature` is
+inferred from the body when omitted.
 The Language Image compiler checks default terms against the preceding
 parameters and the declared arity range. Raw default text participates in
 the capsule semantic hash, as other semantic fields do.

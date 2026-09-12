@@ -17,7 +17,6 @@ fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>
             Some(("build", *json, Some(spec)))
         }
         Command::Test { path, .. } => Some(("test", false, Some(path))),
-        Command::Simulate(_) => Some(("semantic", false, None)),
         _ => None,
     }
 }
@@ -78,7 +77,7 @@ fn verify_language_gate(command: &Command) -> Result<(), (&'static str, bool, St
     verify_language_image(name, json, anchor)
 }
 
-/// Shared Language Image gate for production keep-commands and `emath-lab`.
+/// Shared Language Image gate for production constructor commands.
 pub fn refuse_unverified_language_image(
     command: &'static str,
     json: bool,
@@ -388,6 +387,9 @@ pub(super) fn help_cmd(args: &[String]) -> CliExit {
 
 pub(super) fn print_command_help(command: &str, json: bool) -> CliExit {
     let resolved = catalog::resolve_alias(command).unwrap_or(command);
+    if catalog::EXTRACTED_COMMANDS.contains(&resolved) {
+        return unknown_command(command, json);
+    }
     if json {
         match catalog::command_help_json(resolved) {
             Some(json_text) => {
@@ -410,22 +412,17 @@ pub(super) fn print_command_help(command: &str, json: bool) -> CliExit {
 pub(super) fn unknown_command(other: &str, json: bool) -> CliExit {
     if catalog::EXTRACTED_COMMANDS.contains(&other) {
         let err = PedagogicError::new(
-            "E-CLI-UNKNOWN-COMMAND",
-            format!("`{other}` lives in `emath-lab`, not production `emath`"),
+            "E-KIND-GONE",
+            format!("`{other}` is not a constructor command. Write an ordinary `emath function` or `emath query` and `emath run`"),
             format!("command position 1 (`{other}`)"),
-            format!("emath-lab {other}"),
+            "emath run <file.emath>",
         )
-        .with_did_you_mean(format!("emath-lab {other}"))
-        .with_help(format!("emath-lab help {other}"));
+        .with_did_you_mean("emath run")
+        .with_help("emath help run");
         return err.emit(json);
     }
     let hint = catalog::suggest_command(other);
     let (remediation, did_you_mean, help) = match hint {
-        Some(h) if catalog::EXTRACTED_COMMANDS.contains(&h) => (
-            format!("emath-lab {h}"),
-            Some(format!("emath-lab {h}")),
-            format!("emath-lab help {h}"),
-        ),
         Some(h) => (
             format!("emath {h}"),
             Some(format!("emath {h}")),

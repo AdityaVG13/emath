@@ -42,6 +42,14 @@ pub(crate) fn op_expr(
             let kinds = value_kinds(program, names, states, input_kinds);
             literal_frame_expr(body, inputs, state, program, &kinds)
         }
+        EmirOp::CallSelf { inputs } => {
+            let args = inputs
+                .iter()
+                .map(|value| render_expr(&operand(program, *value)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Ok(Expr::Raw(format!("__self({args})?")))
+        }
         EmirOp::SameDenseShape(..) | EmirOp::DenseValues(_) | EmirOp::DenseRepack { .. } | EmirOp::ToF64(_)
         | EmirOp::DenseLayout(_) | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::F64SortTotal(_) => {
             let kinds = value_kinds(program, names, states, input_kinds);
@@ -378,21 +386,19 @@ struct KernelArtifact {
 }
 
 enum KernelArtifactKind {
-    Sampling(u8),
     DensePointIndex,
     CheckedAdd,
     ForwardDifference,
     EinsumContract,
     RsEncode,
+    UnitInterval,
 }
 
 impl KernelArtifactKind {
     /// Whether the artifact's rendered form can produce a runtime fault
-    /// (`Result`-typed render). The sampling kernels return plain
-    /// values; every checked/kernel-ABI render propagates typed
-    /// refusals.
+    /// (`Result`-typed render).
     fn faults(&self) -> bool {
-        !matches!(self, Self::Sampling(_))
+        true
     }
 }
 
@@ -414,8 +420,8 @@ pub(super) fn artifact_may_fault(capability: &str) -> bool {
 
 impl KernelArtifact {
     fn render(&self, args: &[EmirValue], program: &EmirProgram, kinds: &[ValueKind]) -> Option<Expr> {
-        let kind = match self.kind {
-            KernelArtifactKind::DensePointIndex => return op_collections::dense_point_index_expr(args, program, kinds),
+        match self.kind {
+            KernelArtifactKind::DensePointIndex => op_collections::dense_point_index_expr(args, program, kinds),
             KernelArtifactKind::CheckedAdd => {
                 let [left, right] = args else {
                     return None;
@@ -424,47 +430,35 @@ impl KernelArtifact {
                 let right = render_expr(&operand_ref(program, *right));
                 // Same typed fault as the interp handler (`checked_add` in
                 // exec-ir native_kernel.rs): generated code matches the VM.
-                return Some(Expr::Raw(format!(
+                Some(Expr::Raw(format!(
                     "({left}).checked_add({right}).ok_or_else(|| String::from(\"E-ARITH-OVERFLOW: checked integer addition overflowed\"))?"
-                )));
+                )))
             }
             KernelArtifactKind::ForwardDifference => {
-                return kernels::forward_difference_expr(args, program, kinds);
+                kernels::forward_difference_expr(args, program, kinds)
             }
             KernelArtifactKind::EinsumContract => {
-                return kernels::einsum_contract_expr(args, program, kinds);
+                kernels::einsum_contract_expr(args, program, kinds)
             }
-            KernelArtifactKind::RsEncode => {
-                return kernels::rs_encode_expr(args, program, kinds);
+            KernelArtifactKind::RsEncode => kernels::rs_encode_expr(args, program, kinds),
+            KernelArtifactKind::UnitInterval => {
+                let [seed, draws, tail @ ..] = args else {
+                    return None;
+                };
+                let stream = match tail {
+                    [] => "\"\"".to_string(),
+                    [stream] => format!("&{}", render_expr(&operand(program, *stream))),
+                    _ => return None,
+                };
+                Some(map_runtime_result(format!(
+                    "emath_rt::unit_interval_stream({}, {}, {stream})",
+                    render_expr(&operand(program, *seed)),
+                    render_expr(&operand(program, *draws)),
+                )))
             }
-            KernelArtifactKind::Sampling(kind) => kind,
-        };
-        let [params, seed, draws, tail @ ..] = args else {
-            return None;
-        };
-        let stream = match tail {
-            [] => Expr::Str(String::new()),
-            [stream] => Expr::Raw(format!("&{}", render_expr(&operand_ref(program, *stream)))),
-            _ => return None,
-        };
-        Some(Expr::Call {
-            path: vec![
-                "emath_rt".to_string(),
-                "probability".to_string(),
-                "prob_sample_in_stream".to_string(),
-            ],
-            args: vec![
-                Expr::Raw(kind.to_string()),
-                operand_ref(program, *params),
-                operand_ref(program, *seed),
-                operand_ref(program, *draws),
-                stream,
-            ],
-        })
+        }
     }
 }
-
-const SAMPLING_SIGNATURE: &str = "(Vector<Float64>,Float64,Float64,Text?)->Vector<Float64>";
 
 const KERNEL_ARTIFACTS: &[KernelArtifact] = &[
     KernelArtifact {
@@ -480,22 +474,10 @@ const KERNEL_ARTIFACTS: &[KernelArtifact] = &[
         kind: KernelArtifactKind::DensePointIndex,
     },
     KernelArtifact {
-        kernel_id: "counter-stream-gaussian-transform",
-        signature: SAMPLING_SIGNATURE,
-        semantic_hash: "sha256:aea62740b00c48e611f84b99fde824e01457ccb1e79ee4de8a218182577a145e",
-        kind: KernelArtifactKind::Sampling(0),
-    },
-    KernelArtifact {
-        kernel_id: "counter-stream-affine-transform",
-        signature: SAMPLING_SIGNATURE,
-        semantic_hash: "sha256:e57bc8668a6a85953899f2ff59add385e964d88e7ee00bf1d1ca7da5a798644c",
-        kind: KernelArtifactKind::Sampling(1),
-    },
-    KernelArtifact {
-        kernel_id: "counter-stream-threshold-transform",
-        signature: SAMPLING_SIGNATURE,
-        semantic_hash: "sha256:9b3fe206334c592da948e6ccb4b15baa75aec7df35b43795125820b28eafbf23",
-        kind: KernelArtifactKind::Sampling(2),
+        kernel_id: "counter-stream-unit-interval",
+        signature: "(Float64,Float64,Text?)->Vector<Float64>",
+        semantic_hash: "sha256:f054beaa11ce1ee6f33f2577538b9bfb979b93368f376c9cc2347fdc5699a134",
+        kind: KernelArtifactKind::UnitInterval,
     },
     KernelArtifact {
         kernel_id: "program-forward-difference",

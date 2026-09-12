@@ -104,7 +104,6 @@ impl super::Parser {
             }
             TokenKind::Keyword(
                 Keyword::Where
-                | Keyword::Wrt
                 | Keyword::Over
                 | Keyword::Against
                 | Keyword::With
@@ -221,14 +220,7 @@ impl super::Parser {
             | TokenKind::Bang
             | TokenKind::LParen
             | TokenKind::LBracket
-            | TokenKind::Keyword(
-                Keyword::True
-                | Keyword::False
-                | Keyword::Derivative
-                | Keyword::Solve
-                | Keyword::Minimize
-                | Keyword::Maximize,
-            ) => {
+            | TokenKind::Keyword(Keyword::True | Keyword::False) => {
                 let expr = self.parse_expr()?;
                 if let Some(stmt) = self.parse_equation_tail(&expr, start) {
                     return Some(stmt);
@@ -292,7 +284,6 @@ impl super::Parser {
                     | Keyword::For
                     | Keyword::On
                     | Keyword::At
-                    | Keyword::Wrt
                     | Keyword::Package,
                 ) => {
                     let word = match self.peek() {

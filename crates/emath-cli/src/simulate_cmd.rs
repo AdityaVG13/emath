@@ -1,7 +1,7 @@
 //! `emath simulate`: explicit, adaptive, implicit, and symplectic integration.
 
 use super::{
-    assign_once, CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry,
+    assign_once, CliExit, EXIT_ADMISSION, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry,
     json_diagnostics_entries, print_diagnostics, print_json_diagnostics, split_error_code,
 };
 use emath_artifact::JsonWriter;
@@ -313,7 +313,10 @@ fn emit_simulate_error(text: &str, json: bool) {
     }
 }
 
+#[allow(unreachable_code)]
 fn simulate_cmd(args: &SimulateArgs) -> CliExit {
+    emit_simulate_error(emath_exec_ir::CONSTRUCTOR_SIMULATE_GONE, args.json);
+    return EXIT_ADMISSION;
     let mut session = CompilerSession::new(Limits::default());
     let Ok(package) = session.load_package(&args.path) else {
         emit_simulate_error(
@@ -337,6 +340,8 @@ fn simulate_cmd(args: &SimulateArgs) -> CliExit {
         }
         return EXIT_REFUSED;
     }
+    emit_simulate_error(emath_exec_ir::CONSTRUCTOR_SIMULATE_GONE, args.json);
+    return EXIT_REFUSED;
     let Some(declaration) = result.package.declarations.iter().find(|declaration| {
         declaration.kind_label == "model"
             && args

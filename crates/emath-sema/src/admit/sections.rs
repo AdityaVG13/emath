@@ -358,30 +358,10 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
             start.as_ref().is_some_and(|e| contains_state_reference(e))
                 || end.as_ref().is_some_and(|e| contains_state_reference(e))
         }
-        ExprKind::Binder { binders, body, .. } => {
-            binders
-                .iter()
-                .any(|b| b.domain.as_ref().is_some_and(contains_state_reference))
-                || contains_state_reference(body)
-        }
-        ExprKind::Derivative { value, wrt, .. }
-        | ExprKind::Solve { value, wrt }
-        | ExprKind::Optimize { value, wrt, .. } => {
-            contains_state_reference(value)
-                || wrt
-                    .as_ref()
-                    .is_some_and(|v| v.iter().any(contains_state_reference))
-        }
-        ExprKind::At { value, location } | ExprKind::On { value, location } => {
-            contains_state_reference(value) || contains_state_reference(location)
-        }
         ExprKind::Conditioned { value, condition } => {
             contains_state_reference(value) || contains_state_reference(condition)
         }
         ExprKind::UnitQuery { expr, .. } => contains_state_reference(expr),
-        ExprKind::Limit { target, body, .. } | ExprKind::SampleLimit { target, body, .. } => {
-            contains_state_reference(target) || contains_state_reference(body)
-        }
         ExprKind::Cases {
             subject,
             arms,
@@ -394,6 +374,25 @@ pub(super) fn contains_state_reference(expr: &Expr) -> bool {
                     .iter()
                     .any(|(c, v)| contains_state_reference(c) || contains_state_reference(v))
                 || contains_state_reference(else_arm)
+        }
+        ExprKind::FunctionAbs { domain, body, .. }
+        | ExprKind::QuoteBind { domain, body, .. }
+        | ExprKind::Recur { ty: domain, body, .. } => {
+            contains_state_reference(domain) || contains_state_reference(body)
+        }
+        ExprKind::Quote { body } => contains_state_reference(body),
+        ExprKind::CallableBinder {
+            callee,
+            domain,
+            body,
+            ..
+        } => {
+            contains_state_reference(callee)
+                || contains_state_reference(domain)
+                || contains_state_reference(body)
+        }
+        ExprKind::SequenceCons { head, tail } => {
+            contains_state_reference(head) || contains_state_reference(tail)
         }
     }
 }

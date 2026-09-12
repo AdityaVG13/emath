@@ -23,9 +23,10 @@ pub use run::{
     run_test,
 };
 pub use simulate::{
-    Continuation, DAEDisposition, DAEIndex, InitializationVerdict, SimulateOptions, StepMethod,
-    Trajectory, TrajectorySample, simulate_continuous, simulate_continuous_dispositioned,
-    simulate_continuous_with, step_continuous, step_continuous_values, explicit_step_program,
+    CONSTRUCTOR_SIMULATE_GONE, Continuation, DAEDisposition, DAEIndex, InitializationVerdict,
+    SimulateOptions, StepMethod, Trajectory, TrajectorySample, simulate_continuous,
+    simulate_continuous_dispositioned, simulate_continuous_with, step_continuous,
+    step_continuous_values, explicit_rate_program, explicit_step_program,
     residual_model_step_program, authored_implicit_explicit_step,
 };
 

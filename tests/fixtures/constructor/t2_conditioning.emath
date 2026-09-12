@@ -1,0 +1,33 @@
+# T2: Exact finite conditioning. This file installed no topic identity.
+emath function posterior_second:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        unnorm0 = (1 / 3) * (1 / 4)
+        unnorm1 = (2 / 3) * (3 / 4)
+        result = unnorm1 / (unnorm0 + unnorm1)
+    tests:
+        example <six_sevenths>:
+            given unused = 0
+            expect result == 6 / 7
+
+emath query ZeroNormalizer:
+    inputs:
+        unused: Int
+    definitions:
+        result = 0
+    question:
+        target = result
+        scope = unused
+        assumptions = []
+    using:
+        method = missing
+    answer:
+        form = value
+        accept = unchecked
+    tests:
+        example <zero_mass>:
+            given unused = 0
+            expect diagnostic.code == method_unavailable

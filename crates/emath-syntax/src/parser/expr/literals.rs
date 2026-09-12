@@ -518,6 +518,30 @@ impl super::super::Parser {
                 }
             }
             TokenKind::LBracket => {
+                let save = self.pos;
+                self.advance();
+                if self.eat(&TokenKind::RBracket) {
+                    return Some(Expr {
+                        kind: ExprKind::List(Vec::new()),
+                        source: start.cover(self.last_span()),
+                    });
+                }
+                let head = self.parse_expr()?;
+                if self.eat(&TokenKind::Comma) && matches!(self.peek(), TokenKind::DotDot) {
+                    self.advance();
+                    let tail = self.parse_expr()?;
+                    if !self.eat(&TokenKind::RBracket) {
+                        self.error_here("E-SYN-102", "expected `]` after sequence cons");
+                    }
+                    return Some(Expr {
+                        kind: ExprKind::SequenceCons {
+                            head: Box::new(head),
+                            tail: Box::new(tail),
+                        },
+                        source: start.cover(self.last_span()),
+                    });
+                }
+                self.pos = save;
                 let items = self.parse_list_literal()?;
                 Some(Expr {
                     kind: ExprKind::List(items),

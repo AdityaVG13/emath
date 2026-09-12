@@ -5,6 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::*;
 
 /// Admit one declaration into the package and trace.
+///
+/// Kind-registry admission is leftover. Live constructor admission is
+/// `check_tree` / `admit_constructor_declaration`.
+#[allow(unreachable_code, unused_variables)]
 pub fn admit_declaration(
     decl: &emath_core::tree::Declaration,
     kind_defs: &BTreeMap<String, KindDef>,
@@ -12,6 +16,12 @@ pub fn admit_declaration(
     diagnostics: &mut Diagnostics,
     trace: &mut SemanticTrace,
 ) {
+    diagnostics.error(
+        "E-KIND-GONE",
+        "kind-registry admission is not constructor surface; write `emath object`, `emath function`, or `emath query`",
+        decl.head_source,
+    );
+    return;
     let item_kind = decl.item_kind.as_str();
     if item_kind == "extern" {
         admit_extern(decl, package, diagnostics, trace);
@@ -22,6 +32,19 @@ pub fn admit_declaration(
     } else {
         item_kind
     };
+    if matches!(
+        schema_kind,
+        "model" | "policy" | "kind" | "law" | "search" | "experiment" | "reaction_network"
+    ) {
+        diagnostics.error(
+            "E-KIND-GONE",
+            format!(
+                "declaration kind `{schema_kind}` is not a core kind; write `emath object`, `emath function`, or `emath query`"
+            ),
+            decl.head_source,
+        );
+        return;
+    }
     if schema_kind == "capability" {
         super::capability::admit_capability(decl, package, diagnostics, trace);
         return;

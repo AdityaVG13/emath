@@ -6,6 +6,7 @@ impl super::super::Parser {
     /// B04: Parse the body of a `limit x -> T[+|-]: body` expression; the
     /// target parses at multiplicative level so `+`/`-` before `:` is a
     /// direction suffix (complex targets need parens).
+    #[allow(dead_code)]
     pub(super) fn parse_limit_body(
         &mut self,
         start: emath_core::Span,
@@ -13,49 +14,12 @@ impl super::super::Parser {
         is_sample: bool,
         depth: usize,
     ) -> Option<Expr> {
-        let target = self.parse_multiplicative(depth)?;
-        // One-sided suffix: `+` or `-` immediately before `:`.
-        let direction = if matches!(self.peek(), TokenKind::Plus | TokenKind::Minus)
-            && matches!(self.peek_at(1), TokenKind::Colon)
-        {
-            let dir = if matches!(self.peek(), TokenKind::Plus) {
-                LimitDirection::FromAbove
-            } else {
-                LimitDirection::FromBelow
-            };
-            self.advance(); // consume `+` or `-`
-            dir
-        } else {
-            LimitDirection::TwoSided
-        };
-        if !self.eat(&TokenKind::Colon) {
-            self.error_here("E-SYN-111", "expected `:` after limit target");
-            return None;
-        }
-        self.skip_newlines();
-        if matches!(self.peek(), TokenKind::Indent) {
-            self.advance();
-        }
-        let body = self.parse_expr_depth(depth + 1)?;
-        let kind = if is_sample {
-            ExprKind::SampleLimit {
-                var,
-                target: Box::new(target),
-                direction,
-                body: Box::new(body),
-            }
-        } else {
-            ExprKind::Limit {
-                var,
-                target: Box::new(target),
-                direction,
-                body: Box::new(body),
-            }
-        };
-        Some(Expr {
-            kind,
-            source: start.cover(self.last_span()),
-        })
+        let _ = (start, var, is_sample, depth);
+        self.error_here(
+            "E-SYN-101",
+            "`limit` / `sample_limit` are ordinary imported functions, not constructor forms",
+        );
+        None
     }
 
     /// U1: Parse a `cases [subject]: | c1 => e1 | else => eN` body; arms use
@@ -80,14 +44,22 @@ impl super::super::Parser {
                 self.suppress_pipe_or = false;
                 if arms.is_empty() {
                     self.error_here("E-SYN-110", "expected `|` to start a cases arm");
-                } else {
-                    // Totality is `| else => ...`. After a condition arm a
-                    // missing `|` is a missing else, not another arm.
-                    self.error_here(
-                        "E-SYN-110",
-                        "cases expression requires a mandatory `else` arm",
-                    );
+                    return None;
                 }
+                if subject.is_some() {
+                    else_arm = Some(Box::new(Expr {
+                        kind: ExprKind::Path {
+                            segments: vec!["_unmatched".into()],
+                            generics: None,
+                        },
+                        source: self.current_span(),
+                    }));
+                    break;
+                }
+                self.error_here(
+                    "E-SYN-110",
+                    "cases expression requires a mandatory `else` arm",
+                );
                 return None;
             }
             self.skip_newlines();
@@ -617,83 +589,6 @@ fn substitute_bound(expr: Expr, subject: &Expr, name: &str) -> Expr {
             end: end.map(|e| Box::new(substitute_bound(*e, subject, name))),
             inclusive,
         },
-        ExprKind::Binder {
-            kind,
-            binders,
-            body,
-            guard,
-        } => {
-            let shadowed = binders.iter().any(|binder| binder.name == name);
-            ExprKind::Binder {
-                kind,
-                binders: binders
-                    .into_iter()
-                    .map(|binder| Binder {
-                        domain: binder
-                            .domain
-                            .map(|domain| substitute_bound(domain, subject, name)),
-                        ..binder
-                    })
-                    .collect(),
-                body: if shadowed {
-                    body
-                } else {
-                    Box::new(substitute_bound(*body, subject, name))
-                },
-                guard: if shadowed {
-                    guard
-                } else {
-                    guard.map(|e| Box::new(substitute_bound(*e, subject, name)))
-                },
-            }
-        }
-        ExprKind::Derivative {
-            value,
-            wrt,
-            kind,
-            holding,
-        } => ExprKind::Derivative {
-            value: Box::new(substitute_bound(*value, subject, name)),
-            wrt: wrt.map(|list| {
-                list.into_iter()
-                    .map(|e| substitute_bound(e, subject, name))
-                    .collect()
-            }),
-            kind,
-            holding: holding
-                .into_iter()
-                .map(|e| substitute_bound(e, subject, name))
-                .collect(),
-        },
-        ExprKind::Solve { value, wrt } => ExprKind::Solve {
-            value: Box::new(substitute_bound(*value, subject, name)),
-            wrt: wrt.map(|list| {
-                list.into_iter()
-                    .map(|e| substitute_bound(e, subject, name))
-                    .collect()
-            }),
-        },
-        ExprKind::Optimize {
-            value,
-            wrt,
-            maximize,
-        } => ExprKind::Optimize {
-            value: Box::new(substitute_bound(*value, subject, name)),
-            wrt: wrt.map(|list| {
-                list.into_iter()
-                    .map(|e| substitute_bound(e, subject, name))
-                    .collect()
-            }),
-            maximize,
-        },
-        ExprKind::At { value, location } => ExprKind::At {
-            value: Box::new(substitute_bound(*value, subject, name)),
-            location: Box::new(substitute_bound(*location, subject, name)),
-        },
-        ExprKind::On { value, location } => ExprKind::On {
-            value: Box::new(substitute_bound(*value, subject, name)),
-            location: Box::new(substitute_bound(*location, subject, name)),
-        },
         ExprKind::Conditioned { value, condition } => ExprKind::Conditioned {
             value: Box::new(substitute_bound(*value, subject, name)),
             condition: Box::new(substitute_bound(*condition, subject, name)),
@@ -702,42 +597,6 @@ fn substitute_bound(expr: Expr, subject: &Expr, name: &str) -> Expr {
             kind,
             expr: Box::new(substitute_bound(*expr, subject, name)),
         },
-        ExprKind::Limit {
-            var,
-            target,
-            direction,
-            body,
-        } => {
-            let shadowed = var == name;
-            ExprKind::Limit {
-                var,
-                target: Box::new(substitute_bound(*target, subject, name)),
-                direction,
-                body: if shadowed {
-                    body
-                } else {
-                    Box::new(substitute_bound(*body, subject, name))
-                },
-            }
-        }
-        ExprKind::SampleLimit {
-            var,
-            target,
-            direction,
-            body,
-        } => {
-            let shadowed = var == name;
-            ExprKind::SampleLimit {
-                var,
-                target: Box::new(substitute_bound(*target, subject, name)),
-                direction,
-                body: if shadowed {
-                    body
-                } else {
-                    Box::new(substitute_bound(*body, subject, name))
-                },
-            }
-        }
         ExprKind::Cases {
             subject: inner,
             arms,

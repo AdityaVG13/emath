@@ -120,7 +120,7 @@ pub fn artifact_check(dir: &Path) -> CliExit {
 /// `help` output. Generated from the command catalog so usage and summary
 /// cannot drift from `emath help <command>` / `emath capabilities --json`.
 pub fn help_text() -> String {
-    let mut out = String::from("emath compiler (Phase 1). Lab/host commands: `emath-lab help`.\n\nusage:\n");
+    let mut out = String::from("emath compiler (constructor layer). Usage:\n");
     for command in catalog::COMMANDS {
         let Some(usage) = catalog::command_usage(command) else {
             continue;
@@ -141,6 +141,6 @@ pub fn help_text() -> String {
             out.push('\n');
         }
     }
-    out.push_str("\nexit codes: 0 ok, 1 refused, 2 usage, 3 toolchain, 4 io, 5 safety\n");
+    out.push_str("\nexit codes: 0 completed, 2 admission, 3 unmet/partial, 4 fault, 5 checkpoint\n");
     out
 }

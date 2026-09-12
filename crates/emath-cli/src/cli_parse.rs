@@ -229,6 +229,9 @@ pub(super) fn parse_cli(args: &[String]) -> ParsedCli<'_> {
         }
         _ => {}
     }
+    if catalog::EXTRACTED_COMMANDS.contains(&canonical) {
+        return ParsedCli::Unknown(first);
+    }
     if catalog::wants_help(rest) {
         return ParsedCli::CommandHelp {
             name: canonical,
@@ -340,10 +343,10 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                             "E-CLI-USAGE",
                             "missing required argument `<file.emath>` for `emath simulate`",
                             "positional argument 1 (expected path to `.emath` source file)",
-                            "emath simulate <file.emath> [--method rk4] [--json]",
+                            "emath run <file.emath> --function NAME --json",
                         )
                         .with_command("simulate")
-                        .with_usage("emath simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"),
+                        .with_usage("emath simulate <file.emath>  (refuses: not a constructor; use `emath run`)"),
                     ))
                 } else {
                     Err(ParseKnownError::Pedagogic(
@@ -351,10 +354,10 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                             "E-CLI-USAGE",
                             format!("invalid simulation argument: {message}"),
                             "arguments for `emath simulate`",
-                            "emath simulate <file.emath> [--method rk4] [--json]",
+                            "emath run <file.emath> --function NAME --json",
                         )
                         .with_command("simulate")
-                        .with_usage("emath simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"),
+                        .with_usage("emath simulate <file.emath>  (refuses: not a constructor; use `emath run`)"),
                     ))
                 }
             }
@@ -371,8 +374,8 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                 PedagogicError::new(
                     "E-CLI-USAGE",
                     "missing required argument `<name>` for `emath new`",
-                    "positional argument 1 (expected model name)",
-                    "emath new <model_name> [--out <dir>] [--dry-run] [--force] [--json]",
+                    "positional argument 1 (expected project name)",
+                    "emath new <name> [--out <dir>] [--dry-run] [--force] [--json]",
                 )
                 .with_command("new")
                 .with_usage("emath new <name> [--out <dir>] [--dry-run] [--force] [--json]"),
@@ -534,11 +537,10 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
     }
 }
 
-/// `fmt [<file.emath>]` or value mode:
-/// `fmt --value <literal> [--sf N] [--from UNIT] [--format "0.1 %"|preferred_unit UNIT]`
+/// `fmt [<file.emath>]`. `--value` is parsed so dispatch can refuse it
+/// (`E-KIND-GONE`); it is not constructor surface.
 pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownError> {
-    const USAGE: &str = "fmt [<file.emath>] | fmt --value <literal> \
-                         [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]";
+    const USAGE: &str = "fmt [<file.emath>|->]";
     let mut path: Option<PathBuf> = None;
     let mut value: Option<String> = None;
     let mut sf: Option<u32> = None;

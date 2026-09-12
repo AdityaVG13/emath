@@ -209,49 +209,6 @@ emath function P:
     if p.failures().len() != f0 { return; }
 
     });
-    probe.case("notation_items_round_trip", |p| {
-    // Notation declarations round-trip in the canonical spelling
-    // `notation <fixity> <prec> "<glyph>" => <path> [alias "<str>"]`,
-    // separated from sibling items by one blank line, and the reformatted
-    // output stays idempotent and parse-stable.
-    let f0 = p.failures().len();
-
-    let source = "\
-package tst.ex2
-
-notation infixl 40 \"⊕\" => core::math::pow alias \"pw\"
-
-notation prefix 80 \"√\" => core::math::sqrt
-
-notation postfix 90 \"inv\" => core::math::recip
-
-emath function F:
-    outputs:
-        y: Float64
-    definitions:
-        y = 1.0
-";
-    let once = format_once(p, source);
-    let _fmt_1 = format_once(p, &once);
-        p.eq("1", _fmt_1, once.clone());
-    p.demand("2",once.contains("notation infixl 40 \"⊕\" => core::math::pow alias \"pw\""), stringify!(once.contains("notation infixl 40 \"⊕\" => core::math::pow alias \"pw\"")));
-    if p.failures().len() != f0 { return; }
-    p.demand("3",once.contains("notation prefix 80 \"√\" => core::math::sqrt"), stringify!(once.contains("notation prefix 80 \"√\" => core::math::sqrt")));
-    if p.failures().len() != f0 { return; }
-    p.demand("4",once.contains("notation postfix 90 \"inv\" => core::math::recip"), stringify!(once.contains("notation postfix 90 \"inv\" => core::math::recip")));
-    if p.failures().len() != f0 { return; }
-    let rebound = parse_lossless(&once, FileId(0), &Limits::default());
-    p.demand("5",!rebound.diagnostics.has_errors(), format!(
-        "formatted notation must parse back: {:?}",
-        rebound
-            .diagnostics
-            .errors()
-            .map(|diagnostic| diagnostic.code)
-            .collect::<Vec<_>>()
-    ));
-    if p.failures().len() != f0 { return; }
-
-    });
     probe.case("attribute_string_arguments_keep_quotes", |p| {
     // Quoted string arguments keep their quotes through the round trip so
     // identifier args and string args never merge on reformat.
@@ -288,7 +245,6 @@ emath function f(a: Float64, b: Float64, c: Float64, x: Float64, v: Float64) -> 
         d = a - (b - c)
         p = (a ^ b) ^ c
         s = if x > 0: 1 else: 0
-        dv = derivative (v + v)
         msg = \"say \\\"hi\\\"\"
         t = (a,)
 ";
@@ -395,22 +351,6 @@ emath function f(a: Float64, b: Float64, c: Float64, x: Float64, v: Float64) -> 
     p.demand("12",matches!(&s.kind, ExprKind::If { .. }), format!(
         "colon-form if must reparse as If, got {:?}",
         s.kind
-    ));
-    if p.failures().len() != f0 { return; }
-
-    let dv = def_expr(&rebound.tree, "dv").expect("dv");
-    let ExprKind::Derivative { value, .. } = &dv.kind else {
-        panic!("dv must stay Derivative, got {:?}", dv.kind);
-    };
-    p.demand("13",matches!(
-            &value.kind,
-            ExprKind::Binary {
-                op: BinaryOp::Add,
-                ..
-            }
-        ), format!(
-        "derivative (v + v) must not become (derivative v) + v, got {:?}",
-        dv.kind
     ));
     if p.failures().len() != f0 { return; }
 

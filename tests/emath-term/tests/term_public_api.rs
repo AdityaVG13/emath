@@ -70,6 +70,41 @@ fn term_public_api() {
         }
         p.demand("trailing", matches!(Term::parse_canonical("const(a) trailing"), Err(CanonicalError::Trailing { .. })), "trailing refuses");
     });
+    p.case("surface", |p| {
+        let expected = apply("add", vec![var("lhs"), var("rhs")]);
+        for (name, source) in [
+            ("infix", "lhs + rhs"),
+            ("call", "add(lhs, rhs)"),
+            ("canonical", "apply(add,var(lhs),var(rhs))"),
+            ("spaced-canonical", "apply(add, lhs, rhs)"),
+        ] {
+            match Term::parse_body(source) {
+                Ok(term) => p.eq(name, term, expected.clone()),
+                Err(error) => p.fail(name, format!("{source}: {error:?}")),
+            }
+        }
+        match Term::parse_body("if not is_finite(x) then refuse(text:E-POLY-002) else acc") {
+            Ok(term) => p.eq(
+                "if-then",
+                term.canonical(),
+                "apply(if,apply(not,apply(is_finite,var(x))),apply(refuse,const(text:E-POLY-002)),var(acc))".to_string(),
+            ),
+            Err(error) => p.fail("if-then", format!("{error:?}")),
+        }
+        match Term::parse_body("let acc = 0 in coeffs[i] + acc * x") {
+            Ok(term) => p.eq(
+                "let-index",
+                term.canonical(),
+                "apply(let,var(acc),const(0),apply(add,apply(index,var(coeffs),var(i)),apply(mul,var(acc),var(x))))".to_string(),
+            ),
+            Err(error) => p.fail("let-index", format!("{error:?}")),
+        }
+        p.demand(
+            "refuse-trailing",
+            matches!(Term::parse_body("lhs + rhs leftover"), Err(CanonicalError::Trailing { .. })),
+            "trailing surface refuses",
+        );
+    });
     p.case("signature", |p| {
         let mut sig = Signature::default();
         p.demand("insert", sig.insert(SymbolId("f".to_string()), 2).is_ok(), "fresh inserts");

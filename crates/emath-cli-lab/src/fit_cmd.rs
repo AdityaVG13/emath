@@ -76,7 +76,12 @@ fn refuse_fit(text: &str, json: bool) -> CliExit {
     EXIT_REFUSED
 }
 
+#[allow(unreachable_code)]
 fn fit_cmd(args: &FitArgs) -> CliExit {
+    return refuse_fit(
+        "E-KIND-GONE: `emath fit` is not a constructor command. `emath model` is not a core kind. Write an ordinary `emath function` and `emath run`.",
+        args.json,
+    );
     let mut session = CompilerSession::new(Limits::default());
     let Ok(package) = session.load_package(&args.path) else {
         return refuse_fit(
@@ -99,6 +104,10 @@ fn fit_cmd(args: &FitArgs) -> CliExit {
         }
         return EXIT_REFUSED;
     }
+    return refuse_fit(
+        "E-KIND-GONE: `emath fit` is not a constructor command. `emath model` is not a core kind. Write an ordinary `emath function` and `emath run`.",
+        args.json,
+    );
     let planned = session.plan(package.file);
     if planned.diagnostics.has_errors() {
         print_diagnostics(&planned.diagnostics);

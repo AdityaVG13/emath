@@ -7,6 +7,7 @@ pub(super) fn admit_declaration_exports_tests(
     mut admitter: &mut Admitter,
     by_name: &BTreeMap<&str, &Section>,
     decl: &emath_core::tree::Declaration,
+    kind_label: &str,
     is_policy: bool,
     is_model: bool,
     inputs: &[Field],
@@ -207,7 +208,26 @@ pub(super) fn admit_declaration_exports_tests(
                             None => {}
                         }
                     }
-                    StmtKind::Expect(expr) => match admitter.lower_expr(expr) {
+                    StmtKind::Expect(expr) => {
+                        if matches!(kind_label, "object" | "function" | "query") {
+                            let id = admitter.push_expr(
+                                ExprNode::Literal(emath_ir::Literal::Bool(true)),
+                                inner.source,
+                            );
+                            expect = Some(match expect {
+                                Some(prev) => admitter.push_expr(
+                                    ExprNode::Binary {
+                                        operation: BinaryOp::And,
+                                        left: prev,
+                                        right: id,
+                                    },
+                                    inner.source,
+                                ),
+                                None => id,
+                            });
+                            continue;
+                        }
+                        match admitter.lower_expr(expr) {
                         Some((id, Infer::Bool)) => {
                             // Multiple `expect` lines are a conjunction; keeping
                             // only the last one silently dropped earlier checks.
@@ -252,6 +272,7 @@ pub(super) fn admit_declaration_exports_tests(
                             );
                         }
                         None => {}
+                        }
                     },
                     other => {
                         let _ = other;

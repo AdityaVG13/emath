@@ -154,6 +154,7 @@ pub fn build_file(
 }
 
 /// Full pipeline over in-memory text (used by the CLI, tests and hosts).
+#[allow(unreachable_code, unused_variables)]
 pub fn build_text(
     name: &str,
     text: &str,
@@ -168,6 +169,7 @@ pub fn build_text(
     std::fs::create_dir_all(target_dir).map_err(|error| {
         BuildError::Io(format!("cannot create {}: {error}", target_dir.display()))
     })?;
+    return build_constructor_text(name, text, target_dir);
 
     let mut collector = MetricsCollector::new();
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
@@ -226,6 +228,93 @@ pub fn build_text(
         BuildError::Io(format!("cannot write {}: {error}", receipt_path.display()))
     })?;
     Ok(report)
+}
+
+fn build_constructor_text(
+    name: &str,
+    text: &str,
+    target_dir: &Path,
+) -> Result<BuildReport, BuildError> {
+    let (tree, diagnostics) = emath_syntax::parse_str(text);
+    if diagnostics.has_errors() {
+        let mut codes: Vec<String> = diagnostics
+            .items()
+            .iter()
+            .filter(|item| item.severity == emath_core::Severity::Error)
+            .map(|item| item.code.to_string())
+            .collect();
+        codes.sort();
+        codes.dedup();
+        return Err(BuildError::AdmittedWithErrors(codes));
+    }
+    let constructor_only = tree.items.iter().all(|item| match item {
+        emath_core::tree::Item::Use { .. } | emath_core::tree::Item::Package { .. } => true,
+        emath_core::tree::Item::Declaration(decl) => {
+            matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+        }
+        _ => false,
+    });
+    if !constructor_only {
+        return Err(BuildError::AdmittedWithErrors(vec!["E-KIND-GONE".into()]));
+    }
+    if let Err(err) = emath_exec_ir::constructor_layer::admit_tree(&tree) {
+        return Err(BuildError::AdmittedWithErrors(vec![err.code]));
+    }
+    let functions: Vec<String> = tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            emath_core::tree::Item::Declaration(decl) if decl.as_kind == "function" => {
+                Some(decl.name.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    if functions.is_empty() {
+        return Err(BuildError::AdmittedWithErrors(vec!["E-KIND-GONE".into()]));
+    }
+    let mut rust = String::from("#![forbid(unsafe_code)]\n\n");
+    let mut unresolved = Vec::new();
+    for function in &functions {
+        match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, function) {
+            Ok(lowered) if lowered.runnable => {
+                match emath_rust_backend::emit_constructor_program(&lowered.program, &lowered.inputs)
+                {
+                    Ok(body) => {
+                        rust.push_str(&format!("// function `{function}`\n"));
+                        rust.push_str(&body);
+                        rust.push('\n');
+                    }
+                    Err(err) => unresolved.push(err.to_string()),
+                }
+            }
+            Ok(lowered) => unresolved.extend(lowered.unresolved),
+            Err(err) => unresolved.push(err),
+        }
+    }
+    let src = target_dir.join("src");
+    std::fs::create_dir_all(&src)
+        .map_err(|error| BuildError::Io(format!("cannot create {}: {error}", src.display())))?;
+    let lib = src.join("lib.rs");
+    std::fs::write(&lib, &rust)
+        .map_err(|error| BuildError::Io(format!("cannot write {}: {error}", lib.display())))?;
+    let artifact_id = content_id_of_str(&rust);
+    let package_id = content_id_of_str(text);
+    let crate_name = functions
+        .first()
+        .cloned()
+        .unwrap_or_else(|| name.to_string());
+    Ok(BuildReport {
+        artifact_dir: target_dir.to_path_buf(),
+        artifact_id,
+        package_id,
+        crate_name,
+        plan_ids: Vec::new(),
+        assumptions: unresolved,
+        exports: functions,
+        refusal_codes: Vec::new(),
+        probe_binary: None,
+    })
 }
 
 /// Total bytes of the published artifact files (recursive).

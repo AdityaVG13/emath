@@ -264,7 +264,13 @@ fn render_artifact(
 /// evaluate every cartesian cell through the reference VM and check the
 /// expectations. Failures are typed E-EVAL-* refusals (shared with
 /// eval) or per-cell statuses in the artifact; never a silent guess.
+#[allow(unreachable_code, unused_variables)]
 pub(crate) fn dispatch_sweep(args: SweepArgs) -> CliExit {
+    return refuse_eval_coded(
+        "E-KIND-GONE",
+        "`emath sweep` is not a constructor command. Write an ordinary `emath function` and `emath run`.",
+        args.json,
+    );
     let source = match std::fs::read_to_string(&args.path) {
         Ok(source) if has_declaration_content(&source) => source,
         Ok(_) => {

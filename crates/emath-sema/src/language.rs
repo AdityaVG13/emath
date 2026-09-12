@@ -6,7 +6,6 @@ use emath_ir::{CapsuleSlot, FeatureClass};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LanguageBinding {
     pub feature_id: String,
-    pub aliases: Vec<String>,
     pub arity: Option<usize>,
     pub inputs: Vec<String>,
     pub output: Option<String>,
@@ -33,20 +32,8 @@ pub fn install_language_distribution(
             continue;
         }
         let semantics = slot(capsule, "semantics").unwrap_or_default();
-        let aliases = slot(capsule, "presentation")
-            .and_then(|value| value.strip_prefix("aliases="))
-            .map(|value| {
-                value
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|alias| !alias.is_empty())
-                    .map(str::to_string)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
         bindings.push(LanguageBinding {
             feature_id: capsule.feature_id.to_string(),
-            aliases,
             arity: semantic_field(semantics, "arity").and_then(|value| value.parse().ok()),
             inputs: semantic_field(semantics, "inputs")
                 .map(|value| {

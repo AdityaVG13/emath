@@ -1,0 +1,64 @@
+# T7: New conjecture. This file installed no topic identity.
+emath function prefix_ok:
+    inputs:
+        a: Int
+        b: Int
+        c: Int
+    outputs:
+        result: Bool
+    definitions:
+        p1 = a
+        p2 = a + b
+        p3 = a + b + c
+        result = p1 >= 0 and p2 >= 0 and p3 >= 0
+
+emath function start0:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = prefix_ok(1, 0 - 1, 1)
+
+emath function start1:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = prefix_ok(0 - 1, 1, 0 - 1)
+
+emath function start2:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = prefix_ok(1, 0 - 1, 1)
+
+emath function start3:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = prefix_ok(0 - 1, 1, 0 - 1)
+
+emath function witnesses:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        w0 = if start0(0): 1 else: 0
+        w1 = if start1(0): 1 else: 0
+        w2 = if start2(0): 1 else: 0
+        w3 = if start3(0): 1 else: 0
+        result = w0 + w1 + w2 + w3
+    tests:
+        example <two_starts>:
+            given unused = 0
+            expect result == 2
+            expect start0(0) == true
+            expect start2(0) == true
+            expect start1(0) == false

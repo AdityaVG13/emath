@@ -5,6 +5,8 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Write as _};
 
+mod surface;
+
 /// Term IR schema id (durable artifact string is `emath.free-term` for the
 /// free-term document; the canonical text encoding is versioned here).
 pub const TERM_IR_SCHEMA: &str = "emath.term-ir";
@@ -159,6 +161,49 @@ impl Term {
 }
 
 impl Term {
+    /// Parses a reference body: canonical `apply(...)` text, or the user
+    /// expression surface (`lhs + rhs`, `if cond then a else b`, calls).
+    /// Both forms lower to the same term; [`Term::canonical`] is the
+    /// identity the image hashes and compiles.
+    pub fn parse_body(text: &str) -> Result<Self, CanonicalError> {
+        surface::parse_body(text)
+    }
+
+    /// Operator and nullary-constant arities implied by this term.
+    /// Authors do not write this by hand; the image infers it.
+    pub fn inferred_signature(&self) -> Result<Signature, TermError> {
+        let mut signature = Signature::default();
+        self.collect_signature(&mut signature)?;
+        Ok(signature)
+    }
+
+    /// Sorted `symbol=arity` text for [`Term::inferred_signature`].
+    pub fn inferred_signature_text(&self) -> Result<String, TermError> {
+        Ok(self
+            .inferred_signature()?
+            .iter()
+            .map(|(symbol, arity)| format!("{}={arity}", symbol.0))
+            .collect::<Vec<_>>()
+            .join(","))
+    }
+
+    fn collect_signature(&self, signature: &mut Signature) -> Result<(), TermError> {
+        match self {
+            Self::Variable(_) => Ok(()),
+            Self::Constant(symbol) => signature.insert(symbol.clone(), 0),
+            Self::Apply {
+                operator,
+                arguments,
+            } => {
+                signature.insert(operator.clone(), arguments.len())?;
+                for argument in arguments {
+                    argument.collect_signature(signature)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// Parses the canonical form produced by [`Term::canonical`] back into a
     /// term, preserving glyph byte-exactness.
     pub fn parse_canonical(text: &str) -> Result<Self, CanonicalError> {

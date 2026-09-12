@@ -1,18 +1,27 @@
-//! Meaning-budget display and raise refusals (04 / V9-06.09).
-use emath_artifact::JsonValue;
-use emath_cli::{EXIT_OK, EXIT_REFUSED};
-use emath_cli_lab::{exactness_json_document, run};
-use emath_syntax::{ExactnessDimension, ExactnessStatus, exactness_ledger, exactness_ledger_raised};
+//! `emath exactness` / `freeze` are not constructor commands.
+use emath_cli::EXIT_USAGE;
+use emath_cli_lab::run;
 use emath_test_harness::{Probe, boot};
-fn repo(rel: &str) -> String { std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel).to_string_lossy().into_owned() }
+
+fn repo(rel: &str) -> String {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(rel)
+        .to_string_lossy()
+        .into_owned()
+}
+
 #[test]
 fn probe() {
     boot();
-    let mut p = Probe::new("exactness budget displays, raise stays propose-only, frozen raise refuses");
+    let mut p = Probe::new("exactness and freeze refuse; meaning budget is not a second language");
     let path = repo("tests/fixtures/language/intro/l1_guided.emath");
-    p.case("budget", |p| { p.eq("cli", run(&["exactness".into(), path.clone()]), EXIT_OK); let src = std::fs::read_to_string(&path).expect("src"); let l = exactness_ledger(&src); p.demand("rows", !l.entries.is_empty(), "guided example has rows"); p.eq("partition", l.count(ExactnessStatus::Declared) + l.count(ExactnessStatus::Inferred) + l.count(ExactnessStatus::Constructed) + l.count(ExactnessStatus::Open), l.entries.len()); p.demand("unit-open", l.entries.iter().any(|e| e.dimension.as_str() == "unit" && e.status.as_str() == "open"), "units stay open"); p.demand("syntactic", l.entries.iter().any(|e| e.dimension.as_str() == "syntactic"), "syntactic present"); });
-    p.case("propose-only", |p| { let before = std::fs::read_to_string(&path).expect("src"); p.eq("exit", run(&["exactness".into(), path.clone(), "--raise".into(), "units".into()]), EXIT_OK); p.eq("untouched", std::fs::read_to_string(&path).expect("src"), before.clone()); let raised = exactness_ledger_raised(&before, &[ExactnessDimension::Unit]); p.demand("declared", raised.entries.iter().any(|e| e.dimension.as_str() == "unit" && e.status.as_str() == "declared"), "raised shows units declared"); p.demand("fixture", !before.contains("units:"), "fixture carries no units clause"); });
-    p.case("frozen", |p| { let fixture = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/invalid/exactness_raise_on_frozen.emath")); p.demand("pins", fixture.contains("expect: E-SYN-155"), "fixture pins E-SYN-155"); let tmp = std::env::temp_dir().join(format!("emath-frozen-{}", std::process::id())); std::fs::create_dir_all(&tmp).expect("tmp"); let (src, frozen) = (tmp.join("r.emath"), tmp.join("f.emath")); std::fs::write(&src, fixture).expect("copy"); p.eq("freeze", run(&["freeze".into(), src.to_string_lossy().into_owned(), "--out".into(), frozen.to_string_lossy().into_owned()]), EXIT_OK); p.demand("lock", tmp.join("f.freeze.lock.json").is_file(), "sidecar lock written"); p.eq("raise-refused", run(&["exactness".into(), frozen.to_string_lossy().into_owned(), "--raise".into(), "units".into()]), EXIT_REFUSED); p.eq("display-ok", run(&["exactness".into(), frozen.to_string_lossy().into_owned()]), EXIT_OK); });
-    p.case("json", |p| { let src = std::fs::read_to_string(&path).expect("src"); let l = exactness_ledger(&src); let parsed = emath_artifact::parse_json_document(&exactness_json_document(&l, Some("emath:meaning:v1:test"))).expect("json"); p.eq("command", parsed.string_field("command").expect("command"), "exactness".to_string()); p.eq("declared", parsed.int_field("declared").expect("d") as usize, l.count(ExactnessStatus::Declared)); p.eq("open", parsed.int_field("open").expect("o") as usize, l.count(ExactnessStatus::Open)); p.eq("meaning", parsed.string_field("meaning_id").expect("m"), "emath:meaning:v1:test".to_string()); let JsonValue::Arr(rows) = parsed.field("entries").expect("entries") else { p.fail("entries", "must be array"); return; }; p.eq("len", rows.len(), l.entries.len()); for (e, r) in l.entries.iter().zip(rows) { p.eq("id", r.string_field("id").expect("id"), e.inference_id.clone()); p.eq("dim", r.string_field("dimension").expect("d"), e.dimension.as_str().to_string()); p.eq("status", r.string_field("status").expect("s"), e.status.as_str().to_string()); p.eq("name", r.string_field("name").expect("n"), e.name.clone()); p.eq("rationale", r.string_field("rationale").expect("r"), e.rationale.clone()); } });
+    p.eq("exactness", run(&["exactness".into(), path.clone()]), EXIT_USAGE);
+    p.eq(
+        "raise",
+        run(&["exactness".into(), path.clone(), "--raise".into(), "units".into()]),
+        EXIT_USAGE,
+    );
+    p.eq("freeze", run(&["freeze".into(), path]), EXIT_USAGE);
     p.finish();
 }

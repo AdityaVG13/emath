@@ -26,7 +26,7 @@ pub(super) fn admit_declaration_fields(
         if refuse_head {
             admitter.error(
                 "E-SYN-123",
-                "declaration head arguments are only admitted on stateless `emath function` or `emath law` declarations (no `state:` or `constructors:`)",
+                "declaration head arguments are only admitted on a stateless `emath function` (no `state:` or `constructors:`)",
                 decl.head_source,
             );
         }
@@ -132,7 +132,7 @@ pub(super) fn admit_declaration_fields(
             admitter.error(
                 "E-KIND-010",
                 format!(
-                    "`algebraic:` (implicit unknowns solved alongside the ODE states) is only admitted on `emath model` declarations; you used `emath {kind_label}` — did you mean `emath model`?"
+                    "`algebraic:` is not a constructor section; write unknowns as ordinary inputs or object fields (you used `emath {kind_label}`)"
                 ),
                 section.source,
             );

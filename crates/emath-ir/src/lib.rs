@@ -65,7 +65,7 @@ pub use ids::{
 };
 pub use kind_schema::{
     CoreKind, KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema, core_function_schema,
-    core_model_schema, core_policy_schema,
+    core_object_schema, core_query_schema,
 };
 pub use layers::IrLayer;
 pub use meaning::{MEANING_CANONICAL_SCHEMA_V1, MeaningError, canonical_meaning_bytes, meaning_id};

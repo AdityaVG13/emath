@@ -135,4 +135,55 @@ const DEFAULT_ERROR_TYPE: &str = "ConfigError";
 mod generate;
 mod ty;
 
+/// Emit standalone Rust for a constructor-lowered EMIR program.
+/// Unresolved programs must not be marked runnable by the caller.
+pub fn emit_constructor_program(
+    program: &emath_exec_ir::EmirProgram,
+    input_names: &[String],
+) -> Result<String, BackendError> {
+    use crate::codegen_render::{value_expr, InputKinds, ValueKind};
+    use crate::rust_ir::render::render_expr;
+    let mut kinds = InputKinds::new();
+    for name in input_names {
+        kinds.insert(name.clone(), ValueKind::I64);
+    }
+    let expr = value_expr(program, input_names, &[], &kinds)?;
+    let params = input_names
+        .iter()
+        .map(|name| format!("{name}: i64"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let body = render_expr(&expr);
+    if contains_call_self(program) {
+        let call_args = input_names.join(", ");
+        Ok(format!(
+            "pub fn entry({params}) -> Result<impl core::fmt::Debug, String> {{\n    fn __self({params}) -> Result<i64, String> {{\n        Ok({body})\n    }}\n    Ok(__self({call_args})?)\n}}\n"
+        ))
+    } else {
+        Ok(format!(
+            "pub fn entry({params}) -> Result<impl core::fmt::Debug, String> {{\n    Ok({body})\n}}\n"
+        ))
+    }
+}
+
+fn contains_call_self(program: &emath_exec_ir::EmirProgram) -> bool {
+    use emath_exec_ir::EmirOp;
+    program.ops.iter().any(|(op, _)| match op {
+        EmirOp::CallSelf { .. } => true,
+        EmirOp::Branch {
+            then_body,
+            else_body,
+            ..
+        } => contains_call_self(then_body) || contains_call_self(else_body),
+        EmirOp::CallFrame { body, .. }
+        | EmirOp::ProgramLiteral { body, .. }
+        | EmirOp::Fold { body, .. }
+        | EmirOp::Collect { body, .. } => contains_call_self(body),
+        EmirOp::Iterate { body, stop, .. } => {
+            contains_call_self(body) || stop.as_ref().is_some_and(contains_call_self)
+        }
+        _ => false,
+    })
+}
+
 // (test module relocated to tests/emath-rust-backend)

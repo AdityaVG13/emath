@@ -1,0 +1,44 @@
+# Generic verbs: product-shaped factorials, Euler chi of cells the user
+# supplies, and an NS residual. Not prize labels.
+
+emath function GenericVerbs:
+    inputs:
+        n: Int
+        k: Int
+        vertices: Int
+        edges: Int
+        faces: Int
+        advect: Float64
+        pressure_grad: Float64
+        viscous: Float64
+        accel: Float64
+        div_u: Float64
+    outputs:
+        fact: Int
+        fall: Int
+        chi: Int
+        ns_res: Float64
+        ns_div: Float64
+    definitions:
+        fact = product i in 1..=n: i
+        fall = product i in 0..k: n - i
+        chi = vertices - edges + faces
+        ns_res = advect + pressure_grad - viscous - accel
+        ns_div = div_u
+    tests:
+        example <five-fact>:
+            given n = 5
+            given k = 3
+            given vertices = 8
+            given edges = 12
+            given faces = 6
+            given advect = 1.0
+            given pressure_grad = 2.0
+            given viscous = 3.0
+            given accel = 0.0
+            given div_u = 0.0
+            expect fact == 120
+            expect fall == 60
+            expect chi == 2
+            expect ns_res == 0.0
+            expect ns_div == 0.0

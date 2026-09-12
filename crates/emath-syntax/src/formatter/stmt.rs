@@ -425,6 +425,17 @@ pub fn format_type(out: &mut String, ty: &TypeExpr) {
             expr::format_expr_inner(out, hi);
             out.push(']');
         }
+        TypeKind::Fn { domain, codomain } => {
+            if matches!(domain.kind, TypeKind::Fn { .. }) {
+                out.push('(');
+                format_type(out, domain);
+                out.push(')');
+            } else {
+                format_type(out, domain);
+            }
+            out.push_str(" -> ");
+            format_type(out, codomain);
+        }
     }
 }
 

@@ -3,21 +3,18 @@
 
 use crate::CliExit;
 
-/// Production `emath` tokens (compiler / user surface). Extracted tokens live
-/// in `EXTRACTED_COMMANDS` and are served by `emath-lab`.
+/// Production `emath` tokens (compiler / user surface). Extracted tokens in
+/// `EXTRACTED_COMMANDS` are historical names: they refuse, they are not
+/// a second language.
 pub const COMMANDS: &[&str] = &[
     "api",
     "check",
-    "plan",
-    "planner",
     "build",
-    "simulate",
     "new",
     "fmt",
     "migrate",
     "explain",
     "run",
-    "search",
     "step",
     "test",
     "verify",
@@ -33,8 +30,13 @@ pub const COMMANDS: &[&str] = &[
     "version",
 ];
 
-/// Tokens moved to `emath-lab` (emath-qbk53). Production `emath` hints here.
+/// Historical tokens. Discovery refuses them (`E-KIND-GONE`); it does
+/// not suggest a parallel lab language.
 pub const EXTRACTED_COMMANDS: &[&str] = &[
+    "plan",
+    "planner",
+    "simulate",
+    "search",
     "expand",
     "solve",
     "exactness",
@@ -71,9 +73,6 @@ pub const ALIASES: &[(&str, &str)] = &[
     ("c", "check"),
     ("chk", "check"),
     ("b", "build"),
-    ("p", "plan"),
-    ("sim", "simulate"),
-    ("s", "simulate"),
     ("doc", "doctor"),
     ("format", "fmt"),
     ("t", "test"),
@@ -103,8 +102,6 @@ pub fn command_aliases(command: &str) -> &'static [&'static str] {
     match canonical {
         "check" => &["c", "chk"],
         "build" => &["b"],
-        "plan" => &["p"],
-        "simulate" => &["sim", "s"],
         "doctor" => &["doc"],
         "fmt" => &["format"],
         "test" => &["t"],
@@ -129,7 +126,7 @@ pub fn is_known_command(command: &str) -> bool {
 pub fn command_usage(command: &str) -> Option<&'static str> {
     let resolved = resolve_alias(command).unwrap_or(command);
     Some(match resolved {
-        "search" => crate::compiled_search::USAGE,
+        "search" => "search <file.emath>  (refuses: not a constructor command; use `emath run`)",
         "api" => "api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]",
         "check" => "check <file.emath|-> [--verify-data] [--json]",
         "plan" => "plan <file.emath> [--json]",
@@ -151,7 +148,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
             "sweep <file.emath> --function NAME --grid name=v1,v2,... [--expect name=value] [--out <file>] [--json]"
         }
         "simulate" => {
-            "simulate <file.emath> [--model NAME] [--dt N] [--t0 N] [--t1 N] [--method euler|rk4|rk45|backward-euler|velocity-verlet] [--atol N] [--rtol N] [--dt-max N] [--event name=value] [--set name=value] [--json]"
+            "simulate <file.emath>  (refuses: not a constructor; use `emath run`)"
         }
         "fit" => "fit <file.emath> [--json]",
         "repl" => "repl <file.emath>",
@@ -166,17 +163,15 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "web" => "web [--port N] [--no-open] [--dist PATH]",
         "serve" => "serve [--port N] [--no-open] [--dist PATH]",
         "new" => "new <name> [--out <dir>] [--dry-run] [--force] [--json]",
-        "fmt" => {
-            "fmt <file.emath|-> | fmt --value <literal> [--sf N] [--from UNIT] [--format \"0.1 %\"|preferred_unit UNIT]"
-        }
+        "fmt" => "fmt <file.emath|->",
         "migrate" => {
             "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate --list-rules"
         }
         "explain" => {
-            "explain <file.emath> [<symbol>] [--provenance] [--show-defaults] | explain <E-CODE> [--list-codes] [--json]"
+            "explain <E-CODE> [--list-codes] [--json]"
         }
         "run" => {
-            "run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]"
+            "run <file.emath> [--function NAME] [--set name=value] [--work N] [--out dir] [--json]"
         }
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
@@ -213,83 +208,92 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "check" => {
             "parse + admit, no codegen; `-` reads source from stdin (pipelines); `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission"
         }
-        "plan" => "admit + goals + deterministic native resolution plan",
-        "planner" => "provider-registry planning; `--parametric` lifts missing operators",
-        "build" => "full pipeline to a published artifact (default out: target/emath); --dry-run simulates planning without emitting files",
-        "parse" => "genesis glyphs + bounded parse forest",
+        "search" => {
+            "refuses: compiled candidate search is not a constructor command. Write an ordinary `emath function` and `emath run`"
+        }
+        "plan" => {
+            "refuses: there is no `goals:` layer. Write an ordinary `emath function` or `emath query` and `emath run`"
+        }
+        "planner" => {
+            "refuses: the provider planner is not a constructor command. Write an ordinary function or query and `emath run`"
+        }
+        "build" => "emit fully lowered runnable Rust for an admitted constructor function",
+        "parse" => "refuses: not a constructor command; parse by writing `emath check`",
         "expand" => {
-            "print the contracted form of L0/L1 scratch and L2 named shorthand; `--json` includes inferred-default notes"
+            "refuses: not a constructor command. Write an ordinary `emath function` and `emath run`"
         }
         "solve" => {
-            "list labeled completions for a `solve` goal (`--check`); `--apply <label>` pins domain/holes. Never a naked numeric root"
+            "refuses: `solve` is not a constructor. Write an ordinary `emath function` or `emath query` and `emath run`"
         }
         "exactness" => {
-            "print the declared/inferred/constructed/open meaning budget; `--raise units` declares one dimension"
+            "refuses: not a constructor command. Exactness is a receipt field on `emath run --json`"
         }
         "freeze" => {
-            "write expanded source plus versioned emath.freeze.lock.v1; does not raise evidence authority or close open holes"
+            "refuses: not a constructor command. Use `emath run`"
         }
-        "why" => "explain one desugar/ledger inference (`inference:N`)",
-        "assumptions" => "list inferred (not declared) meaning-budget rows",
-        "signature" => "arity/fixity/type-variable signature inference",
-        "genesis" => "world interpretation + portfolio + answer receipt",
+        "why" => "refuses: not a constructor command. Use `emath check`",
+        "assumptions" => "refuses: not a constructor command. Use `emath check`",
+        "signature" => "refuses: not a constructor command. Use `emath check`",
+        "genesis" => {
+            "refuses: genesis is not a constructor command. Write `emath object` / `emath function` / `emath query` and `emath run`"
+        }
         "eval" => {
-            "evaluate a genesis-format reference term on the semantic VM (`--world`), or execute an admitted standard `emath function` spec through the generic EMIR/reference-VM stack (`--set name=value` binds inputs, `--function NAME` selects among several; plain eval runs the spec's own worked example); `--json` emits the `emath.eval-function` receipt and typed E-EVAL-* diagnostic codes on refusal"
+            "refuses: `eval` is not a constructor command. Use `emath run`"
         }
         "simulate" => {
-            "integrate an admitted `emath model` with explicit Euler/classic RK4/RK45; `--atol/--rtol` enable adaptive RK45; `--event` locates one zero crossing; `--set` binds inputs, algebraic guesses, and state (scalars, `[vector]`, or `[[matrix]]`)"
+            "refuses: `emath model` is not a core kind. Write an ordinary `emath function` and use `emath run`"
         }
         "fit" => {
-            "execute the declared fit goal to fitted values with linked Fitted provenance (model math stays in `.emath`); `--json` emits the deterministic envelope with parameters, confidence, and measured rows"
+            "refuses: `fit` is not a constructor. Write an ordinary `emath function` or `emath query`"
         }
-        "repl" => "interactive eval session over the same admission and VM path",
+        "repl" => "refuses: not a constructor command. Use `emath run`",
         "sweep" => {
-            "run a cartesian parameter grid over one admitted `emath function` through the same EMIR/reference-VM path as eval; per-cell pass/fail against `--expect name=value`; deterministic `emath.sweep.v1` artifact (meaning_id + grid + per-cell results, no wall-clock) on stdout with `--json` or to a file with `--out`; exit 0 only when every cell passes"
+            "refuses: parameter sweep is not a constructor command. Write an ordinary function and `emath run`"
         }
         "compile" => {
-            "parametric generated crate for an admitted world; `--world` selects one compiled world"
+            "refuses: not a constructor command. Use `emath build`"
         }
-        "world" => "print one world candidate artifact",
-        "portfolio" => "print one interpretation portfolio artifact",
-        "meaning" => "project-local interpretation lock (list|set|unset|explain)",
-        "import" => "retain a Modelica subset as foreign-model declarations",
-        "artifact" => "independent checker (`check`) or seeded negative-control battery",
-        "architecture" => "provider-neutral pipeline map",
+        "world" => "refuses: not a constructor command. Worlds are execution configurations",
+        "portfolio" => "refuses: not a constructor command. Use `emath run`",
+        "meaning" => "refuses: not a constructor command. Use `emath check`",
+        "import" => "refuses: not a constructor command. Write ordinary constructor source",
+        "artifact" => "refuses: not a constructor command. Use `emath verify`",
+        "architecture" => "refuses: not a constructor command. See `emath help`",
         "coverage" => {
-            "language completeness coverage ledger: generated missing-math numbers with artifact-evidenced levels"
+            "refuses: not a constructor command. See `language/CAPABILITY.md`"
         }
-        "web" => "localhost web playground on 127.0.0.1; Ctrl-C to stop",
-        "serve" => "localhost web playground on 127.0.0.1; Ctrl-C to stop (alias for `web`)",
+        "web" => "refuses: Stage 2 playground is not the constructor CLI. Use `emath run`",
+        "serve" => "refuses: not a constructor command. Use `emath run`",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011) unless --force is specified; --dry-run simulates actions",
         "fmt" => {
-            "canonical-form check (full rewrite is Phase 4); `-` reads source from stdin (pipelines, never rewritten); --value mode: sig-fig rounding + unit-preserving display (E-UNIT-FMT)"
+            "canonical-form check; `-` reads source from stdin. `--value` / `--from` / `--format` are not constructor commands"
         }
         "migrate" => {
-            "lossless receipt-driven rewrites (05 section 5): `--check` reports without rewriting, `--dry-run` checks rewrites in-memory, `--fix` applies verified respells only (identity verified by re-lowering both sides), `--receipt <path>` writes the emath.migration-receipt v1 artifact; `--list-rules` prints the registry. Never rewrites a refusing source; identity-changing rewrites refuse"
+            "format-only respell of constructor source (`--check` / `--dry-run` / `--fix`). Not a recipe translator and not a second language"
         }
         "explain" => {
-            "plan/provider explanation, binding provenance DAG, or diagnostic-code lookup: `explain E-TLT-011` prints cause and copy-pasteable fix, `--list-codes` dumps the registry"
+            "diagnostic-code lookup (`emath explain E-TYPE-002`). File/plan explanation refuses: there is no goals planner"
         }
         "run" => {
-            "execute source mathematics with saved authored method states; --cancel-file stops between work units; --measure N records reference timings; changed-problem branches never satisfy the original goal"
+            "evaluate an `emath function` or `emath query` under explicit inputs; `--json` prints the constructor receipt"
         }
         "step" => {
-            "continue a fixed target and saved authored methods with one commit per work unit; identical requests reuse committed work; competing requests cannot commit at the same revision"
+            "resume a constructor-layer continuation; incompatible checkpoints refuse"
         }
-        "test" => "build with `--verify`; empty test surface is E-TLT-012",
-        "bench" => "typed refusal E-TLT-004 until the comparison ruleset lands",
+        "test" => "run authored `tests:` on constructor source",
+        "bench" => "refuses: not a constructor command",
         "verify" => {
-            "check published artifacts, or check saved certificates and source results without replaying refinement; no formal-proof or execution-history claim"
+            "replay recorded observations; not a theorem"
         }
         "inspect" => {
-            "read saved mathematical results without execution, or print committed artifact manifests"
+            "read a saved constructor checkpoint without executing"
         }
         "diff" => "content-id fingerprint comparison of parse-admitted sources",
         "doctor" => "toolchain presence: rustc, cargo, rustfmt, clippy",
-        "vendor" => "offline dependency lock snapshot",
-        "provider" => "built-in provider descriptors; planned ids stay planned",
-        "fork" => "upstream pin status; network sync refused offline (E-TLT-006)",
-        "agent" => "structured emath.agent envelope; cannot bypass admission/plan/checks",
+        "vendor" => "refuses: not a constructor command",
+        "provider" => "refuses: not a constructor command. Providers are not language identities",
+        "fork" => "refuses: not a constructor command",
+        "agent" => "refuses: not a constructor command. Use `emath check` / `emath run`",
         "help" => "this catalog; `emath help <command>` prints one command",
         "version" | "--version" | "-V" => "print the emath-cli crate version",
         "capabilities" => "machine contract: commands, flags, exit codes, env vars",
@@ -312,7 +316,7 @@ pub fn suggest_command(unknown: &str) -> Option<&'static str> {
         return Some(canonical);
     }
     let mut best: Option<(&'static str, usize)> = None;
-    for &command in COMMANDS.iter().chain(EXTRACTED_COMMANDS) {
+    for &command in COMMANDS {
         if command == needle {
             return Some(command);
         }
@@ -362,20 +366,20 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--verify" => "run verification gates during build",
         "--bin" => "specify binary entrypoint",
         "--parametric" => "lift missing operators during planning",
-        "--method" => "solver method: euler, rk4, rk45, backward-euler, velocity-verlet",
-        "--dt" => "integration time step size",
-        "--t0" => "simulation start time",
-        "--t1" => "simulation stop time",
-        "--model" => "target model name in multi-model source",
+        "--method" => "ignored on simulate; write an ordinary stepper function and use `emath run`",
+        "--dt" => "ignored on simulate; not a constructor flag",
+        "--t0" => "ignored on simulate; not a constructor flag",
+        "--t1" => "ignored on simulate; not a constructor flag",
+        "--model" => "ignored: `emath model` is not a core kind",
         "--atol" => "absolute error tolerance",
         "--rtol" => "relative error tolerance",
         "--dt-max" => "maximum allowed adaptive step size",
         "--event" => "event trigger specification (name=value)",
         "--set" => "parameter override (name=value)",
-        "--value" => "literal value to format",
-        "--sf" => "number of significant figures",
-        "--from" => "source unit dimension",
-        "--format" => "display format template",
+        "--value" => "refused: not constructor surface",
+        "--sf" => "refused: not constructor surface",
+        "--from" => "refused: unit catalogs are not constructor surface",
+        "--format" => "refused: unit catalogs are not constructor surface",
         "--fix" => "apply verified lossless migrations in-place",
         "--check" => "dry-run check without modifying files",
         "--receipt" => "path to write migration receipt JSON artifact",
@@ -423,90 +427,63 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
     let resolved = resolve_alias(command).unwrap_or(command);
     match resolved {
         "check" => &[
-            "emath check model.emath",
-            "emath check - < model.emath",
-            "emath check model.emath --verify-data",
-            "emath check model.emath --json",
+            "emath check program.emath",
+            "emath check - < program.emath",
+            "emath check program.emath --json",
         ],
-        "plan" => &[
-            "emath plan model.emath",
-            "emath plan model.emath --json",
-        ],
-        "planner" => &[
-            "emath planner model.emath",
-            "emath planner model.emath --parametric",
-            "emath planner model.emath --json",
+        "plan" | "planner" | "simulate" | "search" => &[
+            "emath run program.emath --json",
         ],
         "build" => &[
-            "emath build model.emath",
-            "emath build model.emath --out dist/",
-            "emath build model.emath --dry-run",
-            "emath build model.emath --verify --json",
-        ],
-        "simulate" => &[
-            "emath simulate model.emath --method rk4",
-            "emath simulate model.emath --dt 0.01 --t1 10.0 --json",
-            "emath simulate model.emath --set gravity=9.81",
+            "emath build program.emath",
+            "emath build program.emath --out dist/",
+            "emath build program.emath --dry-run",
+            "emath build program.emath --verify --json",
         ],
         "new" => &[
-            "emath new my_project",
-            "emath new my_project --out models/",
-            "emath new my_project --dry-run",
-            "emath new my_project --force",
+            "emath new my_program",
+            "emath new my_program --out work/",
+            "emath new my_program --dry-run",
+            "emath new my_program --force",
         ],
         "fmt" => &[
-            "emath fmt model.emath",
-            "emath fmt - < model.emath",
-            "emath fmt --value 3.14159265 --sf 4",
-            "emath fmt --value 100 --from m --format \"0.1 %\"",
+            "emath fmt program.emath",
+            "emath fmt - < program.emath",
         ],
         "migrate" => &[
-            "emath migrate model.emath --check",
-            "emath migrate model.emath --dry-run",
-            "emath migrate model.emath --fix",
-            "emath migrate model.emath --receipt receipt.json",
-            "emath migrate --list-rules",
+            "emath migrate program.emath --check",
+            "emath migrate program.emath --dry-run",
+            "emath migrate program.emath --fix",
         ],
         "explain" => &[
-            "emath explain model.emath",
-            "emath explain model.emath my_symbol --provenance",
-            "emath explain E-TLT-011",
-            "emath explain E-TLT-011 --json",
+            "emath explain E-TYPE-002",
+            "emath explain E-TYPE-002 --json",
             "emath explain --list-codes",
         ],
         "api" => &[
             "emath api --json",
-            "emath api --search \"integral\" --json",
-            "emath api --source model.emath --json",
-        ],
-        "search" => &[
-            "emath search --function optimize --json",
-            "emath search --function integrate --candidate rk4",
+            "emath api --search object --json",
+            "emath api --source program.emath --json",
         ],
         "run" => &[
-            "emath run model.emath",
-            "emath run model.emath --function main --json",
-            "emath run model.emath --set alpha=1.5 --measure 10",
+            "emath run program.emath",
+            "emath run program.emath --function AddExact --json",
+            "emath run program.emath --set a=2 --set b=1 --json",
         ],
         "step" => &[
-            "emath step checkpoint.json --work 100",
-            "emath step checkpoint.json --out target/step --json",
+            "emath step checkpoint.json --work 100 --json",
         ],
         "test" => &[
-            "emath test model.emath",
-            "emath test model.emath --out target/test",
+            "emath test program.emath",
         ],
         "verify" => &[
-            "emath verify target/emath",
             "emath verify checkpoint.json --json",
         ],
         "inspect" => &[
-            "emath inspect target/emath",
             "emath inspect checkpoint.json --json",
         ],
         "diff" => &[
-            "emath diff model_a.emath model_b.emath",
-            "emath diff model_a.emath model_b.emath --json",
+            "emath diff a.emath b.emath --json",
         ],
         "doctor" => &[
             "emath doctor",
@@ -514,13 +491,11 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
         ],
         "triage" => &[
             "emath triage",
-            "emath triage model.emath",
-            "emath triage --json",
+            "emath triage program.emath --json",
         ],
         "next" => &[
             "emath next",
-            "emath next model.emath",
-            "emath next --json",
+            "emath next program.emath --json",
         ],
         "capabilities" => &[
             "emath capabilities",
@@ -712,19 +687,18 @@ Identity
   Human help: emath help [<command>]   or   emath <command> --help
 
 Aliases (single-letter & shorthand)
-  c, chk -> check       b -> build            p -> plan
-  s, sim -> simulate    doc -> doctor         format -> fmt
+  c, chk -> check       b -> build
+  doc -> doctor         format -> fmt
   t -> test             r -> run              df -> diff
   caps -> capabilities  guide -> robot-docs   tr -> triage
   n -> next
 
-Exit codes (stable contract)
-  0  success (contract met)
-  1  refused (admission / check / math refusal; look for E-* codes)
-  2  usage (invalid syntax, missing arguments, unknown flag)
-  3  toolchain (environment or toolchain missing; run `emath doctor`)
-  4  io (file not found, cannot read/write, disk IO failure)
-  5  safety (destructive mutation refused, overwrite blocked)
+Exit codes (constructor layer)
+  0  completed constructor value or successful inspect/help
+  2  admission (syntax, type, input, or extracted-token refusal)
+  3  unmet, partial, or suspended requested answer
+  4  execution or backend fault
+  5  incompatible or corrupt checkpoint
 
 Environment conventions
   NO_COLOR=1          Suppress all ANSI colors and formatting (https://no-color.org)
@@ -736,9 +710,9 @@ Environment conventions
 Canonical agent loop
   1. emath capabilities --json
   2. emath check <file.emath> --json
-  3. emath plan <file.emath> --json
-  4. emath build <file.emath> --json            # default out: target/emath
-  5. emath agent check|plan|build <file.emath>  # same paths; cannot bypass checks
+  3. emath run <file.emath> --json
+  4. emath build <file.emath> --json
+  plan, planner, simulate, eval, solve, and agent are not constructor commands.
 
 Rules
   - Never invent a passing test surface: empty tests are E-TLT-012.
@@ -832,7 +806,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "fork" => &["--dry-run", "--json", "--help", "-h"],
         "robot-docs" => &["--guide", "guide", "--json", "--help", "-h"],
         "web" | "serve" => &["--port", "--no-open", "--dist", "--help", "-h"],
-        "fmt" => &["--value", "--sf", "--from", "--format", "--json", "--help", "-h"],
+        "fmt" => &["--json", "--help", "-h"],
         "migrate" => &[
             "--fix",
             "--check",
@@ -940,8 +914,7 @@ pub fn catalog_cmd(json: bool) -> CliExit {
         println!("  usage: emath {usage}");
     }
     println!(
-        "moved to emath-lab: {}",
-        EXTRACTED_COMMANDS.join(", ")
+        "historical lab tokens refuse constructor work; use `emath check` / `emath run`"
     );
     crate::EXIT_OK
 }

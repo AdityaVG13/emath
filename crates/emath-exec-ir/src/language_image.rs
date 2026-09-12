@@ -12,7 +12,7 @@ use emath_ir::{
     AuthorityEntry, AuthorityLock, AuthorityState, FeatureCapsule, MeaningEdge, MeaningEdgeKind,
     MeaningResource, MeaningSpine,
 };
-use emath_schema::parse_feature_capsule;
+use emath_schema::{capsule_documents, parse_feature_capsule};
 use emath_term::{Signature, SymbolId, Term, TermError};
 
 use crate::term_compile::{CompiledCell, ParamShape};
@@ -26,6 +26,22 @@ pub const LANGUAGE_SOURCE_MAP_SCHEMA: &str = "emath.language-source-map";
 pub const LANGUAGE_IMAGE_FILE: &str = "generated/language.image";
 pub const LANGUAGE_LOCK_FILE: &str = "language.lock";
 pub const LANGUAGE_SOURCE_MAP_FILE: &str = "generated/source-map.lock";
+
+/// The standard image is these constructor/carrier identities only.
+pub const CONSTRUCTOR_IMAGE_IDS: &[&str] = &[
+    "std.capability.scalar",
+    "std.kind.function",
+    "std.kind.object",
+    "std.kind.query",
+    "std.syntax.quote",
+    "std.syntax.recur",
+    "std.world.reference",
+];
+
+#[must_use]
+pub fn is_constructor_image_id(id: &FeatureId) -> bool {
+    CONSTRUCTOR_IMAGE_IDS.contains(&id.as_str())
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeatureAuthorityEntry {
@@ -116,6 +132,7 @@ pub enum LanguageImageError {
     GeneratedDrift {
         path: PathBuf,
     },
+    NonConstructorIdentity(FeatureId),
 }
 
 /// `PartialEq` is honest field-wise equality; `Eq` is deliberately
@@ -282,7 +299,13 @@ impl LanguageDistribution {
 }
 
 pub fn compile_language_directory(root: &Path) -> Result<LanguageDistribution, LanguageImageError> {
-    let spec = root.join("spec");
+    let spec = root.join("spec").join("constructors");
+    if !spec.is_dir() {
+        return Err(LanguageImageError::Io {
+            path: spec,
+            detail: "constructor image requires language/spec/constructors".to_string(),
+        });
+    }
     let mut paths = Vec::new();
     collect_capsule_paths(&spec, &mut paths)?;
     paths.sort();
@@ -551,19 +574,6 @@ fn authority_page_text(authority: &AuthorityLock) -> String {
         .collect()
 }
 
-fn capsule_documents(text: &str) -> Vec<String> {
-    text.split("\nemath feature ")
-        .enumerate()
-        .filter_map(|(index, part)| {
-            if index == 0 {
-                part.find("emath feature ")
-                    .map(|start| part[start..].to_string())
-            } else {
-                Some(format!("emath feature {part}"))
-            }
-        })
-        .collect()
-}
 
 fn collect_capsule_paths(root: &Path, output: &mut Vec<PathBuf>) -> Result<(), LanguageImageError> {
     let entries = fs::read_dir(root).map_err(|error| LanguageImageError::Io {
@@ -674,6 +684,11 @@ impl LanguageImage {
     ) -> Result<Self, LanguageImageError> {
         let mut ids = BTreeSet::new();
         for capsule in capsules {
+            if !is_constructor_image_id(&capsule.feature_id) {
+                return Err(LanguageImageError::NonConstructorIdentity(
+                    capsule.feature_id.clone(),
+                ));
+            }
             if !ids.insert(capsule.feature_id.clone()) {
                 return Err(LanguageImageError::DuplicateFeature(
                     capsule.feature_id.clone(),
@@ -922,21 +937,36 @@ enum ReferenceOperator {
     Or,
     Not,
     IsFinite,
+    #[allow(dead_code)]
     Unary(crate::BuiltinId),
+    #[allow(dead_code)]
     Binary(crate::BuiltinId),
+    #[allow(dead_code)]
     ToInt,
+    #[allow(dead_code)]
     IntegerQuotient,
     SameBits,
+    #[allow(dead_code)]
     MatrixRows,
+    #[allow(dead_code)]
     MatrixCols,
+    #[allow(dead_code)]
     MatrixAt,
+    #[allow(dead_code)]
     MatrixPack,
+    #[allow(dead_code)]
     TensorShape,
+    #[allow(dead_code)]
     TensorPack,
+    #[allow(dead_code)]
     DenseIndex,
+    #[allow(dead_code)]
     Infinity,
+    #[allow(dead_code)]
     Exp2,
+    #[allow(dead_code)]
     PowF,
+    #[allow(dead_code)]
     PowI,
     TextTrim,
     TextLength,
@@ -965,13 +995,6 @@ impl ReferenceOperator {
             ("or", 2) => Some(Self::Or),
             ("not", 1) => Some(Self::Not),
             ("is_finite", 1) => Some(Self::IsFinite),
-            ("floor", 1) => Some(Self::Unary(crate::BuiltinId::Floor)),
-            ("sqrt", 1) => Some(Self::Unary(crate::BuiltinId::Sqrt)),
-            ("exp", 1) => Some(Self::Unary(crate::BuiltinId::Exp)),
-            ("ln", 1) => Some(Self::Unary(crate::BuiltinId::Ln)),
-            ("exp2", 1) => Some(Self::Exp2),
-            ("powf", 2) => Some(Self::PowF),
-            ("powi", 2) => Some(Self::PowI),
             ("text_trim", 1) => Some(Self::TextTrim),
             ("text_length", 1) => Some(Self::TextLength),
             ("index_text", 1) => Some(Self::IndexText),
@@ -979,21 +1002,7 @@ impl ReferenceOperator {
             ("format_scientific", 2) => Some(Self::FormatScientific),
             ("parse_f64", 1) => Some(Self::ParseF64),
             ("sort_total", 1) => Some(Self::SortTotal),
-            ("abs", 1) => Some(Self::Unary(crate::BuiltinId::Abs)),
-            ("sin", 1) => Some(Self::Unary(crate::BuiltinId::Sin)),
-            ("cos", 1) => Some(Self::Unary(crate::BuiltinId::Cos)),
-            ("max", 2) => Some(Self::Binary(crate::BuiltinId::Max)),
-            ("to_int", 1) => Some(Self::ToInt),
-            ("quotient", 2) => Some(Self::IntegerQuotient),
             ("same_bits", 2) => Some(Self::SameBits),
-            ("matrix_rows", 1) => Some(Self::MatrixRows),
-            ("matrix_cols", 1) => Some(Self::MatrixCols),
-            ("matrix_at", 3) => Some(Self::MatrixAt),
-            ("matrix_pack", 3) => Some(Self::MatrixPack),
-            ("infinity", 0) => Some(Self::Infinity),
-            ("tensor_shape", 1) => Some(Self::TensorShape),
-            ("tensor_pack", 2) => Some(Self::TensorPack),
-            ("dense_index", 2) => Some(Self::DenseIndex),
             _ => None,
         }
     }
@@ -1126,12 +1135,9 @@ fn reference_entry_for_capsule(
             detail,
         })
     };
-    let (Some(params_text), Some(signature_text), Some(body_text)) =
-        (params_slot, signature_slot, body_slot)
-    else {
+    let (Some(params_text), Some(body_text)) = (params_slot, body_slot) else {
         return refuse(
-            "executable reference bodies carry reference_params, reference_signature, \
-             and reference_body together"
+            "executable reference bodies carry reference_params and reference_body"
                 .to_string(),
         );
     };
@@ -1155,30 +1161,41 @@ fn reference_entry_for_capsule(
         }
         params.push((name.to_string(), ParamShape::Scalar));
     }
-    let mut signature = Signature::default();
-    for pair in signature_text.split(',') {
-        let Some((symbol, arity)) = pair.trim().rsplit_once('=') else {
-            return refuse(format!(
-                "reference_signature `{signature_text}` must declare `symbol=arity` pairs"
-            ));
-        };
-        let Ok(arity) = arity.trim().parse::<usize>() else {
-            return refuse(format!(
-                "reference_signature `{signature_text}` declares a non-numeric arity"
-            ));
-        };
-        if let Err(error) = signature.insert(SymbolId(symbol.trim().to_string()), arity) {
-            return refuse(format!(
-                "reference_signature `{signature_text}` conflicts: {error:?}"
-            ));
-        }
-    }
-    let term = Term::parse_canonical(body_text).map_err(|error| {
+    let term = Term::parse_body(body_text).map_err(|error| {
         LanguageImageError::InvalidReferenceBody {
             feature: capsule.feature_id.clone(),
-            detail: format!("reference_body is not canonical emath-term text: {error:?}"),
+            detail: format!("reference_body is not an emath-term: {error:?}"),
         }
     })?;
+    let signature = match signature_slot {
+        Some(signature_text) => {
+            let mut signature = Signature::default();
+            for pair in signature_text.split(',') {
+                let Some((symbol, arity)) = pair.trim().rsplit_once('=') else {
+                    return refuse(format!(
+                        "reference_signature `{signature_text}` must declare `symbol=arity` pairs"
+                    ));
+                };
+                let Ok(arity) = arity.trim().parse::<usize>() else {
+                    return refuse(format!(
+                        "reference_signature `{signature_text}` declares a non-numeric arity"
+                    ));
+                };
+                if let Err(error) = signature.insert(SymbolId(symbol.trim().to_string()), arity) {
+                    return refuse(format!(
+                        "reference_signature `{signature_text}` conflicts: {error:?}"
+                    ));
+                }
+            }
+            signature
+        }
+        None => term.inferred_signature().map_err(|error| {
+            LanguageImageError::InvalidReferenceBody {
+                feature: capsule.feature_id.clone(),
+                detail: format!("could not infer reference signature: {error:?}"),
+            }
+        })?,
+    };
     let Some(semantics) = reference_slot(capsule, "semantics") else {
         return refuse("an executable reference body requires the semantics slot".to_string());
     };

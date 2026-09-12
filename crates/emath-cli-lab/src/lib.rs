@@ -1,5 +1,6 @@
-//! Extracted lab/host CLI (`emath-lab`). Combined [`run`] forwards keep
-//! commands to [`emath_cli::run`] and dispatches extracted tokens here.
+//! Historical `emath-lab` host. Combined [`run`] forwards constructor
+//! `emath` tokens and refuses extracted lab tokens (`E-KIND-GONE`).
+//! Command bodies stay on disk; they are not a second language.
 
 #![forbid(unsafe_code)]
 

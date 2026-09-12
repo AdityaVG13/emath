@@ -14,17 +14,6 @@ impl Admitter {
     ) -> Option<Expr> {
         let node = expr.clone();
         match &node.kind {
-            ExprKind::Derivative { value, wrt, .. } => {
-                if wrt.as_ref().is_some_and(|w| !is_time_wrt(w)) {
-                    self.error(
-                        E_UNSUPPORTED_TYPE,
-                        "inside an implicit residual, `derivative` must be a time rate; only `t`/`time` is admitted as the independent variable",
-                        expr.source,
-                    );
-                    return None;
-                }
-                self.rate_placeholder_for(value, definitions, rates, expr.source)
-            }
             ExprKind::Call { function, args } if args.len() == 1 && is_der_call(function) => {
                 self.rate_placeholder_for(&args[0], definitions, rates, expr.source)
             }
@@ -169,6 +158,7 @@ pub(super) fn state_field_name(admitter: &Admitter, value: &Expr) -> Option<Stri
 }
 
 /// Whether a `derivative ... wrt` list is exactly `t` or `time`.
+#[allow(dead_code)]
 pub(super) fn is_time_wrt(wrt: &[Expr]) -> bool {
     wrt.len() == 1
         && path_segments(&wrt[0])

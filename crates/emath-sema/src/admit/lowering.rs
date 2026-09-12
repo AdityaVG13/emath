@@ -2,7 +2,7 @@
 //! EMIR expression nodes with stable inference.
 
 use emath_core::tree::{
-    BinaryOp as SynBinOp, BinderKind, DerivativeKind, Expr, ExprKind, UnaryOp as SynUnOp,
+    BinaryOp as SynBinOp, Expr, ExprKind, UnaryOp as SynUnOp,
 };
 use emath_core::QualifiedName;
 use emath_ir::{

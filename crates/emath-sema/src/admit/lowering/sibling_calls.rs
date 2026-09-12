@@ -196,136 +196,6 @@ pub(in crate::admit) fn rename_parameter_uses(
                 .map(|end| Box::new(rename_parameter_uses(end, map, shadowed))),
             inclusive: *inclusive,
         }),
-        ExprKind::Binder {
-            kind,
-            binders,
-            body,
-            guard,
-        } => {
-            let pushed = binders
-                .iter()
-                .filter(|binder| map.contains_key(&binder.name))
-                .map(|binder| binder.name.clone())
-                .collect::<Vec<_>>();
-            shadowed.extend(pushed.iter().cloned());
-            // Binder DOMAINS are expressions in the callee's scope too
-            // (`product k in 1..=n`): they must be renamed like the body,
-            // or the domain keeps the raw parameter name, which cannot
-            // resolve inside the callee environment swap ("unknown
-            // variable") for every cross-function call whose callee uses
-            // a parameter in a binder range. Binder NAMES stay: they
-            // shadow parameters and are already pushed to `shadowed`.
-            let renamed_binders = binders
-                .iter()
-                .map(|binder| emath_core::tree::Binder {
-                    name: binder.name.clone(),
-                    domain: binder
-                        .domain
-                        .as_ref()
-                        .map(|domain| rename_parameter_uses(domain, map, shadowed)),
-                    source: binder.source,
-                })
-                .collect();
-            let renamed = rebuild(ExprKind::Binder {
-                kind: *kind,
-                binders: renamed_binders,
-                body: Box::new(rename_parameter_uses(body, map, shadowed)),
-                guard: guard
-                    .as_ref()
-                    .map(|guard| Box::new(rename_parameter_uses(guard, map, shadowed))),
-            });
-            shadowed.truncate(shadowed.len() - pushed.len());
-            renamed
-        }
-        ExprKind::Derivative {
-            value,
-            wrt,
-            kind,
-            holding,
-        } => {
-            let wrt_names = wrt.as_ref().map(|wrt| {
-                wrt.iter()
-                    .filter_map(|expr| match &expr.kind {
-                        ExprKind::Path { segments, .. } if segments.len() == 1 => {
-                            Some(segments[0].clone())
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            });
-            if let Some(names) = &wrt_names {
-                shadowed.extend(names.iter().cloned());
-            }
-            let renamed = rebuild(ExprKind::Derivative {
-                value: Box::new(rename_parameter_uses(value, map, shadowed)),
-                wrt: wrt.clone(),
-                kind: *kind,
-                holding: holding.clone(),
-            });
-            if let Some(names) = &wrt_names {
-                shadowed.truncate(shadowed.len() - names.len());
-            }
-            renamed
-        }
-        ExprKind::Solve { value, wrt } => {
-            let wrt_names = wrt.as_ref().map(|wrt| {
-                wrt.iter()
-                    .filter_map(|expr| match &expr.kind {
-                        ExprKind::Path { segments, .. } if segments.len() == 1 => {
-                            Some(segments[0].clone())
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            });
-            if let Some(names) = &wrt_names {
-                shadowed.extend(names.iter().cloned());
-            }
-            let renamed = rebuild(ExprKind::Solve {
-                value: Box::new(rename_parameter_uses(value, map, shadowed)),
-                wrt: wrt.clone(),
-            });
-            if let Some(names) = &wrt_names {
-                shadowed.truncate(shadowed.len() - names.len());
-            }
-            renamed
-        }
-        ExprKind::Optimize {
-            value,
-            wrt,
-            maximize,
-        } => {
-            let wrt_names = wrt.as_ref().map(|wrt| {
-                wrt.iter()
-                    .filter_map(|expr| match &expr.kind {
-                        ExprKind::Path { segments, .. } if segments.len() == 1 => {
-                            Some(segments[0].clone())
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            });
-            if let Some(names) = &wrt_names {
-                shadowed.extend(names.iter().cloned());
-            }
-            let renamed = rebuild(ExprKind::Optimize {
-                value: Box::new(rename_parameter_uses(value, map, shadowed)),
-                wrt: wrt.clone(),
-                maximize: *maximize,
-            });
-            if let Some(names) = &wrt_names {
-                shadowed.truncate(shadowed.len() - names.len());
-            }
-            renamed
-        }
-        ExprKind::At { value, location } => rebuild(ExprKind::At {
-            value: Box::new(rename_parameter_uses(value, map, shadowed)),
-            location: Box::new(rename_parameter_uses(location, map, shadowed)),
-        }),
-        ExprKind::On { value, location } => rebuild(ExprKind::On {
-            value: Box::new(rename_parameter_uses(value, map, shadowed)),
-            location: Box::new(rename_parameter_uses(location, map, shadowed)),
-        }),
         ExprKind::Conditioned { value, condition } => rebuild(ExprKind::Conditioned {
             value: Box::new(rename_parameter_uses(value, map, shadowed)),
             condition: Box::new(rename_parameter_uses(condition, map, shadowed)),
@@ -334,38 +204,6 @@ pub(in crate::admit) fn rename_parameter_uses(
             kind: *kind,
             expr: Box::new(rename_parameter_uses(expr, map, shadowed)),
         }),
-        ExprKind::Limit {
-            var,
-            target,
-            direction,
-            body,
-        } => {
-            shadowed.push(var.clone());
-            let renamed = rebuild(ExprKind::Limit {
-                var: var.clone(),
-                target: Box::new(rename_parameter_uses(target, map, shadowed)),
-                direction: *direction,
-                body: Box::new(rename_parameter_uses(body, map, shadowed)),
-            });
-            shadowed.pop();
-            renamed
-        }
-        ExprKind::SampleLimit {
-            var,
-            target,
-            direction,
-            body,
-        } => {
-            shadowed.push(var.clone());
-            let renamed = rebuild(ExprKind::SampleLimit {
-                var: var.clone(),
-                target: Box::new(rename_parameter_uses(target, map, shadowed)),
-                direction: *direction,
-                body: Box::new(rename_parameter_uses(body, map, shadowed)),
-            });
-            shadowed.pop();
-            renamed
-        }
         ExprKind::Cases {
             subject,
             arms,
@@ -384,6 +222,67 @@ pub(in crate::admit) fn rename_parameter_uses(
                 })
                 .collect(),
             else_arm: Box::new(rename_parameter_uses(else_arm, map, shadowed)),
+        }),
+        ExprKind::FunctionAbs {
+            param,
+            domain,
+            body,
+        } => {
+            shadowed.push(param.clone());
+            let renamed = rebuild(ExprKind::FunctionAbs {
+                param: param.clone(),
+                domain: Box::new(rename_parameter_uses(domain, map, shadowed)),
+                body: Box::new(rename_parameter_uses(body, map, shadowed)),
+            });
+            shadowed.pop();
+            renamed
+        }
+        ExprKind::Recur { name, ty, body } => {
+            shadowed.push(name.clone());
+            let renamed = rebuild(ExprKind::Recur {
+                name: name.clone(),
+                ty: Box::new(rename_parameter_uses(ty, map, shadowed)),
+                body: Box::new(rename_parameter_uses(body, map, shadowed)),
+            });
+            shadowed.pop();
+            renamed
+        }
+        ExprKind::Quote { body } => rebuild(ExprKind::Quote {
+            body: Box::new(rename_parameter_uses(body, map, shadowed)),
+        }),
+        ExprKind::QuoteBind {
+            param,
+            domain,
+            body,
+        } => {
+            shadowed.push(param.clone());
+            let renamed = rebuild(ExprKind::QuoteBind {
+                param: param.clone(),
+                domain: Box::new(rename_parameter_uses(domain, map, shadowed)),
+                body: Box::new(rename_parameter_uses(body, map, shadowed)),
+            });
+            shadowed.pop();
+            renamed
+        }
+        ExprKind::CallableBinder {
+            callee,
+            param,
+            domain,
+            body,
+        } => {
+            shadowed.push(param.clone());
+            let renamed = rebuild(ExprKind::CallableBinder {
+                callee: Box::new(rename_parameter_uses(callee, map, shadowed)),
+                param: param.clone(),
+                domain: Box::new(rename_parameter_uses(domain, map, shadowed)),
+                body: Box::new(rename_parameter_uses(body, map, shadowed)),
+            });
+            shadowed.pop();
+            renamed
+        }
+        ExprKind::SequenceCons { head, tail } => rebuild(ExprKind::SequenceCons {
+            head: Box::new(rename_parameter_uses(head, map, shadowed)),
+            tail: Box::new(rename_parameter_uses(tail, map, shadowed)),
         }),
     }
 }

@@ -256,6 +256,30 @@ pub(super) fn extents_compatible(got: Option<&Extent>, declared: Option<&Extent>
     }
 }
 
+pub(super) fn join_infer(left: &Infer, right: &Infer) -> Option<Infer> {
+    if left == right {
+        return Some(left.clone());
+    }
+    if infer_conforms(left, right) {
+        return Some(right.clone());
+    }
+    if infer_conforms(right, left) {
+        return Some(left.clone());
+    }
+    match (left, right) {
+        (Infer::Nat | Infer::Int, Infer::Nat | Infer::Int) => Some(Infer::Int),
+        (Infer::Rat, Infer::Nat | Infer::Int) | (Infer::Nat | Infer::Int, Infer::Rat) => {
+            Some(Infer::Rat)
+        }
+        (
+            Infer::F64,
+            Infer::Nat | Infer::Int | Infer::Rat,
+        )
+        | (Infer::Nat | Infer::Int | Infer::Rat, Infer::F64) => Some(Infer::F64),
+        _ => None,
+    }
+}
+
 pub(super) fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
     match (got, declared) {
         (Infer::HostDeferred, _) | (_, Infer::HostDeferred) => true,
@@ -313,6 +337,7 @@ pub(super) fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
         // `f = 7` for a `Field<7>`/Int-typed output) conforms to an
         // Int-typed slot. Int does NOT similarly widen to Nat.
         (Infer::Nat, Infer::Int) => true,
+        (Infer::Nat | Infer::Int, Infer::Rat) => true,
         (Infer::F64 | Infer::Nat | Infer::Int, Infer::Complex) => true,
         _ => false,
     }

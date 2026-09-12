@@ -227,18 +227,12 @@ impl super::Parser {
                     self.error_here("E-SYN-111", "expected `:` after the fit goal head");
                     return None;
                 }
-                let suite = self.parse_suite()?;
-                Some(self.stmt(
-                    start,
-                    StmtKind::Section(Section {
-                        name: "fit".to_string(),
-                        generic: Some(observable),
-                        args: Some(args),
-                        suite,
-                        source: start.cover(self.last_span()),
-                        head_source: start.cover(self.last_span()),
-                    }),
-                ))
+                let _suite = self.parse_suite()?;
+                self.error_here(
+                    "E-SYN-101",
+                    "`fit … to …:` is not a constructor form; write an ordinary function or query",
+                );
+                None
             }
             // 04 §2.5: the action
             // integral binder `S = action integral t in t0..t1:
@@ -261,7 +255,7 @@ impl super::Parser {
                 }
                 self.error_here(
                     "E-SYN-101",
-                    "`action integral t in t0..t1: L(...)` is outside the Phase 1 subset — the action/variation design follow-up must first settle the design of record: the action is a Functional (admits only variation/evaluation goals, never scalar composition), the `variation <S> wrt q:` goal lowers to core goals via the Euler-Lagrange operator built from the admitted partial/total derivatives, and the boundary condition (`fixed_endpoints`) is part of the goal identity hash; evidence must use admitted surface `derivative(derivative(q) wrt t) wrt t`, never `d²q/dt²` (C14)",
+                    "`action integral` is not a constructor form; write an ordinary function or query",
                 );
                 None
             }
@@ -284,7 +278,7 @@ impl super::Parser {
                 }
                 self.error_here(
                     "E-SYN-101",
-                    "`variation <S> wrt q:` is outside the Phase 1 subset — the variation-goal design follow-up lowers it to core goals: the Euler-Lagrange residual ∂L/∂q − d/dt(∂L/∂q̇) built from the admitted partial/total derivative operators, simplified by the native symbolic engine and solved as declared; `yield euler_lagrange` names the output form and `boundary: fixed_endpoints` is part of the goal identity (changes the answer, changes the hash); a versioned provider is the ch9 alternative, core lowering is the design of record",
+                    "`variation` is not a constructor form; write an ordinary function or query",
                 );
                 None
             }

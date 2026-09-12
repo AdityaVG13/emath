@@ -151,12 +151,38 @@ impl super::Parser {
         } else {
             self.skip_assignment_layout();
             let body = self.parse_expr()?;
+            let _guard = guard;
+            let param = binders
+                .first()
+                .map(|binder| binder.name.clone())
+                .unwrap_or_else(|| "_".to_string());
+            let domain = binders
+                .first()
+                .and_then(|binder| binder.domain.clone())
+                .unwrap_or_else(|| Expr {
+                    kind: ExprKind::List(Vec::new()),
+                    source: start,
+                });
+            let callee = match kind {
+                emath_core::tree::BinderKind::Sum => "sum",
+                emath_core::tree::BinderKind::Product => "product",
+                emath_core::tree::BinderKind::Integral => "integral",
+                emath_core::tree::BinderKind::ForAll => "forall",
+                emath_core::tree::BinderKind::Exists => "exists",
+                emath_core::tree::BinderKind::Series => "series",
+            };
             let expr = Expr {
-                kind: ExprKind::Binder {
-                    kind,
-                    binders,
+                kind: ExprKind::CallableBinder {
+                    callee: Box::new(Expr {
+                        kind: ExprKind::Path {
+                            segments: vec![callee.to_string()],
+                            generics: None,
+                        },
+                        source: start,
+                    }),
+                    param,
+                    domain: Box::new(domain),
                     body: Box::new(body),
-                    guard,
                 },
                 source: start.cover(self.last_span()),
             };

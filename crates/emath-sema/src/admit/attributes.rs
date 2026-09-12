@@ -65,11 +65,17 @@ pub fn admit_capability_gates(tree: &emath_core::tree::SyntaxTree, diagnostics: 
                 }
                 experimental.push((&decl.name, decl.source));
             } else if attribute.name == "significant_figures" {
-                admit_sig_figures(decl, attribute, diagnostics);
+                diagnostics.error(
+                    "E-KIND-GONE",
+                    "significant-figure contracts are not constructor surface; write an ordinary rounding function",
+                    attribute.source,
+                );
             } else if attribute.name == "units_profile" {
-                // Admitted by `admit_units_profiles` (04 §6.1); listed
-                // here so the unknown-attribute refusal does not fire
-                // before the profile pass runs.
+                diagnostics.error(
+                    "E-KIND-GONE",
+                    "units-profile catalogs are not constructor surface; write an ordinary module if you need units",
+                    attribute.source,
+                );
             } else {
                 diagnostics.error(
                     E_UNKNOWN_ATTRIBUTE,
@@ -483,34 +489,6 @@ fn collect_expr_precision(
                 collect_expr_precision(end, literals, ledger);
             }
         }
-        ExprKind::Derivative {
-            value,
-            wrt,
-            holding,
-            ..
-        } => {
-            collect_expr_precision(value, literals, ledger);
-            if let Some(wrt) = wrt {
-                for expr in wrt {
-                    collect_expr_precision(expr, literals, ledger);
-                }
-            }
-            for expr in holding {
-                collect_expr_precision(expr, literals, ledger);
-            }
-        }
-        ExprKind::Solve { value, wrt } | ExprKind::Optimize { value, wrt, .. } => {
-            collect_expr_precision(value, literals, ledger);
-            if let Some(wrt) = wrt {
-                for expr in wrt {
-                    collect_expr_precision(expr, literals, ledger);
-                }
-            }
-        }
-        ExprKind::At { value, location } | ExprKind::On { value, location } => {
-            collect_expr_precision(value, literals, ledger);
-            collect_expr_precision(location, literals, ledger);
-        }
         ExprKind::Conditioned { value, condition } => {
             collect_expr_precision(value, literals, ledger);
             collect_expr_precision(condition, literals, ledger);
@@ -524,27 +502,7 @@ fn collect_expr_precision(
             collect_expr_precision(then_value, literals, ledger);
             collect_expr_precision(else_value, literals, ledger);
         }
-        ExprKind::Binder {
-            binders,
-            body,
-            guard,
-            ..
-        } => {
-            for binder in binders {
-                if let Some(domain) = &binder.domain {
-                    collect_expr_precision(domain, literals, ledger);
-                }
-            }
-            collect_expr_precision(body, literals, ledger);
-            if let Some(guard) = guard {
-                collect_expr_precision(guard, literals, ledger);
-            }
-        }
         ExprKind::UnitQuery { expr, .. } => collect_expr_precision(expr, literals, ledger),
-        ExprKind::Limit { target, body, .. } | ExprKind::SampleLimit { target, body, .. } => {
-            collect_expr_precision(target, literals, ledger);
-            collect_expr_precision(body, literals, ledger);
-        }
         ExprKind::Cases {
             subject,
             arms,
@@ -566,6 +524,27 @@ fn collect_expr_precision(
         // precision-bearing computation inputs; the pairs are recorded
         // as SI scalars at lowering, so nothing to ledger here.
         ExprKind::WithSeriesPolicy { .. } => {}
+        ExprKind::FunctionAbs { domain, body, .. }
+        | ExprKind::QuoteBind { domain, body, .. }
+        | ExprKind::Recur { ty: domain, body, .. } => {
+            collect_expr_precision(domain, literals, ledger);
+            collect_expr_precision(body, literals, ledger);
+        }
+        ExprKind::Quote { body } => collect_expr_precision(body, literals, ledger),
+        ExprKind::CallableBinder {
+            callee,
+            domain,
+            body,
+            ..
+        } => {
+            collect_expr_precision(callee, literals, ledger);
+            collect_expr_precision(domain, literals, ledger);
+            collect_expr_precision(body, literals, ledger);
+        }
+        ExprKind::SequenceCons { head, tail } => {
+            collect_expr_precision(head, literals, ledger);
+            collect_expr_precision(tail, literals, ledger);
+        }
     }
 }
 

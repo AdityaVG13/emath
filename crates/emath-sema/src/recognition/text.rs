@@ -165,68 +165,6 @@ pub fn expr_text(expr: &Expr) -> String {
             if *inclusive { "=" } else { "" },
             end.as_ref().map_or_else(String::new, |e| expr_text(e))
         ),
-        ExprKind::Derivative {
-            value,
-            wrt,
-            kind,
-            holding,
-        } => {
-            let prefix = match kind {
-                emath_core::tree::DerivativeKind::Plain => "derivative",
-                emath_core::tree::DerivativeKind::Partial => "partial",
-                emath_core::tree::DerivativeKind::Total => "total",
-            };
-            let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {
-                format!(
-                    " wrt {}",
-                    w.iter().map(expr_text).collect::<Vec<_>>().join(", ")
-                )
-            });
-            let holding_text = if holding.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " holding {}",
-                    holding.iter().map(expr_text).collect::<Vec<_>>().join(", ")
-                )
-            };
-            format!(
-                "{}({}){}{}",
-                prefix,
-                expr_text(value),
-                wrt_text,
-                holding_text
-            )
-        }
-        ExprKind::Solve { value, wrt } => {
-            let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {
-                format!(
-                    " wrt {}",
-                    w.iter().map(expr_text).collect::<Vec<_>>().join(", ")
-                )
-            });
-            format!("solve({}){}", expr_text(value), wrt_text)
-        }
-        ExprKind::Optimize {
-            value,
-            wrt,
-            maximize,
-        } => {
-            let kw = if *maximize { "maximize" } else { "minimize" };
-            let wrt_text = wrt.as_ref().map_or_else(String::new, |w| {
-                format!(
-                    " wrt {}",
-                    w.iter().map(expr_text).collect::<Vec<_>>().join(", ")
-                )
-            });
-            format!("{kw}({}){}", expr_text(value), wrt_text)
-        }
-        ExprKind::At { value, location } => {
-            format!("{} at {}", expr_text(value), expr_text(location))
-        }
-        ExprKind::On { value, location } => {
-            format!("{} on {}", expr_text(value), expr_text(location))
-        }
         ExprKind::Conditioned { value, condition } => {
             format!("{} if {}", expr_text(value), expr_text(condition))
         }
@@ -240,47 +178,12 @@ pub fn expr_text(expr: &Expr) -> String {
             expr_text(then_value),
             expr_text(else_value)
         ),
-        ExprKind::Binder { kind, .. } => format!("binder({kind:?})"),
         ExprKind::UnitQuery { kind, expr } => {
             let kw = match kind {
                 emath_core::tree::UnitQueryKind::Unit => "unit of",
                 emath_core::tree::UnitQueryKind::Dimension => "dimension of",
             };
             format!("{} {}", kw, expr_text(expr))
-        }
-        ExprKind::Limit {
-            var,
-            target,
-            direction,
-            body,
-        } => {
-            let dir = match direction {
-                emath_core::tree::LimitDirection::TwoSided => "",
-                emath_core::tree::LimitDirection::FromAbove => "+",
-                emath_core::tree::LimitDirection::FromBelow => "-",
-            };
-            format!(
-                "limit {var} -> {}{dir}: {}",
-                expr_text(target),
-                expr_text(body)
-            )
-        }
-        ExprKind::SampleLimit {
-            var,
-            target,
-            direction,
-            body,
-        } => {
-            let dir = match direction {
-                emath_core::tree::LimitDirection::TwoSided => "",
-                emath_core::tree::LimitDirection::FromAbove => "+",
-                emath_core::tree::LimitDirection::FromBelow => "-",
-            };
-            format!(
-                "sample_limit {var} -> {}{dir}: {}",
-                expr_text(target),
-                expr_text(body)
-            )
         }
         ExprKind::Cases {
             subject,
@@ -310,6 +213,38 @@ pub fn expr_text(expr: &Expr) -> String {
                 out.push_str(&format!(", extrapolation: {}", mode.spelling()));
             }
             out
+        }
+        ExprKind::FunctionAbs { param, domain, body } => {
+            format!(
+                "function {param} in {}: {}",
+                expr_text(domain),
+                expr_text(body)
+            )
+        }
+        ExprKind::Recur { name, ty, body } => {
+            format!("recur {name} in {}: {}", expr_text(ty), expr_text(body))
+        }
+        ExprKind::Quote { body } => format!("quote({})", expr_text(body)),
+        ExprKind::QuoteBind { param, domain, body } => {
+            format!(
+                "quote {param} in {}: {}",
+                expr_text(domain),
+                expr_text(body)
+            )
+        }
+        ExprKind::CallableBinder {
+            callee,
+            param,
+            domain,
+            body,
+        } => format!(
+            "{} {param} in {}: {}",
+            expr_text(callee),
+            expr_text(domain),
+            expr_text(body)
+        ),
+        ExprKind::SequenceCons { head, tail } => {
+            format!("[{}, ..{}]", expr_text(head), expr_text(tail))
         }
     }
 }
@@ -363,6 +298,14 @@ pub fn type_text(ty: &TypeExpr) -> String {
                 expr_text(lo),
                 expr_text(hi)
             )
+        }
+        TypeKind::Fn { domain, codomain } => {
+            let left = if matches!(domain.kind, TypeKind::Fn { .. }) {
+                format!("({})", type_text(domain))
+            } else {
+                type_text(domain)
+            };
+            format!("{left} -> {}", type_text(codomain))
         }
     }
 }

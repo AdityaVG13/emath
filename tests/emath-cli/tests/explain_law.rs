@@ -1,22 +1,48 @@
-//! `emath explain E-LAW-001` renders a checker-backed Cayley witness.
-use emath_cli::{EXIT_OK, explain_inspections};
+//! File/plan explanation is not a constructor command.
+use emath_cli::{EXIT_OK, EXIT_USAGE};
 use emath_cli_lab::run;
 use emath_test_harness::{Probe, boot};
 #[test]
 fn probe() {
     boot();
-    let mut p = Probe::new("explain renders law witness and plan-inspection JSON");
-    p.case("law", |p| { p.eq("ascii", run(&["explain".into(), "E-LAW-001".into()]), EXIT_OK); p.eq("json", run(&["explain".into(), "E-LAW-001".into(), "--json".into()]), EXIT_OK); });
-    p.case("file-json", |p| {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../language/examples/intro/autodiff.emath");
-        p.eq("exit-json", run(&["explain".into(), path.to_string_lossy().into_owned(), "--json".into()]), EXIT_OK);
-        let ins = explain_inspections(&path).expect("inspections");
-        p.demand("nonempty", !ins.is_empty(), "autodiff must produce an inspection");
-        let json = ins[0].to_json();
-        for needle in ["\"schema\": \"emath.plan-explanation v1\"", "\"policy\"", "\"candidates\"", "\"artifact_class\""] { p.contains(needle, &json, needle); }
-        p.demand("no-handrolled", !json.contains("\"symbol_note\""), "schema object only");
-        p.contains("policy-line", &ins[0].explain(), "policy:");
+    let mut p = Probe::new("explain file refuses; constructor check still admits");
+    p.case("file-refuses", |p| {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../language/examples/intro/autodiff.emath");
+        p.eq(
+            "exit-json",
+            run(&[
+                "explain".into(),
+                path.to_string_lossy().into_owned(),
+                "--json".into(),
+            ]),
+            EXIT_USAGE,
+        );
     });
-    p.case("intro-checks", |p| { for rel in ["tests/fixtures/language/intro/scratch.emath", "language/examples/intro/autodiff.emath", "language/examples/numerical/heat-rod-sim.emath"] { let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel).to_string_lossy().into_owned(); p.eq(rel, run(&["check".into(), path]), EXIT_OK); } });
+    p.case("diagnostic-code", |p| {
+        p.eq(
+            "type",
+            run(&["explain".into(), "E-TYPE-002".into(), "--json".into()]),
+            EXIT_OK,
+        );
+    });
+    p.case("intro-checks", |p| {
+        let scratch = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/language/intro/scratch.emath")
+            .to_string_lossy()
+            .into_owned();
+        p.eq("scratch-refuses", run(&["check".into(), scratch]), EXIT_USAGE);
+        for rel in [
+            "language/examples/intro/autodiff.emath",
+            "language/examples/numerical/heat-rod-sim.emath",
+        ] {
+            let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join(rel)
+                .to_string_lossy()
+                .into_owned();
+            p.eq(rel, run(&["check".into(), path]), EXIT_OK);
+        }
+    });
     p.finish();
 }

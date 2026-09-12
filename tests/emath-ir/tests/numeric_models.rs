@@ -73,24 +73,20 @@ fn intent() {
     p.demand("unknown_unit_and_ill_formed_per_are_typed#1", unknown.code == "E-UNIT-104", format!("expected {:?}, got {:?}", "E-UNIT-104", unknown.code));
     let empty = per_unit("furlong").unwrap_err();
     p.demand("unknown_unit_and_ill_formed_per_are_typed#2", empty.code == "E-UNIT-104", format!("expected {:?}, got {:?}", "E-UNIT-104", empty.code));
-    p.demand("unknown_unit_and_ill_formed_per_are_typed#3", lookup_unit("Duration").is_ok(), "unknown_unit_and_ill_formed_per_are_typed#3: lookup_unit(\"Duration\").is_ok()");
-    p.demand("unknown_unit_and_ill_formed_per_are_typed#4", per_unit("Duration").is_ok(), "unknown_unit_and_ill_formed_per_are_typed#4: per_unit(\"Duration\").is_ok()");
-    let km = lookup_unit("km").expect("km is a known length unit");
-    p.eq("unknown_unit_and_ill_formed_per_are_typed#5", km.to_si(1.0), 1_000.0);
-    let ms = lookup_unit("ms").expect("ms is a known duration unit");
-    p.eq("unknown_unit_and_ill_formed_per_are_typed#6", ms.to_si(1.0), 1e-3);
-    let mib = lookup_unit("MiB").expect("MiB is a known information unit");
-    p.eq("unknown_unit_and_ill_formed_per_are_typed#7", mib.to_si(1.0), 1_048_576.0);
-    let metre = lookup_unit("m").expect("m is a known length unit");
-    let area = metre.mul(&metre).expect("m * m is area");
-    p.eq("unknown_unit_and_ill_formed_per_are_typed#8", area.dims, emath_ir::UnitDim::base(2, 0, 0, 0, 0, 0, 0));
-    p.eq("unknown_unit_and_ill_formed_per_are_typed#9", area.dims.kind_name(), Some("area"));
-    let cancelled = metre.div(&metre).expect("m / m is dimensionless");
-    p.demand("unknown_unit_and_ill_formed_per_are_typed#10", cancelled.is_dimensionless(), "unknown_unit_and_ill_formed_per_are_typed#10: cancelled.is_dimensionless()");
-    let celsius = lookup_unit("degC").expect("degC is a known affine temperature");
-    p.demand("unknown_unit_and_ill_formed_per_are_typed#11", celsius.is_affine(), "unknown_unit_and_ill_formed_per_are_typed#11: celsius.is_affine()");
-    p.eq("unknown_unit_and_ill_formed_per_are_typed#12", celsius.to_si(0.0), 273.15);
-    p.demand("unknown_unit_and_ill_formed_per_are_typed#13", celsius.mul(&metre).unwrap_err().code == "E-UNIT-102", format!("expected {:?}, got {:?}", "E-UNIT-102", celsius.mul(&metre).unwrap_err().code));
+    for name in ["Duration", "km", "ms", "MiB", "m", "degC"] {
+        let error = lookup_unit(name).unwrap_err();
+        p.demand(
+            format!("leftover leftover unit `{name}` refuses"),
+            error.code == "E-UNIT-104",
+            format!("expected E-UNIT-104, got {:?}", error.code),
+        );
+        let per = per_unit(name).unwrap_err();
+        p.demand(
+            format!("leftover leftover Per<{name}> refuses"),
+            per.code == "E-UNIT-104",
+            format!("expected E-UNIT-104, got {:?}", per.code),
+        );
+    }
 
     });
     p.case("inverted_interval_and_empty_shape_are_typed", |p| {

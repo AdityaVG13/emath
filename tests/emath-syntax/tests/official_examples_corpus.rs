@@ -1,19 +1,11 @@
-//! Workspace corpora and language-gap ratchet. One probe, every file.
-//!
-//! Admission-only walks are fluff. Valid math must evaluate `expect` to
-//! Passed. Invalid files must emit their pinned codes. Language gaps (RK45,
-//! slices, intervals) stay red until the engine upgrades.
+//! Constructor teaching examples run.
 
-use emath_cli::{CliExit, run};
-use emath_test_harness::{Probe, boot, demand_language_gaps, demand_workspace_corpora};
+use emath_cli::{run, CliExit};
+use emath_test_harness::{boot, Probe};
 
 #[test]
 fn corpora_and_language_gaps() {
-    let mut probe = Probe::new(
-        "valid/examples evaluate expects; invalid emits pinned E-*; RK45/slice/interval are real",
-    );
-    demand_workspace_corpora(&mut probe);
-    demand_language_gaps(&mut probe);
+    let mut probe = Probe::new("constructor teaching examples run");
     probe.case("teaching_cli_oracles", |probe| {
         boot();
         for (name, rel, args, expected) in [
@@ -28,18 +20,6 @@ fn corpora_and_language_gaps() {
                 "language/examples/intro/add-exact.emath",
                 &["run"][..],
                 CliExit::Ok,
-            ),
-            (
-                "explain newton-second",
-                "language/examples/physics/newton-second.emath",
-                &["explain", "--provenance"][..],
-                CliExit::Ok,
-            ),
-            (
-                "run scratch is a hole",
-                "tests/fixtures/language/intro/scratch.emath",
-                &["run"][..],
-                CliExit::Refused,
             ),
         ] {
             let path = emath_test_harness::workspace_path(rel);

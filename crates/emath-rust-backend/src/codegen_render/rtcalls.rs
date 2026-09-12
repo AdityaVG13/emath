@@ -62,7 +62,7 @@ pub(super) fn checked_integer_result(call: Expr) -> Expr {
 pub(crate) fn program_may_fault(program: &EmirProgram) -> bool {
     program.ops.iter().any(|(op, _)| match op {
         EmirOp::Branch { then_body, else_body, .. } => program_may_fault(then_body) || program_may_fault(else_body),
-        EmirOp::CallFrame { .. } | EmirOp::DenseRepack { .. } | EmirOp::DenseValues(_)
+        EmirOp::CallFrame { .. } | EmirOp::CallSelf { .. } | EmirOp::DenseRepack { .. } | EmirOp::DenseValues(_)
         | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_)
         | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) | EmirOp::ToInt(_) | EmirOp::IntegerQuotient(_, _) | EmirOp::CallProgram { .. } | EmirOp::CallScalarProgram { .. } | EmirOp::CallRealProgram { .. } | EmirOp::TryCallRealProgram { .. } => true,
         EmirOp::VectorIndex { .. }

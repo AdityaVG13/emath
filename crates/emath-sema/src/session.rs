@@ -274,9 +274,24 @@ impl CompilerSession {
         result
     }
 
-    /// `plan`: elaborate requests into GIR and build deterministic native
-    /// resolution plans.
+    /// Historical planner. Constructor work uses `check` and `emath run`.
+    /// This entry still compiles leftover callers (RULE 1) and always
+    /// refuses a `goals:` layer.
+    #[allow(unreachable_code, unused_variables)]
     pub fn plan(&mut self, file: FileId) -> PlanResult {
+        let check = self.check(file);
+        let mut diagnostics = check.diagnostics;
+        diagnostics.error(
+            "E-KIND-GONE",
+            "there is no `goals:` planner; write an ordinary `emath function` or `emath query` and `emath run`",
+            Span::default(),
+        );
+        return PlanResult {
+            package: check.package,
+            requests: Vec::new(),
+            plans: Vec::new(),
+            diagnostics,
+        };
         let Some(source_file) = self.store.get(file) else {
             // Missing source must be a typed refusal, not an empty-source
             // plan that silently passes admission (E-PKG-080).

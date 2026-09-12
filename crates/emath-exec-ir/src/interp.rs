@@ -84,6 +84,16 @@ fn evaluate_frames(
     state: ValueFrame<'_>,
     budget: EvalBudget,
 ) -> Result<Value, EvalFault> {
+    evaluate_frames_in(program, program, inputs, state, budget)
+}
+
+fn evaluate_frames_in(
+    self_program: &EmirProgram,
+    program: &EmirProgram,
+    inputs: ValueFrame<'_>,
+    state: ValueFrame<'_>,
+    budget: EvalBudget,
+) -> Result<Value, EvalFault> {
     let _fuel = EvaluationFuel::enter(budget);
     let mut registers = Vec::with_capacity(program.ops.len());
     let mut applications = 0_u32;
@@ -100,7 +110,14 @@ fn evaluate_frames(
             }
         }
         EvaluationFuel::charge(matches!(op, EmirOp::ApplyCapability { .. }))?;
-        registers.push(eval_op(op, &registers, inputs, state, budget)?);
+        registers.push(eval_op(
+            self_program,
+            op,
+            &registers,
+            inputs,
+            state,
+            budget,
+        )?);
     }
     register(&registers, program.result).cloned()
 }
@@ -166,6 +183,7 @@ pub fn evaluate_f64(
 }
 
 fn eval_op(
+    self_program: &EmirProgram,
     op: &EmirOp,
     registers: &[Value],
     inputs: ValueFrame<'_>,
@@ -210,7 +228,13 @@ fn eval_op(
                 .iter()
                 .map(|arg| register(registers, *arg).cloned())
                 .collect::<Result<Vec<_>, _>>()?;
-            evaluate_with_budget(body, &arguments, &[], budget)
+            evaluate_frames_in(
+                self_program,
+                body,
+                ValueFrame::direct(&arguments),
+                ValueFrame::direct(&[]),
+                budget,
+            )
         }
         EmirOp::Collect { count, args, body } => {
             let count = i64_of(registers, *count, "collect")?;
@@ -878,6 +902,23 @@ fn eval_op(
             let state = ValueFrame::mapped(registers, state)?;
             evaluate_frames(body, inputs, state, budget)
         }
+        EmirOp::CallSelf { inputs } => {
+            if inputs.len() != usize::from(self_program.input_count) {
+                return Err(EvalFault::Arithmetic {
+                    op: "call-self",
+                    detail: "self argument count mismatch",
+                });
+            }
+            let mapped = ValueFrame::mapped(registers, inputs)?;
+            let values = mapped.to_vec();
+            evaluate_frames_in(
+                self_program,
+                self_program,
+                ValueFrame::direct(&values),
+                ValueFrame::direct(&[]),
+                budget,
+            )
+        }
         EmirOp::DenseLayout(value) => register(registers, *value)?
             .dense_layout()
             .map(Value::DenseLayout)
@@ -1282,16 +1323,45 @@ fn scalar_arithmetic(
         }
         (Value::I64(left), Value::I64(right)) => {
             let result = match kind {
-                ScalarOp::Add => left.checked_add(*right),
-                ScalarOp::Sub => left.checked_sub(*right),
-                ScalarOp::Mul => left.checked_mul(*right),
-                ScalarOp::Div if *right != 0 && left % right == 0 => left.checked_div(*right),
-                ScalarOp::Div => None,
+                ScalarOp::Add => left.checked_add(*right).map(Value::I64),
+                ScalarOp::Sub => left.checked_sub(*right).map(Value::I64),
+                ScalarOp::Mul => left.checked_mul(*right).map(Value::I64),
+                ScalarOp::Div => {
+                    return emath_rt::ratio_div((i128::from(*left), 1), (i128::from(*right), 1))
+                        .map(|(num, den)| Value::Rat { num, den })
+                        .map_err(|detail| EvalFault::CarrierRefused { op, detail });
+                }
             };
-            result.map(Value::I64).ok_or(EvalFault::Arithmetic {
+            result.ok_or(EvalFault::Arithmetic {
                 op,
                 detail: "i64 overflow",
             })
+        }
+        (Value::I64(left), Value::Rat { num, den }) => {
+            let a = (i128::from(*left), 1);
+            let b = (*num, *den);
+            let result = match kind {
+                ScalarOp::Add => emath_rt::ratio_add(a, b),
+                ScalarOp::Sub => emath_rt::ratio_sub(a, b),
+                ScalarOp::Mul => emath_rt::ratio_mul(a, b),
+                ScalarOp::Div => emath_rt::ratio_div(a, b),
+            };
+            result
+                .map(|(num, den)| Value::Rat { num, den })
+                .map_err(|detail| EvalFault::CarrierRefused { op, detail })
+        }
+        (Value::Rat { num, den }, Value::I64(right)) => {
+            let a = (*num, *den);
+            let b = (i128::from(*right), 1);
+            let result = match kind {
+                ScalarOp::Add => emath_rt::ratio_add(a, b),
+                ScalarOp::Sub => emath_rt::ratio_sub(a, b),
+                ScalarOp::Mul => emath_rt::ratio_mul(a, b),
+                ScalarOp::Div => emath_rt::ratio_div(a, b),
+            };
+            result
+                .map(|(num, den)| Value::Rat { num, den })
+                .map_err(|detail| EvalFault::CarrierRefused { op, detail })
         }
         (Value::Complex { .. }, _) | (_, Value::Complex { .. }) => {
             let (a, b) = complex_parts(left_value).ok_or(EvalFault::TypeConfusion {

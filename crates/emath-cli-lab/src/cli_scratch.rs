@@ -173,7 +173,13 @@ pub fn solve_check_json_document(expansion: &emath_syntax::ScratchExpansion) -> 
 }
 
 /// `expand <file> [--json]`: print the contracted form of L0/L1/L2 shorthand.
+#[allow(unreachable_code, unused_variables)]
 pub fn expand_cmd(path: &Path, json: bool) -> CliExit {
+    let _ = (path, json);
+    eprintln!(
+        "E-KIND-GONE: `emath expand` is not a constructor command. Write an ordinary `emath function` or `emath query` and `emath run`."
+    );
+    return EXIT_REFUSED;
     let source = match read_emath_source("expand", path, json) {
         Ok(source) => source,
         Err(code) => return code,
@@ -273,7 +279,12 @@ pub(crate) fn parse_exactness_request(args: &[String]) -> Option<ExactnessReques
     Some(ExactnessRequest::Ready { path, json, raise })
 }
 
+#[allow(unreachable_code, unused_variables)]
 pub(crate) fn exactness_cmd(request: ExactnessRequest) -> CliExit {
+    eprintln!(
+        "E-KIND-GONE: `emath exactness` is not a constructor command. Write an ordinary `emath function` or `emath query` and `emath run`."
+    );
+    return EXIT_REFUSED;
     let ExactnessRequest::Ready { path, json, raise } = request;
     let source = match read_emath_source("exactness", &path, json) {
         Ok(source) => source,
@@ -447,7 +458,12 @@ pub(crate) fn parse_solve_request(args: &[String]) -> ParsedSolve {
 }
 
 /// `solve --check <file>`: print labeled completions; never a naked float.
+#[allow(unreachable_code, unused_variables)]
 pub(crate) fn solve_check_cmd(request: SolveRequest) -> CliExit {
+    eprintln!(
+        "E-KIND-GONE: `emath solve` is not a constructor command. Write an ordinary `emath function` or `emath query` and `emath run`."
+    );
+    return EXIT_REFUSED;
     match request {
         SolveRequest::Apply { path, world, json } => {
             let source = match read_emath_source("solve", &path, json) {

@@ -234,6 +234,37 @@ impl super::super::Parser {
                 _ => break,
             }
         }
+        if let TokenKind::Ident(param) = self.peek().clone() {
+            if matches!(self.peek_at(1), TokenKind::Keyword(Keyword::In))
+                && !matches!(
+                    &value.kind,
+                    ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Rational { .. }
+                )
+            {
+                self.advance();
+                self.advance();
+                let domain = self.parse_domain_expr(depth)?;
+                if !self.eat(&TokenKind::Colon) {
+                    self.error_here("E-SYN-111", "expected `:` after binder domain");
+                    return None;
+                }
+                self.skip_newlines();
+                if matches!(self.peek(), TokenKind::Indent) {
+                    self.advance();
+                }
+                let body = self.parse_expr_depth(depth + 1)?;
+                let source = value.source.cover(self.last_span());
+                return Some(Expr {
+                    kind: ExprKind::CallableBinder {
+                        callee: Box::new(value),
+                        param,
+                        domain: Box::new(domain),
+                        body: Box::new(body),
+                    },
+                    source,
+                });
+            }
+        }
         // Quantity literal: numeric literal followed by a unit identifier.
         // Grammar: (integer | decimal | rational_literal) whitespace path.
         if let TokenKind::Ident(unit) = self.peek().clone() {

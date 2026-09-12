@@ -4,8 +4,7 @@
 //! nodes into source text, applying precedence-based parenthesization.
 
 use super::Prec;
-use super::format_binder_head;
-use crate::tree::{BinaryOp, Expr, ExprKind, LimitDirection, UnaryOp};
+use crate::tree::{BinaryOp, Expr, ExprKind, UnaryOp};
 
 #[must_use]
 pub fn binary_prec(op: BinaryOp) -> Prec {
@@ -41,22 +40,13 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
         // Postfix clauses (`at`, `on`, `if`, `derivative ... wrt ...`)
         // are only consumed at depth > 0, so parenthesize always: the
         // formatter output is position- and depth-independent.
-        ExprKind::At { .. }
-        | ExprKind::On { .. }
-        | ExprKind::Conditioned { .. }
-        | ExprKind::Derivative { .. }
-        | ExprKind::Solve { .. }
-        | ExprKind::Optimize { .. }
-        | ExprKind::UnitQuery { .. } => true,
+        ExprKind::Conditioned { .. } | ExprKind::UnitQuery { .. } => true,
         // Colon-greedy forms (`sum i in S: body`, `if c: a else: b`,
         // `limit x -> 0: body`, `cases ...`). Without parens the body
         // swallows a following operator: `(sum i in S: i) * x` must not
         // print as `sum i in S: i * x`. `≈` carries the trailing
         // `within rtol/atol` clause, which has the same swallowing shape.
-        ExprKind::Binder { .. }
-        | ExprKind::Limit { .. }
-        | ExprKind::SampleLimit { .. }
-        | ExprKind::Cases { .. }
+        ExprKind::Cases { .. }
         | ExprKind::Approx { .. }
         | ExprKind::If { .. } => parent > Prec::Root,
         _ => false,
@@ -341,95 +331,6 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                 format_expr(out, end, Prec::Atomic);
             }
         }
-        ExprKind::Binder {
-            kind,
-            binders,
-            body,
-            guard,
-        } => {
-            // The expression-level binder requires the colon form:
-            // `sum i in S: body` or `sum i in S if cond: body`.
-            format_binder_head(out, *kind, binders);
-            if let Some(guard_expr) = guard {
-                out.push_str(" if ");
-                format_expr(out, guard_expr, Prec::Root);
-            }
-            out.push_str(": ");
-            format_expr(out, body, Prec::Root);
-        }
-        ExprKind::Derivative {
-            value,
-            wrt,
-            kind,
-            holding,
-        } => {
-            match kind {
-                crate::tree::DerivativeKind::Plain => out.push_str("derivative "),
-                crate::tree::DerivativeKind::Partial => out.push_str("partial "),
-                crate::tree::DerivativeKind::Total => out.push_str("total "),
-            }
-            // Operand is a postfix_expr (`derivative (v + v)`); Root
-            // would drop the grouping and reparse as `(derivative v) + v`.
-            format_expr(out, value, Prec::Atomic);
-            if let Some(items) = wrt {
-                out.push_str(" wrt ");
-                for (i, item) in items.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    format_expr(out, item, Prec::Root);
-                }
-            }
-            if !holding.is_empty() {
-                out.push_str(" holding ");
-                for (i, item) in holding.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    format_expr(out, item, Prec::Root);
-                }
-            }
-        }
-        ExprKind::Solve { value, wrt } => {
-            out.push_str("solve ");
-            format_expr(out, value, Prec::Root);
-            if let Some(items) = wrt {
-                out.push_str(" wrt ");
-                for (i, item) in items.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    format_expr(out, item, Prec::Root);
-                }
-            }
-        }
-        ExprKind::Optimize {
-            value,
-            wrt,
-            maximize,
-        } => {
-            out.push_str(if *maximize { "maximize " } else { "minimize " });
-            format_expr(out, value, Prec::Root);
-            if let Some(items) = wrt {
-                out.push_str(" wrt ");
-                for (i, item) in items.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    format_expr(out, item, Prec::Root);
-                }
-            }
-        }
-        ExprKind::At { value, location } => {
-            format_expr(out, value, Prec::Root);
-            out.push_str(" at ");
-            format_expr(out, location, Prec::Root);
-        }
-        ExprKind::On { value, location } => {
-            format_expr(out, value, Prec::Root);
-            out.push_str(" on ");
-            format_expr(out, location, Prec::Root);
-        }
         ExprKind::Conditioned { value, condition } => {
             format_expr(out, value, Prec::Root);
             out.push_str(" if ");
@@ -441,42 +342,6 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
                 crate::tree::UnitQueryKind::Dimension => out.push_str("dimension of "),
             }
             format_expr(out, expr, Prec::Root);
-        }
-        ExprKind::Limit {
-            var,
-            target,
-            direction,
-            body,
-        } => {
-            out.push_str("limit ");
-            out.push_str(var);
-            out.push_str(" -> ");
-            format_expr(out, target, Prec::Multiplicative);
-            match direction {
-                LimitDirection::TwoSided => {}
-                LimitDirection::FromAbove => out.push('+'),
-                LimitDirection::FromBelow => out.push('-'),
-            }
-            out.push_str(": ");
-            format_expr(out, body, Prec::Root);
-        }
-        ExprKind::SampleLimit {
-            var,
-            target,
-            direction,
-            body,
-        } => {
-            out.push_str("sample_limit ");
-            out.push_str(var);
-            out.push_str(" -> ");
-            format_expr(out, target, Prec::Multiplicative);
-            match direction {
-                LimitDirection::TwoSided => {}
-                LimitDirection::FromAbove => out.push('+'),
-                LimitDirection::FromBelow => out.push('-'),
-            }
-            out.push_str(": ");
-            format_expr(out, body, Prec::Root);
         }
         ExprKind::Cases {
             subject,
@@ -497,6 +362,56 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             }
             out.push_str("| else => ");
             format_expr(out, else_arm, Prec::Root);
+        }
+        ExprKind::FunctionAbs { param, domain, body } => {
+            out.push_str("function ");
+            out.push_str(param);
+            out.push_str(" in ");
+            format_expr(out, domain, Prec::Root);
+            out.push_str(": ");
+            format_expr(out, body, Prec::Root);
+        }
+        ExprKind::Recur { name, ty, body } => {
+            out.push_str("recur ");
+            out.push_str(name);
+            out.push_str(" in ");
+            format_expr(out, ty, Prec::Root);
+            out.push_str(": ");
+            format_expr(out, body, Prec::Root);
+        }
+        ExprKind::Quote { body } => {
+            out.push_str("quote(");
+            format_expr(out, body, Prec::Root);
+            out.push(')');
+        }
+        ExprKind::QuoteBind { param, domain, body } => {
+            out.push_str("quote ");
+            out.push_str(param);
+            out.push_str(" in ");
+            format_expr(out, domain, Prec::Root);
+            out.push_str(": ");
+            format_expr(out, body, Prec::Root);
+        }
+        ExprKind::CallableBinder {
+            callee,
+            param,
+            domain,
+            body,
+        } => {
+            format_expr(out, callee, Prec::Root);
+            out.push(' ');
+            out.push_str(param);
+            out.push_str(" in ");
+            format_expr(out, domain, Prec::Root);
+            out.push_str(": ");
+            format_expr(out, body, Prec::Root);
+        }
+        ExprKind::SequenceCons { head, tail } => {
+            out.push('[');
+            format_expr(out, head, Prec::Root);
+            out.push_str(", ..");
+            format_expr(out, tail, Prec::Root);
+            out.push(']');
         }
     }
 }

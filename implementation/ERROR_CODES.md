@@ -1027,10 +1027,12 @@ Feature capsules (`crates/emath-schema/src/feature_capsule.rs`,
 - `E-CAPSULE-021`: a capsule field cannot be canonicalized for hashing
   (semantic-hash computation failed).
 - `E-CAPSULE-022`: the declared `semantic_hash` does not match the
-  computed hash of the capsule body.
-- `E-CAPSULE-023`: an executable reference is malformed (body is not a
-  canonical emath-term, `reference_signature` missing, or an invalid
-  reference parameter).
+  computed hash of the capsule meaning. `reference_body` hashes as its
+  canonical term, not the pretty spelling.
+- `E-CAPSULE-023`: an executable reference is malformed (body is not an
+  emath-term in canonical `apply(...)` or user expression syntax,
+  `reference_params` missing, or an invalid reference parameter).
+  `reference_signature` is inferred from the body when omitted.
 - `E-CAPSULE-024`: a reference symbol is declared with conflicting
   arities.
 - `E-CAPSULE-025`: a reference term uses a variable outside
@@ -1568,7 +1570,7 @@ Not yet documented at generation time: **0**.
 | `E-TYPE-003` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/lowering/sibling_calls.rs | `E-TYPE-003` |
 | `E-TYPE-010` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/equations.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/types.rs | `E-TYPE-010`<br>`state field `{name}` must use `derivative({name}) = rhs`, not `{name} = rhs`` |
 | `E-TYPE-011` | crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/terms.rs | `E-TYPE-011`<br>`non-finite constant `{text}` refused under strict-f64 policy` |
-| `E-TYPE-012` | crates/emath-exec-ir/src/interp.rs<br>crates/emath-exec-ir/src/native_kernel.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-exec-ir/src/native_kernels/category.rs<br>crates/emath-exec-ir/src/native_kernels/checked.rs<br>crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-exec-ir/src/native_kernels/probability.rs<br>crates/emath-exec-ir/src/native_kernels/program_solve.rs<br>crates/emath-rt/src/body/numeric.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs<br>crates/emath-sema/src/admit/declaration/clauses.rs<br>crates/emath-sema/src/admit/declaration/definitions.rs<br>crates/emath-sema/src/admit/declaration/exports_tests.rs<br>crates/emath-sema/src/admit/equations.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/infer.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/lowering/call.rs<br>crates/emath-sema/src/admit/lowering/call/carriers.rs<br>crates/emath-sema/src/admit/lowering/csv.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/goals.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs<br>crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/sibling_calls.rs<br>crates/emath-sema/src/admit/lowering/terms.rs<br>crates/emath-sema/src/admit/sections.rs | `E-TYPE-012: program result must be a real scalar`<br>`E-TYPE-012: program result has the wrong numeric carrier` |
+| `E-TYPE-012` | crates/emath-exec-ir/src/interp.rs<br>crates/emath-exec-ir/src/native_kernel.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-exec-ir/src/native_kernels/checked.rs<br>crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-exec-ir/src/native_kernels/probability.rs<br>crates/emath-exec-ir/src/native_kernels/program_solve.rs<br>crates/emath-rt/src/body/numeric.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs<br>crates/emath-sema/src/admit/declaration/clauses.rs<br>crates/emath-sema/src/admit/declaration/definitions.rs<br>crates/emath-sema/src/admit/declaration/exports_tests.rs<br>crates/emath-sema/src/admit/equations.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/infer.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/lowering/call.rs<br>crates/emath-sema/src/admit/lowering/call/carriers.rs<br>crates/emath-sema/src/admit/lowering/csv.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/goals.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs<br>crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/sibling_calls.rs<br>crates/emath-sema/src/admit/lowering/terms.rs<br>crates/emath-sema/src/admit/sections.rs | `E-TYPE-012: program result must be a real scalar`<br>`E-TYPE-012: program result has the wrong numeric carrier` |
 | `E-TYPE-013` | crates/emath-sema/src/admit/lowering/sibling_calls.rs | `recursive call `{name}` refused (inline cycle in sibling functions)`<br>`sibling-call inlining depth cap {INLINE_DEPTH_CAP} exceeded at `{name}`` |
 | `E-TYPE-101` | crates/emath-adapter-rumoca/src/conformance.rs<br>crates/emath-adapter-rumoca/src/structural.rs | `E-TYPE-101` |
 | `E-TYPE-102` | crates/emath-adapter-rumoca/src/structural.rs | `E-TYPE-102` |

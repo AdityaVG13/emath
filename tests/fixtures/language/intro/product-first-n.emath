@@ -1,0 +1,17 @@
+# Check: product 1..=n is n!. The binder meaning comes from std.binder.product.
+# Expected: result = 120 when n=5. Empty product is 1.
+
+emath function ProductFirstN:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = product i in 1..=n: i
+    tests:
+        example <five>:
+            given n = 5
+            expect result == 120
+        example <empty>:
+            given n = 0
+            expect result == 1

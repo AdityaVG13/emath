@@ -3,6 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use emath_core::{CanonicalField, DistributionHash};
+
+use crate::language_image::is_constructor_image_id;
 use emath_ir::{CapsuleSlot, FeatureCapsule, Maturity};
 
 pub const GENERATED_REFERENCE_HEADER: &str =
@@ -23,6 +25,7 @@ pub enum ReferenceViewError {
     MissingCoverage(String),
     StaleLock,
     ManualEdit(String),
+    NonConstructorIdentity(String),
 }
 
 pub fn generate_reference_views(
@@ -39,6 +42,9 @@ pub fn generate_reference_views(
     sorted.sort_by(|left, right| left.feature_id.cmp(&right.feature_id));
     for capsule in sorted {
         let id = capsule.feature_id.to_string();
+        if !is_constructor_image_id(&capsule.feature_id) {
+            return Err(ReferenceViewError::NonConstructorIdentity(id));
+        }
         if !seen.insert(id.clone()) {
             return Err(ReferenceViewError::DuplicateFeature(id));
         }

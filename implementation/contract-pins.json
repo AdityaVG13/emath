@@ -141,10 +141,11 @@
     },
     "gauntlet pass 8: kernel artifact codegen (fd/einsum/rs-encode) + cmp/may-fault alignment",
     "gauntlet pass 9: Field<7> carrier (FieldPrime\u2192i64) + E-SEC-133 default skips carrier-typed-input declarations; E-SEC-133 emitter list gains session/requests.rs; annex re-spliced (449 emitted, 0 newly covered). No new codes.",
-    "gauntlet pass 10: emath run plans before executing (planned_package) \u2014 goal kinds become visible at the run boundary; non-evaluate goals on no-test declarations refuse E-GOAL-043 before any checkpoint (typed-hole discipline: never a produced crate); E-GOAL-043 emitter list gains cli/execution.rs. No new codes."
+    "gauntlet pass 10: emath run plans before executing (planned_package) \u2014 goal kinds become visible at the run boundary; non-evaluate goals on no-test declarations refuse E-GOAL-043 before any checkpoint (typed-hole discipline: never a produced crate); E-GOAL-043 emitter list gains cli/execution.rs. No new codes.",
+    "gauntlet pass 10 coordination: CalmPine's category authored-reference migration (uncommitted in tree) removed native_kernels/category.rs from the E-TYPE-012 emitter list; annex re-spliced to the current emission set (449 emitted, 0 newly covered). No new codes."
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "8858e9de7400709deda27da3a7e8088c7ea0265ff5e2567beb708f450b8bb4e1",
+    "implementation/ERROR_CODES.md": "920171f3f17f48643c91e0c29ed1d0b815ed41767f37c0500a096e4021a62a4a",
     "implementation/CLI_REFERENCE.md": "6895b32720661822a283abddeecc1f7524184c0780e1239559e1ee87075d71df",
     "implementation/CRATE_MAP.md": "c6a18e0143d669b1b457abf6e36d96f097ea957acf97d00b117543cff06e5695",
     "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"

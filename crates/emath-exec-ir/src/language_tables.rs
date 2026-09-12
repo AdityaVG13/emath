@@ -13,7 +13,6 @@ pub struct RuntimeTableEntry {
     pub capsule_hash: String,
     pub source: String,
     pub handle: String,
-    pub aliases: Vec<String>,
     pub precedence: Option<u16>,
 }
 
@@ -27,19 +26,22 @@ pub struct RuntimeTables {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TableError {
     DuplicateFeature(FeatureId),
-    AliasCollision(String),
-    PrecedenceAmbiguity(String),
     ConfusableCollision(String),
     MissingHandle(FeatureId),
     StaleLock,
     UnsafeGeneratedText,
+    NonConstructorIdentity(FeatureId),
 }
 
 pub fn generate_runtime_tables(capsules: &[FeatureCapsule]) -> Result<RuntimeTables, TableError> {
     let mut seen = BTreeSet::new();
-    let mut aliases = BTreeMap::<(String, String), FeatureId>::new();
     let mut table = BTreeMap::<String, Vec<RuntimeTableEntry>>::new();
     for capsule in capsules {
+        if !crate::language_image::is_constructor_image_id(&capsule.feature_id) {
+            return Err(TableError::NonConstructorIdentity(
+                capsule.feature_id.clone(),
+            ));
+        }
         if !seen.insert(capsule.feature_id.clone()) {
             return Err(TableError::DuplicateFeature(capsule.feature_id.clone()));
         }
@@ -57,26 +59,6 @@ pub fn generate_runtime_tables(capsules: &[FeatureCapsule]) -> Result<RuntimeTab
         {
             return Err(TableError::UnsafeGeneratedText);
         }
-        let entry_aliases = slot(capsule, "presentation").map_or_else(Vec::new, |text| {
-            text.strip_prefix("aliases=")
-                .map_or_else(Vec::new, |aliases| {
-                    aliases
-                        .split(',')
-                        .map(|item| item.trim().to_string())
-                        .filter(|item| !item.is_empty())
-                        .collect::<Vec<_>>()
-                })
-        });
-        for alias in &entry_aliases {
-            if let Some(existing) = aliases.insert(
-                (category.clone(), alias.clone()),
-                capsule.feature_id.clone(),
-            ) {
-                if existing != capsule.feature_id {
-                    return Err(TableError::AliasCollision(alias.clone()));
-                }
-            }
-        }
         let precedence = slot(capsule, "surface").and_then(|surface| {
             surface.split(';').find_map(|part| {
                 part.trim()
@@ -84,11 +66,6 @@ pub fn generate_runtime_tables(capsules: &[FeatureCapsule]) -> Result<RuntimeTab
                     .and_then(|number| number.parse::<u16>().ok())
             })
         });
-        if precedence.is_some() && entry_aliases.is_empty() {
-            return Err(TableError::PrecedenceAmbiguity(
-                capsule.feature_id.to_string(),
-            ));
-        }
         let folded = confusable_fold(capsule.feature_id.as_str());
         if seen
             .iter()
@@ -103,7 +80,6 @@ pub fn generate_runtime_tables(capsules: &[FeatureCapsule]) -> Result<RuntimeTab
             capsule_hash: capsule.semantic_hash.to_string(),
             source: capsule.source.clone(),
             handle,
-            aliases: entry_aliases,
             precedence,
         });
     }
@@ -155,12 +131,11 @@ fn encode(tables: &BTreeMap<String, Vec<RuntimeTableEntry>>) -> String {
         output.push_str(&format!("table {name}\n"));
         for entry in entries {
             output.push_str(&format!(
-                "{} hash={} source={} handle={} aliases={} precedence={}\n",
+                "{} hash={} source={} handle={} precedence={}\n",
                 entry.feature_id,
                 entry.capsule_hash,
                 entry.source,
                 entry.handle,
-                entry.aliases.join(","),
                 entry
                     .precedence
                     .map_or_else(|| "-".to_string(), |value| value.to_string()),

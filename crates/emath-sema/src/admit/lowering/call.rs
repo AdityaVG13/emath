@@ -22,7 +22,12 @@ fn operator_leaf(name: &str) -> &str {
     name.rsplit("::").next().unwrap_or(name)
 }
 
-fn universal_unary_op(name: &str) -> Option<emath_ir::UnaryOp> {
+fn universal_unary_op(_name: &str) -> Option<emath_ir::UnaryOp> {
+    None
+}
+
+#[allow(dead_code)]
+fn leftover_universal_unary_op(name: &str) -> Option<emath_ir::UnaryOp> {
     let leaf = operator_leaf(name);
     const ROWS: &[(&str, emath_ir::UnaryOp)] = &[
         ("sqrt", emath_ir::UnaryOp::Sqrt),
@@ -51,7 +56,12 @@ fn universal_unary_op(name: &str) -> Option<emath_ir::UnaryOp> {
 
 /// The universal binary operator surface: fixed Float64/vector function
 /// spellings with a universal machine op (`emath_ir::BinaryOp`).
-fn universal_binary_op(name: &str) -> Option<emath_ir::BinaryOp> {
+fn universal_binary_op(_name: &str) -> Option<emath_ir::BinaryOp> {
+    None
+}
+
+#[allow(dead_code)]
+fn leftover_universal_binary_op(name: &str) -> Option<emath_ir::BinaryOp> {
     let leaf = operator_leaf(name);
     const ROWS: &[(&str, emath_ir::BinaryOp)] = &[
         ("min", emath_ir::BinaryOp::Min),
@@ -551,7 +561,7 @@ impl super::super::Admitter {
         self.error(
             E_UNKNOWN_FUNCTION,
             format!(
-                "unknown function `{name}`: no declared function or executable FeatureID alias exists in the loaded Language Image"
+                "unknown function `{name}`: no declared function exists in the loaded constructor image or imported module"
             ),
             function.source,
         );

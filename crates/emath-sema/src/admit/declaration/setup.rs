@@ -23,13 +23,35 @@ pub(super) fn admit_declaration_setup<'a>(
     admitter.capability_cells = capability_cells.to_vec();
     admitter.sibling_functions = sibling_functions.clone();
     let kind_label = decl.as_kind.clone();
-    let is_policy = kind_label == "policy";
-    let is_model = kind_label == "model";
-    let is_law = kind_label == "law";
-    let schema = if is_policy {
-        KindSchema::core_policy()
-    } else if is_model {
-        KindSchema::core_model()
+    if matches!(
+        kind_label.as_str(),
+        "model"
+            | "policy"
+            | "kind"
+            | "law"
+            | "feature"
+            | "capability"
+            | "field_pack"
+            | "reaction_network"
+            | "search"
+            | "experiment"
+            | "widget"
+    ) {
+        admitter.error(
+            "E-KIND-GONE",
+            format!(
+                "declaration kind `{kind_label}` is not a core kind; write `emath object`, `emath function`, or `emath query`"
+            ),
+            decl.source,
+        );
+    }
+    let is_policy = false;
+    let is_model = false;
+    let is_law = false;
+    let schema = if kind_label == "object" {
+        KindSchema::core_object()
+    } else if kind_label == "query" {
+        KindSchema::core_query()
     } else {
         KindSchema::core_function()
     };
@@ -59,17 +81,11 @@ pub(super) fn admit_declaration_setup<'a>(
     // ..."), so no local rule is needed here; the LOCAL rule below covers
     // the case nothing else catches: a `definitions:` name shadowing an
     // `inputs:` name.
-    // R6 (E-SEC-130): contract mode with `outputs:`/`goals:` but NO `inputs:`
-    // section leaves the I/O surface unnamed — refuse.
-    // R4 (E-SEC-133): contract mode without `goals:` is legal (every
-    // definition defaults to evaluate) but the default is made visible.
-    // Evidence (E-EV-140): only ASSERTION verbs (`prove`) claim truth
-    // without computing it; Phase 1 goal verbs are operational and never
-    // demand `evidence:`. The rule keys on the CLAIM_VERBS list below.
+    // R6 (E-SEC-130): `outputs:` without `inputs:` leaves the I/O surface
+    // unnamed — refuse. `goals:` is not a constructor section (E-SEC-101).
     if by_name.contains_key("inputs")
         || by_name.contains_key("outputs")
         || by_name.contains_key("definitions")
-        || by_name.contains_key("goals")
         || by_name.contains_key("evidence")
     {
         let input_names: BTreeSet<String> = by_name
@@ -128,57 +144,17 @@ pub(super) fn admit_declaration_setup<'a>(
                         )
                 )
             });
-        let has_outputs_or_goals = by_name.contains_key("outputs") || by_name.contains_key("goals");
-        if has_outputs_or_goals && !has_inputs && !declares_hole {
+        if by_name.contains_key("outputs") && !has_inputs && !declares_hole {
             admitter.error(
                 "E-SEC-130",
-                "contract-mode declaration has `outputs:`/`goals:` but no `inputs:` \
+                "declaration has `outputs:` but no `inputs:` \
                  section — add `inputs:` to name the I/O surface",
                 decl.head_source,
             );
         }
-        let goals_nonempty = by_name
-            .get("goals")
-            .is_some_and(|section| !section.suite.statements.is_empty());
-        if !by_name.contains_key("goals") || !goals_nonempty {
-            admitter.warning(
-                "E-SEC-133",
-                "no `goals:` section — every definition defaults to `evaluate`; \
-                 declare `goals:` to pin intent",
-                decl.head_source,
-            );
-        }
-        // Evidence (E-EV-140): an ASSERTION verb states truth without
-        // computing it; Phase 1 goal verbs (evaluate, differentiate,
-        // benchmark, fit, simplify) are operational — they compute, they
-        // do not claim, so they never demand `evidence:` (demanding it
-        // broke the fit goals). `prove` is the first claim verb; when the
-        // goals grammar accepts it, listing it in CLAIM_VERBS activates
-        // the rule.
-        const CLAIM_VERBS: &[&str] = &[];
-        if let Some(goals) = by_name.get("goals") {
-            let claim_bearing = goals
-                .suite
-                .statements
-                .iter()
-                .filter_map(|stmt| match &stmt.kind {
-                    StmtKind::Section(nested) => Some(nested.name.as_str()),
-                    _ => None,
-                })
-                .any(|verb| CLAIM_VERBS.contains(&verb));
-            let evidence_present = by_name
-                .get("evidence")
-                .is_some_and(|section| !section.suite.statements.is_empty());
-            if claim_bearing && !evidence_present {
-                admitter.error(
-                    "E-EV-140",
-                    "claim-bearing goal verb requires an `evidence:` section with \
-                     at least one row (a claim without evidence is a silent assertion)",
-                    goals.head_source,
-                );
-            }
-        }
     }
+    refuse_implicit_and_unit_fields(&mut admitter, &by_name);
+
     // Kind schema is the required/optional source of truth (`E-KIND-011`).
     for (name, section_schema) in schema.sections() {
         if section_schema.repeat == RepeatPolicy::ExactlyOne && !by_name.contains_key(name) {
@@ -191,14 +167,14 @@ pub(super) fn admit_declaration_setup<'a>(
     }
 
     // Phase 1 whitelist: a section outside the subset is a typed refusal,
-    // never a silent drop (AGENTS.md rule 6). `request:` / `requests:`
-    // are the pre-`goals:` spellings; refuse with a migration hint.
+    // never a silent drop. `request:` / `requests:` / `goals:` are not
+    // constructor sections.
     for section in decl.sections() {
         if matches!(section.name.as_str(), "request" | "requests") {
             admitter.error(
                 "E-SEC-101",
                 format!(
-                    "section `{}:` was renamed to `goals:`; use `goals:`",
+                    "section `{}:` is not a constructor section",
                     section.name
                 ),
                 section.head_source,
@@ -213,7 +189,7 @@ pub(super) fn admit_declaration_setup<'a>(
             admitter.error(
                 "E-SEC-101",
                 format!(
-                    "section `{}` is admitted only on `emath law` declarations",
+                    "section `{}` is not a constructor section; write `emath object`, `emath function`, or `emath query`",
                     section.name
                 ),
                 section.head_source,
@@ -224,7 +200,7 @@ pub(super) fn admit_declaration_setup<'a>(
             admitter.error(
                 "E-SEC-101",
                 format!(
-                    "section `{}` is outside the Phase 1 subset (known: {})",
+                    "section `{}` is not a constructor section (known: {})",
                     section.name,
                     PHASE1_SECTIONS.join(", ")
                 ),
@@ -241,4 +217,46 @@ pub(super) fn admit_declaration_setup<'a>(
     (
         admitter, kind_label, is_policy, is_model, is_law, schema, by_name,
     )
+}
+
+fn refuse_implicit_and_unit_fields(
+    admitter: &mut Admitter,
+    by_name: &BTreeMap<&str, &Section>,
+) {
+    for section_name in ["inputs", "outputs", "parameters"] {
+        let Some(section) = by_name.get(section_name) else {
+            continue;
+        };
+        for stmt in &section.suite.statements {
+            let StmtKind::FieldDecl { name, ty, .. } = &stmt.kind else {
+                continue;
+            };
+            if matches!(
+                &ty.kind,
+                emath_core::tree::TypeKind::Path { segments, .. }
+                    if segments.len() == 1 && segments[0] == "Infer"
+            ) {
+                admitter.error(
+                    "E-TYPE-001",
+                    format!("`{name}` needs an explicit constructor type, not an inferred default"),
+                    stmt.source,
+                );
+            }
+            if matches!(
+                &ty.kind,
+                emath_core::tree::TypeKind::In { .. }
+                    | emath_core::tree::TypeKind::Product { .. }
+                    | emath_core::tree::TypeKind::Pow { .. }
+                    | emath_core::tree::TypeKind::Domain { .. }
+            ) {
+                admitter.error(
+                    "E-KIND-GONE",
+                    format!(
+                        "`{name}` uses a unit or domain annotation; write a constructor carrier type and an ordinary module if you need units"
+                    ),
+                    stmt.source,
+                );
+            }
+        }
+    }
 }

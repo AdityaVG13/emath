@@ -1,0 +1,71 @@
+# T14: Finite/empty/order edge cases. This file installed no topic identity.
+emath function empty_forall:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = true
+    tests:
+        example <vacuous>:
+            given unused = 0
+            expect result == true
+
+emath function empty_exists:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = false
+    tests:
+        example <none>:
+            given unused = 0
+            expect result == false
+
+emath function empty_sum:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 0
+
+emath function empty_product:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 1
+
+emath function left_sub:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (10 - 1) - 2
+    tests:
+        example <order>:
+            given unused = 0
+            expect result == 7
+
+emath query EmptyMin:
+    inputs:
+        unused: Int
+    definitions:
+        result = 0
+    question:
+        target = result
+        scope = unused
+        assumptions = []
+    using:
+        method = missing
+    answer:
+        form = value
+        accept = unchecked
+    tests:
+        example <refuse>:
+            given unused = 0
+            expect receipt.fulfillment == unmet

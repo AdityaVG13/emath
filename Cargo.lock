@@ -729,6 +729,7 @@ version = "0.1.0"
 dependencies = [
  "emath-artifact",
  "emath-core",
+ "emath-exec-ir",
  "emath-ir",
  "emath-rust-backend",
  "emath-sema",
@@ -816,15 +817,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-core-tests"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-syntax",
- "emath-test-harness",
-]
-
-[[package]]
 name = "emath-evidence"
 version = "0.1.0"
 dependencies = [
@@ -850,6 +842,7 @@ dependencies = [
  "emath-ir",
  "emath-rt",
  "emath-schema",
+ "emath-syntax",
  "emath-term",
 ]
 
@@ -862,6 +855,7 @@ dependencies = [
  "emath-exec-ir",
  "emath-ir",
  "emath-rt",
+ "emath-rust-backend",
  "emath-schema",
  "emath-sema",
  "emath-store",
@@ -2979,6 +2973,7 @@ dependencies = [
  "emath-exec-ir",
  "emath-genesis",
  "emath-lab-core",
+ "emath-schema",
  "emath-sema",
  "emath-store",
  "emath-syntax",

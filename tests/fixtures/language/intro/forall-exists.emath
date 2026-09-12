@@ -1,7 +1,6 @@
-# Quantifier binders over vectors. `forall` checks that every element
-# satisfies a condition; `exists` checks that at least one does.
-# Both lower to the same runtime Fold op as variable-bound `sum`, but
-# with And/Or combine instead of Add/Mul.
+# Quantifier binders over vectors. Meaning comes from std.binder.forall
+# and std.binder.exists (finite fold; combine and/true and or/false).
+# Expected: all_positive = false, has_zero = true for [1.0, 0.0, 3.0].
 emath function VectorQuantifiers:
     inputs:
         v: Vector[3]

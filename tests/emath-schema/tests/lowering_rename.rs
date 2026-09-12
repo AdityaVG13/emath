@@ -7,7 +7,16 @@ use emath_test_harness::Probe;
 #[test]
 fn rename_migrates_hoist_aliases_and_bind() {
     let mut p = Probe::new("rename keeps hoist aliases and bind on the new section name");
-    let core = KindSchema::core_model();
+    let mut core = KindSchema::core_function();
+    core.set_name("lowering-fixture");
+    core.insert_section(
+        "equations",
+        emath_ir::kind_schema::SectionSchema {
+            repeat: emath_ir::kind_schema::RepeatPolicy::AtMostOne,
+            payload: emath_ir::kind_schema::PayloadPolicy::Suite,
+            has_default: false,
+        },
+    );
     match apply_lowering(
         &core,
         &[

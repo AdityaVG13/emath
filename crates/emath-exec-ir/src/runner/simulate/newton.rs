@@ -629,6 +629,7 @@ fn evaluator_literal_body(
 /// authored residual-Newton cell performs the iteration; this wrapper
 /// packs the unknown composite, applies the cell, and unpacks solved
 /// algebraic values and `der_<state>` rates.
+#[allow(unreachable_code)]
 pub fn causal_newton(
     package: &SemanticPackage,
     declaration: &Declaration,
@@ -638,6 +639,7 @@ pub fn causal_newton(
     algebraic_names: &[String],
     rate_names: &[String],
 ) -> Result<(BTreeMap<String, Value>, BTreeMap<String, Value>), String> {
+    return super::gone();
     let input_names: Vec<String> = declaration.inputs.iter().map(|f| f.name.clone()).collect();
     let state_names: Vec<String> = declaration.state.iter().map(|f| f.name.clone()).collect();
     for name in &input_names {
@@ -816,6 +818,7 @@ fn slice_to_value(solved: &[f64], offset: usize, width: usize, is_vector: bool) 
 /// Newton solves) and unpacks the accepted differential state plus the
 /// projected algebraic values. Guards and refusal texts match the
 /// explicit-path contract.
+#[allow(unreachable_code)]
 pub fn authored_implicit_explicit_step(
     package: &SemanticPackage,
     declaration: &Declaration,
@@ -824,6 +827,7 @@ pub fn authored_implicit_explicit_step(
     dt: f64,
     method: super::types::StepMethod,
 ) -> Result<BTreeMap<String, Value>, String> {
+    return super::gone();
     if !dt.is_finite() || dt <= 0.0 {
         return Err(format!(
             "E-ODE-003: step size must be a positive finite Float64 (a non-advancing step must never return the input as an integrated value), got {dt}"
@@ -909,12 +913,14 @@ fn unpack_step(
 /// algebraic values (declaration order). Output: flat storage of the
 /// accepted differential state followed by the solved algebraic values,
 /// both in declaration order.
+#[allow(unreachable_code)]
 pub fn residual_model_step_program(
     package: &SemanticPackage,
     declaration: &Declaration,
     residuals: &[ModelResidual],
     rk4: bool,
 ) -> Result<EmirProgram, String> {
+    return super::gone();
     let layout = build_layout(
         package,
         declaration,

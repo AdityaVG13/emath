@@ -220,6 +220,10 @@ pub(super) fn kind_of_op(
         }
         EmirOp::Refuse(_) | EmirOp::RefuseValue(_) => ValueKind::Never,
         EmirOp::ProgramLiteral { .. } => ValueKind::Program,
+        EmirOp::CallSelf { inputs } => inputs
+            .first()
+            .map(|value| kind_at(kinds, *value))
+            .unwrap_or(ValueKind::I64),
         EmirOp::CallFrame {
             body,
             inputs,
@@ -376,14 +380,16 @@ pub(super) fn kind_of_op(
             ValueKind::Other
         }
         EmirOp::F64Div(left, right) => {
-            if kind_at(kinds, *left) == ValueKind::Rational
-                && kind_at(kinds, *right) == ValueKind::Rational
-            {
-                ValueKind::Rational
-            } else if kind_at(kinds, *left) == ValueKind::Complex
+            if kind_at(kinds, *left) == ValueKind::Complex
                 || kind_at(kinds, *right) == ValueKind::Complex
             {
                 ValueKind::Complex
+            } else if (kind_at(kinds, *left) == ValueKind::Rational
+                && kind_at(kinds, *right) == ValueKind::Rational)
+                || (kind_at(kinds, *left) == ValueKind::I64
+                    && kind_at(kinds, *right) == ValueKind::I64)
+            {
+                ValueKind::Rational
             } else {
                 ValueKind::F64
             }

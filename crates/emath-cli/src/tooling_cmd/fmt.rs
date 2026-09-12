@@ -15,12 +15,24 @@ use super::*;
 /// explicit `--sf`. Incompatible format unit is refused (`E-UNIT-FMT`);
 /// `--from` without `--format` is refused (`E-UNIT-104` path for unknown
 /// units).
+#[allow(unreachable_code, unused_variables)]
 pub(crate) fn fmt_value_cmd(
     value_raw: &str,
     sf: Option<u32>,
     from: Option<&str>,
     format: Option<&str>,
 ) -> CliExit {
+    let _ = (value_raw, sf, from, format);
+    eprintln!(
+        "error: E-KIND-GONE: `emath fmt --value` is not a constructor command. `emath fmt` checks canonical source form."
+    );
+    return EXIT_ADMISSION;
+    if from.is_some() || format.is_some() {
+        eprintln!(
+            "error: E-KIND-GONE: unit-catalog conversion is not a constructor command. `emath fmt` checks canonical source form."
+        );
+        return EXIT_ADMISSION;
+    }
     let Ok(value) = value_raw.parse::<f64>() else {
         eprintln!("error: --value must be a decimal literal, found `{value_raw}`");
         return EXIT_USAGE;

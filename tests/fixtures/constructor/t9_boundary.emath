@@ -1,0 +1,54 @@
+# T9: Finite boundary data. This file installed no topic identity.
+emath function boundary_square:
+    inputs:
+        unused: Int
+    outputs:
+        c0: Int
+        c1: Int
+        c2: Int
+    definitions:
+        e0_0 = 0 - 1
+        e0_1 = 1
+        e0_2 = 0
+        e1_0 = 0
+        e1_1 = 0 - 1
+        e1_2 = 1
+        e2_0 = 1
+        e2_1 = 0
+        e2_2 = 0 - 1
+        c0 = e0_0 + e1_0 + e2_0
+        c1 = e0_1 + e1_1 + e2_1
+        c2 = e0_2 + e1_2 + e2_2
+    tests:
+        example <zero>:
+            given unused = 0
+            expect c0 == 0
+            expect c1 == 0
+            expect c2 == 0
+
+emath function broken_boundary:
+    inputs:
+        unused: Int
+    outputs:
+        c0: Int
+        c1: Int
+        c2: Int
+    definitions:
+        e0_0 = 0 - 1
+        e0_1 = 1
+        e0_2 = 0
+        e1_0 = 0
+        e1_1 = 0 - 1
+        e1_2 = 1
+        e2p_0 = 0 - 1
+        e2p_1 = 0
+        e2p_2 = 1
+        c0 = e0_0 + e1_0 + e2p_0
+        c1 = e0_1 + e1_1 + e2p_1
+        c2 = e0_2 + e1_2 + e2p_2
+    tests:
+        example <twice>:
+            given unused = 0
+            expect c0 == 0 - 2
+            expect c1 == 0
+            expect c2 == 2

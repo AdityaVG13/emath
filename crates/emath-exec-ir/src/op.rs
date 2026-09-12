@@ -186,6 +186,9 @@ pub enum EmirOp {
     /// argument register.
     /// Evaluate a literal program with explicit typed input and state frames.
     CallFrame { body: EmirProgram, inputs: Vec<EmirValue>, state: Vec<EmirValue> },
+    /// Re-enter the active recursive program with a new input frame.
+    /// Generic self-application; not a mathematical leaf.
+    CallSelf { inputs: Vec<EmirValue> },
     /// Compare scalar/dense carrier layout, including stored element counts.
     SameDenseShape(EmirValue, EmirValue),
     DenseLayout(EmirValue),

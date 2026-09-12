@@ -117,6 +117,16 @@ fn prob_uniform01(state: &mut u64) -> f64 {
     (bits as f64) * (1.0 / (1u64 << 53) as f64)
 }
 
+/// Counter-stream unit-interval uniforms in [0, 1). `seed` is already the
+/// local stream seed as an f64 bit pattern. Empty on `draws == 0`.
+pub fn prob_unit_interval(seed: f64, draws: usize) -> Vec<f64> {
+    if draws == 0 {
+        return Vec::new();
+    }
+    let mut state = seed.to_bits();
+    (0..draws).map(|_| prob_uniform01(&mut state)).collect()
+}
+
 /// Sample `draws` values from the named distribution (ascending param
 /// carriers: Normal `[mu, sigma]`, Uniform `[a, b]`, Bernoulli `[p]`).
 /// Returns EMPTY on any invalid input (typed upstream — never a

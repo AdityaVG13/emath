@@ -1,16 +1,14 @@
 # expect: E-TYPE-003 unknown operator Undeclared (never a MeaningID over a dangling cell)
 # negative seed.
 #
-# Scenario: a capability cell applies `Undeclared`, a capability that was
-# never admitted to the package capability arena. Silent success would be a
-# MeaningID hashed over a dangling capability reference.
+# Scenario: a constructor function body applies `Undeclared`, a capability
+# cell that was never admitted to the package capability arena. Silent
+# success would be a MeaningID hashed over a dangling capability reference.
 #
 # expect: MeaningError::MissingCapability - a typed refusal at the emath-ir
 # seam (SemanticPackage::meaning_id), never a silent identity over a
 # dangling capability application.
-use std.kinds.capability
-
-emath capability Softmax:
+emath function Scalar:
     inputs:
         x: Float64
     outputs:

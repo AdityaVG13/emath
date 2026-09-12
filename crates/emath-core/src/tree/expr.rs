@@ -291,47 +291,6 @@ pub enum ExprKind {
         end: Option<Box<Expr>>,
         inclusive: bool,
     },
-    Binder {
-        kind: BinderKind,
-        binders: Vec<Binder>,
-        body: Box<Expr>,
-        /// B02: optional `if <condition>` guard; the fold includes only
-        /// iterations where the guard evaluates true.
-        guard: Option<Box<Expr>>,
-    },
-    /// `derivative(x)`, `∂(T) wrt x` (partial), `total(T) wrt t` (total).
-    /// `∂(H) wrt T holding p` — held-fixed set is part of the term.
-    Derivative {
-        value: Box<Expr>,
-        wrt: Option<Vec<Expr>>,
-        kind: DerivativeKind,
-        /// Held-fixed variables; part of term identity (hash-relevant) —
-        /// different holding sets produce different terms.
-        holding: Vec<Expr>,
-    },
-    /// `solve(f) wrt x` — Newton's-method root-finding. The parser
-    /// starts with `wrt: None`; the `wrt` postfix clause fills it.
-    Solve {
-        value: Box<Expr>,
-        wrt: Option<Vec<Expr>>,
-    },
-    /// `minimize(f) wrt x` / `maximize(f) wrt x` — Newton on ∇f = 0;
-    /// `maximize` requires negative curvature.
-    Optimize {
-        value: Box<Expr>,
-        wrt: Option<Vec<Expr>>,
-        maximize: bool,
-    },
-    /// `temperature at time.start`
-    At {
-        value: Box<Expr>,
-        location: Box<Expr>,
-    },
-    /// `temperature on boundary(Ω)`
-    On {
-        value: Box<Expr>,
-        location: Box<Expr>,
-    },
     /// `provider if condition` (strategy lists; parse-level only).
     Conditioned {
         value: Box<Expr>,
@@ -343,28 +302,46 @@ pub enum ExprKind {
         kind: UnitQueryKind,
         expr: Box<Expr>,
     },
-    /// `limit x -> 0: f(x)` — limit as a claim (B04), not a computation;
-    /// one-sided via `0+`/`0-` (FromAbove/FromBelow).
-    Limit {
-        var: String,
-        target: Box<Expr>,
-        direction: LimitDirection,
-        body: Box<Expr>,
-    },
-    /// `sample_limit x -> 0: f(x)` — numerical limit approximation (B04):
-    /// samples the body approaching the target, returns best estimate.
-    SampleLimit {
-        var: String,
-        target: Box<Expr>,
-        direction: LimitDirection,
-        body: Box<Expr>,
-    },
     /// `cases x: | c1 => e1 | else => e2` (U1), lowers to nested
     /// conditionals; subject optional, arms are full expressions.
     Cases {
         subject: Option<Box<Expr>>,
         arms: Vec<(Expr, Expr)>,
         else_arm: Box<Expr>,
+    },
+    /// `function x in A: body` — lexical closure.
+    FunctionAbs {
+        param: String,
+        domain: Box<Expr>,
+        body: Box<Expr>,
+    },
+    /// `recur f in T: body` — recursive closure group.
+    Recur {
+        name: String,
+        ty: Box<Expr>,
+        body: Box<Expr>,
+    },
+    /// `quote(expression)` — closed typed code capture.
+    Quote {
+        body: Box<Expr>,
+    },
+    /// `quote x in A: body` — function quotation.
+    QuoteBind {
+        param: String,
+        domain: Box<Expr>,
+        body: Box<Expr>,
+    },
+    /// `callee x in domain: body` — generic callable binder.
+    CallableBinder {
+        callee: Box<Expr>,
+        param: String,
+        domain: Box<Expr>,
+        body: Box<Expr>,
+    },
+    /// `[head, ..tail]` sequence cons.
+    SequenceCons {
+        head: Box<Expr>,
+        tail: Box<Expr>,
     },
 }
 
@@ -432,18 +409,6 @@ pub enum LimitDirection {
     FromAbove,
     /// From below: `limit x -> 0-: f(x)`
     FromBelow,
-}
-
-/// Kind of derivative operator.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DerivativeKind {
-    /// `derivative(x)` — unqualified (existing behavior).
-    Plain,
-    /// `∂(T)` / `partial(T)` — partial derivative.
-    /// Requires explicit `holding` set or refused as MeaningHole.
-    Partial,
-    /// `total(T)` / `d(T)` — total/material derivative.
-    Total,
 }
 
 #[derive(Clone, Debug, PartialEq)]

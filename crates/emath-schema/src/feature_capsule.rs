@@ -189,11 +189,30 @@ struct RawCapsule {
 pub fn parse_feature_capsule(text: &str) -> (Option<FeatureCapsule>, Vec<CapsuleIssue>) {
     let mut issues = Vec::new();
     let mut raw = RawCapsule::default();
-    for (line_index, source) in text.lines().enumerate() {
+    let lines: Vec<(usize, &str)> = text.lines().enumerate().collect();
+    let mut index = 0;
+    while index < lines.len() {
+        let (line_index, source) = lines[index];
         let line_number = line_index + 1;
+        let indent = source.len() - source.trim_start().len();
         let line = source.trim();
         if line.is_empty() || line.starts_with('#') || line.starts_with("emath feature ") {
+            index += 1;
             continue;
+        }
+        if let Some(key) = empty_field_key(line) {
+            if key == "reference_body" {
+                let (body, consumed) = collect_indented_block(&lines, index, indent);
+                insert_scalar(
+                    &mut raw,
+                    key,
+                    body,
+                    line_number,
+                    &mut issues,
+                );
+                index += consumed;
+                continue;
+            }
         }
         let line = line.strip_suffix(':').unwrap_or(line);
         let Some((key, value)) = line.split_once(':') else {
@@ -202,6 +221,7 @@ pub fn parse_feature_capsule(text: &str) -> (Option<FeatureCapsule>, Vec<Capsule
                 "expected `field: value`",
                 line_number,
             ));
+            index += 1;
             continue;
         };
         let key = key.trim();
@@ -212,6 +232,7 @@ pub fn parse_feature_capsule(text: &str) -> (Option<FeatureCapsule>, Vec<Capsule
                 format!("forbidden revision field `{key}`"),
                 line_number,
             ));
+            index += 1;
             continue;
         }
         match key {
@@ -235,6 +256,13 @@ pub fn parse_feature_capsule(text: &str) -> (Option<FeatureCapsule>, Vec<Capsule
             }
             _ => {}
         }
+        index += 1;
+    }
+
+    if raw.scalars.contains_key("reference_body") && !raw.scalars.contains_key("reference")
+    {
+        raw.scalars
+            .insert("reference".to_string(), ("authored".to_string(), 0));
     }
 
     let required = |name: &str, issues: &mut Vec<CapsuleIssue>| -> Option<(String, usize)> {
@@ -272,11 +300,18 @@ pub fn parse_feature_capsule(text: &str) -> (Option<FeatureCapsule>, Vec<Capsule
             .map_err(|error| issues.push(issue("E-CAPSULE-008", error.to_string(), line)))
             .ok()
     });
-    let semantic_hash = required("semantic_hash", &mut issues).and_then(|(value, line)| {
-        SemanticHash::from_str(&value)
-            .map_err(|error| issues.push(issue("E-CAPSULE-009", error.to_string(), line)))
-            .ok()
-    });
+    let semantic_hash = match raw.scalars.get("semantic_hash") {
+        Some((value, line)) => SemanticHash::from_str(value)
+            .map_err(|error| issues.push(issue("E-CAPSULE-009", error.to_string(), *line)))
+            .ok(),
+        None => match capsule_semantic_hash(text) {
+            Ok(hash) => Some(hash),
+            Err(error) => {
+                issues.push(error);
+                None
+            }
+        },
+    };
     let summary = required("summary", &mut issues)
         .map(|pair| pair.0)
         .unwrap_or_default();
@@ -300,24 +335,57 @@ pub fn parse_feature_capsule(text: &str) -> (Option<FeatureCapsule>, Vec<Capsule
         }
     }
 
-    // An executable pure reference body is a three-field authored contract
-    // (term, parameters, signature). All three or none; validated below.
-    const REFERENCE_BODY_FIELDS: [&str; 3] =
-        ["reference_body", "reference_params", "reference_signature"];
-    let body_fields = REFERENCE_BODY_FIELDS
-        .iter()
-        .filter(|name| raw.scalars.contains_key(**name))
-        .count();
-    if body_fields == REFERENCE_BODY_FIELDS.len() {
-        for name in REFERENCE_BODY_FIELDS {
-            let (value, _) = raw.scalars[name].clone();
-            slots.insert(name.to_string(), CapsuleSlot::Value(value));
+    if let Some((value, line)) = raw.scalars.remove("params") {
+        if raw
+            .scalars
+            .insert("reference_params".to_string(), (value, line))
+            .is_some()
+        {
+            issues.push(issue(
+                "E-CAPSULE-003",
+                "duplicate field `reference_params`",
+                line,
+            ));
         }
-    } else if body_fields > 0 {
+    }
+    let has_body = raw.scalars.contains_key("reference_body");
+    let has_params = raw.scalars.contains_key("reference_params");
+    let has_signature = raw.scalars.contains_key("reference_signature");
+    if has_body {
+        if !has_params {
+            issues.push(issue(
+                "E-CAPSULE-023",
+                "executable reference requires `reference_params` (argument order)",
+                0,
+            ));
+        } else {
+            for name in ["reference_body", "reference_params"] {
+                let (value, _) = raw.scalars[name].clone();
+                slots.insert(name.to_string(), CapsuleSlot::Value(value));
+            }
+            if has_signature {
+                let (value, _) = raw.scalars["reference_signature"].clone();
+                slots.insert("reference_signature".to_string(), CapsuleSlot::Value(value));
+            } else if let Ok(term) = Term::parse_body(&raw.scalars["reference_body"].0) {
+                match term.inferred_signature_text() {
+                    Ok(signature) => {
+                        slots.insert(
+                            "reference_signature".to_string(),
+                            CapsuleSlot::Value(signature),
+                        );
+                    }
+                    Err(error) => issues.push(issue(
+                        "E-CAPSULE-024",
+                        reference_term_error(&error),
+                        0,
+                    )),
+                }
+            }
+        }
+    } else if has_params || has_signature {
         issues.push(issue(
             "E-CAPSULE-023",
-            "executable reference requires `reference_body`, `reference_params`, \
-             and `reference_signature` together",
+            "executable reference requires `reference_body` with `reference_params`",
             0,
         ));
     }
@@ -533,15 +601,7 @@ fn validate_executable_reference(capsule: &FeatureCapsule, issues: &mut Vec<Caps
     let Some(params_text) = slot_text("reference_params") else {
         issues.push(issue(
             "E-CAPSULE-023",
-            "executable reference requires `reference_params`",
-            0,
-        ));
-        return;
-    };
-    let Some(signature_text) = slot_text("reference_signature") else {
-        issues.push(issue(
-            "E-CAPSULE-023",
-            "executable reference requires `reference_signature`",
+            "executable reference requires `reference_params` (argument order)",
             0,
         ));
         return;
@@ -566,45 +626,57 @@ fn validate_executable_reference(capsule: &FeatureCapsule, issues: &mut Vec<Caps
         }
         params.push(name.to_string());
     }
-    let mut signature = TermSignature::default();
-    for entry in signature_text.split(',') {
-        let Some((symbol, arity)) = entry.trim().rsplit_once('=') else {
-            issues.push(issue(
-                "E-CAPSULE-023",
-                format!("reference signature entry `{entry}` requires `symbol=arity`"),
-                0,
-            ));
-            return;
-        };
-        let symbol = symbol.trim();
-        let Ok(arity) = arity.trim().parse::<usize>() else {
-            issues.push(issue(
-                "E-CAPSULE-023",
-                format!("reference signature entry `{entry}` has a non-integer arity"),
-                0,
-            ));
-            return;
-        };
-        if symbol.is_empty()
-            || signature
-                .insert(TermSymbol(symbol.to_string()), arity)
-                .is_err()
-        {
-            issues.push(issue(
-                "E-CAPSULE-024",
-                format!("reference symbol `{symbol}` declared with conflicting arities"),
-                0,
-            ));
-            return;
-        }
-    }
-    let Ok(term) = Term::parse_canonical(term_text) else {
+    let Ok(term) = Term::parse_body(term_text) else {
         issues.push(issue(
             "E-CAPSULE-023",
-            "reference body is not a canonical emath-term",
+            "reference body is not an emath-term (canonical apply(...) or surface expression)",
             0,
         ));
         return;
+    };
+    let signature = match slot_text("reference_signature") {
+        Some(signature_text) => {
+            let mut signature = TermSignature::default();
+            for entry in signature_text.split(',') {
+                let Some((symbol, arity)) = entry.trim().rsplit_once('=') else {
+                    issues.push(issue(
+                        "E-CAPSULE-023",
+                        format!("reference signature entry `{entry}` requires `symbol=arity`"),
+                        0,
+                    ));
+                    return;
+                };
+                let symbol = symbol.trim();
+                let Ok(arity) = arity.trim().parse::<usize>() else {
+                    issues.push(issue(
+                        "E-CAPSULE-023",
+                        format!("reference signature entry `{entry}` has a non-integer arity"),
+                        0,
+                    ));
+                    return;
+                };
+                if symbol.is_empty()
+                    || signature
+                        .insert(TermSymbol(symbol.to_string()), arity)
+                        .is_err()
+                {
+                    issues.push(issue(
+                        "E-CAPSULE-024",
+                        format!("reference symbol `{symbol}` declared with conflicting arities"),
+                        0,
+                    ));
+                    return;
+                }
+            }
+            signature
+        }
+        None => match term.inferred_signature() {
+            Ok(signature) => signature,
+            Err(error) => {
+                issues.push(issue("E-CAPSULE-024", reference_term_error(&error), 0));
+                return;
+            }
+        },
     };
     if let Err(error) = signature.validate(&term) {
         issues.push(issue("E-CAPSULE-024", reference_term_error(&error), 0));
@@ -813,6 +885,195 @@ fn unquote(value: &str) -> &str {
         .unwrap_or(value)
 }
 
+fn empty_field_key(line: &str) -> Option<&str> {
+    let key = line.strip_suffix(':')?.trim();
+    if key.is_empty() || key.contains(':') {
+        None
+    } else {
+        Some(key)
+    }
+}
+
+fn field_line(line: &str) -> Option<(&str, &str)> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    if let Some(key) = empty_field_key(line) {
+        return Some((key, ""));
+    }
+    let (name, value) = line.split_once(':')?;
+    Some((name.trim(), value.trim()))
+}
+
+fn insert_scalar(
+    raw: &mut RawCapsule,
+    key: &str,
+    value: String,
+    line_number: usize,
+    issues: &mut Vec<CapsuleIssue>,
+) {
+    if forbidden_name(key) {
+        issues.push(issue(
+            "E-CAPSULE-002",
+            format!("forbidden revision field `{key}`"),
+            line_number,
+        ));
+        return;
+    }
+    if raw
+        .scalars
+        .insert(key.to_string(), (value, line_number))
+        .is_some()
+    {
+        issues.push(issue(
+            "E-CAPSULE-003",
+            format!("duplicate field `{key}`"),
+            line_number,
+        ));
+    }
+}
+
+fn collect_indented_block(
+    lines: &[(usize, &str)],
+    start: usize,
+    base_indent: usize,
+) -> (String, usize) {
+    let mut body = String::new();
+    let mut consumed = 1;
+    for (_, source) in lines.iter().skip(start + 1) {
+        let indent = source.len() - source.trim_start().len();
+        let trimmed = source.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            consumed += 1;
+            continue;
+        }
+        if indent <= base_indent {
+            break;
+        }
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        body.push_str(trimmed);
+        consumed += 1;
+    }
+    (body, consumed)
+}
+
+fn hash_field_value(name: &str, value: &str) -> String {
+    if name == "reference_body" {
+        if let Ok(term) = Term::parse_body(value) {
+            return term.canonical();
+        }
+    }
+    value.to_string()
+}
+
+fn capsule_document_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut pos = 0;
+    while let Some(relative) = text[pos..].find("emath feature ") {
+        let start = pos + relative;
+        let search = start + "emath feature ".len();
+        let end = text[search..]
+            .find("\nemath feature ")
+            .map(|index| search + index)
+            .unwrap_or(text.len());
+        ranges.push(start..end);
+        pos = end;
+    }
+    ranges
+}
+
+fn rewrite_one_document(document: &str) -> Result<(String, SemanticHashRewrite), CapsuleIssue> {
+    let computed = capsule_semantic_hash(document)?;
+    let feature_id = field_value(document, "feature_id").unwrap_or_default();
+    let previous = field_value(document, "semantic_hash").unwrap_or_default();
+    let computed_text = computed.to_string();
+    if previous == computed_text {
+        return Ok((
+            document.to_string(),
+            SemanticHashRewrite {
+                feature_id,
+                previous,
+                computed,
+                wrote: false,
+            },
+        ));
+    }
+    Ok((
+        replace_or_insert_hash(document, &computed_text),
+        SemanticHashRewrite {
+            feature_id,
+            previous,
+            computed,
+            wrote: true,
+        },
+    ))
+}
+
+fn field_value(text: &str, key: &str) -> Option<String> {
+    for line in text.lines() {
+        let line = line.trim();
+        let Some((name, value)) = field_line(line) else {
+            continue;
+        };
+        if name == key {
+            return Some(unquote(value).to_string());
+        }
+    }
+    None
+}
+
+fn replace_or_insert_hash(document: &str, hash: &str) -> String {
+    let mut output = String::with_capacity(document.len().saturating_add(hash.len()));
+    let mut replaced = false;
+    for line in document.lines() {
+        let trimmed = line.trim();
+        if !replaced && trimmed.starts_with("semantic_hash:") {
+            let indent_len = line.len() - line.trim_start().len();
+            let indent = &line[..indent_len];
+            if trimmed.contains('"') {
+                output.push_str(indent);
+                output.push_str("semantic_hash: \"");
+                output.push_str(hash);
+                output.push_str("\"\n");
+            } else {
+                output.push_str(indent);
+                output.push_str("semantic_hash: ");
+                output.push_str(hash);
+                output.push('\n');
+            }
+            replaced = true;
+            continue;
+        }
+        output.push_str(line);
+        output.push('\n');
+    }
+    if !replaced {
+        let mut inserted = String::with_capacity(output.len().saturating_add(hash.len()));
+        let mut did = false;
+        for line in output.lines() {
+            inserted.push_str(line);
+            inserted.push('\n');
+            if !did && line.trim().starts_with("feature_id:") {
+                let indent_len = line.len() - line.trim_start().len();
+                let indent = &line[..indent_len];
+                inserted.push_str(indent);
+                inserted.push_str("semantic_hash: \"");
+                inserted.push_str(hash);
+                inserted.push_str("\"\n");
+                did = true;
+            }
+        }
+        output = inserted;
+    }
+    if !document.ends_with('\n') && output.ends_with('\n') {
+        output.pop();
+    }
+    output
+}
+
 fn forbidden_name(name: &str) -> bool {
     matches!(
         name,
@@ -837,21 +1098,27 @@ fn issue(code: &'static str, detail: impl Into<String>, line: usize) -> CapsuleI
 
 /// Compute the semantic hash for a capsule source before filling its
 /// `semantic_hash` row. Presentation, agent guidance, summary/source location,
-/// and projections are intentionally excluded.
+/// and projections are intentionally excluded. `reference_body` contributes
+/// its canonical term, not the pretty spelling an author typed.
 pub fn capsule_semantic_hash(text: &str) -> Result<SemanticHash, CapsuleIssue> {
     let mut raw_fields = Vec::new();
     let mut field_counts = BTreeMap::new();
-    for (line_index, source) in text.lines().enumerate() {
+    let lines: Vec<(usize, &str)> = text.lines().enumerate().collect();
+    let mut index = 0;
+    while index < lines.len() {
+        let (line_index, source) = lines[index];
+        let indent = source.len() - source.trim_start().len();
         let line = source.trim();
-        let Some((name, value)) = line.split_once(':') else {
+        let Some((name, value)) = field_line(line) else {
+            index += 1;
             continue;
         };
-        let name = name.trim();
         if matches!(
             name,
             "semantic_hash" | "summary" | "source" | "presentation" | "agent" | "projection"
         ) || line.starts_with("emath feature ")
         {
+            index += 1;
             continue;
         }
         if forbidden_name(name) {
@@ -861,13 +1128,42 @@ pub fn capsule_semantic_hash(text: &str) -> Result<SemanticHash, CapsuleIssue> {
                 line_index + 1,
             ));
         }
-        let value = unquote(value.trim()).as_bytes();
-        let field = CanonicalField::new(name, value)
+        let (value, consumed) = if name == "reference_body" && value.is_empty() {
+            collect_indented_block(&lines, index, indent)
+        } else {
+            (unquote(value).to_string(), 1)
+        };
+        let value = hash_field_value(name, &value);
+        let name = if name == "params" {
+            "reference_params"
+        } else {
+            name
+        };
+        let field = CanonicalField::new(name, value.as_bytes())
             .map_err(|error| issue("E-CAPSULE-021", error.to_string(), line_index + 1))?;
         SemanticHash::new(&[field])
             .map_err(|error| issue("E-CAPSULE-021", error.to_string(), line_index + 1))?;
-        raw_fields.push((name, value));
-        *field_counts.entry(name).or_insert(0_usize) += 1;
+        raw_fields.push((name.to_string(), value));
+        *field_counts.entry(name.to_string()).or_insert(0_usize) += 1;
+        index += consumed;
+    }
+    if !raw_fields
+        .iter()
+        .any(|(name, _)| name == "reference_signature")
+    {
+        if let Some((_, body)) = raw_fields
+            .iter()
+            .find(|(name, _)| name == "reference_body")
+        {
+            if let Ok(term) = Term::parse_body(body) {
+                if let Ok(signature) = term.inferred_signature_text() {
+                    raw_fields.push(("reference_signature".to_string(), signature));
+                    *field_counts
+                        .entry("reference_signature".to_string())
+                        .or_insert(0_usize) += 1;
+                }
+            }
+        }
     }
 
     let mut occurrences = BTreeMap::new();
@@ -875,9 +1171,9 @@ pub fn capsule_semantic_hash(text: &str) -> Result<SemanticHash, CapsuleIssue> {
         .iter()
         .map(|(name, _)| {
             if field_counts[name] == 1 {
-                return (*name).to_string();
+                return name.clone();
             }
-            let occurrence = occurrences.entry(*name).or_insert(0_usize);
+            let occurrence = occurrences.entry(name.clone()).or_insert(0_usize);
             let identified = format!("{name}_{occurrence}");
             *occurrence += 1;
             identified
@@ -887,9 +1183,57 @@ pub fn capsule_semantic_hash(text: &str) -> Result<SemanticHash, CapsuleIssue> {
         .iter()
         .zip(&field_names)
         .map(|((_, value), name)| {
-            CanonicalField::new(name, value)
+            CanonicalField::new(name, value.as_bytes())
                 .map_err(|error| issue("E-CAPSULE-021", error.to_string(), 0))
         })
         .collect::<Result<Vec<_>, _>>()?;
     SemanticHash::new(&fields).map_err(|error| issue("E-CAPSULE-021", error.to_string(), 0))
+}
+
+/// One hash write-back for a capsule document. The body text is never
+/// rewritten; only the `semantic_hash` line moves.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SemanticHashRewrite {
+    pub feature_id: String,
+    pub previous: String,
+    pub computed: SemanticHash,
+    pub wrote: bool,
+}
+
+/// Split a file into `emath feature` documents. Comments before the first
+/// feature are not included.
+#[must_use]
+pub fn capsule_documents(text: &str) -> Vec<String> {
+    text.split("\nemath feature ")
+        .enumerate()
+        .filter_map(|(index, part)| {
+            if index == 0 {
+                part.find("emath feature ")
+                    .map(|start| part[start..].to_string())
+            } else {
+                Some(format!("emath feature {part}"))
+            }
+        })
+        .collect()
+}
+
+/// Rewrite each document's `semantic_hash` to the hash of its current
+/// meaning-bearing fields. Never rewrites `reference_body`.
+pub fn rewrite_declared_semantic_hashes(
+    text: &str,
+) -> Result<(String, Vec<SemanticHashRewrite>), CapsuleIssue> {
+    let ranges = capsule_document_ranges(text);
+    let mut output = String::with_capacity(text.len().saturating_add(64));
+    let mut last = 0;
+    let mut reports = Vec::new();
+    for range in ranges {
+        output.push_str(&text[last..range.start]);
+        let document = &text[range.start..range.end];
+        let (rewritten, report) = rewrite_one_document(document)?;
+        output.push_str(&rewritten);
+        reports.push(report);
+        last = range.end;
+    }
+    output.push_str(&text[last..]);
+    Ok((output, reports))
 }

@@ -1,6 +1,7 @@
 //! `emath plan`/`build`/`planner` pipelines and plan inspections.
 
 use super::*;
+use emath_core::Diagnostics;
 
 pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
@@ -14,8 +15,14 @@ pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
         return (diagnostics, String::new(), Vec::new());
     };
     let result = session.check(package.file);
+    let mut diagnostics = result.diagnostics;
+    if !diagnostics.has_errors()
+        && let Ok(source) = std::fs::read_to_string(path)
+    {
+        merge_constructor_admit(&source, Some(path), &mut diagnostics);
+    }
     let package_id = result.package.content_id().0;
-    (result.diagnostics, package_id, result.units_profiles)
+    (diagnostics, package_id, result.units_profiles)
 }
 
 /// Stdin variant of [`run_check`] (`check -`): same shape, source read
@@ -24,12 +31,68 @@ pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
 pub fn run_check_source(name: &str, source: &str) -> (Diagnostics, String, Vec<(String, String)>) {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let result = session.check_owned(name, source);
+    let mut diagnostics = result.diagnostics;
+    if !diagnostics.has_errors() {
+        merge_constructor_admit(source, None, &mut diagnostics);
+    }
     let package_id = result.package.content_id().0;
-    (result.diagnostics, package_id, result.units_profiles)
+    (diagnostics, package_id, result.units_profiles)
+}
+
+fn merge_constructor_admit(source: &str, path: Option<&Path>, diagnostics: &mut Diagnostics) {
+    let (tree, parse) = emath_syntax::parse_str(source);
+    if parse.has_errors() {
+        diagnostics.extend_from(&parse);
+        return;
+    }
+    let has_constructor = tree.items.iter().any(|item| matches!(
+        item,
+        emath_core::tree::Item::Declaration(decl)
+            if matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+    ));
+    if !has_constructor {
+        diagnostics.error(
+            "E-KIND-GONE",
+            "`emath check` admits `emath object`, `emath function`, and `emath query`. Other source is not a constructor program.",
+            emath_core::Span::default(),
+        );
+        return;
+    }
+    let admitted = match path {
+        Some(path) => emath_exec_ir::constructor_layer::admit_tree_at(&tree, Some(path)),
+        None => emath_exec_ir::constructor_layer::admit_tree(&tree),
+    };
+    if let Err(error) = admitted {
+        diagnostics.error(
+            constructor_admit_code(&error.code),
+            format!("{}: {}", error.code, error.message),
+            emath_core::Span::default(),
+        );
+    }
+}
+
+fn constructor_admit_code(code: &str) -> &'static str {
+    match code {
+        "E-KIND-GONE" => "E-KIND-GONE",
+        "E-TYPE-002" | "unbound" => "E-TYPE-002",
+        "E-TYPE-003" => "E-TYPE-003",
+        "E-TYPE-010" | "type" => "E-TYPE-010",
+        "E-SEC-101" => "E-SEC-101",
+        "E-KIND-011" => "E-KIND-011",
+        _ => "E-TYPE-002",
+    }
 }
 
 /// `plan <file> [--json]`: check + goals + plans, no artifact.
+#[allow(unreachable_code, unused_variables)]
 pub fn plan(path: &Path, json: bool) -> CliExit {
+    return refuse_coded(
+        "plan",
+        json,
+        EXIT_ADMISSION,
+        "E-KIND-GONE",
+        "`emath plan` is not a constructor command. There is no `goals:` layer. Write an ordinary `emath function` or `emath query` and `emath run`.",
+    );
     if let Some(code) = refuse_malformed_project_lock(path) {
         return code;
     }
@@ -128,6 +191,7 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
 
 /// `build <file> [--out <dir>] [--verify] [--bin <entrypoint>] [--dry-run] [--json]`
 /// (default out: `target/emath` under the working directory).
+#[allow(unreachable_code, unused_variables)]
 pub fn build(request: BuildRequest) -> CliExit {
     let BuildRequest::Ready {
         spec,
@@ -151,11 +215,11 @@ pub fn build(request: BuildRequest) -> CliExit {
                 &format!("cannot read spec: {}", spec.display()),
             );
         };
-        let plan_result = session.plan(package.file);
-        if plan_result.diagnostics.has_errors() {
-            crate::print_diagnostics(&plan_result.diagnostics);
+        let check_result = session.check(package.file);
+        if check_result.diagnostics.has_errors() {
+            crate::print_diagnostics(&check_result.diagnostics);
             if json {
-                let items: Vec<String> = plan_result
+                let items: Vec<String> = check_result
                     .diagnostics
                     .items()
                     .iter()
@@ -175,26 +239,21 @@ pub fn build(request: BuildRequest) -> CliExit {
             }
             return EXIT_REFUSED;
         }
-        let package_id = plan_result.package.content_id();
-        let crate_name = plan_result
+        let package_id = check_result.package.content_id();
+        let crate_name = check_result
             .package
             .identity
             .as_ref()
             .map_or_else(|| "package".to_string(), |id| id.name.clone());
-        let plan_ids: Vec<String> = plan_result
-            .plans
-            .iter()
-            .map(|p| p.plan_id.0.clone())
-            .collect();
         if json {
             let mut obj = emath_artifact::JsonWriter::object();
             obj.string("command", "build");
             obj.string("status", "ok");
+            obj.string("schema", "emath.constructor-emission.v1");
             obj.bool("dry_run", true);
             obj.string("package_id", &package_id.0);
             obj.string("crate", &crate_name);
             obj.string("target_dir", &out.display().to_string());
-            obj.strings("plan_ids", &plan_ids);
             obj.bool("verify", verify);
             if let Some(ref b) = bin {
                 obj.string("bin_entrypoint", b);
@@ -204,10 +263,6 @@ pub fn build(request: BuildRequest) -> CliExit {
             println!("dry-run: emath build `{}`", spec.display());
             println!("target directory: {}", out.display());
             println!("crate: {crate_name} (package {})", package_id.0);
-            println!("planned plans: {}", plan_ids.len());
-            for pid in &plan_ids {
-                println!("  - plan {pid}");
-            }
             if verify {
                 println!("verification: crate test gate enabled");
             }
@@ -221,6 +276,16 @@ pub fn build(request: BuildRequest) -> CliExit {
         verify_generated_crate: verify,
         bin_entrypoint: bin,
     };
+    if let Some(exit) = build_constructor_file(&spec, &out, json) {
+        return exit;
+    }
+    return refuse_coded(
+        "build",
+        json,
+        EXIT_ADMISSION,
+        "E-KIND-GONE",
+        "`emath build` emits constructor functions. Write `emath object`, `emath function`, or `emath query`.",
+    );
     match build_file(&spec, &out, options) {
         Ok(report) => {
             if json {
@@ -281,7 +346,13 @@ pub fn build(request: BuildRequest) -> CliExit {
 ///
 /// Each object is `PlanInspection::to_json` (`emath.plan-explanation v1`).
 /// Admission failures are `Err(EXIT_REFUSED)` / `Err(EXIT_USAGE)`.
+#[allow(unreachable_code, unused_variables)]
 pub fn explain_inspections(path: &Path) -> Result<Vec<PlanInspection>, CliExit> {
+    let _ = path;
+    eprintln!(
+        "error: E-KIND-GONE: file explanation is not a constructor command. There is no goals planner. Use `emath check` or `emath run`."
+    );
+    return Err(EXIT_ADMISSION);
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
         eprintln!("error: cannot read {}", path.display());
@@ -356,7 +427,18 @@ pub(super) fn parse_planner_request(args: &[String]) -> Option<PlannerRequest> {
 /// planner over the provider registry and print the machine inspection
 /// (candidates, exclusions, selected plan, checks, disposition). With
 /// `--parametric`, missing providers lift to a compilable Rust trait.
+#[allow(unreachable_code, unused_variables)]
 pub fn planner_cmd(request: PlannerRequest) -> CliExit {
+    let json = match &request {
+        PlannerRequest::Ready { json, .. } => *json,
+    };
+    return refuse_coded(
+        "planner",
+        json,
+        EXIT_ADMISSION,
+        "E-KIND-GONE",
+        "`emath planner` is not a constructor command. Write an ordinary `emath function` or `emath query` and `emath run`.",
+    );
     let PlannerRequest::Ready {
         path,
         json,
@@ -453,4 +535,133 @@ pub fn planner_cmd(request: PlannerRequest) -> CliExit {
         return EXIT_REFUSED;
     }
     EXIT_OK
+}
+
+fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit> {
+    let source = match std::fs::read_to_string(spec) {
+        Ok(source) => source,
+        Err(error) => {
+            return Some(refuse_coded(
+                "build",
+                json,
+                EXIT_USAGE,
+                "E-PKG-080",
+                &error.to_string(),
+            ));
+        }
+    };
+    let (tree, diagnostics) = emath_syntax::parse_str(&source);
+    if diagnostics.has_errors() {
+        crate::print_diagnostics(&diagnostics);
+        return Some(EXIT_ADMISSION);
+    }
+    let constructor_only = tree.items.iter().all(|item| match item {
+        emath_core::tree::Item::Use { .. } => true,
+        emath_core::tree::Item::Declaration(decl) => {
+            matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+        }
+        _ => true,
+    });
+    if !constructor_only {
+        return Some(refuse_coded(
+            "build",
+            json,
+            EXIT_ADMISSION,
+            "E-KIND-GONE",
+            "`emath build` emits constructor functions. Write `emath object`, `emath function`, or `emath query`.",
+        ));
+    }
+    let functions: Vec<String> = tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            emath_core::tree::Item::Declaration(decl) if decl.as_kind == "function" => {
+                Some(decl.name.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    if functions.is_empty() {
+        return Some(refuse_coded(
+            "build",
+            json,
+            EXIT_ADMISSION,
+            "E-KIND-GONE",
+            "`emath build` emits lowered Rust for `emath function` entries. Symbolic query-only files are not marked runnable.",
+        ));
+    }
+    let mut rust = String::from("#![forbid(unsafe_code)]\n\n");
+    let mut runnable = true;
+    let mut unresolved = Vec::new();
+    for name in &functions {
+        match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, name) {
+            Ok(lowered) => {
+                if !lowered.runnable {
+                    runnable = false;
+                    unresolved.extend(lowered.unresolved);
+                    rust.push_str(&format!(
+                        "// `{name}` is not marked runnable: unresolved symbolic code\n"
+                    ));
+                    continue;
+                }
+                match emath_rust_backend::emit_constructor_program(&lowered.program, &lowered.inputs)
+                {
+                    Ok(body) => {
+                        rust.push_str(&format!("// function `{name}`\n"));
+                        rust.push_str(&body);
+                        rust.push('\n');
+                    }
+                    Err(err) => {
+                        runnable = false;
+                        unresolved.push(err.to_string());
+                    }
+                }
+            }
+            Err(err) => {
+                runnable = false;
+                unresolved.push(err);
+            }
+        }
+    }
+    if let Err(err) = std::fs::create_dir_all(out.join("src")) {
+        return Some(refuse_coded(
+            "build",
+            json,
+            EXIT_FAULT,
+            "E-IO",
+            &err.to_string(),
+        ));
+    }
+    if let Err(err) = std::fs::write(out.join("src/lib.rs"), rust) {
+        return Some(refuse_coded(
+            "build",
+            json,
+            EXIT_FAULT,
+            "E-IO",
+            &err.to_string(),
+        ));
+    }
+    let status = if runnable { "runnable" } else { "not-runnable" };
+    if json {
+        let mut object = emath_artifact::JsonWriter::object();
+        object.string("command", "build");
+        object.string("status", "ok");
+        object.string("schema", "emath.constructor-emission.v1");
+        object.bool("runnable", runnable);
+        object.strings("functions", &functions);
+        object.strings("unresolved", &unresolved);
+        object.string("artifact_dir", &out.display().to_string());
+        println!("{}", object.finish());
+    } else {
+        println!(
+            "constructor emission {status} → {} ({})",
+            out.display(),
+            if runnable {
+                "runnable"
+            } else {
+                "symbolic code is not marked runnable"
+            }
+        );
+    }
+    Some(EXIT_OK)
 }

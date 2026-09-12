@@ -458,6 +458,7 @@ pub(super) fn map_type(
         // existing `TypeNode::Rational` (exact i128 num/den) instead of the
         // Phase 1 refusal.
         "Rat" | "Rational" => Some(TypeNode::Rational),
+        "Code" => Some(TypeNode::Other(QualifiedName("Code".into()))),
         "Text" => Some(TypeNode::Other(QualifiedName("Text".into()))),
         // Labeled estimate carrier: value + method + sample size.
         "Estimate" => Some(TypeNode::Record(QualifiedName("Estimate".into()))),
@@ -575,6 +576,7 @@ pub(super) fn is_element_type_arg(arg: &TypeExpr, host_types: &BTreeSet<String>)
             | "Field"
             | "Rat"
             | "Rational"
+            | "Code"
             | "BigInt"
     ) || lookup_unit(leaf).is_ok()
 }

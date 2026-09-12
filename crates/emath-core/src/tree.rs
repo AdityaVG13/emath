@@ -321,6 +321,11 @@ pub enum TypeKind {
         lo: Box<Expr>,
         hi: Box<Expr>,
     },
+    /// First-class function type `A -> B`. Right-associative.
+    Fn {
+        domain: Box<TypeExpr>,
+        codomain: Box<TypeExpr>,
+    },
 }
 
 /// `*` or `/` between type factors in a unit annotation (`m/s`, `m*m`).

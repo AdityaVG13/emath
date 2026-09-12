@@ -52,7 +52,7 @@ impl PayloadPolicy {
 /// Declared kind plus its core section ground truth.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CoreKind {
-    /// Kind name (`function`, `policy`).
+    /// Kind name (`object`, `function`, `query`).
     pub name: String,
 }
 
@@ -77,32 +77,22 @@ pub struct KindSchema {
 }
 
 impl KindSchema {
-    /// Frozen core function schema.
+    /// Frozen core object schema (constitution §3.2).
     #[must_use]
-    pub fn core_function() -> Self {
+    pub fn core_object() -> Self {
         Self {
-            name: "function".into(),
+            name: "object".into(),
             sections: BTreeMap::from([
                 (
-                    "inputs".into(),
+                    "parameters".into(),
                     SectionSchema {
-                        // Optional: a constant-only declaration has no inputs.
                         repeat: RepeatPolicy::AtMostOne,
                         payload: PayloadPolicy::Fields,
                         has_default: false,
                     },
                 ),
                 (
-                    "outputs".into(),
-                    SectionSchema {
-                        // Optional: omitted section is lifted from definitions.
-                        repeat: RepeatPolicy::AtMostOne,
-                        payload: PayloadPolicy::Fields,
-                        has_default: true,
-                    },
-                ),
-                (
-                    "definitions".into(),
+                    "representation".into(),
                     SectionSchema {
                         repeat: RepeatPolicy::ExactlyOne,
                         payload: PayloadPolicy::Suite,
@@ -110,10 +100,156 @@ impl KindSchema {
                     },
                 ),
                 (
-                    "goals".into(),
+                    "invariants".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "tests".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "exports".into(),
                     SectionSchema {
                         repeat: RepeatPolicy::AtMostOne,
                         payload: PayloadPolicy::Commands,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "about".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Commands,
+                        has_default: false,
+                    },
+                ),
+            ]),
+            defaults: BTreeMap::new(),
+            predicate: None,
+        }
+    }
+
+    /// Frozen core query schema (constitution §3.6).
+    #[must_use]
+    pub fn core_query() -> Self {
+        Self {
+            name: "query".into(),
+            sections: BTreeMap::from([
+                (
+                    "inputs".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Fields,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "definitions".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "question".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::ExactlyOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "using".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "answer".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::ExactlyOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "budget".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "tests".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Suite,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "exports".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Commands,
+                        has_default: false,
+                    },
+                ),
+            ]),
+            defaults: BTreeMap::new(),
+            predicate: None,
+        }
+    }
+
+    /// Frozen core function schema.
+    #[must_use]
+    pub fn core_function() -> Self {
+        Self {
+            name: "function".into(),
+            sections: BTreeMap::from([
+                (
+                    "parameters".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::AtMostOne,
+                        payload: PayloadPolicy::Fields,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "inputs".into(),
+                    SectionSchema {
+                        // Constitution §3.1: required, and may be empty.
+                        repeat: RepeatPolicy::ExactlyOne,
+                        payload: PayloadPolicy::Fields,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "outputs".into(),
+                    SectionSchema {
+                        // Constitution §3.1: required named typed results.
+                        repeat: RepeatPolicy::ExactlyOne,
+                        payload: PayloadPolicy::Fields,
+                        has_default: false,
+                    },
+                ),
+                (
+                    "definitions".into(),
+                    SectionSchema {
+                        repeat: RepeatPolicy::ExactlyOne,
+                        payload: PayloadPolicy::Suite,
                         has_default: false,
                     },
                 ),
@@ -133,136 +269,24 @@ impl KindSchema {
                         has_default: false,
                     },
                 ),
-                (
-                    "compile".into(),
-                    SectionSchema {
-                        repeat: RepeatPolicy::AtMostOne,
-                        payload: PayloadPolicy::Commands,
-                        has_default: true,
-                    },
-                ),
-                (
-                    "about".into(),
-                    SectionSchema {
-                        repeat: RepeatPolicy::AtMostOne,
-                        payload: PayloadPolicy::Commands,
-                        has_default: false,
-                    },
-                ),
-                (
-                    "evidence".into(),
-                    SectionSchema {
-                        repeat: RepeatPolicy::AtMostOne,
-                        payload: PayloadPolicy::Suite,
-                        has_default: false,
-                    },
-                ),
-                (
-                    "constraints".into(),
-                    SectionSchema {
-                        repeat: RepeatPolicy::AtMostOne,
-                        payload: PayloadPolicy::Suite,
-                        has_default: false,
-                    },
-                ),
-                (
-                    "host".into(),
-                    SectionSchema {
-                        repeat: RepeatPolicy::AtMostOne,
-                        payload: PayloadPolicy::Suite,
-                        has_default: false,
-                    },
-                ),
             ]),
-            defaults: BTreeMap::from([
-                ("compile".into(), "rust/library/strict-f64".into()),
-                ("outputs".into(), "definitions".into()),
-            ]),
+            defaults: BTreeMap::new(),
             predicate: None,
         }
     }
 
-    /// Frozen core policy schema.
+    /// Not a constructor kind. Kept so historical call sites compile;
+    /// the returned schema has no kind name and no sections.
     #[must_use]
     pub fn core_policy() -> Self {
-        let mut schema = Self::core_function();
-        schema.name = "policy".into();
-        schema.sections.insert(
-            "state".into(),
-            SectionSchema {
-                repeat: RepeatPolicy::ExactlyOne,
-                payload: PayloadPolicy::Fields,
-                has_default: false,
-            },
-        );
-        schema.sections.insert(
-            "constructors".into(),
-            SectionSchema {
-                repeat: RepeatPolicy::ExactlyOne,
-                payload: PayloadPolicy::Suite,
-                has_default: false,
-            },
-        );
-        schema
+        Self::default()
     }
 
-    /// Frozen core continuous-model schema: optional state, constructors,
-    /// and explicit ODE `equations:` (`derivative(state) = rhs`).
+    /// Not a constructor kind. Kept so historical call sites compile;
+    /// the returned schema has no kind name and no sections.
     #[must_use]
     pub fn core_model() -> Self {
-        let mut schema = Self::core_function();
-        schema.name = "model".into();
-        schema.sections.insert(
-            "definitions".into(),
-            SectionSchema {
-                repeat: RepeatPolicy::AtMostOne,
-                payload: PayloadPolicy::Suite,
-                has_default: false,
-            },
-        );
-        schema.sections.insert(
-            "state".into(),
-            SectionSchema {
-                repeat: RepeatPolicy::AtMostOne,
-                payload: PayloadPolicy::Fields,
-                has_default: false,
-            },
-        );
-        schema.sections.insert(
-            "constructors".into(),
-            SectionSchema {
-                repeat: RepeatPolicy::AtMostOne,
-                payload: PayloadPolicy::Suite,
-                has_default: false,
-            },
-        );
-        schema.sections.insert(
-            "algebraic".into(),
-            SectionSchema {
-                // Unknowns of the implicit residual system (causalization):
-                // scalar or vector fields, initial guesses at simulate time.
-                repeat: RepeatPolicy::AtMostOne,
-                payload: PayloadPolicy::Fields,
-                has_default: false,
-            },
-        );
-        schema.sections.insert(
-            "equations".into(),
-            SectionSchema {
-                repeat: RepeatPolicy::AtMostOne,
-                payload: PayloadPolicy::Suite,
-                has_default: false,
-            },
-        );
-        schema.sections.insert(
-            "equation".into(),
-            SectionSchema {
-                repeat: RepeatPolicy::AtMostOne,
-                payload: PayloadPolicy::Suite,
-                has_default: false,
-            },
-        );
-        schema
+        Self::default()
     }
 
     /// Section schema; absent = unknown section (caller refuses).
@@ -365,6 +389,16 @@ pub fn payload_allows(payload: PayloadPolicy, statement: &str) -> bool {
 #[must_use]
 pub fn core_function_schema() -> KindSchema {
     KindSchema::core_function()
+}
+
+#[must_use]
+pub fn core_object_schema() -> KindSchema {
+    KindSchema::core_object()
+}
+
+#[must_use]
+pub fn core_query_schema() -> KindSchema {
+    KindSchema::core_query()
 }
 
 #[must_use]

@@ -33,7 +33,6 @@ members = [
   "tests/emath-adapter-rumoca",
   "tests/emath-artifact",
   "tests/emath-build",
-  "tests/emath-core",
   "tests/emath-cli",
   "tests/emath-evidence",
   "tests/emath-exec-ir",

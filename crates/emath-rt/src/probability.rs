@@ -12,7 +12,10 @@
 //! random-matrix theory are documented deferrals, not claims of this
 //! module.
 
-use crate::body::{prob_density as kernel_density, prob_sample as kernel_sample};
+use crate::body::{
+    prob_density as kernel_density, prob_sample as kernel_sample,
+    prob_unit_interval as kernel_unit_interval,
+};
 use emath_core::{Seed, StreamPath, local_stream_seed};
 
 /// Required parameter arity for a capsule-supplied kernel code.
@@ -50,10 +53,20 @@ impl ProbError {
     }
 }
 
+impl std::fmt::Display for ProbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.code())
+    }
+}
+
 /// Draw-count compute budget: beyond this the sampler refuses rather
 /// than silently allocating an unbounded stream (strict-f64 policy:
 /// the budget is part of the determinism contract).
 const MAX_DRAWS: usize = 1 << 20;
+
+/// Uniform count budget for the unit-interval primitive. Box–Muller
+/// consumes two uniforms per output draw, so this is `2 * MAX_DRAWS`.
+const MAX_UNIFORMS: usize = 2 << 20;
 
 fn validate(kind: u8, params: &[f64]) -> Result<(), ProbError> {
     let Some(arity) = kernel_arity(kind) else {
@@ -119,6 +132,36 @@ pub fn prob_sample_in_stream(
     if stream.len() != draws as usize {
         // Unreachable after validation; fail closed rather than
         // return a wrong stream.
+        return Err(ProbError::NonFinite);
+    }
+    Ok(stream)
+}
+
+/// Unit-interval uniforms in [0, 1) from an explicit seed and stream path.
+/// Same seed and path replay bit-identically. This is the machine
+/// counter-stream leaf; distribution transforms are authored above it.
+pub fn unit_interval_stream(
+    seed: f64,
+    draws: f64,
+    stream_path: &str,
+) -> Result<Vec<f64>, ProbError> {
+    if !seed.is_finite() {
+        return Err(ProbError::NonFinite);
+    }
+    if !draws.is_finite() || draws < 0.0 || draws.fract() != 0.0 || draws as usize > MAX_UNIFORMS {
+        return Err(ProbError::InvalidParameter);
+    }
+    let path = if stream_path.is_empty() {
+        StreamPath::root()
+    } else {
+        StreamPath::new(stream_path.split('.').map(str::to_string).collect())
+            .map_err(|_| ProbError::InvalidParameter)?
+    };
+    let local_seed = local_stream_seed(&Seed::new(seed.to_bits()), &path)
+        .map_err(|_| ProbError::InvalidParameter)?;
+    let n = draws as usize;
+    let stream = kernel_unit_interval(f64::from_bits(local_seed), n);
+    if stream.len() != n {
         return Err(ProbError::NonFinite);
     }
     Ok(stream)

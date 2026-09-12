@@ -119,11 +119,20 @@ pub(super) fn op_arith_exprs(
             *r,
             &kinds,
         )),
-        EmirOp::F64Div(l, r) => Ok(Expr::Bin {
-            op: BinOp::Div,
-            left: Box::new(typed_operand(program, *l, ValueKind::F64, &kinds)),
-            right: Box::new(typed_operand(program, *r, ValueKind::F64, &kinds)),
-        }),
+        EmirOp::F64Div(l, r) => {
+            if kind_at(&kinds, *l) == ValueKind::I64 && kind_at(&kinds, *r) == ValueKind::I64 {
+                return Ok(map_runtime_result(format!(
+                    "emath_rt::ratio_div((i128::from({}), 1), (i128::from({}), 1))",
+                    render_expr(&operand(program, *l)),
+                    render_expr(&operand(program, *r))
+                )));
+            }
+            Ok(Expr::Bin {
+                op: BinOp::Div,
+                left: Box::new(typed_operand(program, *l, ValueKind::F64, &kinds)),
+                right: Box::new(typed_operand(program, *r, ValueKind::F64, &kinds)),
+            })
+        }
         EmirOp::F64Pow(l, r) => Ok(Expr::Bin {
             op: BinOp::Pow,
             left: Box::new(typed_operand(program, *l, ValueKind::F64, &kinds)),

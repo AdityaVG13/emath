@@ -23,6 +23,7 @@ pub(super) fn admit_declaration_definitions(
 ) -> (BTreeMap<String, ExprId>, Vec<Constructor>) {
     // Definitions.
     let mut definitions: BTreeMap<String, ExprId> = BTreeMap::new();
+    let constructor_kind = matches!(kind_label.as_str(), "object" | "function" | "query");
     if let Some(section) = by_name.get("definitions") {
         for stmt in &section.suite.statements {
             let StmtKind::Assign { target, value } = &stmt.kind else {
@@ -94,6 +95,22 @@ pub(super) fn admit_declaration_definitions(
                     format!("duplicate definition `{name}`"),
                     target.source,
                 );
+                continue;
+            }
+            if constructor_kind {
+                // Constructor bodies evaluate in the constructor layer.
+                // Admission checks binding shape and output coverage; it
+                // does not re-type the expression through the Phase 1
+                // numeric subset.
+                let id = admitter.push_expr(
+                    ExprNode::Variable(emath_core::QualifiedName::single(name.clone())),
+                    value.source,
+                );
+                admitter.record("sema", format!("constructor definition `{name}`"), value.source);
+                definitions.insert(name.clone(), id);
+                admitter
+                    .definitions
+                    .insert(name.clone(), (id, Infer::HostDeferred));
                 continue;
             }
             match admitter.lower_expr(value) {
@@ -175,7 +192,7 @@ pub(super) fn admit_declaration_definitions(
     {
         admitter.error(
             "E-KIND-011",
-            "kind `model` requires section `definitions` or `equations`",
+            "gone kind `model` is not a constructor and has no required sections",
             decl.head_source,
         );
     }
@@ -192,7 +209,7 @@ pub(super) fn admit_declaration_definitions(
     {
         admitter.note(
             "N-KIND-001",
-            "this `emath model` has only `definitions:` and no `state:`, `equations:`, or `algebraic:` — a stateless formula should be `emath function`",
+            "this declaration is not a constructor kind; write an ordinary `emath function`",
             decl.head_source,
         );
     }
@@ -466,7 +483,7 @@ pub(super) fn admit_declaration_definitions(
         admitter.error(
             "E-KIND-010",
             format!(
-                "`constructors:` (stateful objects built by `public fn new`) are not admitted on `emath {kind_label}` — did you mean `emath policy`?"
+                "`constructors:` is not a constructor-layer section on `emath {kind_label}`; object operations are ordinary `emath function` declarations"
             ),
             section.source,
         );
@@ -475,7 +492,7 @@ pub(super) fn admit_declaration_definitions(
         admitter.error(
             "E-KIND-010",
             format!(
-                "`emath {kind_label}` cannot carry `state:` — state belongs on `emath model` (continuous ODEs simulated over time) or `emath policy` (stateful object with constructors); did you mean one of those?"
+                "`emath {kind_label}` cannot carry `state:`; put evolving data in an `object` representation and step it with an ordinary `function`"
             ),
             decl.head_source,
         );

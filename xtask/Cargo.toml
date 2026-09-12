@@ -23,5 +23,6 @@ emath-cli-lab.workspace = true
 emath-sema = { path = "../crates/emath-sema" }
 emath-store = { path = "../crates/emath-store" }
 emath-syntax = { path = "../crates/emath-syntax" }
+emath-schema = { path = "../crates/emath-schema" }
 emath-term.workspace = true
 emath-world-ir.workspace = true

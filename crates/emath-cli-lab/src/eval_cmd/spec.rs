@@ -2,11 +2,80 @@
 
 use super::*;
 
+fn eval_constructor_file(args: &EvalArgs) -> Option<CliExit> {
+    let source = std::fs::read_to_string(&args.path).ok()?;
+    let (tree, diagnostics) = emath_syntax::parse_str(&source);
+    if diagnostics.has_errors() {
+        return None;
+    }
+    let constructor_only = tree.items.iter().all(|item| match item {
+        emath_core::tree::Item::Use { .. } => true,
+        emath_core::tree::Item::Declaration(decl) => {
+            matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+        }
+        _ => true,
+    });
+    let has_constructor = tree.items.iter().any(|item| {
+        matches!(
+            item,
+            emath_core::tree::Item::Declaration(decl)
+                if matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+        )
+    });
+    if !constructor_only || !has_constructor {
+        return None;
+    }
+    let mut inputs = std::collections::BTreeMap::new();
+    for (name, raw) in &args.set {
+        inputs.insert(name.clone(), parse_constructor_eval_literal(raw));
+    }
+    if let Some(name) = &args.function {
+        match emath_exec_ir::constructor_layer::evaluate_function(&tree, name, &inputs) {
+            Ok(value) => {
+                if args.json {
+                    println!(
+                        "{}",
+                        render_function_receipt_json(
+                            &args.path.display().to_string(),
+                            name,
+                            "set",
+                            &args
+                                .set
+                                .iter()
+                                .map(|(n, v)| (n.clone(), v.clone()))
+                                .collect::<Vec<_>>(),
+                            &[("result".into(), value.to_string())],
+                            "constructor",
+                        )
+                    );
+                } else {
+                    println!("{value}");
+                }
+                return Some(EXIT_OK);
+            }
+            Err(err) => return Some(refuse_eval_coded(&err.code, &err.message, args.json)),
+        }
+    }
+    match emath_exec_ir::constructor_layer::evaluate_tree(&tree) {
+        Ok(_) => Some(EXIT_OK),
+        Err(err) => Some(refuse_eval_coded(&err.code, &err.message, args.json)),
+    }
+}
+
 /// The function-spec lane: admit the source, select one `emath function`
 /// entrypoint, bind every declared input from `--set`, lower through
 /// EMIR, evaluate on the reference VM, and emit the `emath.eval-function`
 /// receipt. Failures are typed E-EVAL-* refusals; no partial authority.
+#[allow(unreachable_code, unused_variables)]
 pub(super) fn eval_function_spec(args: &EvalArgs) -> CliExit {
+    if let Some(exit) = eval_constructor_file(args) {
+        return exit;
+    }
+    return refuse_eval_coded(
+        "E-KIND-GONE",
+        "`emath eval` evaluates `emath object`, `emath function`, and `emath query`. Other declaration kinds are not constructors.",
+        args.json,
+    );
     let source = match std::fs::read_to_string(&args.path) {
         Ok(source) if has_declaration_content(&source) => source,
         Ok(_) => {
@@ -408,4 +477,29 @@ pub(super) fn value_map_json(entries: &[(String, String)]) -> String {
         object.string(name, value);
     }
     object.finish().trim_end().to_string()
+}
+
+fn parse_constructor_eval_literal(raw: &str) -> emath_exec_ir::constructor_layer::CValue {
+    let trimmed = raw.trim();
+    if trimmed == "true" {
+        return emath_exec_ir::constructor_layer::CValue::Bool(true);
+    }
+    if trimmed == "false" {
+        return emath_exec_ir::constructor_layer::CValue::Bool(false);
+    }
+    if let Some((num, den)) = trimmed.split_once('/') {
+        if let (Ok(n), Ok(d)) = (num.parse::<i128>(), den.parse::<i128>()) {
+            return emath_exec_ir::constructor_layer::CValue::Rat { num: n, den: d };
+        }
+    }
+    if let Ok(n) = trimmed.parse::<i128>() {
+        return emath_exec_ir::constructor_layer::CValue::Int(n);
+    }
+    if let Ok(x) = trimmed.parse::<f64>() {
+        return emath_exec_ir::constructor_layer::CValue::Float64(x);
+    }
+    emath_exec_ir::constructor_layer::CValue::Record {
+        type_name: trimmed.into(),
+        fields: std::collections::BTreeMap::new(),
+    }
 }

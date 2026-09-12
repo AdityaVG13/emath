@@ -36,16 +36,22 @@ use crate::term_compile::CompiledCell;
 #[path = "native_kernels/checked.rs"]
 pub mod checked;
 
+#[allow(dead_code)]
 #[path = "native_kernels/calculus.rs"]
 mod calculus;
+#[allow(dead_code)]
 #[path = "native_kernels/category.rs"]
 mod category;
+#[allow(dead_code)]
 #[path = "native_kernels/einsum.rs"]
 mod einsum;
+#[allow(dead_code)]
 #[path = "native_kernels/linear.rs"]
 mod linear;
+#[allow(dead_code)]
 #[path = "native_kernels/probability.rs"]
 mod probability;
+#[allow(dead_code)]
 #[path = "native_kernels/program_solve.rs"]
 mod program_solve;
 
@@ -241,15 +247,17 @@ static NATIVE_KERNELS: &[NativeKernel] = &[
 ];
 
 fn kernels() -> impl Iterator<Item = &'static NativeKernel> {
+    // Constitution §8 step 7: mathematical kernels stay on disk but are
+    // not dispatched. Only checked scalar-carrier operations remain.
     NATIVE_KERNELS
         .iter()
-        .chain(linear::LINEAR_KERNELS)
-        .chain(category::KERNELS)
-        .chain(probability::KERNELS)
-        .chain(calculus::KERNELS)
-        .chain(program_solve::KERNELS)
-        .chain(einsum::EINSUM_KERNELS)
-        .chain(checked::BINDINGS.iter().map(|binding| &binding.native))
+        .filter(|kernel| kernel.kernel_id == "checked-add")
+        .chain(
+            checked::BINDINGS
+                .iter()
+                .filter(|binding| binding.native.kernel_id == "normalize-ratio")
+                .map(|binding| &binding.native),
+        )
 }
 
 /// The declared value ABI of an active capability, independent of its executor.
@@ -485,6 +493,12 @@ pub fn install_language_distribution(
             .entries
             .get(&capsule.feature_id)
             .is_some_and(|entry| entry.state.as_str() == "capsule-active");
+        if !crate::language_image::is_constructor_image_id(&capsule.feature_id) {
+            return Err(KernelBindingError::InvalidDistribution(format!(
+                "E-KIND-GONE: `{}` is not a constructor image identity",
+                capsule.feature_id
+            )));
+        }
         if !active || capsule.class != emath_ir::FeatureClass::Capability {
             continue;
         }

@@ -55,10 +55,9 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
   `PlanNodeDef`, `PlanOperation`, `CompileSpec`: goal and resolution planning.
 - `KindSchema`, `SectionSchema`, `CoreKind`, `PayloadPolicy`, `RepeatPolicy`:
   kind/type schema representations shared by compiler and builder.
-  `KindSchema::core_function` treats `inputs:` as `AtMostOne` (omitted
-  inputs is a constant-only declaration) and `outputs:` as `AtMostOne` with
-  default `definitions` (omitted outputs expose every definition). Policy
-  inherits those pins; `state:` / `constructors:` stay `ExactlyOne`.
+  `KindSchema::core_function` requires `inputs:`, `outputs:`, and
+  `definitions:` (`ExactlyOne`). `KindSchema::core_policy` /
+  `core_model` are empty historical constructors, not core kinds.
 - `TypeScheme`, `TypeExpr`, `TypeConstraints`, `TypeVar`, `TypeNode`,
   `SchemeBody`, `SchemeField`: type representation and `unify` / `canonical_of`
   / `render`.

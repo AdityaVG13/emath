@@ -133,6 +133,39 @@ fn is_feature_name(value: &str, names: &BTreeSet<String>) -> bool {
             .any(|part| part.len() > 2 && names.contains(part))
 }
 
+/// Constructor-surface grammar, not subject dispatch: the binder envelope
+/// (`function` / `recur` / `quote`), the three declaration kinds and their
+/// image identities, and the `quote` structural interface select a
+/// declaration form or a specified structural operation. The set is exact so
+/// growing the nucleus surface (for example a nucleus-implemented
+/// `quote.simplify`) still fails this gate. Interpolated templates are
+/// diagnostic message text, never selectors.
+fn is_constructor_surface_literal(literal: &str) -> bool {
+    if literal.contains('{') {
+        return true;
+    }
+    matches!(
+        literal,
+        "function"
+            | "object"
+            | "query"
+            | "recur"
+            | "quote"
+            | "std.kind.function"
+            | "std.kind.object"
+            | "std.kind.query"
+            | "std.syntax.quote"
+            | "std.syntax.recur"
+            | "quote.view"
+            | "quote.make"
+            | "quote.bind"
+            | "quote.substitute"
+            | "quote.body"
+            | "quote.evaluate"
+            | "quote.open"
+    )
+}
+
 fn is_universal_public_module(name: &str) -> bool {
     matches!(
         name,
@@ -223,6 +256,58 @@ fn is_universal_ir_mechanism(variant: &str) -> bool {
             | "VectorMapScalar"
             | "VectorReduce"
             | "VectorAllFinite"
+    ) || is_constructor_machine_op(variant)
+}
+
+/// Constructor-era EMIR substrate: closed VM control (`Branch`, `Iterate`,
+/// `Collect`, call frames), recursive-closure and program-as-value calls,
+/// neutral container/layout machinery, declared refusals, explicit carrier
+/// conversions, and representation-level ordering/format/decimal
+/// operations. Each moves opaque values or selects closed VM behavior; none
+/// identifies a mathematical feature or decides a claim, so subject math on
+/// these carriers still requires an authored FeatureID and ApplyCapability.
+fn is_constructor_machine_op(variant: &str) -> bool {
+    matches!(
+        variant,
+        "Branch"
+            | "Iterate"
+            | "Collect"
+            | "CallFrame"
+            | "CallSelf"
+            | "CallProgram"
+            | "CallScalarProgram"
+            | "CallRealProgram"
+            | "TryCallRealProgram"
+            | "program_literal"
+            | "Refuse"
+            | "RefuseValue"
+            | "ListCreate"
+            | "RecordField"
+            | "VectorConcat"
+            | "VectorSlice"
+            | "ToF64"
+            | "ToF64Vector"
+            | "ToInt"
+            | "IntegerQuotient"
+            | "SameBits"
+            | "SameDenseShape"
+            | "DenseIndex"
+            | "DenseLayout"
+            | "DenseRepack"
+            | "DenseValues"
+            | "MatrixRows"
+            | "MatrixCols"
+            | "MatrixPack"
+            | "TensorPack"
+            | "TensorShape"
+            | "TextByte"
+            | "TextTrim"
+            | "IndexText"
+            | "FormatScientific"
+            | "ParseF64"
+            | "F64Exp2"
+            | "F64PowI"
+            | "F64SortTotal"
     )
 }
 
@@ -334,7 +419,7 @@ fn scan_source(
             })
         {
             for literal in &literals {
-                if is_feature_name(literal, names) {
+                if is_feature_name(literal, names) && !is_constructor_surface_literal(literal) {
                     residues.push(Residue {
                         kind: ResidueKind::FeatureDispatch,
                         file: relative.to_string(),
@@ -577,12 +662,12 @@ fn intent() {
     let seeds = [
         (
             "crates/emath-syntax/src/parser.rs",
-            "match name { \"std.capability.math.add\" => parse_add(), _ => generic() }",
+            "match name { \"std.capability.scalar\" => parse_scalar(), _ => generic() }",
             ResidueKind::FeatureDispatch,
         ),
         (
             "crates/emath-sema/src/admit.rs",
-            "if operation == \"sum\" { admit_sum() }",
+            "if operation == \"scalar\" { admit_scalar() }",
             ResidueKind::FeatureDispatch,
         ),
         (
@@ -592,12 +677,12 @@ fn intent() {
         ),
         (
             "crates/emath-rust-backend/src/emitter.rs",
-            "match name { \"sum\" => emit_sum(), _ => emit_generic() }",
+            "match name { \"scalar\" => emit_scalar(), _ => emit_generic() }",
             ResidueKind::FeatureDispatch,
         ),
         (
             "crates/emath-rt/src/registry.rs",
-            "map.insert(\"sum\", handwritten_sum);",
+            "map.insert(\"scalar\", handwritten_scalar);",
             ResidueKind::ActiveRegistry,
         ),
         (
@@ -607,7 +692,7 @@ fn intent() {
         ),
         (
             "crates/emath-core/src/lib.rs",
-            "pub mod probability;",
+            "pub mod scalar;",
             ResidueKind::PublicSemanticModule,
         ),
     ];
@@ -728,6 +813,51 @@ fn intent() {
     p.demand(format!("ordinary domain words in data must not be flagged: {residues:#?}"), residues.is_empty(), format!("ordinary domain words in data must not be flagged: {residues:#?}"));
 
     });
+    p.case("constructor_surface_grammar_is_not_dispatch", |p| {
+// The constructor grammar's tokens — declaration kinds, the binder envelope,
+// and the `quote` structural interface — select a declaration form or a
+// specified structural operation, never a subject procedure. Recognizing
+// them must not fail as dispatch. The exemption is exact, so a
+// nucleus-implemented `quote.simplify` (a §3.5 authored-algorithm
+// responsibility) must still fail.
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let names = authored_feature_names(&root);
+    let surface = concat!(
+        "match kind {\n",
+        "    \"function\" => \"std.kind.function\",\n",
+        "    \"object\" => \"std.kind.object\",\n",
+        "    \"query\" => \"std.kind.query\",\n",
+        "    _ => continue,\n",
+        "}\n",
+        "if name == \"quote.view\" {\n",
+        "    return view();\n",
+        "}\n",
+        "match name {\n",
+        "    \"quote.substitute\" => {\n",
+        "        handled();\n",
+        "    }\n",
+        "    other => Err(fault(\"unbound\", format!(\"unknown quote operation `{other}`\"))),\n",
+        "}\n",
+    );
+    let mut residues = Vec::new();
+    scan_source(
+        "crates/emath-exec-ir/src/constructor_layer.rs",
+        surface,
+        &names,
+        &mut residues,
+    );
+    p.demand(format!("constructor surface grammar must not fail as dispatch: {residues:#?}"), residues.is_empty(), format!("constructor surface grammar must not fail as dispatch: {residues:#?}"));
+    let mut residues = Vec::new();
+    scan_source(
+        "crates/emath-exec-ir/src/constructor_layer.rs",
+        "match name { \"quote.simplify\" => simplify(), _ => generic() }",
+        &names,
+        &mut residues,
+    );
+    p.demand(format!("nucleus-implemented quote algebra must fail: {residues:#?}"), residues.iter().any(|residue| residue.kind == ResidueKind::FeatureDispatch), format!("nucleus-implemented quote algebra must fail: {residues:#?}"));
+
+    });
     p.case("test_caller_residue_fails_active_classification", |p| {
 // Mutation proof for active test-caller classification: an obsolete op in a
 // test-caller binary must fail as active, not hide as retained. Against the
@@ -760,9 +890,9 @@ fn intent() {
 
     let tables = fs::read_to_string("../../crates/emath-exec-ir/src/language_tables.rs").unwrap();
     p.demand("generated_and_authored_authority_remain_separate#1", tables.contains("DO NOT EDIT"), "generated_and_authored_authority_remain_separate#1: tables.contains(\"DO NOT EDIT\")");
-    let authored = fs::read_to_string("../../language/spec/capabilities/core/add.emath").unwrap();
+    let authored = fs::read_to_string("../../language/spec/constructors/scalar-abi.emath").unwrap();
     p.demand("generated_and_authored_authority_remain_separate#2", !authored.contains("@generated"), "generated_and_authored_authority_remain_separate#2: !authored.contains(\"@generated\")");
-    p.demand("generated_and_authored_authority_remain_separate#3", authored.contains("std.capability.math.add"), "generated_and_authored_authority_remain_separate#3: authored.contains(\"std.capability.math.add\")");
+    p.demand("generated_and_authored_authority_remain_separate#3", authored.contains("std.capability.scalar"), "generated_and_authored_authority_remain_separate#3: authored.contains(\"std.capability.scalar\")");
 
     });
     p.finish();

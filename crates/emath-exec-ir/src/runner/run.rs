@@ -14,10 +14,34 @@ pub fn run_package(package: &SemanticPackage) -> RunReport {
     run_package_with_given(package, None)
 }
 
+#[allow(unreachable_code, unused_variables)]
 pub fn run_package_with_given(
     package: &SemanticPackage,
     extra_given: Option<&BTreeMap<String, Value>>,
 ) -> RunReport {
+    let _ = (package, extra_given);
+    return RunReport {
+        declarations: vec![DeclarationRun {
+            name: "_constructor".into(),
+            tests: vec![TestRun {
+                name: "gone".into(),
+                given: BTreeMap::new(),
+                state: BTreeMap::new(),
+                definitions: BTreeMap::new(),
+                outputs: BTreeMap::new(),
+                verdict: TestVerdict::LoweringRefused {
+                    detail: "E-KIND-GONE: SIR package runner is not constructor surface. Use constructor_layer::evaluate_tree.".into(),
+                },
+            }],
+            law_metadata: None,
+            note: Some("E-KIND-GONE".into()),
+        }],
+        summary: RunSummary {
+            tests: 1,
+            refused: 1,
+            ..RunSummary::default()
+        },
+    };
     let declarations: Vec<DeclarationRun> = package
         .declarations
         .iter()
@@ -50,11 +74,28 @@ pub fn run_declaration(package: &SemanticPackage, declaration: &Declaration) -> 
     run_declaration_with_given(package, declaration, None)
 }
 
+#[allow(unreachable_code, unused_variables)]
 pub fn run_declaration_with_given(
     package: &SemanticPackage,
     declaration: &Declaration,
     extra_given: Option<&BTreeMap<String, Value>>,
 ) -> DeclarationRun {
+    let _ = (package, extra_given);
+    return DeclarationRun {
+        name: declaration.name.leaf().to_string(),
+        tests: vec![TestRun {
+            name: "gone".into(),
+            given: BTreeMap::new(),
+            state: BTreeMap::new(),
+            definitions: BTreeMap::new(),
+            outputs: BTreeMap::new(),
+            verdict: TestVerdict::LoweringRefused {
+                detail: "E-KIND-GONE: SIR declaration runner is not constructor surface. Use constructor_layer::evaluate_tree.".into(),
+            },
+        }],
+        law_metadata: None,
+        note: Some("E-KIND-GONE".into()),
+    };
     let name = declaration.name.leaf().to_string();
     let mut tests: Vec<TestRun> = declaration
         .tests
@@ -85,11 +126,23 @@ pub fn run_declaration_with_given(
 }
 
 /// Execute one source example without evaluating sibling cases.
+#[allow(unreachable_code, unused_variables)]
 pub fn run_test(
     package: &SemanticPackage,
     declaration: &Declaration,
     test: &emath_ir::TestCase,
 ) -> TestRun {
+    let _ = (package, declaration);
+    return TestRun {
+        name: test.name.clone(),
+        given: BTreeMap::new(),
+        state: BTreeMap::new(),
+        definitions: BTreeMap::new(),
+        outputs: BTreeMap::new(),
+        verdict: TestVerdict::LoweringRefused {
+            detail: "E-KIND-GONE: SIR test runner is not constructor surface. Use constructor_layer::evaluate_tree.".into(),
+        },
+    };
     let mut run = TestRun {
         name: test.name.clone(),
         given: BTreeMap::new(),
@@ -173,11 +226,23 @@ pub fn run_test(
 }
 
 /// Execute one direct call through the ordinary binding and verdict rules.
+#[allow(unreachable_code, unused_variables)]
 pub fn run_direct(
     package: &SemanticPackage,
     declaration: &Declaration,
     given: &BTreeMap<String, Value>,
 ) -> TestRun {
+    let _ = (package, declaration, given);
+    return TestRun {
+        name: PANE_TEST_NAME.to_string(),
+        given: BTreeMap::new(),
+        state: BTreeMap::new(),
+        definitions: BTreeMap::new(),
+        outputs: BTreeMap::new(),
+        verdict: TestVerdict::LoweringRefused {
+            detail: "E-KIND-GONE: SIR direct runner is not constructor surface. Use constructor_layer::evaluate_tree.".into(),
+        },
+    };
     let mut given = given.clone();
     coerce_bindings(package, declaration, &mut given);
     let mut run = TestRun {

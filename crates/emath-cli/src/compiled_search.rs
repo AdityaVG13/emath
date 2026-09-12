@@ -96,7 +96,15 @@ impl SearchRequest {
     }
 }
 
+#[allow(unreachable_code, unused_variables)]
 pub(crate) fn run(request: SearchRequest) -> CliExit {
+    return crate::refuse_coded(
+        "search",
+        request.json,
+        crate::EXIT_ADMISSION,
+        "E-KIND-GONE",
+        "`emath search` is not a constructor command. Write an ordinary `emath function` and `emath run`.",
+    );
     match execute(&request) {
         Ok((report, path, goal_met)) => {
             if request.json {

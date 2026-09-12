@@ -8,7 +8,6 @@ use crate::probe::Probe;
 use crate::table::workspace_path;
 use emath_core::limits::Limits;
 use emath_core::Diagnostics;
-use emath_exec_ir::runner::{run_package, TestVerdict};
 use emath_sema::{CheckResult, CompilerSession};
 use emath_syntax::parse_str;
 
@@ -112,9 +111,9 @@ impl Source {
         }
     }
 
-    /// Admit, then run every `tests:` example. Each example with an `expect`
-    /// must be [`TestVerdict::Passed`]. Computed / symbolic / refused are
-    /// failures — they are how a compiler pretends a numeric program works.
+    /// Admit, then run authored `tests:` on the constructor VM.
+    /// Each example with an `expect` must pass. SIR/`goals:` evaluation
+    /// is not constructor surface.
     pub fn eval_tests(&self, probe: &mut Probe) {
         let result = self.must_admit(probe);
         if result.diagnostics.has_errors() {
@@ -124,43 +123,45 @@ impl Source {
             );
             return;
         }
-        let report = run_package(&result.package);
-        let mut saw_expect = false;
-        for declaration in &report.declarations {
-            for test in &declaration.tests {
-                match &test.verdict {
-                    TestVerdict::Passed => {
-                        saw_expect = true;
+        let (tree, parse) = parse_str(&self.text);
+        if parse.has_errors() {
+            probe.fail(
+                format!("{}:eval-parse", self.name),
+                format!("constructor parse failed: {:?}", error_codes(&parse)),
+            );
+            return;
+        }
+        match emath_exec_ir::constructor_layer::evaluate_tree(&tree) {
+            Ok(report) => {
+                let mut saw_expect = false;
+                for test in &report.tests {
+                    saw_expect = true;
+                    if test.passed {
                         probe.demand(
-                            format!("{}:{}/{}", self.name, declaration.name, test.name),
+                            format!("{}:{}", self.name, test.label),
                             true,
                             "passed",
                         );
-                    }
-                    TestVerdict::Computed => {
-                        if test.name == emath_exec_ir::runner::PANE_TEST_NAME {
-                            continue;
-                        }
+                    } else {
                         probe.fail(
-                            format!("{}:{}/{}", self.name, declaration.name, test.name),
-                            "computed without expect — that is not a test",
-                        );
-                    }
-                    other => {
-                        saw_expect = true;
-                        probe.fail(
-                            format!("{}:{}/{}", self.name, declaration.name, test.name),
-                            format!("expected Passed, got {other}"),
+                            format!("{}:{}", self.name, test.label),
+                            test.detail.clone(),
                         );
                     }
                 }
+                probe.demand(
+                    format!("{}:has-expect", self.name),
+                    saw_expect,
+                    "source has no tests: example with expect — admission-only is fluff",
+                );
+            }
+            Err(err) => {
+                probe.fail(
+                    format!("{}:eval", self.name),
+                    format!("{}: {}", err.code, err.message),
+                );
             }
         }
-        probe.demand(
-            format!("{}:has-expect", self.name),
-            saw_expect,
-            "source has no tests: example with expect — admission-only is fluff",
-        );
     }
 }
 

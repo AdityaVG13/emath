@@ -7,45 +7,13 @@ pub(crate) fn explain_cmd(request: ExplainRequest) -> CliExit {
     match request {
         ExplainRequest::Law { json } => explain_law_cmd(json),
         ExplainRequest::Code { code, json } => explain_code_cmd(code.as_deref(), json),
-        ExplainRequest::File {
-            path,
-            symbol,
-            provenance,
+        ExplainRequest::File { json, .. } => crate::refuse_coded(
+            "explain",
             json,
-            show_defaults,
-        } => {
-            if provenance {
-                return match crate::provenance_explanation(&path, json) {
-                    Ok(explanation) => {
-                        print!("{explanation}");
-                        EXIT_OK
-                    }
-                    Err(code) => code,
-                };
-            }
-            if show_defaults {
-                return show_defaults_cmd(&path, json);
-            }
-            let inspections = match crate::explain_inspections(&path) {
-                Ok(inspections) => inspections,
-                Err(code) => return code,
-            };
-            if json {
-                for inspection in &inspections {
-                    println!("{}", inspection.to_json());
-                }
-                return EXIT_OK;
-            }
-            for inspection in &inspections {
-                println!("{}", inspection.explain());
-            }
-            if let Some(symbol) = symbol {
-                println!(
-                    "explain: symbol `{symbol}`: declaration indexing is Phase 4+; goals above are the available evidence"
-                );
-            }
-            EXIT_OK
-        }
+            crate::EXIT_ADMISSION,
+            "E-KIND-GONE",
+            "`emath explain <file>` is not a constructor command. There is no goals planner. Use `emath check` or `emath run`, or `emath explain E-TYPE-002` for a diagnostic code.",
+        ),
     }
 }
 

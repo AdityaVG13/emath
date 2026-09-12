@@ -240,5 +240,13 @@ pub(in crate::admit) fn type_display(expr: &TypeExpr) -> String {
                 crate::recognition::expr_text(hi)
             )
         }
+        SynTypeKind::Fn { domain, codomain } => {
+            let left = if matches!(domain.kind, SynTypeKind::Fn { .. }) {
+                format!("({})", type_display(domain))
+            } else {
+                type_display(domain)
+            };
+            format!("{left} -> {}", type_display(codomain))
+        }
     }
 }

@@ -14,9 +14,9 @@
 
 **emath** is a Rust-first language and compiler for mathematics that runs. You write mathematical intent (settled theorems, half-formed models, or structures invented today) and the toolchain lowers it into ordinary, inspectable Cargo artifacts.
 
-A `.emath` source can carry formulas and tensors; dynamical systems and constraints; evaluation, differentiation, solve, integrate, optimize, and simulate goals; units, shapes, domains, and error bounds; evidence requirements; and Rust host interfaces.
+A `.emath` source can carry objects, functions, queries, recursion, and quoted code; ordinary imported methods; scalar carriers; and host-observed receipts. Named recipes, `emath model` / `emath policy`, and `emath simulate` are not the language.
 
-Intent is resolved through a deterministic pipeline (typed semantic IR → goals → providers → generated Rust), validated by hard gates (`emath check`, `emath build --verify`, independent artifact check), and published as software you can link like any other crate.
+Intent is resolved through a deterministic pipeline (parse → constructor admission → typed IR → reference VM or emitted Rust), validated by `emath check` / `emath run`, and published as software you can link like any other crate. There is no `goals:` planner layer.
 
 ## TL;DR
 
@@ -28,9 +28,9 @@ Intent is resolved through a deterministic pipeline (typed semantic IR → goals
 
 | Area | Current implementation |
 |------|------------------------|
-| Language surface | `emath function`, `policy`, `model` (ODE simulate); vectors, matrices, rank-3 tensors; units; Nat/Int indexes; routed diagnoses for unsupported surface |
-| Pipeline | Parse → admit → typed semantic IR → goals → exec IR → Rust codegen → Cargo publish under `target/emath` |
-| Gates | `emath check`, `emath build --verify`, `emath artifact check`; demos exit 0 with `ok` |
+| Language surface | `emath object`, `emath function`, `emath query`; `recur` and `quote` in expressions; scalar carriers; optional modules behind `use`. `model` / `policy` / `kind` are not core kinds |
+| Pipeline | Parse → admit constructor kinds → typed IR → reference VM (`emath run`) or Rust emission (`emath build`) |
+| Gates | `emath check`, `emath run`, `emath build` |
 | Capstone demos | `cargo xtask demo all` (affine-scorer + semantic-genesis) |
 | Web playground | `emath web` (in-page WASM compiler; Stage 1 subset today) |
 | Providers | Std-only; in-tree Dew/Rumoca stand-ins; Wrenfold / Franken* planned behind adapters |
@@ -100,7 +100,7 @@ emath function Greeter:
         y = x
 ```
 
-Declare only what you need: `inputs:`, `outputs:`, `goals:`, `exports:`, and `compile:` are optional. A bare input name (`x`) defaults to `Float64`. `emath run` admits the source and evaluates definitions or source examples on the reference VM. It prints values and saves a checkpoint. Use `emath test <file>` for generated Rust tests. Use `emath build <file> [--out <dir>]` to publish a Rust artifact.
+Declare only what you need: `inputs:`, `outputs:`, `definitions:`, and `tests:` are the function sections. `goals:` and `compile:` are not constructor sections. `emath run` admits the source and evaluates definitions or source examples on the reference VM. It prints a constructor receipt. Use `emath test <file>` for authored tests. Use `emath build <file>` to emit Rust.
 
 ### CLI change: 2026-09-08
 
@@ -132,70 +132,38 @@ Exit criteria: both demos reach their final `ok` lines; the command exits 0. Man
 
 ## Example
 
-The target language looks like this (illustrative; the implemented subset today is smaller: see `tests/valid/`):
+Constructor-layer source looks like this:
 
 ```emath
-emath policy CachePriority:
-    input:
-        candidate: CacheCandidate
+use fold.reduce
 
-    state:
-        alpha: NonNegative<Real>
-        decay: NonNegative<Per<Second>>
-
-    constructor new(
-        alpha: Real,
-        decay: Per<Second>,
-    ) -> Result<Self, ConfigError>:
-        require alpha >= 0
-        require decay >= 0 / s
-
-        Self:
-            alpha = alpha
-            decay = decay
-
-    define score(candidate) -> Real:
-        candidate.reuse_probability ^ self.alpha
-        * (candidate.rebuild_cost / 1 ms)
-        * exp(-(self.decay * candidate.age))
-        / (1 + candidate.bytes / 1 MiB)
-
-    goal compile score for rust.library
-    goal differentiate score wrt [alpha, decay]
-
-    evidence:
-        require finite over CacheCandidate::admitted_domain
-        require max_relative_error <= 1e-10
-
-    host rust:
-        implement cache_core::Policy:
-            method score = score
+emath function Total:
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: Int
+    definitions:
+        result = reduce(0, add) x in xs: x
 ```
 
-What actually runs today is smaller and more concrete than that sketch:
+What actually runs today:
 
-- `emath function` formulas (`tests/valid/square.emath`, `tests/fixtures/language/`)
-- `emath policy` with a constructor (`tests/valid/affine_scorer.emath`)
-- `emath model` ODEs you can `emath simulate` (`tests/fixtures/language/`)
-- vectors, matrices, rank-3 tensors, slices, units, and Nat/Int indexes
+- `emath object`, `emath function`, and `emath query` (`tests/fixtures/constructor/`)
+- `recur` and `quote` as expression constructors
+- scalar `Bool` / `Int` / `Rat` / `Float64` operations
+- ordinary modules behind explicit `use` (`language/modules/`)
 
-The rest of the sketch is the target language. The compiler parses all of it and returns the parts it cannot run yet as labeled symbols, bounds, or open holes, with a route to what would compute them. That is expected. Compiling is not proving.
+`emath model`, `emath policy`, and `emath kind` are not core kinds. `emath simulate` refuses. Write an ordinary function and `emath run`. Compiling is not proving.
 
 ## Core composition
 
 ```text
 .emath source
-  → package/module loader
-  → syntax and schema expansion
-  → typed semantic IR
-  → mathematical goals
-  → resolver/provider planning
-  → executable math IR
-  → evidence plan
-  → structured Rust IR
-  → Cargo artifact
-  → host integration
-  → protected baseline/candidate experiment
+  → parse
+  → constructor admission (object / function / query)
+  → typed IR
+  → reference VM (`emath run`) or Rust emission (`emath build`)
+  → receipt (execution, fulfillment, representation, evidence, remaining)
 ```
 
 ## Command surface
@@ -204,20 +172,17 @@ Implemented today:
 
 | Command | Purpose |
 |---------|---------|
-| `emath check` | Semantic admission |
-| `emath plan` | Deterministic resolution plan |
-| `emath build [--out <dir>]` | Generate + verify Cargo artifact (default: `target/emath`) |
-| `emath simulate` | Integrate an admitted emath model |
-| `emath artifact check` | Independent artifact validation |
-| `emath parse --forest` | G0/G1: glyphs → bounded parse forest |
-| `emath signature` | Signature / arity inference |
-| `emath genesis --out <dir>` | Semantic genesis analysis pipeline |
-| `emath compile --parametric --out` | Deterministic generated crate |
-| `emath world show` / `portfolio show` | Introspection |
-| `emath architecture` / `help` | Stable docs entry |
-| `emath web` | Localhost web playground (Ctrl-C to stop) |
+| `emath check` | Constructor admission |
+| `emath run` | Evaluate a function or query; print a receipt |
+| `emath step` | Resume a constructor-layer continuation |
+| `emath inspect` | Read a saved checkpoint |
+| `emath verify` | Replay recorded observations |
+| `emath test` | Authored `tests:` |
+| `emath build` | Emit fully lowered runnable Rust |
+| `emath api --search` | Constructor contracts and imported exports |
+| `emath simulate` / `plan` / `eval` / `solve` | Refuse `E-KIND-GONE`; write an ordinary function and `emath run` |
 
-Also implemented: `serve` (alias for `web`), `new`, `fmt`, `explain`, `run`, `test`, `bench` (typed refusal until the Phase 4 harness), `verify`, `inspect`, `diff`, `doctor`, `vendor`, `provider list|inspect|test`, `fork status|sync`, `agent check|plan|build`, and `import modelica`. Planned (see [`MANUAL.md`](MANUAL.md)): `migrate`.
+See [`language/CAPABILITY.md`](language/CAPABILITY.md) and [`MANUAL.md`](MANUAL.md).
 
 ## Web playground
 

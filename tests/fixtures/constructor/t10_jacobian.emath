@@ -1,0 +1,90 @@
+# T10: Typed transformation. This file installed no topic identity.
+use calculus.diff
+
+emath function fmap:
+    inputs:
+        x: Rat
+        y: Rat
+    outputs:
+        u: Rat
+        v: Rat
+    definitions:
+        u = x * y
+        v = x + y * y
+
+emath function linearization:
+    inputs:
+        x: Rat
+        y: Rat
+    outputs:
+        j00: Rat
+        j01: Rat
+        j10: Rat
+        j11: Rat
+    definitions:
+        revealed = quote.body(quote(fmap))
+        form = revealed.fragment
+        layer1 = quote.view(form)
+        inner = layer1.body
+        layer2 = quote.view(inner)
+        pair = layer2.body
+        jx = d_wrt(pair, quote(x))
+        jy = d_wrt(pair, quote(y))
+        jx_at = quote.evaluate(quote.substitute(quote.substitute(jx, x, x), y, y))
+        jy_at = quote.evaluate(quote.substitute(quote.substitute(jy, x, x), y, y))
+        j00 = jx_at._0
+        j01 = jy_at._0
+        j10 = jx_at._1
+        j11 = jy_at._1
+
+emath function at_point:
+    inputs:
+        unused: Int
+    outputs:
+        u: Rat
+        v: Rat
+        j00: Rat
+        j01: Rat
+        j10: Rat
+        j11: Rat
+    definitions:
+        revealed = quote.body(quote(fmap))
+        form = revealed.fragment
+        layer1 = quote.view(form)
+        inner = layer1.body
+        layer2 = quote.view(inner)
+        pair = layer2.body
+        vals = quote.evaluate(quote.substitute(quote.substitute(pair, x, 2), y, 3))
+        jx = d_wrt(pair, quote(x))
+        jy = d_wrt(pair, quote(y))
+        jx_at = quote.evaluate(quote.substitute(quote.substitute(jx, x, 2), y, 3))
+        jy_at = quote.evaluate(quote.substitute(quote.substitute(jy, x, 2), y, 3))
+        u = vals._0
+        v = vals._1
+        j00 = jx_at._0
+        j01 = jy_at._0
+        j10 = jx_at._1
+        j11 = jy_at._1
+    tests:
+        example <point>:
+            given unused = 0
+            expect u == 6
+            expect v == 11
+            expect j00 == 3
+            expect j01 == 2
+            expect j10 == 1
+            expect j11 == 6
+
+emath function capture_x:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        form = quote(function w in Rat: x)
+        d = d_wrt(quote.view(form).body, quote(x))
+        result = quote.evaluate(d)
+    tests:
+        example <captured_x>:
+            given unused = 0
+            expect result == 1

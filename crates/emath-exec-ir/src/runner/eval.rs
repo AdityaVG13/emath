@@ -160,12 +160,17 @@ pub(super) fn seed_state_from_given(
     Ok(state)
 }
 
+#[allow(unreachable_code, unused_variables)]
 pub fn eval_definitions_values(
     package: &SemanticPackage,
     declaration: &Declaration,
     inputs: &BTreeMap<String, Value>,
     state: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, Value>, TestVerdict> {
+    let _ = (package, declaration, inputs, state);
+    return Err(TestVerdict::LoweringRefused {
+        detail: "E-KIND-GONE: SIR definition evaluation is not constructor surface. Use constructor_layer::evaluate_tree.".into(),
+    });
     let mut definitions = BTreeMap::new();
     eval_definitions_into(package, declaration, inputs, state, &mut definitions, false)?;
     Ok(definitions)

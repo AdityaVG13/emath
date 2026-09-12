@@ -16,16 +16,19 @@ const DEFAULT_OPT_MAX_ITER: i64 = 64;
 pub(super) const DEFAULT_INTEGRAL_STEPS: i64 = 128;
 
 impl super::super::Admitter {
+    #[allow(dead_code)]
     pub(super) fn lower_sample_limit_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
-        let ExprKind::SampleLimit {
-            var,
-            target,
-            direction,
-            body,
-        } = &expr.kind
-        else {
-            unreachable!()
-        };
+        self.error(
+            E_UNSUPPORTED_TYPE,
+            "`sample_limit` is an ordinary imported function, not a constructor form",
+            expr.source,
+        );
+        return None;
+        #[allow(unreachable_code)]
+        let var = "x".to_string();
+        let target = expr;
+        let direction = &emath_core::tree::LimitDirection::TwoSided;
+        let body = expr;
         // Lower as a SampleLimit node: the body is compiled as a
         // sub-program with the limit variable as an input.
         let dir_bits = match direction {
@@ -46,7 +49,7 @@ impl super::super::Admitter {
             if let Some(p) = prev {
                 self.inputs.insert(var.clone(), p);
             } else {
-                self.inputs.remove(var);
+                self.inputs.remove(&var);
             }
             self.error(
                 "E-TYPE-012",
@@ -56,11 +59,11 @@ impl super::super::Admitter {
             return None;
         }
         let program_inputs = self.program_input_names();
-        let Some(slot) = Self::slot_index_in(&program_inputs, var) else {
+        let Some(slot) = Self::slot_index_in(&program_inputs, &var) else {
             if let Some(p) = prev {
                 self.inputs.insert(var.clone(), p);
             } else {
-                self.inputs.remove(var);
+                self.inputs.remove(&var);
             }
             self.error(
                 E_UNSUPPORTED_TYPE,
@@ -72,7 +75,7 @@ impl super::super::Admitter {
         if let Some(p) = prev {
             self.inputs.insert(var.clone(), p);
         } else {
-            self.inputs.remove(var);
+            self.inputs.remove(&var);
         }
         let extra = vec![self.push_i64(slot, expr.source), target_id, dir_id];
         let Some((id, infer)) = self.apply_program_capability(
@@ -92,16 +95,19 @@ impl super::super::Admitter {
         Some((id, infer))
     }
 
+    #[allow(dead_code)]
     pub(super) fn lower_limit_expr_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
-        let ExprKind::Limit {
-            var,
-            target,
-            direction,
-            body,
-        } = &expr.kind
-        else {
-            unreachable!()
-        };
+        self.error(
+            E_UNSUPPORTED_TYPE,
+            "`limit` is a claim written as an ordinary module, not a constructor form",
+            expr.source,
+        );
+        return None;
+        #[allow(unreachable_code)]
+        let var = "x";
+        let target = expr;
+        let direction = &emath_core::tree::LimitDirection::TwoSided;
+        let body = expr;
         if self.in_claim_context {
             // Admit as a stated claim: Bool(true), not verified.
             self.record(
@@ -130,15 +136,19 @@ impl super::super::Admitter {
         None
     }
 
+    #[allow(dead_code)]
     pub(super) fn lower_optimize_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
-        let ExprKind::Optimize {
-            value,
-            wrt,
-            maximize,
-        } = &expr.kind
-        else {
-            unreachable!()
-        };
+        self.error(
+            E_UNSUPPORTED_TYPE,
+            "minimize/maximize are ordinary imported functions, not constructor forms",
+            expr.source,
+        );
+        return None;
+        #[allow(unreachable_code)]
+        let _keep_newton_body = ();
+        let maximize = &false;
+        let wrt: &Option<Vec<Expr>> = &None;
+        let value = expr;
         let Some(vars) = wrt.as_deref() else {
             self.error(
                 E_UNSUPPORTED_TYPE,
@@ -232,10 +242,17 @@ impl super::super::Admitter {
         Some((id, infer))
     }
 
+    #[allow(dead_code)]
     pub(super) fn lower_solve_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
-        let ExprKind::Solve { value, wrt } = &expr.kind else {
-            unreachable!()
-        };
+        self.error(
+            E_UNSUPPORTED_TYPE,
+            "solve is an ordinary imported function, not a constructor form",
+            expr.source,
+        );
+        return None;
+        #[allow(unreachable_code)]
+        let wrt: &Option<Vec<Expr>> = &None;
+        let value = expr;
         let Some(vars) = wrt.as_deref() else {
             self.error(
                 E_UNSUPPORTED_TYPE,
@@ -305,13 +322,19 @@ impl super::super::Admitter {
         Some((id, infer))
     }
 
+    #[allow(dead_code)]
     pub(super) fn lower_derivative_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
-        let ExprKind::Derivative { kind, holding, .. } = &expr.kind else {
-            unreachable!()
-        };
-        // Partial without `holding` is a MeaningHole: autodiff wrt
-        // one input would silently hold every other input fixed.
-        if *kind == DerivativeKind::Partial {
+        self.error(
+            E_UNSUPPORTED_TYPE,
+            "derivative is an ordinary imported function, not a constructor form",
+            expr.source,
+        );
+        return None;
+        #[allow(unreachable_code)]
+        let kind = ();
+        let holding: &[Expr] = &[];
+        let _ = kind;
+        if false {
             if holding.is_empty() {
                 self.error(
                     E_UNSUPPORTED_TYPE,

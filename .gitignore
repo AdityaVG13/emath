@@ -1,4 +1,5 @@
 /target
+/target-constructor/
 /web/dist/
 
 # standalone test-crate build artifacts (not workspace members)
@@ -96,6 +97,7 @@ __pycache__/
 # legacy root planning docs (kept locally, not shipped)
 00_MASTER_INDEX.md
 BUILD_STATUS.md
+EMATH_CONSTRUCTOR_CUTOVER_GOAL_PROMPT.md
 BUNDLE_MANIFEST.json
 CHANGELOG_SEMANTIC_GENESIS.md
 commands.txt

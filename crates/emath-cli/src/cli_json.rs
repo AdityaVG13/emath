@@ -130,8 +130,10 @@ pub fn check_json_document(
     units_profiles: &[(String, String)],
 ) -> String {
     let mut out = emath_artifact::JsonWriter::object();
+    out.string("schema_version", "emath.constructor.v1");
     out.string("command", "check");
     out.string("status", if admitted { "ok" } else { "refused" });
+    out.string("admission", if admitted { "admitted" } else { "refused" });
     out.bool("admitted", admitted);
     out.objects("diagnostics", &json_diagnostics_entries(diagnostics));
     out.string("package", package_id);

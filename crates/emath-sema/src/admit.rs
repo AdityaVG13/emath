@@ -9,7 +9,7 @@ use emath_ir::{
 use std::collections::{BTreeMap, BTreeSet};
 
 mod declaration;
-use declaration::admit_declaration;
+use declaration::{admit_constructor_declaration, admit_declaration};
 mod attributes;
 pub(crate) mod expr_helpers;
 use expr_helpers::*;
@@ -27,71 +27,20 @@ pub const E_UNKNOWN_VARIABLE: &str = "E-TYPE-002";
 pub const E_UNKNOWN_FUNCTION: &str = "E-TYPE-003";
 pub const E_UNSUPPORTED_TYPE: &str = "E-TYPE-010";
 
-/// Sections the Phase 1 admission pass consumes; any other section is
-/// refused with `E-SEC-101` instead of being silently dropped.
+/// Constructor-layer sections. Any other section is `E-SEC-101`.
 const PHASE1_SECTIONS: &[&str] = &[
+    "parameters",
+    "representation",
+    "invariants",
     "inputs",
     "outputs",
-    "state",
-    "algebraic",
     "definitions",
-    "equations",
-    "equation",
-    "constructors",
-    "goals",
-    "exports",
+    "question",
+    "using",
+    "answer",
+    "budget",
     "tests",
-    "compile",
-    "about",
-    "evidence",
-    "assumptions",
-    "domain",
-    "provenance",
-    "citations",
-    // L3 optional worked-example section: rows are data, never admission
-    // tickets.
-    "examples",
-    "host",
-    "constraints",
-    "invariant",
-    // Migration cards: `from:` states what moved, `rules:`
-    // classifies each change. Admitted sections, not new keywords.
-    "from",
-    "rules",
-    // Hybrid events (ch7): `events:` declares the
-    // discrete event surface of a stateful declaration. Admitted
-    // section, not a new keyword; the `transitions:` rules and the
-    // event-triggering simulation are the named next slices (the
-    // `on <trigger>:` rule suite does not parse yet — parser lane).
-    "events",
-    // Hybrid transitions (ch7, transitions slice):
-    // `transitions:` maps a declared event to re-assignments of
-    // input/state slots. Admitted section, not a new keyword;
-    // `on <Event>:` rules are structurally validated here and
-    // wired into execution by the runner lane.
-    "transitions",
-    // Measured evidence (04 §5.2):
-    // `observations:` rows are read-only instrument data (`obs <name>
-    // [: type] = <data>`), distinct from `definitions:`. Admitted
-    // section; the §5.3 observation-vs-prediction comparison and the
-    // Series<T in unit> value-generics are the named next slices.
-    "observations",
-    // Proof outlines (B13 + 05 §7.2):
-    // `proofs:` holds obligation outlines as DATA (assumption / lemma
-    // / check / qed steps; an outline ends with qed). Proofs are
-    // additive authority, never admission tickets; no ProofChecker
-    // runs in the thin slice (the checker contract is the named
-    // follow-up).
-    "proofs",
-    // Declarative figures (05 §7.4): the
-    // `figures:` section NAME + payload grammar slot is RESERVED so
-    // kind schemas can require/allow it. Data-only plot specs, no
-    // callbacks, no behavior — determinism is preserved by tying
-    // sampling to the budgets/continuation machinery from day one.
-    // The payload grammar is the named follow-up: rows inside refuse
-    // (declaration.rs) naming the design forks instead of the generic
-    // roster error.
-    "figures",
+    "exports",
 ];
 
 /// Folds a declaration name for confusable-collision detection; names that

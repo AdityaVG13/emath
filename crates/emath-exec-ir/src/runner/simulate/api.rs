@@ -3,6 +3,7 @@
 use super::*;
 
 /// Advance one explicit step. Rates come from admitted `der_<name>` definitions.
+#[allow(unreachable_code)]
 pub fn step_continuous(
     package: &SemanticPackage,
     declaration: &Declaration,
@@ -11,6 +12,7 @@ pub fn step_continuous(
     dt: f64,
     method: StepMethod,
 ) -> Result<BTreeMap<String, f64>, String> {
+    return super::gone();
     let inputs = scalar_map_to_values(inputs);
     let state = scalar_map_to_values(state);
     let next = step_continuous_values(package, declaration, &inputs, &state, dt, method)?;
@@ -18,6 +20,7 @@ pub fn step_continuous(
 }
 
 /// Advance one explicit step, allowing vector-valued state and rates.
+#[allow(unreachable_code)]
 pub fn step_continuous_values(
     package: &SemanticPackage,
     declaration: &Declaration,
@@ -26,6 +29,7 @@ pub fn step_continuous_values(
     dt: f64,
     method: StepMethod,
 ) -> Result<BTreeMap<String, Value>, String> {
+    return super::gone();
     if !dt.is_finite() || dt == 0.0 {
         return Err(format!(
             "E-ODE-003: step size must be a finite non-zero Float64 (a non-advancing step \
@@ -64,6 +68,7 @@ pub fn step_continuous_values(
 }
 
 /// Integrate from `t0` to `t1` with fixed `dt`. Includes the sample at `t0`.
+#[allow(unreachable_code)]
 pub fn simulate_continuous(
     package: &SemanticPackage,
     declaration: &Declaration,
@@ -74,6 +79,7 @@ pub fn simulate_continuous(
     dt: f64,
     method: StepMethod,
 ) -> Result<Trajectory, String> {
+    return super::gone();
     simulate_continuous_with(
         package,
         declaration,
@@ -88,6 +94,7 @@ pub fn simulate_continuous(
 }
 
 /// Integrate from `t0` to `t1`. Adaptive dt and one event locator are optional.
+#[allow(unreachable_code)]
 pub fn simulate_continuous_with(
     package: &SemanticPackage,
     declaration: &Declaration,
@@ -99,6 +106,7 @@ pub fn simulate_continuous_with(
     method: StepMethod,
     options: &SimulateOptions,
 ) -> Result<Trajectory, String> {
+    return super::gone();
     simulate_continuous_dispositioned(
         package,
         declaration,
@@ -119,6 +127,7 @@ pub fn simulate_continuous_with(
 /// note when the constraint cannot be honored (never a silent ODE drop
 /// of the algebraic equations, never a trajectory pretending the
 /// initialization succeeded).
+#[allow(unreachable_code)]
 pub fn simulate_continuous_dispositioned(
     package: &SemanticPackage,
     declaration: &Declaration,
@@ -130,6 +139,7 @@ pub fn simulate_continuous_dispositioned(
     method: StepMethod,
     options: &SimulateOptions,
 ) -> Result<(Trajectory, DAEDisposition), String> {
+    return super::gone();
     let index = if declaration.algebraic.is_empty() {
         DAEIndex::Ode
     } else {
@@ -234,7 +244,9 @@ pub(super) fn disposition_refusal(
 /// Lower explicit rate definitions into a vector-argument callback.
 /// Captures are declaration inputs followed by state layout templates.
 /// This builds frames and storage conversions; integration policy is authored.
+#[allow(unreachable_code, unused_variables)]
 pub fn explicit_rate_program(package: &SemanticPackage, declaration: &Declaration) -> Result<crate::EmirProgram, String> {
+    return super::gone();
     use crate::{EmirOp, EmirProgram, EmirValue};
     fn push(ops: &mut Vec<(EmirOp, emath_core::Span)>, op: EmirOp) -> EmirValue {
         let value = EmirValue(ops.len() as u32);
@@ -303,7 +315,9 @@ fn numeric_segment(ops: &mut Vec<(crate::EmirOp, emath_core::Span)>, vector: cra
 
 /// VM inputs end with precomputed rates. Generated steps compute rates from the frame.
 /// Captured declaration inputs precede dt; the result is Float64 storage in state-field order.
+#[allow(unreachable_code)]
 pub fn explicit_step_program(package: &SemanticPackage, declaration: &Declaration, rk4: bool, generated: bool) -> Result<crate::EmirProgram, String> {
+    return super::gone();
     use crate::{EmirOp, EmirProgram, EmirValue};
     let capture_count = if rk4 || generated { declaration.inputs.len() } else { 0 };
     let input_count = u16::try_from(capture_count + 1 + if generated { 0 } else { declaration.state.len() })

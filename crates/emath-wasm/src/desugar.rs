@@ -37,17 +37,9 @@ impl<'a> PreparedSource<'a> {
 /// the op layer sees, so diagnostics refer to identical text.
 #[must_use]
 pub fn prepare_source<'a>(raw: &'a str) -> PreparedSource<'a> {
-    let expansion = expand_scratch(raw);
-    let parsed = expansion.parse_source(raw);
-    if std::ptr::eq(parsed, raw) {
-        PreparedSource {
-            source: Cow::Borrowed(raw),
-            is_wrapped: false,
-        }
-    } else {
-        PreparedSource {
-            source: Cow::Owned(parsed.to_string()),
-            is_wrapped: true,
-        }
+    let _ = expand_scratch;
+    PreparedSource {
+        source: Cow::Borrowed(raw),
+        is_wrapped: false,
     }
 }

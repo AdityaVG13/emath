@@ -22,11 +22,12 @@ pub use capsule_record::{
 };
 pub use kind_schema::{
     CoreKind, KindSchema, PayloadPolicy, RepeatPolicy, SectionSchema, core_function_schema,
-    core_model_schema, core_policy_schema, payload_allows,
+    core_object_schema, core_query_schema, payload_allows,
 };
 pub use feature_capsule::{
-    CAPSULE_EDGE_KINDS, CLASS_RULES, CapsuleIssue, ClassRule, capsule_semantic_hash,
-    parse_capsule_slot, parse_feature_capsule, parse_projection_disposition, validate_capsule,
+    CAPSULE_EDGE_KINDS, CLASS_RULES, CapsuleIssue, ClassRule, SemanticHashRewrite,
+    capsule_documents, capsule_semantic_hash, parse_capsule_slot, parse_feature_capsule,
+    parse_projection_disposition, rewrite_declared_semantic_hashes, validate_capsule,
     validate_maturity_transition,
 };
 pub use lang::{SchemaIssue, parse_schema_language};

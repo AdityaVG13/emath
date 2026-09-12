@@ -12,16 +12,7 @@ use emath_ir::{ImportEntry, ImportSelection};
 use std::collections::BTreeMap;
 
 /// Declaration kinds admitted by this front-end.
-pub const RECOGNIZED_KINDS: &[&str] = &[
-    "function",
-    "record",
-    "policy",
-    "model",
-    "kind",
-    "search",
-    "experiment",
-    "type",
-];
+pub const RECOGNIZED_KINDS: &[&str] = &["object", "function", "query"];
 
 mod capability;
 mod declaration;
@@ -55,45 +46,14 @@ pub struct V6FrontEnd {
     pub imports: Vec<ImportEntry>,
 }
 
-/// Collect the `emath kind` definitions declared in the file.
+/// `emath kind` is not a core kind. The custom-kind registry is empty.
 #[must_use]
 pub fn collect_kind_defs(tree: &emath_core::tree::SyntaxTree) -> BTreeMap<String, KindDef> {
-    let mut defs = BTreeMap::new();
-    for item in &tree.items {
-        let Item::Declaration(decl) = item else {
-            continue;
-        };
-        // Parser remaps `emath kind Name:` to `item_kind=custom` with
-        // the original spelling in `as_kind`; hand-built trees keep
-        // `item_kind == "kind"`.
-        let is_kind_def =
-            decl.item_kind == "kind" || (decl.item_kind == "custom" && decl.as_kind == "kind");
-        if !is_kind_def {
-            continue;
-        }
-        let mut def = KindDef {
-            name: decl.name.clone(),
-            extends: None,
-            schema: Vec::new(),
-        };
-        for stmt in &decl.body {
-            match &stmt.kind {
-                StmtKind::Command { head, .. }
-                    if head.first().map(String::as_str) == Some("extends") =>
-                {
-                    def.extends = head.get(1).cloned();
-                }
-                StmtKind::Section(section) if section.name == "schema" => {
-                    def.schema.extend(schema_rules_from_section(section));
-                }
-                _ => {}
-            }
-        }
-        defs.insert(decl.name.clone(), def);
-    }
-    defs
+    let _ = tree;
+    BTreeMap::new()
 }
 
+#[allow(dead_code)]
 fn schema_rules_from_section(section: &emath_core::tree::Section) -> Vec<SchemaRule> {
     let mut rules = Vec::new();
     for stmt in &section.suite.statements {
@@ -121,6 +81,7 @@ fn schema_rules_from_section(section: &emath_core::tree::Section) -> Vec<SchemaR
 /// Interpret a `require <expr>` schema statement as a rule.
 /// The parser folds `section input` / `exactly_one output` into a plain
 /// path expression (`["section", "input"]`).
+#[allow(dead_code)]
 fn require_head(expr: &Expr) -> Option<SchemaRule> {
     let ExprKind::Path { segments, .. } = &expr.kind else {
         return None;
@@ -160,22 +121,11 @@ pub fn admit_front_end(
                     );
                     continue;
                 }
-                if is_unresolved_law_import(path, tree) {
-                    diagnostics.error(
-                        "E-PKG-052",
-                        format!(
-                            "law package import `{}` is not resolved yet; declare the law locally until the curated package registry lands",
-                            path.join("::")
-                        ),
-                        *source,
-                    );
-                    continue;
-                }
                 let mut path = path.clone();
                 let selection = match tree {
                     UseTree::All => ImportSelection::All,
                     UseTree::Named(names) if names.is_empty() && path.len() >= 2 => {
-                        // `use std.numeric.Real`: the parser keeps the
+                        // `use package.path.Name`: the parser keeps the
                         // single imported name in the path.
                         let name = path.pop().unwrap_or_default();
                         ImportSelection::Named(vec![(name, None)])
@@ -200,15 +150,6 @@ pub fn admit_front_end(
         }
     }
     result
-}
-
-fn is_unresolved_law_import(path: &[String], tree: &UseTree) -> bool {
-    path == ["physics", "NewtonSecond"]
-        || (path == ["physics"]
-            && matches!(
-                tree,
-                UseTree::Named(names) if names.iter().any(|(name, _)| name == "NewtonSecond")
-            ))
 }
 
 fn is_external_import(path: &[String]) -> bool {

@@ -12,6 +12,7 @@ pub(super) const OWNER: Span = Span {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KindRef {
     Function,
+    /// Historical builder tag. Not a constructor kind.
     Policy,
 }
 

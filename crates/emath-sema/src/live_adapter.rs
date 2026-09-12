@@ -72,7 +72,7 @@ pub fn inspect_live_source(
     let checked = session.check_owned(request.source_name, request.source);
     let source_hash = content_id_of_str(request.source).0;
     let cst_identity = content_id_of_str(&format!("{tree:?}")).0;
-    let mut features = infer_features(&checked.package);
+    let mut features = infer_constructor_features(&tree);
     features.sort();
     features.dedup();
     for feature in &features {
@@ -89,9 +89,12 @@ pub fn inspect_live_source(
             StageStatus::Available(cst_identity.clone())
         },
     );
+    let constructor_admitted = emath_exec_ir::constructor_layer::admit_tree(&tree).is_ok();
     stages.insert(
         "admit".to_string(),
-        if checked.diagnostics.has_errors() {
+        if constructor_admitted {
+            StageStatus::Available(content_id_of_str(&format!("{:?}", tree.items)).0)
+        } else if checked.diagnostics.has_errors() {
             StageStatus::Unavailable(
                 checked
                     .diagnostics
@@ -101,17 +104,14 @@ pub fn inspect_live_source(
                     .join(","),
             )
         } else {
-            StageStatus::Available(
-                content_id_of_str(&format!("{:?}", checked.package.declarations)).0,
-            )
+            StageStatus::Unavailable("constructor admission refused".to_string())
         },
     );
-    let lowering_available =
-        !checked.package.declarations.is_empty() && !checked.diagnostics.has_errors();
+    let lowering_available = constructor_admitted;
     stages.insert(
         "lower".to_string(),
         if lowering_available {
-            StageStatus::Available("neutral-sir".to_string())
+            StageStatus::Available("constructor".to_string())
         } else {
             StageStatus::Unavailable("no admitted runnable declaration".to_string())
         },
@@ -124,9 +124,9 @@ pub fn inspect_live_source(
             StageStatus::Unavailable("no world plan".to_string())
         },
     );
-    let result = evaluate_tiny_exact(&checked.package).unwrap_or_else(|| {
+    let result = evaluate_constructor(&tree).unwrap_or_else(|| {
         checked.diagnostics.errors().next().map_or_else(
-            || "unavailable: execution stage has no supported tiny exact result".to_string(),
+            || "unavailable: execution stage has no supported constructor result".to_string(),
             |diagnostic| format!("diagnosis:{}", diagnostic.code),
         )
     });
@@ -191,20 +191,58 @@ impl LiveConformanceResponse {
     }
 }
 
-fn infer_features(package: &emath_ir::SemanticPackage) -> Vec<FeatureId> {
+fn infer_constructor_features(tree: &emath_core::tree::SyntaxTree) -> Vec<FeatureId> {
+    let mut features = Vec::new();
+    for item in &tree.items {
+        let emath_core::tree::Item::Declaration(decl) = item else {
+            continue;
+        };
+        let kind = match decl.as_kind.as_str() {
+            "function" => "std.kind.function",
+            "object" => "std.kind.object",
+            "query" => "std.kind.query",
+            _ => continue,
+        };
+        features.push(FeatureId::from_str(kind).unwrap());
+        features.push(FeatureId::from_str("std.capability.scalar").unwrap());
+    }
+    features
+}
+
+fn evaluate_constructor(tree: &emath_core::tree::SyntaxTree) -> Option<String> {
+    let name = tree.items.iter().find_map(|item| match item {
+        emath_core::tree::Item::Declaration(decl)
+            if matches!(decl.as_kind.as_str(), "function" | "query") =>
+        {
+            Some(decl.name.as_str())
+        }
+        _ => None,
+    })?;
+    match emath_exec_ir::constructor_layer::evaluate_function(tree, name, &BTreeMap::new()) {
+        Ok(emath_exec_ir::constructor_layer::CValue::Int(value)) => {
+            Some(format!("value:{value}:exact-int"))
+        }
+        Ok(other) => Some(format!("value:{other}:constructor")),
+        Err(err) => Some(format!("diagnosis:{}", err.code)),
+    }
+}
+
+#[allow(dead_code)]
+fn leftover_infer_features(package: &emath_ir::SemanticPackage) -> Vec<FeatureId> {
     let mut features = Vec::new();
     for declaration in &package.declarations {
         if let Ok(id) = FeatureId::from_str("std.kind.function") {
             features.push(id);
         }
         for expression in declaration.definitions.values() {
-            collect_expr(package, *expression, &mut features);
+            leftover_collect_expr(package, *expression, &mut features);
         }
     }
     features
 }
 
-fn collect_expr(
+#[allow(dead_code)]
+fn leftover_collect_expr(
     package: &emath_ir::SemanticPackage,
     id: emath_ir::ExprId,
     features: &mut Vec<FeatureId>,
@@ -222,22 +260,24 @@ fn collect_expr(
             right,
         } => {
             features.push(FeatureId::from_str("std.capability.math.add").unwrap());
-            collect_expr(package, *left, features);
-            collect_expr(package, *right, features);
+            leftover_collect_expr(package, *left, features);
+            leftover_collect_expr(package, *right, features);
         }
         _ => {}
     }
 }
 
+#[allow(dead_code)]
 enum TinyExact {
     Value(i64),
     Overflow,
 }
 
-fn evaluate_tiny_exact(package: &emath_ir::SemanticPackage) -> Option<String> {
+#[allow(dead_code)]
+fn leftover_evaluate_tiny_exact(package: &emath_ir::SemanticPackage) -> Option<String> {
     for declaration in &package.declarations {
         for expression in declaration.definitions.values() {
-            match eval_int(package, *expression)? {
+            match leftover_eval_int(package, *expression)? {
                 TinyExact::Value(value) => return Some(format!("value:{value}:exact-int")),
                 TinyExact::Overflow => return Some("diagnosis:E-INT-OVERFLOW".to_string()),
             }
@@ -246,14 +286,15 @@ fn evaluate_tiny_exact(package: &emath_ir::SemanticPackage) -> Option<String> {
     None
 }
 
-fn eval_int(package: &emath_ir::SemanticPackage, id: emath_ir::ExprId) -> Option<TinyExact> {
+#[allow(dead_code)]
+fn leftover_eval_int(package: &emath_ir::SemanticPackage, id: emath_ir::ExprId) -> Option<TinyExact> {
     match package.exprs.get(id.index())? {
         ExprNode::Literal(Literal::Integer(value)) => Some(TinyExact::Value(value.parse().ok()?)),
         ExprNode::Binary {
             operation: emath_ir::BinaryOp::ExactAdd | emath_ir::BinaryOp::StrictFloatAdd,
             left,
             right,
-        } => match (eval_int(package, *left)?, eval_int(package, *right)?) {
+        } => match (leftover_eval_int(package, *left)?, leftover_eval_int(package, *right)?) {
             (TinyExact::Overflow, _) | (_, TinyExact::Overflow) => Some(TinyExact::Overflow),
             (TinyExact::Value(left), TinyExact::Value(right)) => Some(
                 left.checked_add(right)

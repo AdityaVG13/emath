@@ -5,7 +5,9 @@
 //! Checkpoints retain exact values and capsule-owned continuation contracts.
 //! Source, Language Image, bindings and runner version stay fixed on resume.
 
-use crate::{CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use crate::{
+    CliExit, EXIT_ADMISSION, EXIT_FAULT, EXIT_OK, EXIT_PARTIAL, EXIT_REFUSED, EXIT_USAGE,
+};
 use emath_artifact::{JsonValue, JsonWriter, parse_json_document};
 use emath_core::{content_id_of_str, limits::Limits};
 use emath_exec_ir::interp::Value;
@@ -32,6 +34,7 @@ pub(crate) struct RunRequest {
     pub function: Option<String>,
     pub given: BTreeMap<String, String>,
     pub work: usize,
+    pub work_set: bool,
     pub expected_revision: Option<usize>,
     pub cancel_file: Option<PathBuf>,
     pub measure: usize,
@@ -140,6 +143,7 @@ impl RunRequest {
             function,
             given,
             work: work.unwrap_or(DEFAULT_WORK),
+            work_set: work.is_some(),
             expected_revision,
             cancel_file,
             measure: measure.unwrap_or(0),
@@ -298,9 +302,6 @@ impl SavedRun {
                 return Err("invalid saved result document".into());
             };
             let result = parse_json_document(value).map_err(|error| error.to_string())?;
-            if !matches!(field(&result, "goal_met")?, JsonValue::Bool(_)) {
-                return Err("invalid saved goal status".into());
-            }
             text(&result, "status")?;
             completed.push(value.clone());
         }
@@ -330,7 +331,9 @@ impl SavedRun {
         let active_result = text(&doc, "active_result")?;
         let active_result = if active_result.is_empty() { None } else {
             let result = parse_json_document(&active_result).map_err(|error| error.to_string())?;
-            if field(&result, "goal_met")? != &JsonValue::Bool(false) { return Err("unfinished method claims its goal is met".into()); }
+            if matches!(result.field("goal_met"), Ok(JsonValue::Bool(true))) {
+                return Err("unfinished method claims a completed constructor answer".into());
+            }
             Some(active_result)
         };
         let JsonValue::Obj(entries) = field(&doc, "methods")? else { return Err("invalid saved methods".into()); };
@@ -399,6 +402,10 @@ impl SavedRun {
     }
 }
 
+fn case_computed(result: &JsonValue) -> bool {
+    result.string_field("status").ok().as_deref() == Some("computed")
+}
+
 fn field<'a>(doc: &'a JsonValue, name: &str) -> Result<&'a JsonValue, String> {
     doc.field(name).map_err(|error| error.to_string())
 }
@@ -410,10 +417,13 @@ pub(crate) fn diagnostic(json: bool, exit: CliExit, code: &str, message: &str) -
     eprintln!("error: {code}: {message}");
     if json {
         let mut out = JsonWriter::object();
-        out.string("schema", SCHEMA);
-        out.string("operation_status", "failed");
-        out.bool("goal_met", false);
-        out.objects("results", &[]);
+        out.string("schema_version", "emath.constructor.v1");
+        out.string("command", "run");
+        out.string("admission", "refused");
+        out.string("execution", "absent");
+        out.string("fulfillment", "unmet");
+        out.objects("evidence", &[]);
+        out.strings("remaining", &[message.to_string()]);
         out.objects(
             "diagnostics",
             &[crate::json_diagnostic_entry(code, "error", message)],
@@ -433,10 +443,10 @@ fn checked_package(path: &Path, json: bool) -> Result<SemanticPackage, CliExit> 
         crate::print_diagnostics(&result.diagnostics);
         if json {
             let mut out = JsonWriter::object();
-            out.string("schema", SCHEMA);
-            out.string("operation_status", "failed");
-            out.bool("goal_met", false);
-            out.objects("results", &[]);
+            out.string("schema_version", "emath.constructor.v1");
+            out.string("command", "check");
+            out.string("admission", "refused");
+            out.objects("evidence", &[]);
             out.objects(
                 "diagnostics",
                 &crate::json_diagnostics_entries(&result.diagnostics),
@@ -455,11 +465,7 @@ fn installed_language(path: &Path, json: bool) -> Result<String, CliExit> {
     Ok(distribution.image.distribution_hash.to_string())
 }
 
-/// Plan the source for `emath run`: the admission package PLUS the
-/// elaborated goals (`package.declarations[].goals` attaches only in the
-/// planner path). The run consults goal kinds — a goal outside the
-/// executable subset must refuse (E-GOAL-043) before any checkpoint is
-/// written — so the run needs the planned view, not the bare check.
+/// Historical planner package. Live `emath run` never calls this.
 fn planned_package(path: &Path, json: bool) -> Result<SemanticPackage, CliExit> {
     let mut session = CompilerSession::new(Limits::default());
     let loaded = session
@@ -470,10 +476,9 @@ fn planned_package(path: &Path, json: bool) -> Result<SemanticPackage, CliExit> 
         crate::print_diagnostics(&result.diagnostics);
         if json {
             let mut out = JsonWriter::object();
-            out.string("schema", SCHEMA);
-            out.string("operation_status", "failed");
-            out.bool("goal_met", false);
-            out.objects("results", &[]);
+            out.string("schema_version", "emath.constructor.v1");
+            out.string("command", "run");
+            out.string("admission", "refused");
             out.objects(
                 "diagnostics",
                 &crate::json_diagnostics_entries(&result.diagnostics),
@@ -486,13 +491,381 @@ fn planned_package(path: &Path, json: bool) -> Result<SemanticPackage, CliExit> 
     }
 }
 
+fn run_constructor_layer(request: &RunRequest, source: &str) -> Option<CliExit> {
+    let (tree, diagnostics) = emath_syntax::parse_str(source);
+    if diagnostics.has_errors() {
+        crate::print_diagnostics(&diagnostics);
+        return Some(EXIT_ADMISSION);
+    }
+    let constructor_only = tree.items.iter().all(|item| match item {
+        emath_core::tree::Item::Use { .. } => true,
+        emath_core::tree::Item::Declaration(decl) => {
+            matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+        }
+        _ => true,
+    });
+    let has_constructor = tree.items.iter().any(|item| matches!(
+        item,
+        emath_core::tree::Item::Declaration(decl)
+            if matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+    ));
+    if !constructor_only || !has_constructor {
+        return Some(diagnostic(
+            request.json,
+            EXIT_ADMISSION,
+            "E-KIND-GONE",
+            "`emath run` evaluates `emath object`, `emath function`, and `emath query`. Other declaration kinds are not constructors.",
+        ));
+    }
+    let mut inputs = BTreeMap::new();
+    for (name, raw) in &request.given {
+        inputs.insert(name.clone(), parse_constructor_literal(raw));
+    }
+    let report = match emath_exec_ir::constructor_layer::evaluate_tree(&tree) {
+        Ok(report) => report,
+        Err(err) => {
+            return Some(diagnostic(
+                request.json,
+                if err.code == "E-KIND-GONE" {
+                    EXIT_ADMISSION
+                } else if err.code == "incompatible_checkpoint" {
+                    crate::EXIT_CHECKPOINT
+                } else if err.code == "budget_exhausted" {
+                    EXIT_PARTIAL
+                } else {
+                    EXIT_FAULT
+                },
+                &err.code,
+                &err.message,
+            ));
+        }
+    };
+    if let Some(name) = &request.function {
+        if request.work_set {
+            return Some(run_constructor_budgeted(request, source, &tree, name, &inputs));
+        }
+        if let Ok(value) = emath_exec_ir::constructor_layer::evaluate_function(&tree, name, &inputs)
+        {
+            return Some(print_constructor_json(
+                request.json,
+                "returned",
+                "satisfied",
+                constructor_representation(&value),
+                &value.to_string(),
+                EXIT_OK,
+            ));
+        }
+        if let Ok(receipt) = emath_exec_ir::constructor_layer::evaluate_query(&tree, name, &inputs)
+        {
+            let exit = match receipt.fulfillment.as_str() {
+                "satisfied" => EXIT_OK,
+                "partial" | "unmet" => EXIT_PARTIAL,
+                _ => EXIT_FAULT,
+            };
+            return Some(print_constructor_receipt(request.json, &receipt, exit));
+        }
+        return Some(diagnostic(
+            request.json,
+            EXIT_ADMISSION,
+            "E-RUN-ENTRY",
+            &format!("no constructor entry `{name}`"),
+        ));
+    }
+    let failed = report.tests.iter().any(|test| !test.passed);
+    let partial = report.tests.iter().any(|test| {
+        test.receipt
+            .as_ref()
+            .is_some_and(|receipt| matches!(receipt.fulfillment.as_str(), "partial" | "unmet"))
+    });
+    let exit = if failed || partial {
+        EXIT_PARTIAL
+    } else {
+        EXIT_OK
+    };
+    let mut out = JsonWriter::object();
+    out.string("schema_version", "emath.constructor.v1");
+    out.string("command", "run");
+    out.string("admission", "ok");
+    println!("{}", out.finish());
+    let _ = request;
+    Some(exit)
+}
+
+fn run_constructor_budgeted(
+    request: &RunRequest,
+    source: &str,
+    tree: &emath_core::tree::SyntaxTree,
+    name: &str,
+    inputs: &BTreeMap<String, emath_exec_ir::constructor_layer::CValue>,
+) -> CliExit {
+    let source_id = content_id_of_str(source).0;
+    match emath_exec_ir::constructor_layer::evaluate_function_budgeted_at(
+        tree,
+        name,
+        inputs,
+        request.work as u64,
+        None,
+        &source_id,
+        Some(&request.path),
+        source,
+    ) {
+        Ok(value) => print_constructor_json(
+            request.json,
+            "returned",
+            "satisfied",
+            constructor_representation(&value),
+            &value.to_string(),
+            EXIT_OK,
+        ),
+        Err((err, mut checkpoint)) => {
+            checkpoint.function = name.into();
+            checkpoint.source = source.into();
+            checkpoint.inputs = inputs.clone();
+            checkpoint.source_id = source_id;
+            if err.code == "budget_exhausted" {
+                if let Err(write_err) = write_constructor_checkpoint(request, &checkpoint) {
+                    return diagnostic(request.json, EXIT_FAULT, "E-IO", &write_err);
+                }
+                return print_constructor_json(
+                    request.json,
+                    "suspended",
+                    "partial",
+                    "absent",
+                    &format!("work={}", checkpoint.work),
+                    EXIT_PARTIAL,
+                );
+            }
+            if err.code == "incompatible_checkpoint" {
+                return diagnostic(request.json, crate::EXIT_CHECKPOINT, &err.code, &err.message);
+            }
+            diagnostic(request.json, EXIT_FAULT, &err.code, &err.message)
+        }
+    }
+}
+
+fn write_constructor_checkpoint(
+    request: &RunRequest,
+    checkpoint: &emath_exec_ir::constructor_layer::Checkpoint,
+) -> Result<(), String> {
+    std::fs::create_dir_all(&request.out).map_err(|err| err.to_string())?;
+    let path = request.out.join("constructor-checkpoint.json");
+    std::fs::write(path, checkpoint.encode()).map_err(|err| err.to_string())
+}
+
+fn constructor_inspect(path: &Path, json: bool) -> Option<CliExit> {
+    let text = std::fs::read_to_string(path).ok()?;
+    if !emath_exec_ir::constructor_layer::is_constructor_checkpoint(&text) {
+        return None;
+    }
+    match emath_exec_ir::constructor_layer::Checkpoint::decode(&text) {
+        Ok(checkpoint) => {
+            if json {
+                let mut out = JsonWriter::object();
+                out.string("schema_version", "emath.constructor.v1");
+                out.string("command", "inspect");
+                out.string("admission", "ok");
+                out.string("execution", "suspended");
+                out.string("fulfillment", "partial");
+                out.string("function", &checkpoint.function);
+                out.string("source_id", &checkpoint.source_id);
+                out.string("image", &checkpoint.image);
+                out.int("work", checkpoint.work);
+                out.int("remaining", checkpoint.remaining);
+                out.string("accounting", &checkpoint.accounting);
+                out.objects("evidence", &[]);
+                println!("{}", out.finish());
+            } else {
+                println!(
+                    "constructor checkpoint function={} work={} source_id={}",
+                    checkpoint.function, checkpoint.work, checkpoint.source_id
+                );
+            }
+            Some(EXIT_OK)
+        }
+        Err(err) => Some(diagnostic(
+            json,
+            crate::EXIT_CHECKPOINT,
+            &err.code,
+            &err.message,
+        )),
+    }
+}
+
+fn constructor_step(request: &RunRequest) -> Option<CliExit> {
+    let text = std::fs::read_to_string(&request.path).ok()?;
+    if !emath_exec_ir::constructor_layer::is_constructor_checkpoint(&text) {
+        return None;
+    }
+    let checkpoint = match emath_exec_ir::constructor_layer::Checkpoint::decode(&text) {
+        Ok(checkpoint) => checkpoint,
+        Err(err) => {
+            return Some(diagnostic(
+                request.json,
+                crate::EXIT_CHECKPOINT,
+                &err.code,
+                &err.message,
+            ));
+        }
+    };
+    let (tree, diagnostics) = emath_syntax::parse_str(&checkpoint.source);
+    if diagnostics.has_errors() {
+        return Some(diagnostic(
+            request.json,
+            crate::EXIT_CHECKPOINT,
+            "incompatible_checkpoint",
+            "checkpoint source no longer parses",
+        ));
+    }
+    let extra = if request.work_set {
+        request.work as u64
+    } else {
+        64
+    };
+    match emath_exec_ir::constructor_layer::evaluate_function_budgeted_at(
+        &tree,
+        &checkpoint.function,
+        &checkpoint.inputs,
+        checkpoint.work + extra,
+        Some(&checkpoint),
+        &checkpoint.source_id,
+        None,
+        &checkpoint.source,
+    ) {
+        Ok(value) => Some(print_constructor_json(
+            request.json,
+            "returned",
+            "satisfied",
+            constructor_representation(&value),
+            &value.to_string(),
+            EXIT_OK,
+        )),
+        Err((err, next)) => {
+            if err.code == "budget_exhausted" {
+                if let Err(write_err) = write_constructor_checkpoint(request, &next) {
+                    return Some(diagnostic(request.json, EXIT_FAULT, "E-IO", &write_err));
+                }
+                return Some(print_constructor_json(
+                    request.json,
+                    "suspended",
+                    "partial",
+                    "absent",
+                    &format!("work={}", next.work),
+                    EXIT_PARTIAL,
+                ));
+            }
+            Some(diagnostic(
+                request.json,
+                if err.code == "incompatible_checkpoint" {
+                    crate::EXIT_CHECKPOINT
+                } else {
+                    EXIT_FAULT
+                },
+                &err.code,
+                &err.message,
+            ))
+        }
+    }
+}
+
+fn parse_constructor_literal(raw: &str) -> emath_exec_ir::constructor_layer::CValue {
+    if raw == "true" {
+        return emath_exec_ir::constructor_layer::CValue::Bool(true);
+    }
+    if raw == "false" {
+        return emath_exec_ir::constructor_layer::CValue::Bool(false);
+    }
+    if let Some((num, den)) = raw.split_once('/') {
+        if let (Ok(n), Ok(d)) = (num.parse::<i128>(), den.parse::<i128>()) {
+            return emath_exec_ir::constructor_layer::CValue::Rat { num: n, den: d };
+        }
+    }
+    if let Ok(n) = raw.parse::<i128>() {
+        return emath_exec_ir::constructor_layer::CValue::Int(n);
+    }
+    if let Ok(x) = raw.parse::<f64>() {
+        return emath_exec_ir::constructor_layer::CValue::Float64(x);
+    }
+    emath_exec_ir::constructor_layer::CValue::Record {
+        type_name: raw.into(),
+        fields: BTreeMap::new(),
+    }
+}
+
+fn print_constructor_receipt(
+    json: bool,
+    receipt: &emath_exec_ir::constructor_layer::Receipt,
+    exit: CliExit,
+) -> CliExit {
+    if json {
+        let mut out = JsonWriter::object();
+        out.string("schema_version", "emath.constructor.v1");
+        out.string("command", "run");
+        out.string("admission", "ok");
+        out.string("execution", &receipt.execution);
+        out.string("fulfillment", &receipt.fulfillment);
+        out.string("representation", &receipt.representation);
+        if let Some(payload) = &receipt.payload {
+            out.string("payload", payload);
+        }
+        out.strings("evidence", &receipt.evidence);
+        out.strings("remaining", &receipt.remaining);
+        println!("{}", out.finish());
+    } else {
+        println!(
+            "{} {} {}",
+            receipt.execution, receipt.fulfillment, receipt.representation
+        );
+    }
+    exit
+}
+
+fn constructor_representation(value: &emath_exec_ir::constructor_layer::CValue) -> &'static str {
+    match value {
+        emath_exec_ir::constructor_layer::CValue::Int(_)
+        | emath_exec_ir::constructor_layer::CValue::Rat { .. }
+        | emath_exec_ir::constructor_layer::CValue::Bool(_) => "exact_scalar",
+        emath_exec_ir::constructor_layer::CValue::Float64(_) => "rounded_scalar",
+        emath_exec_ir::constructor_layer::CValue::Code(_) => "code",
+        emath_exec_ir::constructor_layer::CValue::Absent
+        | emath_exec_ir::constructor_layer::CValue::Unit => "absent",
+        _ => "structured",
+    }
+}
+
+fn print_constructor_json(
+    json: bool,
+    execution: &str,
+    fulfillment: &str,
+    representation: &str,
+    payload: &str,
+    exit: CliExit,
+) -> CliExit {
+    if json {
+        let mut out = JsonWriter::object();
+        out.string("schema_version", "emath.constructor.v1");
+        out.string("command", "run");
+        out.string("admission", "ok");
+        out.string("execution", execution);
+        out.string("fulfillment", fulfillment);
+        out.string("representation", representation);
+        out.string("payload", payload);
+        out.objects("evidence", &[]);
+        out.strings("remaining", &[]);
+        println!("{}", out.finish());
+    } else {
+        println!("{payload}");
+    }
+    exit
+}
+
+#[allow(unreachable_code, unused_variables)]
 pub(crate) fn run(request: RunRequest) -> CliExit {
     if let Some(exit) = crate::refuse_malformed_project_lock(&request.path) {
         return diagnostic(
             request.json,
             exit,
             "E-RUN-LOCK",
-            "the project meaning lock refused this source; inspect emath-lab meaning explain",
+            "the project meaning lock refused this source",
         );
     }
     let path = match std::fs::canonicalize(&request.path) {
@@ -507,6 +880,15 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
         Ok(source) => source,
         Err(error) => return diagnostic(request.json, EXIT_USAGE, "E-PKG-080", &error.to_string()),
     };
+    if let Some(exit) = run_constructor_layer(&request, &source) {
+        return exit;
+    }
+    return diagnostic(
+        request.json,
+        EXIT_ADMISSION,
+        "E-KIND-GONE",
+        "`emath run` evaluates `emath object`, `emath function`, and `emath query`. Other declaration kinds are not constructors.",
+    );
     let package = match planned_package(&path, request.json) {
         Ok(package) => package,
         Err(exit) => return exit,
@@ -562,7 +944,7 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
                         EXIT_REFUSED,
                         "E-GOAL-043",
                         &format!(
-                            "goal kind `{}` on `{}` is outside `emath run`'s executable subset (evaluate cases only); the goal stays symbolic — inspect `emath-lab expand`",
+                            "goal kind `{}` on `{}` is not a constructor; write an ordinary `emath function` or `emath query` and `emath run`",
                             goal.kind.as_str(),
                             declaration.name.leaf(),
                         ),
@@ -584,6 +966,9 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
 }
 
 pub(crate) fn step(request: RunRequest) -> CliExit {
+    if let Some(exit) = constructor_step(&request) {
+        return exit;
+    }
     let mut state = match SavedRun::load(&request.path) {
         Ok(state) => state,
         Err(error) => return diagnostic(request.json, EXIT_USAGE, "E-RUN-STATE", &error),
@@ -615,7 +1000,7 @@ fn resume_package(state: &SavedRun, json: bool) -> Result<SemanticPackage, CliEx
             json,
             exit,
             "E-RUN-LOCK",
-            "the project meaning lock refused this source; inspect emath-lab meaning explain",
+            "the project meaning lock refused this source",
         ));
     }
     let current = std::fs::read_to_string(&state.source_path)
@@ -1112,7 +1497,6 @@ fn result_json(
             "failed"
         },
     );
-    out.bool("goal_met", success && has_result && remaining.is_empty());
     out.string(
         "evidence",
         if run.verdict.expect_passed() {
@@ -1332,10 +1716,8 @@ fn emit(
     };
     let current_target_met = state.completed.len() == state.total
         && state.total > 0
-        && results
-            .iter()
-            .all(|result| matches!(result.field("goal_met"), Ok(JsonValue::Bool(true))));
-    let goal_met = current_target_met && state.preserves_original();
+        && results.iter().all(case_computed);
+    let completed = current_target_met && state.preserves_original();
     let failed = results
         .iter()
         .any(|result| result.string_field("status").ok().as_deref() == Some("failed"));
@@ -1351,8 +1733,6 @@ fn emit(
             "completed"
         },
     );
-    out.bool("goal_met", goal_met);
-    out.bool("current_target_met", current_target_met);
     out.string("target_id", &state.target_id());
     out.string("original_target_id", &state.original_target());
     out.string(
@@ -1468,7 +1848,8 @@ fn emit(
             }
         }
         println!(
-            "goal_met={goal_met}; current_target_met={current_target_met}; completed={}/{}; checkpoint={}",
+            "fulfillment={}; completed={}/{}; checkpoint={}",
+            if completed { "satisfied" } else { "partial" },
             state.completed.len(),
             state.total,
             path.display()
@@ -1488,7 +1869,7 @@ fn emit(
     }
     if let Some((exit, _, _)) = issue {
         exit
-    } else if goal_met {
+    } else if completed {
         EXIT_OK
     } else {
         EXIT_REFUSED
@@ -1496,6 +1877,9 @@ fn emit(
 }
 
 pub(crate) fn inspect(path: &Path, json: bool) -> CliExit {
+    if let Some(exit) = constructor_inspect(path, json) {
+        return exit;
+    }
     match SavedRun::load(path) {
         Ok(mut state) => {
             let mut path = path.to_path_buf();

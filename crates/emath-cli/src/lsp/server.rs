@@ -30,26 +30,21 @@ pub struct ServerState {
 }
 
 /// Keywords offered by completion, with hover documentation.
-const KEYWORDS: [(&str, &str); 14] = [
+const KEYWORDS: [(&str, &str); 12] = [
     (
         "emath",
-        "package declaration keyword: `emath custom <Name> as <kind>`",
+        "declaration keyword: `emath object`, `emath function`, or `emath query`",
     ),
-    (
-        "custom",
-        "declaration kind; Phase 1 accepts `custom`, `function`, `policy`-style bodies",
-    ),
-    ("function", "function-style declaration"),
+    ("object", "typed representation schema"),
+    ("function", "lexical binding and application"),
+    ("query", "question, method, and host-observed receipt"),
     ("inputs", "section: typed inputs"),
     ("outputs", "section: typed outputs"),
-    ("definitions", "section: scalar definitions"),
-    ("state", "section: constructor state"),
-    ("constructor", "checked constructor section"),
-    ("require", "constructor invariant / evidence requirement"),
-    ("define", "derived method definition"),
-    ("goal", "compile/differentiate request"),
-    ("evidence", "evidence requirements section"),
-    ("host", "Rust host interface section"),
+    ("definitions", "section: immutable definitions"),
+    ("representation", "section: one object shape"),
+    ("invariants", "section: Bool predicates on construction"),
+    ("question", "section: query target and assumptions"),
+    ("answer", "section: result type and acceptance request"),
     ("tests", "example-test section"),
 ];
 

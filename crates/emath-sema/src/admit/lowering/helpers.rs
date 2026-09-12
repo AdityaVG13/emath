@@ -10,6 +10,7 @@ use super::super::sections::*;
 use super::super::E_UNSUPPORTED_TYPE;
 
 impl super::super::Admitter {
+    #[allow(dead_code)]
     pub(super) fn lower_finite_binder(
         &mut self,
         expr: &Expr,
@@ -18,6 +19,14 @@ impl super::super::Admitter {
         body: &Expr,
         guard: Option<&Expr>,
     ) -> Option<(ExprId, Infer)> {
+        let _ = (kind, binders, body, guard);
+        self.error(
+            E_UNSUPPORTED_TYPE,
+            "recipe binders are ordinary imported functions, not constructor forms",
+            expr.source,
+        );
+        return None;
+        #[allow(unreachable_code)]
         if binders.is_empty() {
             self.error(
                 E_UNSUPPORTED_TYPE,
@@ -36,22 +45,50 @@ impl super::super::Admitter {
             // re-enters THIS path one binder at a time, so range checks,
             // caps, guards, and inference rules apply per level with
             // zero new lowering code.
+            let recipe = |kind: BinderKind| match kind {
+                BinderKind::Sum => "sum",
+                BinderKind::Product => "product",
+                BinderKind::Integral => "integral",
+                BinderKind::ForAll => "forall",
+                BinderKind::Exists => "exists",
+                BinderKind::Series => "series",
+            };
             let mut nested = Expr {
-                kind: ExprKind::Binder {
-                    kind,
-                    binders: vec![binders[binders.len() - 1].clone()],
+                kind: ExprKind::CallableBinder {
+                    callee: Box::new(Expr {
+                        kind: ExprKind::Path {
+                            segments: vec![recipe(kind).into()],
+                            generics: None,
+                        },
+                        source: expr.source,
+                    }),
+                    param: binders[binders.len() - 1].name.clone(),
+                    domain: Box::new(binders[binders.len() - 1].domain.clone().unwrap_or_else(|| {
+                        Expr {
+                            kind: ExprKind::List(Vec::new()),
+                            source: expr.source,
+                        }
+                    })),
                     body: Box::new(body.clone()),
-                    guard: guard.map(|g| Box::new(g.clone())),
                 },
                 source: expr.source,
             };
             for binder in binders[..binders.len() - 1].iter().rev() {
                 nested = Expr {
-                    kind: ExprKind::Binder {
-                        kind,
-                        binders: vec![binder.clone()],
+                    kind: ExprKind::CallableBinder {
+                        callee: Box::new(Expr {
+                            kind: ExprKind::Path {
+                                segments: vec![recipe(kind).into()],
+                                generics: None,
+                            },
+                            source: expr.source,
+                        }),
+                        param: binder.name.clone(),
+                        domain: Box::new(binder.domain.clone().unwrap_or_else(|| Expr {
+                            kind: ExprKind::List(Vec::new()),
+                            source: expr.source,
+                        })),
                         body: Box::new(nested),
-                        guard: None,
                     },
                     source: expr.source,
                 };

@@ -1,7 +1,9 @@
-//! Production `emath` CLI: compiler / user surface (`check`, `plan`, `build`,
-//! `parse`, `compile`, `simulate`, `run`, `test`, …). Extracted lab/host
-//! commands live in `emath-cli-lab` (`emath-lab`).
-//! Host entry is [`run`] -> [`CliExit`] (not a raw `u8`). Exit codes: 0 ok, 1 refused, 2 usage/io.
+//! Production `emath` CLI (constructor layer): `check`, `run`, `step`,
+//! `inspect`, `verify`, `test`, `build`, `api`. Extracted tokens
+//! (`eval`, `sweep`, `genesis`, `solve`, …) refuse `E-KIND-GONE` and
+//! point at `emath run`. Host entry is [`run`] -> [`CliExit`].
+//! Exit codes: 0 completed, 2 admission, 3 unmet/partial, 4 fault,
+//! 5 incompatible checkpoint.
 
 #![forbid(unsafe_code)]
 
@@ -57,13 +59,15 @@ use emath_sema::CompilerSession;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// Host process exit code mapping:
-/// - 0: Success (Ok)
-/// - 1: Refused (mathematical refusal, check failure, or verification error)
-/// - 2: Usage (syntax error, unknown flag, missing required arguments)
-/// - 3: Toolchain (environment or toolchain prerequisite missing / doctor failure)
-/// - 4: Io (file not found, cannot read/write file, or disk I/O error)
-/// - 5: Safety (destructive action rejected, safety boundary check failed)
+/// Host process exit code mapping (constitution §6.3):
+/// - 0: command completed its declared operation
+/// - 2: syntax/type/input admission failure
+/// - 3: executed with an unmet, partial, or suspended answer
+/// - 4: execution/backend fault
+/// - 5: incompatible or corrupt checkpoint
+///
+/// Legacy names remain so existing call sites compile. Constructor-layer
+/// commands must use the constitution numbers, not historical "refused=1".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CliExit {
@@ -81,9 +85,13 @@ pub const EXIT_USAGE: CliExit = CliExit::Usage;
 pub const EXIT_TOOLCHAIN: CliExit = CliExit::Toolchain;
 pub const EXIT_IO: CliExit = CliExit::Io;
 pub const EXIT_SAFETY: CliExit = CliExit::Safety;
+pub const EXIT_ADMISSION: CliExit = CliExit::Usage;
+pub const EXIT_PARTIAL: CliExit = CliExit::Toolchain;
+pub const EXIT_FAULT: CliExit = CliExit::Io;
+pub const EXIT_CHECKPOINT: CliExit = CliExit::Safety;
 
 pub fn exit_from_diagnostics(has_errors: bool) -> CliExit {
-    if has_errors { EXIT_REFUSED } else { EXIT_OK }
+    if has_errors { EXIT_ADMISSION } else { EXIT_OK }
 }
 
 pub use provenance_cmd::provenance_explanation;

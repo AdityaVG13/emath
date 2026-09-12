@@ -27,28 +27,22 @@ pub fn capabilities_json() -> String {
     );
 
     let commands: &[(&str, &str, &str)] = &[
-        ("check", "Semantic admission and typecheck", "check <file.emath|-> [--verify-data] [--json]"),
-        ("plan", "Deterministic resolution plan", "plan <file.emath> [--json]"),
-        ("planner", "Low-level planner inspection", "planner <file.emath> [--json] [--parametric]"),
-        ("build", "Generate and verify Cargo artifact", "build <file.emath> [--out <dir>] [--verify] [--bin <entry>] [--dry-run] [--json]"),
-        ("simulate", "Integrate admitted ODE/DAE models", "simulate <file.emath> [--model NAME] [--dt N] [--method euler|rk4|rk45] [--json]"),
+        ("check", "Parse and admit constructor source", "check <file.emath|-> [--json]"),
+        ("run", "Evaluate an emath function or query; print a constructor receipt", "run <file.emath> [--function NAME] [--set name=value] [--json]"),
+        ("step", "Resume a constructor-layer continuation", "step <checkpoint.json> [--work N] [--json]"),
+        ("inspect", "Read a saved constructor checkpoint", "inspect <checkpoint.json> [--json]"),
+        ("verify", "Replay recorded observations; not a theorem", "verify <checkpoint.json> [--json]"),
+        ("test", "Authored tests", "test <file.emath>"),
+        ("build", "Emit fully lowered runnable Rust", "build <file.emath> [--out <dir>] [--json]"),
+        ("api", "Constructor contracts and imported module exports", "api [--search text] [--json]"),
         ("new", "Deterministic project scaffold", "new <name> [--out <dir>] [--dry-run] [--force] [--json]"),
-        ("fmt", "Canonical formatting and unit-preserving display", "fmt <file.emath|-> | fmt --value <literal> [--sf N] [--from UNIT]"),
-        ("migrate", "Lossless receipt-driven syntax migrations", "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json]"),
-        ("explain", "Plan explanation, provenance DAG, or error code", "explain <file.emath> [<symbol>] | explain <E-CODE> [--list-codes] [--json]"),
-        ("run", "Execute source mathematics with saved authored methods", "run <file.emath> [--function NAME] [--set name=value] [--json]"),
-        ("search", "Semantic search across compiled capabilities", "search <query> [--json]"),
-        ("step", "Continue execution with single work-unit commits", "step <checkpoint.json> [--work N] [--json]"),
-        ("api", "Report command interface and language distribution", "api [--search text] [--source file.emath] [--json]"),
-        ("test", "Build and verify test fixtures", "test <file.emath> [--out <dir>]"),
-        ("verify", "Check published artifacts or saved certificates", "verify <dir|checkpoint.json> [--json]"),
-        ("inspect", "Read saved mathematical results or manifests", "inspect <dir|checkpoint.json> [--json]"),
+        ("fmt", "Canonical-form check", "fmt <file.emath|->"),
+        ("migrate", "Format-only respell; not a recipe translator", "migrate <file.emath> [--check] [--dry-run] [--fix]"),
+        ("explain", "Diagnostic-code lookup. File/plan explanation refuses", "explain <E-CODE> [--list-codes] [--json]"),
         ("diff", "Content-id fingerprint comparison", "diff <a.emath> <b.emath> [--json]"),
         ("doctor", "Toolchain presence and environment health", "doctor [--json]"),
-        ("capabilities", "Machine-readable contract and capabilities export", "capabilities [--json]"),
-        ("catalog", "Full command matrix export with flags and examples", "catalog [--json]"),
-        ("triage", "Mega-command to orient, check health, and get recommendations", "triage [<file.emath>] [--json]"),
-        ("next", "Next-action engine returning top action and claim command", "next [<file.emath>] [--json]"),
+        ("capabilities", "Machine-readable constructor CLI contract", "capabilities [--json]"),
+        ("catalog", "Command matrix; historical tokens are marked refuse", "catalog [--json]"),
         ("help", "Command catalog and help text", "help [<command>]"),
         ("version", "Print emath-cli version", "version"),
     ];
@@ -69,12 +63,11 @@ pub fn capabilities_json() -> String {
     root.objects("commands", &command_objects);
 
     let exit_codes: &[(&str, &str)] = &[
-        ("0", "ok - command completed successfully"),
-        ("1", "refused - admission, verification, or mathematical refusal"),
-        ("2", "usage - invalid arguments, unknown flag, or syntax error"),
-        ("3", "environment - missing toolchain or broken environment"),
-        ("4", "io - filesystem or file access error"),
-        ("5", "safety - destructive or unguarded operation blocked"),
+        ("0", "ok - command completed its declared operation"),
+        ("2", "admission - syntax, type, or input admission failure"),
+        ("3", "partial - unmet, partial, or suspended requested answer"),
+        ("4", "fault - execution or backend fault"),
+        ("5", "checkpoint - incompatible or corrupt checkpoint"),
     ];
     let mut exit_code_objects = Vec::new();
     for (code, meaning) in exit_codes {
@@ -90,7 +83,6 @@ pub fn capabilities_json() -> String {
         ("TERM", "Terminal type; TERM=dumb suppresses ANSI styling and cursor movement"),
         ("CI", "Continuous integration flag; suppresses interactive prompts"),
         ("EMATH_LOG", "Diagnostics logging level (error, warn, info, debug)"),
-        ("EMATH_WEB_DIST", "Override path to web playground assets"),
         ("SOURCE_DATE_EPOCH", "Deterministic UNIX timestamp for generated artifacts"),
     ];
     let mut env_objects = Vec::new();
@@ -103,17 +95,11 @@ pub fn capabilities_json() -> String {
     root.objects("environment_variables", &env_objects);
 
     let features: Vec<String> = vec![
+        "constructor_layer".to_string(),
         "json_streaming".to_string(),
         "deterministic_builds".to_string(),
         "pure_stdout_stderr_separation".to_string(),
-        "robot_mode".to_string(),
-        "intent_recovery".to_string(),
-        "command_aliases".to_string(),
         "environment_conventions".to_string(),
-        "ansi_color_control".to_string(),
-        "next_action_engine".to_string(),
-        "provable_artifacts".to_string(),
-        "safe_mutation_dry_run".to_string(),
         "stdin_pipelines".to_string(),
         "diagnostic_code_explainer".to_string(),
     ];
@@ -126,13 +112,13 @@ fn print_human_summary() {
     println!("emath version {} (capabilities v1.0.0)", env!("CARGO_PKG_VERSION"));
     println!();
     println!("Core Capabilities:");
-    println!("  • Deterministic mathematical compilation (EMIR -> Cargo artifact)");
-    println!("  • Explicit & adaptive numerical solvers (Euler, RK4, RK45)");
-    println!("  • Typechecked dimensional analysis & unit preservation");
-    println!("  • Machine-readable JSON streaming on all inspection commands");
-    println!("  • Structured exit code contracts and error pedagogy");
-    println!("  • Single-letter and intuitive command aliases (c, b, p, sim, doc, fmt)");
-    println!("  • Environment conventions (NO_COLOR, CI, TERM=dumb, --color control)");
+    println!("  • Constructor layer: object, function, recur, quote, query");
+    println!("  • `emath check` / `emath run` on ordinary constructor source");
+    println!("  • Scalar carriers Int, Rat, Float64, Bool; no recipe FeatureIDs");
+    println!("  • Machine-readable JSON on inspection commands");
+    println!("  • Structured exit codes: 0 ok, 2 admission, 3 partial, 4 fault, 5 checkpoint");
+    println!("  • Extracted tokens refuse E-KIND-GONE; there is no goals: layer");
+    println!("  • Environment conventions (NO_COLOR, CI, TERM=dumb)");
     println!("  • Stdin pipelines: `check -` and `fmt -` read source from stdin");
     println!();
     println!("For machine-readable JSON schema contract, run: emath capabilities --json");

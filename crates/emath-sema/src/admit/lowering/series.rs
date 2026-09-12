@@ -178,14 +178,14 @@ impl super::super::Admitter {
                 }
                 let (then_id, then_infer) = self.lower_expr(then_value)?;
                 let (else_id, else_infer) = self.lower_expr(else_value)?;
-                if then_infer != else_infer {
+                let Some(joined) = super::super::infer::join_infer(&then_infer, &else_infer) else {
                     self.error(
                         "E-TYPE-012",
                         "`if` branches must have the same type",
                         expr.source,
                     );
                     return None;
-                }
+                };
                 Some((
                     self.push_expr(
                         ExprNode::If {
@@ -195,7 +195,7 @@ impl super::super::Admitter {
                         },
                         expr.source,
                     ),
-                    then_infer,
+                    joined,
                 ))
             }
             ExprKind::Cases {
@@ -207,7 +207,7 @@ impl super::super::Admitter {
                 // to nested `If { c1, e1, If { c2, e2, e3 } }`.
                 // The subject is for readability only (arm conditions
                 // are full expressions, not pattern matches).
-                let (mut current_else, result_infer) = self.lower_expr(else_arm)?;
+                let (mut current_else, mut result_infer) = self.lower_expr(else_arm)?;
                 for (cond, value) in arms.iter().rev() {
                     let (cond_id, cond_infer) = self.lower_expr(cond)?;
                     if !matches!(cond_infer, Infer::Bool) {
@@ -219,14 +219,16 @@ impl super::super::Admitter {
                         return None;
                     }
                     let (val_id, val_infer) = self.lower_expr(value)?;
-                    if val_infer != result_infer {
+                    let Some(joined) = super::super::infer::join_infer(&val_infer, &result_infer)
+                    else {
                         self.error(
                             "E-TYPE-012",
                             "cases arms must have the same type",
                             expr.source,
                         );
                         return None;
-                    }
+                    };
+                    result_infer = joined;
                     current_else = self.push_expr(
                         ExprNode::If {
                             condition: cond_id,
@@ -291,29 +293,53 @@ impl super::super::Admitter {
                 Some((id, Infer::Record(name.0)))
             }
             ExprKind::Index { value, indices } => self.lower_index(expr, value, indices),
-            ExprKind::Binder {
-                kind,
-                binders,
-                body,
-                guard,
-            } => {
-                // Series in claim context: admit as Bool(true).
-                if *kind == BinderKind::Series && self.in_claim_context {
-                    self.record(
-                        "sema",
-                        "series convergence claim admitted (not computationally verified)",
-                        expr.source,
-                    );
-                    let id = self.push_expr(ExprNode::Literal(Literal::Bool(true)), expr.source);
-                    return Some((id, Infer::Bool));
-                }
-                self.lower_finite_binder(expr, *kind, binders, body, guard.as_deref())
+            ExprKind::FunctionAbs { param, domain, body } => {
+                let _ = self.lower_expr(domain)?;
+                let (body_id, _) = self.lower_expr(body)?;
+                let id = self.push_expr(
+                    ExprNode::Program {
+                        body: body_id,
+                        inputs: vec![param.clone()],
+                    },
+                    expr.source,
+                );
+                Some((id, Infer::Opaque))
             }
-            ExprKind::Derivative { .. } => self.lower_derivative_arm(expr),
-            ExprKind::Solve { .. } => self.lower_solve_arm(expr),
-            ExprKind::Optimize { .. } => self.lower_optimize_arm(expr),
-            ExprKind::Limit { .. } => self.lower_limit_expr_arm(expr),
-            ExprKind::SampleLimit { .. } => self.lower_sample_limit_arm(expr),
+            ExprKind::Recur { ty, body, .. } => {
+                let _ = self.lower_expr(ty)?;
+                let (body_id, infer) = self.lower_expr(body)?;
+                Some((body_id, infer))
+            }
+            ExprKind::Quote { body } | ExprKind::QuoteBind { body, .. } => {
+                let (body_id, _) = self.lower_expr(body)?;
+                let id = self.push_expr(
+                    ExprNode::Program {
+                        body: body_id,
+                        inputs: Vec::new(),
+                    },
+                    expr.source,
+                );
+                Some((id, Infer::Opaque))
+            }
+            ExprKind::CallableBinder {
+                callee,
+                param,
+                domain,
+                body,
+            } => {
+                let (callee_id, _) = self.lower_expr(callee)?;
+                let _ = callee_id;
+                let _ = self.lower_expr(domain)?;
+                let (body_id, _) = self.lower_expr(body)?;
+                let id = self.push_expr(
+                    ExprNode::Program {
+                        body: body_id,
+                        inputs: vec![param.clone()],
+                    },
+                    expr.source,
+                );
+                Some((id, Infer::Opaque))
+            }
             ExprKind::UnitQuery { kind, .. } => {
                 let query = match kind {
                     emath_core::tree::UnitQueryKind::Unit => "unit of",

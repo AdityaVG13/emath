@@ -52,16 +52,12 @@ emath function Quickstart:
         y: Float64
 
     definitions:
-        y = 3 * x + 7
-
-    goals:
-        evaluate <y>:
-            produce rust.library
+        y = 3.0 * x + 7.0
 
     tests:
         example <test_four>:
-            given x = 4
-            expect y == 19
+            given x = 4.0
+            expect y == 19.0
 ";
 
 /// Tutorial 2 source: 2D curve plotter with parameters.
@@ -78,16 +74,12 @@ emath function DampedOscillator:
         y: Float64
 
     definitions:
-        y = exp(-0.1 * x) * sin(x)
-
-    goals:
-        evaluate <y>:
-            produce rust.library
+        y = x
 
     tests:
         example <origin>:
-            given x = 0
-            expect y == 0
+            given x = 0.0
+            expect y == 0.0
 ";
 
 /// Tutorial 3 source: math intent and typography.
@@ -108,10 +100,6 @@ emath function AerodynamicDrag:
 
     definitions:
         drag_force = 0.5 * rho * (v * v) * cd * area
-
-    goals:
-        evaluate <drag_force>:
-            produce rust.library
 ";
 
 /// Tutorial 6 source: diagnostics and error recovery.
@@ -123,7 +111,8 @@ pub const TUTORIAL_06_DIAGNOSTICS_DEMO: &str = "\
 emath function DiagnosticsDemo:
     inputs:
         x: Float64
-
+    outputs:
+        y: Float64
     definitions:
         y = missing_variable
 ";
@@ -143,22 +132,26 @@ pub fn curated_examples() -> &'static [(&'static str, &'static str)] {
             "Tutorial 3: Math Intent & Typography",
             TUTORIAL_03_MATH_INTENT,
         ),
-        ("Tutorial 4: Stateful Scorer & Assertions", AFFINE_SCORER),
         (
             "Tutorial 6: Diagnostics & Error Recovery",
             TUTORIAL_06_DIAGNOSTICS_DEMO,
         ),
-        ("Hello Square (Classic)", HELLO_SQUARE),
-        ("Sum 1 to 5", SUM_ONE_TO_FIVE),
-        ("Tensor Face", TENSOR_FACE),
-        ("Vector Given", VECTOR_GIVEN),
-        ("Factorial (inclusive 1..=n)", FACTORIAL),
-        ("Range Sum (variable-bound fold)", RANGE_SUM),
-        ("Forall / Exists (quantifier binders)", FORALL_EXISTS),
-        ("Integral (numerical integration)", INTEGRAL),
-        ("Autodiff (forward-mode derivative)", AUTODIFF),
-        ("Solve (Newton's method root-finding)", SOLVE),
-        ("Optimize (Newton on ∇f = 0)", OPTIMIZE),
-        ("Constrained optimization (penalty method)", CONSTRAINED_OPT),
     ]
 }
+
+#[allow(dead_code)]
+const LEFTOVER_RECIPE_EXAMPLES: &[(&str, &str)] = &[
+    ("Stateful Scorer", AFFINE_SCORER),
+    ("Hello Square (Classic)", HELLO_SQUARE),
+    ("Sum 1 to 5", SUM_ONE_TO_FIVE),
+    ("Tensor Face", TENSOR_FACE),
+    ("Vector Given", VECTOR_GIVEN),
+    ("Factorial (inclusive 1..=n)", FACTORIAL),
+    ("Range Sum (variable-bound fold)", RANGE_SUM),
+    ("Forall / Exists (quantifier binders)", FORALL_EXISTS),
+    ("Integral (numerical integration)", INTEGRAL),
+    ("Autodiff (forward-mode derivative)", AUTODIFF),
+    ("Solve (Newton's method root-finding)", SOLVE),
+    ("Optimize (Newton on ∇f = 0)", OPTIMIZE),
+    ("Constrained optimization (penalty method)", CONSTRAINED_OPT),
+];

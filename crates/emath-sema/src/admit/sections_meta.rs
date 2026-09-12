@@ -16,7 +16,7 @@ use super::infer::infer_from_node;
 use super::types::{map_type, type_display};
 use super::{
     Admitter, CapabilityCallBinding, CheckResult, SemanticTrace, SiblingFunction,
-    admit_declaration, confusable_fold,
+    admit_constructor_declaration, admit_declaration, confusable_fold,
 };
 
 mod host;
@@ -29,6 +29,7 @@ pub(super) use provenance::*;
 pub(super) use remap::*;
 
 /// Parse the whole file and admit every declaration (used by the session).
+#[allow(unreachable_code, unused_variables)]
 pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     let mut diagnostics = Diagnostics::new();
     let mut trace = SemanticTrace::default();
@@ -49,15 +50,8 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     // contracts) runs file-wide before any declaration admission so
     // experimental syntax is never silently admitted.
     super::attributes::admit_capability_gates(tree, &mut diagnostics);
-    let units_profiles = super::attributes::admit_units_profiles(tree, &mut diagnostics);
+    let units_profiles = Vec::new();
     if !has_declaration {
-        if let Some(mut resolved) =
-            law_packages::resolve_embedded_law_import(&package.imports, tree.source)
-        {
-            resolved.diagnostics.extend_from(&diagnostics);
-            resolved.trace.entries.extend(trace.entries);
-            return resolved;
-        }
         diagnostics.error("E-PKG-081", "source has no declarations", tree.source);
         return CheckResult {
             package,
@@ -67,6 +61,16 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         };
     }
     let host_types = host_imported_types(&package.imports);
+    for item in &tree.items {
+        if let emath_core::tree::Item::Notation(notation) = item {
+            diagnostics.error(
+                "E-KIND-GONE",
+                "notation aliases are not constructor surface; write the scalar operator or `use` an ordinary module",
+                notation.source,
+            );
+        }
+    }
+    return check_constructor_user_file(tree, diagnostics, package, trace, units_profiles);
 
     // Sibling `emath function` declarations callable from lowering time
     // head-args or `inputs:`/`outputs:` section form. This
@@ -229,7 +233,6 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     let mut capability_arities: BTreeMap<String, Option<usize>> = BTreeMap::new();
     let mut capability_inputs: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut capability_diagnostics: BTreeMap<String, Option<String>> = BTreeMap::new();
-    let mut capability_aliases: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut capability_kernels: BTreeMap<String, Option<String>> = BTreeMap::new();
     for binding in crate::language::language_bindings() {
         package.capabilities.push(emath_ir::Capability {
@@ -241,7 +244,6 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         capability_inputs.insert(binding.feature_id.clone(), binding.inputs);
         capability_diagnostics.insert(binding.feature_id.clone(), binding.diagnostic);
         capability_kernels.insert(binding.feature_id.clone(), binding.kernel);
-        capability_aliases.insert(binding.feature_id, binding.aliases);
     }
     for item in &tree.items {
         let emath_core::tree::Item::Declaration(decl_orig) = item else {
@@ -252,7 +254,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         let executable_kind_application = kind_defs.get(&original_kind).and_then(|def| {
             def.extends
                 .as_deref()
-                .filter(|base| matches!(*base, "function" | "policy" | "model" | "law"))
+                .filter(|base| matches!(*base, "function" | "object" | "query"))
         });
         if let Some(base) = executable_kind_application {
             let Some(def) = kind_defs.get(&original_kind) else {
@@ -336,98 +338,53 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
         // Parser remaps `emath kind Name:` to `item_kind=custom`,
         // `as_kind=kind`; validate and register its local structural schema.
         if decl.as_kind == "kind" {
-            let mut kind_decl = decl.clone();
-            kind_decl.item_kind = "kind".to_string();
-            crate::recognition::admit_declaration(
-                &kind_decl,
-                &BTreeMap::new(),
-                &mut package,
-                &mut diagnostics,
-                &mut trace,
+            diagnostics.error(
+                "E-KIND-GONE",
+                "declaration kind `kind` is not a core kind; write `emath object`, `emath function`, or `emath query`",
+                decl.head_source,
             );
             continue;
         }
         // `emath field_pack Name:`: pack exports are
         // artifact data admitted at the recognition seam — never lowered
         // into strict meaning, never a silent custom fallthrough.
-        if decl.as_kind == "field_pack" {
-            crate::recognition::admit_field_pack(decl, &mut package, &mut diagnostics, &mut trace);
-            continue;
-        }
-        // `emath feature Name:` is one generic mounted data shell. The
-        // schema crate owns all twenty class rules; no feature name is
-        // recognized here and candidate capsules gain no live authority.
-        if decl.as_kind == "feature" {
-            crate::recognition::admit_feature_capsule(
-                decl,
-                &mut package,
-                &mut diagnostics,
-                &mut trace,
+        if matches!(
+            decl.as_kind.as_str(),
+            "field_pack" | "feature" | "capability"
+        ) {
+            diagnostics.error(
+                "E-KIND-GONE",
+                format!(
+                    "declaration kind `{}` is not a core kind; write `emath object`, `emath function`, or `emath query`",
+                    decl.as_kind
+                ),
+                decl.head_source,
             );
-            continue;
-        }
-        if decl.as_kind == "capability" {
-            let canonical = match &package.package_path {
-                Some(path) if !path.is_empty() => format!("{}.{}", path.join("."), decl.name),
-                _ => decl.name.clone(),
-            };
-            let output = decl.body.iter().find_map(|stmt| match &stmt.kind {
-                emath_core::tree::StmtKind::Section(section) if section.name == "outputs" => {
-                    section.suite.statements.iter().find_map(|stmt| match &stmt.kind {
-                        emath_core::tree::StmtKind::FieldDecl { ty, .. } => {
-                            Some(crate::recognition::type_text(ty))
-                        }
-                        _ => None,
-                    })
-                }
-                _ => None,
-            });
-            let errors_before = diagnostics.errors().count();
-            crate::recognition::admit_capability(
-                decl,
-                &mut package,
-                &mut diagnostics,
-                &mut trace,
-            );
-            if diagnostics.errors().count() == errors_before {
-                let inputs: Vec<String> = decl
-                    .body
-                    .iter()
-                    .find_map(|stmt| match &stmt.kind {
-                        emath_core::tree::StmtKind::Section(section)
-                            if section.name == "inputs" =>
-                        {
-                            Some(
-                                section
-                                    .suite
-                                    .statements
-                                    .iter()
-                                    .filter_map(|stmt| match &stmt.kind {
-                                        emath_core::tree::StmtKind::FieldDecl { ty, .. } => {
-                                            Some(crate::recognition::type_text(ty))
-                                        }
-                                        _ => None,
-                                    })
-                                    .collect(),
-                            )
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-                capability_arities.insert(canonical.clone(), Some(inputs.len()));
-                capability_inputs.insert(canonical.clone(), inputs);
-                capability_output_types.insert(canonical, output);
-            }
             continue;
         }
         if decl.as_kind == "reaction_network" {
-            crate::recognition::admit_reaction_network(decl, &mut diagnostics);
+            diagnostics.error(
+                "E-KIND-GONE",
+                "declaration kind `reaction_network` is not a core kind; write `emath object`, `emath function`, or `emath query`",
+                decl.head_source,
+            );
             continue;
         }
-        if !matches!(
+        if matches!(
             decl.as_kind.as_str(),
-            "function" | "policy" | "model" | "law"
+            "model" | "policy" | "law" | "search" | "experiment"
         ) {
+            diagnostics.error(
+                "E-KIND-GONE",
+                format!(
+                    "declaration kind `{}` is not a core kind; write `emath object`, `emath function`, or `emath query`",
+                    decl.as_kind
+                ),
+                decl.head_source,
+            );
+            continue;
+        }
+        if !matches!(decl.as_kind.as_str(), "function" | "object" | "query") {
             let type_name = if decl.as_kind.is_empty() {
                 "custom"
             } else {
@@ -436,7 +393,7 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             diagnostics.error(
                 "E-KIND-100",
                 format!(
-                    "declaration type `{type_name}` is outside the Phase 1 subset (function, policy, model, law)"
+                    "declaration type `{type_name}` is outside the constructor subset (object, function, query)"
                 ),
                 decl.head_source,
             );
@@ -452,24 +409,6 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
             Some(path) if !path.is_empty() => Some(path.join(".")),
             _ => None,
         };
-        let local_bares: BTreeSet<String> = package
-            .capabilities
-            .iter()
-            .filter_map(|capability| {
-                let prefix = package_prefix.as_deref()?;
-                let name = capability.name.0.as_str();
-                if name == prefix || name.starts_with(&format!("{prefix}.")) {
-                    Some(
-                        name.rsplit('.')
-                            .next()
-                            .unwrap_or("")
-                            .to_string(),
-                    )
-                } else {
-                    None
-                }
-            })
-            .collect();
         let mut bare_cell_counts: BTreeMap<String, usize> = BTreeMap::new();
         for capability in &package.capabilities {
             let bare = capability
@@ -525,14 +464,6 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
                 {
                     keys.push(bare.clone());
                 }
-                keys.extend(
-                    capability_aliases
-                        .get(&capability.name.0)
-                        .into_iter()
-                        .flatten()
-                        .cloned()
-                        .filter(|alias| is_local || !local_bares.contains(alias)),
-                );
                 keys.into_iter().map(move |key| CapabilityCallBinding {
                     key,
                     capability: capability_index,
@@ -616,10 +547,178 @@ pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
     if !package.declarations.is_empty() {
         package.seal();
     }
+    if is_constructor_user_file(tree) {
+        if let Err(err) = emath_exec_ir::constructor_layer::admit_tree(tree) {
+            diagnostics.error(
+                constructor_admit_code(&err.code),
+                err.message,
+                tree.source,
+            );
+        }
+    }
     CheckResult {
         package,
         diagnostics,
         trace,
         units_profiles,
+    }
+}
+
+fn check_constructor_user_file(
+    tree: &SyntaxTree,
+    mut diagnostics: Diagnostics,
+    mut package: emath_ir::SemanticPackage,
+    mut trace: SemanticTrace,
+    units_profiles: Vec<(String, String)>,
+) -> CheckResult {
+    let mut declaration_id = 0_u32;
+    let mut seen_declaration_names: BTreeSet<String> = BTreeSet::new();
+    let mut seen_folded_declaration_names: BTreeMap<String, String> = BTreeMap::new();
+    for item in &tree.items {
+        let emath_core::tree::Item::Declaration(decl) = item else {
+            continue;
+        };
+        if !seen_declaration_names.insert(decl.name.clone()) {
+            diagnostics.error(
+                "E-NAME-022",
+                format!("duplicate declaration name `{}`", decl.name),
+                decl.head_source,
+            );
+            continue;
+        }
+        if decl.name == "_" {
+            diagnostics.error(
+                "E-NAME-023",
+                "declaration name `_` is reserved and cannot be a Rust type",
+                decl.head_source,
+            );
+            continue;
+        }
+        let folded = confusable_fold(&decl.name);
+        if let Some(existing) = seen_folded_declaration_names.get(&folded) {
+            diagnostics.error(
+                "E-NAME-024",
+                format!(
+                    "declaration name `{}` is confusable with `{existing}` and is refused",
+                    decl.name
+                ),
+                decl.head_source,
+            );
+            continue;
+        }
+        seen_folded_declaration_names.insert(folded, decl.name.clone());
+        if decl.item_kind != "custom" {
+            diagnostics.error(
+                "E-KIND-001",
+                format!(
+                    "declaration kind `{}` is not supported; write `emath object`, `emath function`, or `emath query`",
+                    decl.item_kind
+                ),
+                decl.head_source,
+            );
+            continue;
+        }
+        if !matches!(decl.as_kind.as_str(), "object" | "function" | "query") {
+            diagnostics.error(
+                "E-KIND-GONE",
+                format!(
+                    "declaration kind `{}` is not a core kind; write `emath object`, `emath function`, or `emath query`",
+                    decl.as_kind
+                ),
+                decl.head_source,
+            );
+            continue;
+        }
+        let (
+            declaration,
+            mut tests,
+            types,
+            exprs,
+            entries,
+            admit_diagnostics,
+            mut residuals,
+            mut events,
+            mut transitions,
+            law_metadata,
+            binding_provenance,
+        ) = admit_constructor_declaration(decl);
+        diagnostics.extend_from(&admit_diagnostics);
+        trace.entries.extend(entries);
+        let Some(mut declaration) = declaration else {
+            diagnostics.error(
+                "E-KIND-002",
+                "declaration could not be admitted",
+                decl.head_source,
+            );
+            continue;
+        };
+        declaration.id = emath_ir::DeclarationId(declaration_id);
+        declaration_id += 1;
+        let expr_offset = u32::try_from(package.exprs.len()).unwrap_or(u32::MAX);
+        let type_offset = u32::try_from(package.types.len()).unwrap_or(u32::MAX);
+        remap_ids(
+            &mut declaration,
+            &mut tests,
+            &mut residuals,
+            &mut events,
+            &mut transitions,
+            expr_offset,
+            type_offset,
+        );
+        if let Some(metadata) = law_metadata {
+            package.law_metadata.insert(declaration.id, metadata);
+        }
+        for (binding, provenance) in binding_provenance {
+            package.binding_provenance.insert(
+                emath_ir::BindingSite::new(declaration.id, binding),
+                provenance,
+            );
+        }
+        package.types.extend(types);
+        for (e, _) in &exprs {
+            let mut node = e.clone();
+            remap_expr_node(&mut node, expr_offset, type_offset);
+            package.exprs.push(node);
+        }
+        package.expr_spans.extend(exprs.iter().map(|(_, s)| *s));
+        for test in tests {
+            declaration.tests.push(package.push_test(test));
+        }
+        package.declarations.push(declaration);
+    }
+    if !package.declarations.is_empty() {
+        package.seal();
+    }
+    if let Err(err) = emath_exec_ir::constructor_layer::admit_tree(tree) {
+        diagnostics.error(constructor_admit_code(&err.code), err.message, tree.source);
+    }
+    CheckResult {
+        package,
+        diagnostics,
+        trace,
+        units_profiles,
+    }
+}
+
+fn is_constructor_user_file(tree: &SyntaxTree) -> bool {
+    let mut any = false;
+    for item in &tree.items {
+        let emath_core::tree::Item::Declaration(decl) = item else {
+            continue;
+        };
+        if !matches!(decl.as_kind.as_str(), "object" | "function" | "query") {
+            return false;
+        }
+        any = true;
+    }
+    any
+}
+
+fn constructor_admit_code(code: &str) -> &'static str {
+    match code {
+        "E-KIND-GONE" => "E-KIND-GONE",
+        "unbound" => "E-TYPE-002",
+        "method_unavailable" | "transformation_rule_unavailable" => "E-TYPE-003",
+        _ => "E-TYPE-012",
     }
 }

@@ -28,7 +28,9 @@ pub struct KindDef {
 
 pub(super) const FIELD_STMTS: &[StmtShapeKind] = &[StmtShapeKind::Fields];
 pub(super) const ASSIGN_STMTS: &[StmtShapeKind] = &[StmtShapeKind::Assigns];
+#[allow(dead_code)]
 pub(super) const EQUATION_STMTS: &[StmtShapeKind] = &[StmtShapeKind::Equations];
+#[allow(dead_code)]
 pub(super) const EXPR_STMTS: &[StmtShapeKind] = &[StmtShapeKind::Exprs];
 pub(super) const GOAL_FIRST_WORDS: &[&str] = &[
     "compile",
@@ -61,6 +63,7 @@ pub(super) const FALLBACK_FIRST_WORDS: &[&str] = &[
     "generate",
     "unresolved",
 ];
+#[allow(dead_code)]
 pub(super) const PROFILE_FIRST_WORDS: &[&str] = &["prefer", "fallback"];
 pub(super) const DISPATCH_STMTS: &[StmtShapeKind] =
     &[StmtShapeKind::Requires, StmtShapeKind::CommandsAny];
@@ -76,8 +79,10 @@ pub(super) const CONSTRUCTOR_STMTS: &[StmtShapeKind] = &[
 ];
 pub(super) const CONSTRAINT_STMTS: &[StmtShapeKind] =
     &[StmtShapeKind::Exprs, StmtShapeKind::Equations];
+#[allow(dead_code)]
 pub(super) const SCHEMA_STMTS: &[StmtShapeKind] =
     &[StmtShapeKind::Requires, StmtShapeKind::CommandsAny];
+#[allow(dead_code)]
 pub(super) const GENERATE_FIRST_WORDS: &[&str] = &[
     "algebraic_rewrites",
     "providers",
@@ -155,133 +160,6 @@ pub(super) fn section_rules(kind: &str) -> Option<Vec<SectionRule>> {
             sec("dispatch", DISPATCH_STMTS),
             cmd_sec("fallback", FALLBACK_FIRST_WORDS),
         ],
-        "record" => vec![sec("state", FIELD_STMTS), ctor_sec()],
-        "policy" => vec![
-            sec("input", FIELD_STMTS),
-            sec("output", FIELD_STMTS),
-            sec("state", FIELD_STMTS),
-            sec("invariant", EXPR_STMTS),
-            ctor_sec(),
-            define_sec(),
-            goal_sec(),
-            sec("evidence", EVIDENCE_STMTS),
-            SectionRule {
-                name: "host".to_string(),
-                generics: Some(&["rust"]),
-                statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
-                command_first_words: &["host", "rust", "package", "baseline", "candidate"],
-                fn_heads: &[],
-                nested: &[NestedRule {
-                    name: "implement",
-                    statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
-                    command_first_words: &["method"],
-                }],
-            },
-            cmd_sec("fallback", FALLBACK_FIRST_WORDS),
-            SectionRule {
-                name: "tune".to_string(),
-                generics: None,
-                statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
-                command_first_words: &["baseline"],
-                fn_heads: &[],
-                nested: &[
-                    NestedRule {
-                        name: "generate",
-                        statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
-                        command_first_words: GENERATE_FIRST_WORDS,
-                    },
-                    NestedRule {
-                        name: "objective",
-                        statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
-                        command_first_words: &["minimize", "maximize"],
-                    },
-                    NestedRule {
-                        name: "protect",
-                        statement_shapes: EXPR_STMTS,
-                        command_first_words: &[],
-                    },
-                    NestedRule {
-                        name: "promotion",
-                        statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
-                        command_first_words: &["shadow", "fallback"],
-                    },
-                ],
-            },
-        ],
-        "model" => vec![
-            sec("parameter", FIELD_STMTS),
-            sec("state", FIELD_STMTS),
-            ctor_sec(),
-            sec("equation", EQUATION_STMTS),
-            goal_sec(),
-            sec("evidence", EVIDENCE_STMTS),
-            cmd_sec("profile", PROFILE_FIRST_WORDS),
-            sec("input", FIELD_STMTS),
-            sec("output", FIELD_STMTS),
-            sec("constraint", CONSTRAINT_STMTS),
-            cmd_sec("fallback", FALLBACK_FIRST_WORDS),
-            // Hybrid transitions (ch7, transitions
-            // slice): `transitions:` holds `on <Event>:` rules whose
-            // bodies are assignment actions. Admission lives in the Phase
-            // 1 declaration pass (`admit_transitions`); this recognition
-            // rule is belt-and-suspenders so any schema-routed model sees
-            // the same nested-section/assign shapes. `StatementKind` has
-            // no `Sections` variant, so the enclosing section admits no
-            // bare statements and the nested `on` rule admits assigns.
-            SectionRule {
-                name: "transitions".to_string(),
-                generics: Some(&[]),
-                statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
-                command_first_words: &[],
-                fn_heads: &[],
-                nested: &[NestedRule {
-                    name: "on",
-                    statement_shapes: &[StmtShapeKind::Assigns],
-                    command_first_words: &[],
-                }],
-            },
-        ],
-        "search" => vec![
-            sec("input", FIELD_STMTS),
-            sec("witness", FIELD_STMTS),
-            sec("constraint", CONSTRAINT_STMTS),
-            goal_sec(),
-            sec("evidence", EVIDENCE_STMTS),
-            cmd_sec("fallback", FALLBACK_FIRST_WORDS),
-        ],
-        "experiment" => vec![
-            cmd_sec("subject", &[]),
-            SectionRule {
-                name: "host".to_string(),
-                generics: Some(&[]),
-                statement_shapes: &[StmtShapeKind::CommandsAny, StmtShapeKind::Requires],
-                command_first_words: &["rust", "baseline", "candidate"],
-                fn_heads: &[],
-                nested: &[],
-            },
-            cmd_sec("workload", &["dataset", "warmup", "measure"]),
-            cmd_sec("metrics", &["minimize", "maximize", "report"]),
-            sec("protect", EXPR_STMTS),
-            cmd_sec("decision", &["reject", "shadow", "promote", "rollback"]),
-        ],
-        "kind" => vec![
-            sec("schema", SCHEMA_STMTS),
-            SectionRule {
-                name: "lower".to_string(),
-                generics: None,
-                // Documented `model.inputs = section.inputs` is a dotted
-                // path equation (`left = right`), not a bare `name = expr`
-                // assignment.
-                statement_shapes: &[StmtShapeKind::Assigns, StmtShapeKind::Equations],
-                command_first_words: &[],
-                fn_heads: &[],
-                nested: &[NestedRule {
-                    name: "",
-                    statement_shapes: &[StmtShapeKind::Assigns, StmtShapeKind::Equations],
-                    command_first_words: &[],
-                }],
-            },
-        ],
         "extern" => vec![cmd_sec("semantics", &["symmetric", "zero_on_identity"])],
         // `emath field_pack`: a pack of exported
         // cells/theories/methods/worlds — artifact data, never runnable
@@ -343,6 +221,7 @@ pub(super) fn ctor_sec() -> SectionRule {
     }
 }
 
+#[allow(dead_code)]
 pub(super) fn define_sec() -> SectionRule {
     SectionRule {
         name: "define".to_string(),

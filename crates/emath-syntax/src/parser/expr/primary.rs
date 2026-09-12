@@ -83,20 +83,12 @@ impl super::super::Parser {
                 self.advance(); // `⟨`
                 self.parse_bra_form(start, depth)
             }
-            TokenKind::Nabla(form) => {
-                // Nabla pack: glyphs desugar to EXISTING
-                // core::pde builtins only when the pack is mounted
-                // (`use sci::physics::notation::nabla`); unmounted, the
-                // refusal names the import — never a silent ident.
-                if !self.mounted_packs.contains("nabla") {
-                    self.error_here(
-                        "E-SYN-101",
-                        "nabla glyph outside the notation pack; mount it first with \
-                         `use sci::physics::notation::nabla` (glyphs are opt-in, never ambient)",
-                    );
-                    return None;
-                }
-                self.parse_nabla_call(form)
+            TokenKind::Nabla(_) => {
+                self.error_here(
+                    "E-SYN-101",
+                    "nabla glyphs are not constructor operations; write an ordinary imported function",
+                );
+                None
             }
             TokenKind::LBrace => {
                 // B01+U3: `{a, b, c}` set literal, `{n in d if g}`
@@ -243,11 +235,12 @@ impl super::super::Parser {
                         source: start,
                     });
                 }
-                let kind = binder_kind(self.peek());
+                let TokenKind::Keyword(keyword) = self.peek().clone() else {
+                    return None;
+                };
                 self.advance();
                 let binders = self.parse_binders()?;
-                // B02: optional `if <condition>` guard clause.
-                let guard = self.parse_binder_guard();
+                let _guard = self.parse_binder_guard();
                 if !self.eat(&TokenKind::Colon) {
                     self.error_here("E-SYN-111", "expected `:` after binder variables");
                     return None;
@@ -257,82 +250,30 @@ impl super::super::Parser {
                     self.advance();
                 }
                 let body = self.parse_expr_depth(depth + 1)?;
+                let param = binders
+                    .first()
+                    .map(|binder| binder.name.clone())
+                    .unwrap_or_else(|| "_".to_string());
+                let domain = binders
+                    .first()
+                    .and_then(|binder| binder.domain.clone())
+                    .unwrap_or_else(|| Expr {
+                        kind: ExprKind::List(Vec::new()),
+                        source: start,
+                    });
                 Some(Expr {
-                    kind: ExprKind::Binder {
-                        kind,
-                        binders,
+                    kind: ExprKind::CallableBinder {
+                        callee: Box::new(Expr {
+                            kind: ExprKind::Path {
+                                segments: vec![keyword.spelling().to_string()],
+                                generics: None,
+                            },
+                            source: start,
+                        }),
+                        param,
+                        domain: Box::new(domain),
                         body: Box::new(body),
-                        guard,
                     },
-                    source: start.cover(self.last_span()),
-                })
-            }
-            TokenKind::Keyword(Keyword::Derivative) => {
-                self.advance();
-                // F5: restrict operand to postfix_expr so that
-                // `derivative(v) + v` parses as `(derivative v) + v`,
-                // not `derivative(v + v)`.  Parenthesised operands
-                // (`derivative(v + v)`) still work because a parenthesised
-                // expression is a primary_expr, hence a postfix_expr.
-                let value = self.parse_postfix(depth + 1)?;
-                Some(Expr {
-                    kind: ExprKind::Derivative {
-                        value: Box::new(value),
-                        wrt: None,
-                        kind: DerivativeKind::Plain,
-                        holding: Vec::new(),
-                    },
-                    source: start.cover(self.last_span()),
-                })
-            }
-            TokenKind::Keyword(Keyword::Jacobian) => {
-                self.advance();
-                // Jacobian sugar: `jacobian(<expr>) wrt
-                // v1, v2` is parse-time sugar for the uniform AST/IR
-                // Jacobian value form — a matrix literal whose cells
-                // are the existing dual-number forward-mode
-                // `derivative(...) wrt v` nodes, the same form a user
-                // writes by hand (one column per `wrt` variable). A
-                // list body `[f1, f2]` splits into one row per
-                // component; a scalar body is a single row
-                // (`Matrix[1, n]`). `wrt` is mandatory so a malformed
-                // jacobian never silently half-admits.
-                let value = self.parse_postfix(depth + 1)?;
-                if !self.eat(&TokenKind::Keyword(Keyword::Wrt)) {
-                    self.error_here("E-SYN-111", "expected `wrt` after `jacobian` body");
-                    return None;
-                }
-                let mut vars = vec![self.parse_expr_depth(depth + 1)?];
-                while self.eat(&TokenKind::Comma) {
-                    vars.push(self.parse_expr_depth(depth + 1)?);
-                }
-                let components: Vec<Expr> = match &value.kind {
-                    ExprKind::List(items) => items.clone(),
-                    _ => vec![value],
-                };
-                let rows: Vec<Expr> = components
-                    .into_iter()
-                    .map(|component| {
-                        let cells: Vec<Expr> = vars
-                            .iter()
-                            .map(|var| Expr {
-                                kind: ExprKind::Derivative {
-                                    value: Box::new(component.clone()),
-                                    wrt: Some(vec![var.clone()]),
-                                    kind: DerivativeKind::Plain,
-                                    holding: Vec::new(),
-                                },
-                                source: start.cover(self.last_span()),
-                            })
-                            .collect();
-                        Expr {
-                            kind: ExprKind::List(cells),
-                            source: start.cover(self.last_span()),
-                        }
-                    })
-                    .collect();
-                Some(Expr {
-                    kind: ExprKind::List(rows),
                     source: start.cover(self.last_span()),
                 })
             }
@@ -348,35 +289,14 @@ impl super::super::Parser {
                 // unambiguous with record spelling (`Path:{...}`).
                 self.advance(); // `match`
                 let subject = self.parse_postfix(depth + 1)?;
+                if self.eat(&TokenKind::Colon) {
+                    return self.parse_cases_body(start, Some(Box::new(subject)), depth);
+                }
                 if !self.eat(&TokenKind::LBrace) {
-                    self.error_here("E-SYN-101", "expected `{` to open match arms");
+                    self.error_here("E-SYN-101", "expected `{` or `:` to open match arms");
                     return None;
                 }
                 self.parse_match_body(start, Box::new(subject), depth)
-            }
-            TokenKind::Keyword(Keyword::Solve) => {
-                self.advance();
-                let value = self.parse_expr_depth(depth + 1)?;
-                Some(Expr {
-                    kind: ExprKind::Solve {
-                        value: Box::new(value),
-                        wrt: None,
-                    },
-                    source: start.cover(self.last_span()),
-                })
-            }
-            TokenKind::Keyword(Keyword::Minimize) | TokenKind::Keyword(Keyword::Maximize) => {
-                let maximize = matches!(self.peek(), TokenKind::Keyword(Keyword::Maximize));
-                self.advance();
-                let value = self.parse_expr_depth(depth + 1)?;
-                Some(Expr {
-                    kind: ExprKind::Optimize {
-                        value: Box::new(value),
-                        wrt: None,
-                        maximize,
-                    },
-                    source: start.cover(self.last_span()),
-                })
             }
             TokenKind::Ident(_) | TokenKind::Keyword(Keyword::SelfKw) => {
                 // B04: `limit x -> 0: f(x)` — contextual keyword for limit
@@ -384,35 +304,108 @@ impl super::super::Parser {
                 // identifier and then `->`. Otherwise `limit` is a regular
                 // user identifier.
                 if let TokenKind::Ident(name) = self.peek().clone() {
-                    if name == "limit"
+                    if name == "function"
                         && matches!(self.peek_at(1), TokenKind::Ident(_))
-                        && matches!(self.peek_at(2), TokenKind::Arrow)
+                        && matches!(self.peek_at(2), TokenKind::Keyword(Keyword::In))
                     {
-                        self.advance(); // `limit`
-                        let TokenKind::Ident(var) = self.peek().clone() else {
-                            unreachable!()
+                        self.advance();
+                        let TokenKind::Ident(param) = self.peek().clone() else {
+                            return None;
                         };
-                        self.advance(); // var
-                        self.advance(); // `->`
-                        return Some(self.parse_limit_body(
-                            start, var, false, // is_sample = false
-                            depth,
-                        )?);
+                        self.advance();
+                        self.advance(); // `in`
+                        let domain = self.parse_domain_expr(depth)?;
+                        if !self.eat(&TokenKind::Colon) {
+                            self.error_here("E-SYN-111", "expected `:` after function domain");
+                            return None;
+                        }
+                        self.skip_newlines();
+                        if matches!(self.peek(), TokenKind::Indent) {
+                            self.advance();
+                        }
+                        let body = self.parse_expr_depth(depth + 1)?;
+                        return Some(Expr {
+                            kind: ExprKind::FunctionAbs {
+                                param,
+                                domain: Box::new(domain),
+                                body: Box::new(body),
+                            },
+                            source: start.cover(self.last_span()),
+                        });
                     }
-                    if name == "sample_limit"
+                    if name == "recur"
                         && matches!(self.peek_at(1), TokenKind::Ident(_))
-                        && matches!(self.peek_at(2), TokenKind::Arrow)
+                        && matches!(self.peek_at(2), TokenKind::Keyword(Keyword::In))
                     {
-                        self.advance(); // `sample_limit`
-                        let TokenKind::Ident(var) = self.peek().clone() else {
-                            unreachable!()
+                        self.advance();
+                        let TokenKind::Ident(fname) = self.peek().clone() else {
+                            return None;
                         };
-                        self.advance(); // var
-                        self.advance(); // `->`
-                        return Some(self.parse_limit_body(
-                            start, var, true, // is_sample = true
-                            depth,
-                        )?);
+                        self.advance();
+                        self.advance(); // `in`
+                        let ty = self.parse_domain_expr(depth)?;
+                        if !self.eat(&TokenKind::Colon) {
+                            self.error_here("E-SYN-111", "expected `:` after recur type");
+                            return None;
+                        }
+                        self.skip_newlines();
+                        if matches!(self.peek(), TokenKind::Indent) {
+                            self.advance();
+                        }
+                        let body = self.parse_expr_depth(depth + 1)?;
+                        return Some(Expr {
+                            kind: ExprKind::Recur {
+                                name: fname,
+                                ty: Box::new(ty),
+                                body: Box::new(body),
+                            },
+                            source: start.cover(self.last_span()),
+                        });
+                    }
+                    if name == "quote" {
+                        if matches!(self.peek_at(1), TokenKind::LParen) {
+                            self.advance();
+                            self.advance(); // `(`
+                            let body = self.parse_expr_depth(depth + 1)?;
+                            if !self.eat(&TokenKind::RParen) {
+                                self.error_here("E-SYN-102", "expected `)` after quote");
+                                return None;
+                            }
+                            return Some(Expr {
+                                kind: ExprKind::Quote {
+                                    body: Box::new(body),
+                                },
+                                source: start.cover(self.last_span()),
+                            });
+                        }
+                        if matches!(self.peek_at(1), TokenKind::Ident(_))
+                            && matches!(self.peek_at(2), TokenKind::Keyword(Keyword::In))
+                        {
+                            self.advance();
+                            let TokenKind::Ident(param) = self.peek().clone() else {
+                                return None;
+                            };
+                            self.advance();
+                            self.advance(); // `in`
+                            let domain = self.parse_domain_expr(depth)?;
+                            if !self.eat(&TokenKind::Colon) {
+                                self.error_here("E-SYN-111", "expected `:` after quote domain");
+                                return None;
+                            }
+                            self.skip_newlines();
+                            if matches!(self.peek(), TokenKind::Indent) {
+                                self.advance();
+                            }
+                            let body = self.parse_expr_depth(depth + 1)?;
+                            return Some(Expr {
+                                kind: ExprKind::QuoteBind {
+                                    param,
+                                    domain: Box::new(domain),
+                                    body: Box::new(body),
+                                },
+                                source: start.cover(self.last_span()),
+                            });
+                        }
                     }
                     // B06: `series n in 0..inf: a[n]` — contextual keyword
                     // for series binder. Activates only when `series` is
@@ -436,12 +429,30 @@ impl super::super::Parser {
                             self.advance();
                         }
                         let body = self.parse_expr_depth(depth + 1)?;
+                        let _guard = guard;
+                        let param = binders
+                            .first()
+                            .map(|binder| binder.name.clone())
+                            .unwrap_or_else(|| "_".to_string());
+                        let domain = binders
+                            .first()
+                            .and_then(|binder| binder.domain.clone())
+                            .unwrap_or_else(|| Expr {
+                                kind: ExprKind::List(Vec::new()),
+                                source: start,
+                            });
                         return Some(Expr {
-                            kind: ExprKind::Binder {
-                                kind: BinderKind::Series,
-                                binders,
+                            kind: ExprKind::CallableBinder {
+                                callee: Box::new(Expr {
+                                    kind: ExprKind::Path {
+                                        segments: vec!["series".to_string()],
+                                        generics: None,
+                                    },
+                                    source: start,
+                                }),
+                                param,
+                                domain: Box::new(domain),
                                 body: Box::new(body),
-                                guard,
                             },
                             source: start.cover(self.last_span()),
                         });
@@ -455,7 +466,20 @@ impl super::super::Parser {
                     if name == "graph" && matches!(self.peek_at(1), TokenKind::LBrace) {
                         self.advance(); // `graph`
                         self.advance(); // `{`
-                        return Some(self.parse_graph_literal(start, depth)?);
+                        let mut brace_depth = 1_i32;
+                        while brace_depth > 0 && !matches!(self.peek(), TokenKind::Eof) {
+                            match self.peek() {
+                                TokenKind::LBrace => brace_depth += 1,
+                                TokenKind::RBrace => brace_depth -= 1,
+                                _ => {}
+                            }
+                            self.advance();
+                        }
+                        self.error_here(
+                            "E-SYN-101",
+                            "`graph { … }` is not a constructor form; build vertices and edges as ordinary sequences",
+                        );
+                        return None;
                     }
                     // U1: `cases x: | c1 => e1 | else => e2` - contextual
                     // keyword for cases expression. Activates when `cases`
@@ -478,42 +502,6 @@ impl super::super::Parser {
                                 Some(Box::new(subject)),
                                 depth,
                             )?);
-                        }
-                    }
-                }
-                // Contextual keywords for partial/total derivatives:
-                // `partial(T)`, `∂(T)`, `total(T)`, `d(T)` — only when
-                // followed by `(`.  Otherwise these are regular identifiers.
-                if let TokenKind::Ident(name) = self.peek().clone() {
-                    if matches!(self.peek_at(1), TokenKind::LParen) {
-                        match name.as_str() {
-                            "partial" | "\u{2202}" => {
-                                self.advance();
-                                let value = self.parse_postfix(depth + 1)?;
-                                return Some(Expr {
-                                    kind: ExprKind::Derivative {
-                                        value: Box::new(value),
-                                        wrt: None,
-                                        kind: DerivativeKind::Partial,
-                                        holding: Vec::new(),
-                                    },
-                                    source: start.cover(self.last_span()),
-                                });
-                            }
-                            "total" | "d" => {
-                                self.advance();
-                                let value = self.parse_postfix(depth + 1)?;
-                                return Some(Expr {
-                                    kind: ExprKind::Derivative {
-                                        value: Box::new(value),
-                                        wrt: None,
-                                        kind: DerivativeKind::Total,
-                                        holding: Vec::new(),
-                                    },
-                                    source: start.cover(self.last_span()),
-                                });
-                            }
-                            _ => {}
                         }
                     }
                 }

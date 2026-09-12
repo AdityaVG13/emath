@@ -1,4 +1,5 @@
-//! Combined host: keep tokens go to `emath_cli::run`; extracted tokens stay here.
+//! Combined host: constructor tokens go to `emath_cli::run`; extracted
+//! tokens refuse `E-KIND-GONE`. Command bodies stay below that gate.
 
 use crate::agent_cmd::{self, AgentRequest};
 use crate::catalog;
@@ -19,7 +20,7 @@ use crate::{
     CliExit, CompileRequest, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, FileJsonRequest, GenesisRequest,
     ParseRequest, SignatureRequest, parse_compile_request, parse_file_json_request,
     parse_genesis_request, parse_parse_request, parse_show_named, parse_signature_request,
-    refuse_unverified_language_image, usage,
+    refuse_coded, usage,
 };
 use emath_cli::catalog::{self as core_catalog, wants_help, wants_json};
 use crate::genesis_cmd;
@@ -82,7 +83,13 @@ pub fn run(args: &[String]) -> CliExit {
         }
         ParsedCli::MetaHelp { rest } => help_cmd(rest),
         ParsedCli::MetaVersion { rest } => emath_cli::run(prepend_version(rest).as_slice()),
-        ParsedCli::CommandHelp { name } => catalog::print_command_help(name),
+        ParsedCli::CommandHelp { name } => {
+            if catalog::is_extracted_token(name) {
+                refuse_extracted(name, false)
+            } else {
+                catalog::print_command_help(name)
+            }
+        }
         ParsedCli::UnknownFlag { code } => code,
         ParsedCli::Usage(message) => usage(message),
         ParsedCli::Unknown(name) => unknown_command(name),
@@ -278,6 +285,7 @@ fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseKnownError> 
     }
 }
 
+#[allow(unreachable_code, unused_variables)]
 fn run_command(command: Command) -> CliExit {
     if let Some(code) = language_gate(&command) {
         return code;
@@ -339,33 +347,52 @@ fn run_command(command: Command) -> CliExit {
 }
 
 fn language_gate(command: &Command) -> Option<CliExit> {
-    let (name, json, anchor) = match command {
-        Command::Eval(args) => ("eval", args.json, Some(args.path.as_path())),
-        Command::Sweep(args) => ("sweep", args.json, Some(args.path.as_path())),
-        Command::Agent(AgentRequest::Check { path }) => ("agent check", false, Some(path.as_path())),
-        Command::Agent(AgentRequest::Plan { path }) => ("agent plan", false, Some(path.as_path())),
-        Command::Agent(AgentRequest::Build { path, .. }) => {
-            ("agent build", false, Some(path.as_path()))
-        }
-        Command::Expand(_)
-        | Command::Assumptions(_)
-        | Command::Solve(_)
-        | Command::Exactness(_)
-        | Command::Freeze(_)
-        | Command::Why(_)
-        | Command::Parse(_)
-        | Command::Compile(_)
-        | Command::LibraryMount { .. }
-        | Command::Signature(_)
-        | Command::Genesis(_)
-        | Command::Fit(_)
-        | Command::Repl { .. }
-        | Command::WorldShow { .. }
-        | Command::PortfolioShow { .. }
-        | Command::Meaning(_) => ("semantic", false, None),
-        _ => return None,
+    let (name, json) = match command {
+        Command::Eval(args) => ("eval", args.json),
+        Command::Sweep(args) => ("sweep", args.json),
+        Command::Fit(_) => ("fit", false),
+        Command::Solve(_) => ("solve", false),
+        Command::Expand(_) => ("expand", false),
+        Command::Assumptions(_) => ("assumptions", false),
+        Command::Exactness(_) => ("exactness", false),
+        Command::Freeze(_) => ("freeze", false),
+        Command::Why(_) => ("why", false),
+        Command::Parse(_) => ("parse", false),
+        Command::Compile(_) => ("compile", false),
+        Command::LibraryMount { .. } => ("library", false),
+        Command::Signature(_) => ("signature", false),
+        Command::Genesis(_) => ("genesis", false),
+        Command::Repl { .. } => ("repl", false),
+        Command::WorldShow { .. } => ("world", false),
+        Command::PortfolioShow { .. } => ("portfolio", false),
+        Command::Meaning(_) => ("meaning", false),
+        Command::ImportModelica { json, .. } => ("import", *json),
+        Command::ArtifactCheck(_) | Command::ArtifactBattery(_) => ("artifact", false),
+        Command::Architecture { json } => ("architecture", *json),
+        Command::Web(_) => ("web", false),
+        Command::Serve(_) => ("serve", false),
+        Command::RobotDocs => ("robot-docs", false),
+        Command::Provider(_) => ("provider", false),
+        Command::Fork(_) => ("fork", false),
+        Command::Capabilities => ("capabilities", false),
+        Command::Agent(_) => ("agent", false),
+        Command::Coverage(_) => ("coverage", false),
+        Command::Vendor { .. } => ("vendor", false),
+        Command::Bench { .. } => ("bench", false),
     };
-    refuse_unverified_language_image(name, json, anchor)
+    Some(refuse_extracted(name, json))
+}
+
+fn refuse_extracted(name: &str, json: bool) -> CliExit {
+    refuse_coded(
+        name,
+        json,
+        EXIT_USAGE,
+        "E-KIND-GONE",
+        &format!(
+            "`emath-lab {name}` is not a constructor command. Write an ordinary `emath function` or `emath query` and `emath run`."
+        ),
+    )
 }
 
 fn help_cmd(args: &[String]) -> CliExit {
@@ -378,23 +405,22 @@ fn help_cmd(args: &[String]) -> CliExit {
             print!("{}", catalog::help_text());
             EXIT_OK
         }
+        [command] if catalog::is_extracted_token(command) => refuse_extracted(command, false),
         [command] => catalog::print_command_help(command),
         _ => usage("help [<command>]"),
     }
 }
 
 fn unknown_command(other: &str) -> CliExit {
+    if catalog::is_extracted_token(other) {
+        return refuse_extracted(other, false);
+    }
     eprintln!("error: unknown command `{other}`");
     if let Some(hint) = emath_cli::catalog::suggest_command(other) {
-        let host = if catalog::is_lab_command(hint) {
-            "emath-lab"
-        } else {
-            "emath"
-        };
-        eprintln!("did you mean `{host} {hint}`?");
-        eprintln!("try: {host} help {hint}");
+        eprintln!("did you mean `emath {hint}`?");
+        eprintln!("try: emath help {hint}");
     } else {
-        eprintln!("try: emath-lab help");
+        eprintln!("try: emath help");
     }
     EXIT_USAGE
 }

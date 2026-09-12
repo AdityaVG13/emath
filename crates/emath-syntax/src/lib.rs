@@ -4,8 +4,8 @@
 //! source/token/nesting limits, recovery at statement boundaries.
 //! The syntax tree is owned by `emath-core`; this crate re-exports it and
 //! implements the kernel [`emath_core::parse::SourceParser`] seam.
-//! Meaning-budget surfaces (`expand_scratch`, `apply_solve_candidate`,
-//! `exactness_ledger`) are crate-root re-exports from `scratch` / `exactness`.
+//! Leftover meaning-budget surfaces (`expand_scratch`, `apply_solve_candidate`,
+//! `exactness_ledger`) remain exported. Parse does not apply them.
 
 #![forbid(unsafe_code)]
 
@@ -46,9 +46,9 @@ use tree::SyntaxTree;
 
 /// Parse an in-memory source into a syntax tree.
 ///
-/// L0/L1 scratch and L2 named shorthand are expanded first so every host
-/// (CLI, WASM, LSP) sees the same contracted declaration IR. Inspect the
-/// expansion with [`expand_scratch`] / `emath expand`.
+/// Constructor source is parsed as written. Scratch wrap, `goals:`
+/// synthesis, and named-shorthand rewrite stay in leftover
+/// [`expand_scratch`]; parse does not apply them.
 #[must_use]
 pub fn parse(text: &str, file: FileId, limits: &Limits) -> (SyntaxTree, Diagnostics) {
     parse_with_edition(text, file, limits, Edition::Ed2026)
@@ -63,15 +63,7 @@ pub fn parse_with_edition(
     limits: &Limits,
     edition: Edition,
 ) -> (SyntaxTree, Diagnostics) {
-    // Same ceiling the lexer enforces: do not wrap/rewrite a source that
-    // will be refused as E-SYN-116 anyway.
-    if limits.check_source(text.len()).is_err() {
-        return parser::parse(text, file, limits);
-    }
-    let expansion = expand_scratch(text);
-    let source = expansion.parse_source(text);
-    let (tree, mut diagnostics) = parser::parse(source, file, limits);
-    diagnostics.extend_from(&expansion.diagnostics);
+    let (tree, mut diagnostics) = parser::parse(text, file, limits);
     apply_edition_policy(text, file, &mut diagnostics, edition);
     (tree, diagnostics)
 }
@@ -142,19 +134,8 @@ pub struct LosslessParse {
 /// are pure over the source bytes.
 #[must_use]
 pub fn parse_lossless(text: &str, file: FileId, limits: &Limits) -> LosslessParse {
-    if limits.check_source(text.len()).is_err() {
-        let (tree, diagnostics) = parser::parse(text, file, limits);
-        return LosslessParse {
-            tree,
-            diagnostics,
-            comments: Vec::new(),
-        };
-    }
-    let expansion = expand_scratch(text);
-    let source = expansion.parse_source(text);
-    let (_, _, comments) = lexer::lex_with_comments(source, file, limits);
-    let (tree, mut diagnostics) = parser::parse(source, file, limits);
-    diagnostics.extend_from(&expansion.diagnostics);
+    let (_, _, comments) = lexer::lex_with_comments(text, file, limits);
+    let (tree, diagnostics) = parser::parse(text, file, limits);
     LosslessParse {
         tree,
         diagnostics,

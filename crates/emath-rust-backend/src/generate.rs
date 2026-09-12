@@ -5,7 +5,11 @@ use emath_exec_ir::{EmirOp, EmirProgram};
 
 impl BackendInput<'_> {
     /// Run the whole backend: structure + methods + tests + crate files.
+    #[allow(unreachable_code, unused_variables)]
     pub fn generate(&self) -> Result<BackendOutput, BackendError> {
+        return Err(BackendError::Lowering(
+            "E-KIND-GONE: SIR/goals generation is not constructor surface. Emit constructor functions with emit_constructor_program.".into(),
+        ));
         let package = self.package;
         let mut items: Vec<Item> = Vec::new();
         let mut anchors: Vec<BackendAnchor> = Vec::new();

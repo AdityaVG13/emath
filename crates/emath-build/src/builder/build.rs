@@ -102,7 +102,13 @@ impl ModelBuilder for BuilderModel {
     }
 
     /// Lower to the same SIR package produced by text admission.
+    #[allow(unreachable_code, unused_variables)]
     fn build(self) -> Result<SemanticPackage, BuilderError> {
+        let _ = self;
+        return Err(BuilderError(
+            "E-KIND-GONE: programmatic model/goal builders are not constructor surface. Write an ordinary `emath function` or `emath query`."
+                .into(),
+        ));
         if self.name.is_empty() {
             return Err(BuilderError("declaration name cannot be empty".into()));
         }

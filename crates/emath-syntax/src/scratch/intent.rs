@@ -39,19 +39,18 @@ pub(super) fn lower_intent(
             let (equation, domain) = split_keyword_tail(payload, "over");
             let (lhs, rhs) = split_equation(equation.trim());
             let residual = format!("({lhs}) - ({rhs})");
-            let var = first_free_ident(lhs).unwrap_or("x");
             extra_comments.push(format!(
-                "# emath expand: intent=solve domain={} candidates={SOLVE_CANDIDATES}",
-                domain.unwrap_or("unspecified (candidates labeled, none silently chosen)")
+                "# emath expand: intent=solve domain={} (`solve` is an imported method, not a constructor)",
+                domain.unwrap_or("unspecified")
             ));
             defs.push(("residual".into(), residual));
-            defs.push((result_name, format!("solve(residual) wrt {var}")));
+            defs.push((result_name, "residual".into()));
             notes.push(ScratchNote {
-                inferred: format!("solve candidates: {SOLVE_CANDIDATES}"),
+                inferred: "ordinary residual".into(),
                 rationale:
-                    "intent-completion must label alternatives; `over Real` declares the domain"
+                    "`solve` is not a constructor; import a method and apply it to this residual"
                         .into(),
-                replacement: "result = solve(residual) wrt x".into(),
+                replacement: "use package.method residual in domain: body".into(),
                 stability: if domain.is_some() {
                     ExactnessStatus::Declared
                 } else {
@@ -76,49 +75,37 @@ pub(super) fn lower_intent(
             });
         }
         IntentVerb::Differentiate => {
-            let (expr, var) = split_keyword_tail(payload, "wrt");
-            let var = var.unwrap_or("x");
-            defs.push((
-                result_name,
-                format!("derivative({}) wrt {var}", expr.trim()),
-            ));
+            let (expr, _var) = split_keyword_tail(payload, "wrt");
+            defs.push((result_name, expr.trim().to_string()));
+            notes.push(ScratchNote {
+                inferred: "quoted expression".into(),
+                rationale: "differentiation is an imported transform over `quote`, not a constructor"
+                    .into(),
+                replacement: "use calculus.diff; result = quote.evaluate(diff(quote(<expr>)))".into(),
+                stability: ExactnessStatus::Inferred,
+            });
         }
         IntentVerb::Integrate => {
-            if let (expr, Some(range)) = split_keyword_tail(payload, "on") {
-                let var = first_free_ident(expr).unwrap_or("x");
-                defs.push((
-                    result_name,
-                    format!("integral {var} in {range}: {}", expr.trim()),
-                ));
-            } else {
-                let (expr, var) = split_keyword_tail(payload, "wrt");
-                let var = var.unwrap_or("x");
-                defs.push((
-                    result_name,
-                    format!("integral {var} in a..b: {}", expr.trim()),
-                ));
-                notes.push(ScratchNote {
-                    inferred: "inputs.a, inputs.b".into(),
-                    rationale:
-                        "indefinite integrate becomes a definite integral over open bounds a..b"
-                            .into(),
-                    replacement: "integral x in a..b: <expr>".into(),
-                    stability: ExactnessStatus::Inferred,
-                });
-            }
+            let (expr, _range) = split_keyword_tail(payload, "on");
+            defs.push((result_name, expr.trim().to_string()));
+            notes.push(ScratchNote {
+                inferred: "integrand".into(),
+                rationale: "integration is an imported method, not a constructor identity".into(),
+                replacement: "use analysis.integral; fold a supplied method over the domain".into(),
+                stability: ExactnessStatus::Inferred,
+            });
         }
         IntentVerb::Simulate => {
             extra_comments.push(format!("# emath expand: intent=simulate phrase={payload}"));
             extra_comments.push(
-                "# emath expand: simulate is a goal; supply an `emath model` to compute a trajectory".into(),
+                "# emath expand: `emath simulate` refuses; write an ordinary function and `emath run`".into(),
             );
             defs.push((result_name, "0".into()));
             notes.push(ScratchNote {
-                inferred: "goal simulate".into(),
-                rationale:
-                    "English simulate phrases record intent; they do not mint a domain parser"
-                        .into(),
-                replacement: "emath model Name: with state/equations, then `emath simulate`".into(),
+                inferred: "not a constructor command".into(),
+                rationale: "`emath model` is not a core kind; a stepper is an imported function"
+                    .into(),
+                replacement: "emath function Step: ... then `emath run`".into(),
                 stability: ExactnessStatus::Inferred,
             });
         }

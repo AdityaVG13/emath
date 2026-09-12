@@ -4,40 +4,76 @@ use super::*;
 
 pub(super) fn op_inputs(source: &str) -> String {
     let prepared = prepare_source(source);
-    let (mut session, file) = session_from_source(&prepared.source);
-    let result = session.check(file);
-    let mut declarations = Vec::with_capacity(result.package.declarations.len());
-    for declaration in &result.package.declarations {
-        let mut inputs = Vec::with_capacity(declaration.inputs.len());
-        for field in &declaration.inputs {
-            let type_name = result
-                .package
-                .types
-                .get(field.ty.index())
-                .map(emath_ir::TypeNode::display_name)
-                .unwrap_or_else(|| "Float64".to_string());
-            let defaulted = result.diagnostics.items().iter().any(|item| {
-                item.code == "N-TYPE-001" && item.message.contains(field.name.as_str())
-            });
-            let mut entry = JsonWriter::object();
-            entry.string("name", &field.name);
-            entry.string("type", &type_name);
-            entry.bool("defaulted", defaulted);
-            inputs.push(entry.finish().trim_end().to_string());
+    let (tree, diagnostics) = emath_syntax::parse_str(&prepared.source);
+    if diagnostics.has_errors() {
+        let mut object = JsonWriter::object();
+        put_pipeline_status(&mut object, &diagnostics);
+        object.objects("diagnostics", &diagnostic_objects(&diagnostics));
+        return object.finish();
+    }
+    let mut declarations = Vec::new();
+    for item in &tree.items {
+        let emath_core::tree::Item::Declaration(decl) = item else {
+            continue;
+        };
+        if !matches!(decl.as_kind.as_str(), "object" | "function" | "query") {
+            return refuse_kind_gone("inputs");
+        }
+        let mut inputs = Vec::new();
+        for section in decl.sections().filter(|section| section.name == "inputs") {
+            for stmt in &section.suite.statements {
+                if let emath_core::tree::StmtKind::FieldDecl { name, ty, .. } = &stmt.kind {
+                    let mut entry = JsonWriter::object();
+                    entry.string("name", name);
+                    let type_name = match &ty.kind {
+                        emath_core::tree::TypeKind::Path { segments, .. } => segments.join("::"),
+                        _ => "Unknown".to_string(),
+                    };
+                    entry.string("type", &type_name);
+                    entry.bool("defaulted", false);
+                    inputs.push(entry.finish().trim_end().to_string());
+                }
+            }
         }
         let mut object = JsonWriter::object();
-        object.string("declaration", declaration.name.leaf());
+        object.string("declaration", &decl.name);
         object.objects("inputs", &inputs);
         declarations.push(object.finish().trim_end().to_string());
     }
     let mut object = JsonWriter::object();
-    put_pipeline_status(&mut object, &result.diagnostics);
-    object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
+    object.bool("ok", true);
+    object.bool("admitted", true);
+    object.string("schema_version", "emath.constructor.v1");
     object.objects("declarations", &declarations);
-    maybe_desugared(&mut object, prepared.desugared());
     object.finish()
 }
 
+pub(super) fn serialize_constructor_report(
+    report: &emath_exec_ir::constructor_layer::ModuleReport,
+) -> String {
+    let mut tests = Vec::new();
+    for test in &report.tests {
+        let mut entry = JsonWriter::object();
+        entry.string("label", &test.label);
+        entry.bool("passed", test.passed);
+        entry.string("detail", &test.detail);
+        tests.push(entry.finish().trim_end().to_string());
+    }
+    let mut bindings = JsonWriter::object();
+    for (name, value) in &report.bindings {
+        bindings.string(name, &value.to_string());
+    }
+    let mut object = JsonWriter::object();
+    object.bool("ok", true);
+    object.bool("admitted", true);
+    object.string("schema_version", "emath.constructor.v1");
+    object.object_field("bindings", bindings.finish().trim_end());
+    object.objects("tests", &tests);
+    object.strings("uses", &report.uses);
+    object.finish()
+}
+
+#[allow(dead_code)]
 pub(super) fn serialize_run_report(report: &RunReport, desugared: Option<&str>) -> String {
     let mut declarations = Vec::with_capacity(report.declarations.len());
     for declaration in &report.declarations {
@@ -191,6 +227,7 @@ pub(super) fn value_json(value: &Value) -> String {
             object.field("den", &den.to_string());
             object.finish().trim_end().to_string()
         }
+        _ => json_string(&value.to_string()),
     }
 }
 

@@ -6,7 +6,13 @@ use super::*;
 /// reference file on the semantic VM. `--world` selects one admitted
 /// world; a lock commits the locked fingerprint; plain evals use the
 /// default world.
+#[allow(unreachable_code, unused_variables)]
 pub(super) fn eval_genesis(path: &Path, world_name: Option<&str>, json: bool) -> CliExit {
+    return refuse_eval_coded(
+        "E-KIND-GONE",
+        "genesis worlds are not a constructor. Write an ordinary `emath function` and `emath run`.",
+        json,
+    );
     let analysis = match genesis_cmd::analyze(path) {
         Ok(analysis) => analysis,
         Err(error) => return refuse_eval(&error, json),

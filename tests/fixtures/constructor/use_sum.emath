@@ -1,0 +1,15 @@
+# Imported fold. This file installed no topic identity.
+
+use fold.reduce
+
+emath function Total:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = sum([1, 2, 3, 4])
+    tests:
+        example <four>:
+            given unused = 0
+            expect result == 10

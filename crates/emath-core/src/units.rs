@@ -250,56 +250,11 @@ impl UnitTable {
     }
 }
 
-/// Capsule-authored unit catalog: `language/spec/capabilities/surface/units-catalog.emath`,
-/// FeatureID `std.capability.units.catalog`. The seed table is capsule DATA
-/// parsed here; this module declares no named unit of its own, only the
-/// generic registry mechanics (`UnitTable`, alias-as-identity, affine
-/// typing) and the generic Z^7 dimension-group algebra.
-const UNIT_CATALOG_CAPSULE: &str =
-    include_str!("../../../language/spec/capabilities/surface/units-catalog.emath");
-
-/// Seed table with every SI-family capsule catalog entry (temperature
-/// family with the C13 pre-scale offset order, SI bases, and the declared
-/// linear derived units). Information-family units seed too; the family
-/// boundary is enforced by `Quantity` typing, not by omission.
+/// Named unit catalogs are leftover leftover. Constructor surface has no
+/// SI/element FeatureID. Callers that need a table declare units locally.
 #[must_use]
 pub fn seed_table() -> UnitTable {
-    let mut table = UnitTable::new();
-    let Some(block_start) = UNIT_CATALOG_CAPSULE.find("emath feature UnitCatalog:") else {
-        return table;
-    };
-    let block = &UNIT_CATALOG_CAPSULE[block_start..];
-    let block = block.split("\nemath feature ").next().unwrap_or(block);
-    let semantics = block.lines().find_map(|raw| {
-        let line = raw.trim();
-        let (key, value) = line.split_once(':')?;
-        (key.trim() == "semantics").then(|| value.trim().trim_matches('"'))
-    });
-    let catalog = semantics.and_then(|semantics| {
-        semantics
-            .split(';')
-            .find_map(|part| part.trim().strip_prefix("catalog="))
-    });
-    let Some(catalog) = catalog else {
-        return table;
-    };
-    for entry in catalog.split('|') {
-        let mut fields = entry.split('~');
-        let (Some(name), Some(dims), Some(scale), Some(offset)) = (
-            fields.next(),
-            fields.next(),
-            fields.next().and_then(|v| v.parse::<f64>().ok()),
-            fields.next().and_then(|v| v.parse::<f64>().ok()),
-        ) else {
-            continue;
-        };
-        let mut exponents = [0_i64; 7];
-        for (slot, exponent) in dims.split(',').enumerate().take(7) {
-            exponents[slot] = exponent.trim().parse().unwrap_or(0);
-        }
-        let _ = table.declare_unit(UnitSpec::new(name, exponents, scale, offset));
-    }
-    table
+    UnitTable::new()
 }
 
 fn dims_equal(left: &Dims, right: &Dims) -> bool {

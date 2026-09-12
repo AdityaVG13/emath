@@ -12,6 +12,7 @@ emath-ir = { workspace = true }
 emath-rt = { workspace = true }
 emath-term = { workspace = true }
 emath-schema = { workspace = true }
+emath-syntax = { workspace = true }
 
 [lints]
 workspace = true

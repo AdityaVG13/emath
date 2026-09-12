@@ -9,7 +9,7 @@ use emath_test_harness::Probe;
 fn capsule() -> FeatureCapsule {
     FeatureCapsule {
         schema: FEATURE_CAPSULE_SCHEMA.to_string(),
-        feature_id: FeatureId::from_str("std.capability.math.add").unwrap(),
+        feature_id: FeatureId::from_str("std.capability.scalar").unwrap(),
         semantic_hash: SemanticHash::from_str(&format!("sha256:{}", "5".repeat(64))).unwrap(),
         class: FeatureClass::Capability,
         maturity: Maturity::Stable,
@@ -20,7 +20,7 @@ fn capsule() -> FeatureCapsule {
             ("semantics".into(), CapsuleSlot::Value("checked-add".into())),
             (
                 "presentation".into(),
-                CapsuleSlot::Value("aliases=+".into()),
+                CapsuleSlot::Value("none".into()),
             ),
             (
                 "surface".into(),

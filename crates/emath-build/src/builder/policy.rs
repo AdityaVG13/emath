@@ -250,10 +250,7 @@ impl BuilderModel {
     /// requirement is rendered into the schema predicate).
     #[must_use]
     pub fn kind_schema(&self) -> emath_ir::KindSchema {
-        let mut schema = match self.kind {
-            Some(KindRef::Policy) => emath_ir::KindSchema::core_policy(),
-            _ => emath_ir::KindSchema::core_function(),
-        };
+        let mut schema = emath_ir::KindSchema::core_function();
         if let Some(requirement) = &self.generic_requirement {
             schema.set_predicate(requirement.clone());
         }

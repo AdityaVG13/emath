@@ -37,6 +37,15 @@ pub fn sample_distribution_in_stream(
     probability::prob_sample_in_stream(kind, parameters, seed, draws, stream_path)
 }
 
+/// Unit-interval uniforms in [0, 1) from an explicit seed and stream path.
+pub fn unit_interval_stream(
+    seed: f64,
+    draws: f64,
+    stream_path: &str,
+) -> Result<Vec<f64>, DistributionKernelError> {
+    probability::unit_interval_stream(seed, draws, stream_path)
+}
+
 /// Evaluate a validated density selected by its capsule-supplied kernel code.
 pub fn distribution_density(
     kind: u8,

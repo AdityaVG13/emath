@@ -71,7 +71,13 @@ pub(super) fn labeled_solve_menu(domain: Option<&str>) -> SolveIntent {
 /// # Errors
 ///
 /// Returns `Err` if the source has no `solve` intent to pin.
+#[allow(unreachable_code, unused_variables)]
 pub fn apply_solve_candidate(source: &str, world: SolveWorld) -> Result<(String, String), String> {
+    let _ = (source, world);
+    return Err(
+        "E-KIND-GONE: solve candidates are not constructor surface. Write an ordinary `emath query`."
+            .into(),
+    );
     let pin = world.pin_phrase();
     let mut found = false;
     let mut out = String::new();
@@ -116,8 +122,27 @@ pub fn apply_solve_candidate(source: &str, world: SolveWorld) -> Result<(String,
 }
 
 /// Expand L0/L1 scratch and L2 named shorthand to contracted emath.
+///
+/// Leftover beginner wrap. Live parse does not call this. The function
+/// refuses so an explicit caller cannot synthesize `goals:`.
 #[must_use]
+#[allow(unreachable_code, unused_variables)]
 pub fn expand_scratch(source: &str) -> ScratchExpansion {
+    let mut diagnostics = Diagnostics::new();
+    diagnostics.error(
+        "E-KIND-GONE",
+        "scratch wrap is not constructor surface. Write `emath object`, `emath function`, or `emath query`.",
+        span_of_source(source),
+    );
+    return expansion(
+        source,
+        ExpansionOutcome::Refused {
+            level: ScratchLevel::L0,
+        },
+        Vec::new(),
+        diagnostics,
+        Vec::new(),
+    );
     let mut diagnostics = Diagnostics::new();
     let notes = Vec::new();
     refuse_hidden_desugar(source, &mut diagnostics);

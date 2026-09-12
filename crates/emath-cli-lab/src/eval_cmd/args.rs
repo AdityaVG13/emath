@@ -82,7 +82,12 @@ pub(crate) fn dispatch_eval(args: EvalArgs) -> CliExit {
 }
 
 pub(crate) fn dispatch_repl(path: &Path) -> CliExit {
-    repl_cmd(path)
+    let _ = path;
+    refuse_eval_coded(
+        "E-KIND-GONE",
+        "`emath repl` is not a constructor command. Write an ordinary `emath function` and `emath run`.",
+        false,
+    )
 }
 
 pub(crate) struct EvalArgs {

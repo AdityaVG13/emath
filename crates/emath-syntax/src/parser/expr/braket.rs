@@ -217,15 +217,17 @@ impl super::super::Parser {
             source: start.cover(self.last_span()),
         };
         let inner = Expr {
-            kind: ExprKind::Binder {
-                kind: BinderKind::Sum,
-                binders: vec![Binder {
-                    name: "k".into(),
-                    domain: Some(carrier()),
+            kind: ExprKind::CallableBinder {
+                callee: Box::new(Expr {
+                    kind: ExprKind::Path {
+                        segments: vec!["sum".into()],
+                        generics: None,
+                    },
                     source: start,
-                }],
+                }),
+                param: "k".into(),
+                domain: Box::new(carrier()),
                 body: Box::new(inner_body),
-                guard: None,
             },
             source: start.cover(self.last_span()),
         };
@@ -245,15 +247,17 @@ impl super::super::Parser {
             source: start.cover(self.last_span()),
         };
         Some(Expr {
-            kind: ExprKind::Binder {
-                kind: BinderKind::Sum,
-                binders: vec![Binder {
-                    name: "j".into(),
-                    domain: Some(carrier()),
+            kind: ExprKind::CallableBinder {
+                callee: Box::new(Expr {
+                    kind: ExprKind::Path {
+                        segments: vec!["sum".into()],
+                        generics: None,
+                    },
                     source: start,
-                }],
+                }),
+                param: "j".into(),
+                domain: Box::new(carrier()),
                 body: Box::new(outer_body),
-                guard: None,
             },
             source: start.cover(self.last_span()),
         })

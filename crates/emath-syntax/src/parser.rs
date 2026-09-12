@@ -88,6 +88,10 @@ struct Parser {
     /// `|` in a `cases` body is parsed as an arm delimiter, not as
     /// a binary `or` on the arm value.
     suppress_pipe_or: bool,
+    /// When true, `->` after an expression is a function type
+    /// (`A -> B`). Off inside `cases`/`match` arms so `=>` stays the
+    /// arm delimiter (the same Arrow token).
+    allow_fn_arrow: bool,
 }
 
 impl Parser {
@@ -104,6 +108,7 @@ impl Parser {
             pack_parameters: BTreeMap::new(),
             suppress_postfix_if: false,
             suppress_pipe_or: false,
+            allow_fn_arrow: false,
         }
     }
 

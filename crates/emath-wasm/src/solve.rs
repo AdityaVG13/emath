@@ -46,7 +46,10 @@ pub(super) fn solve_world_result(source: &str, world: emath_syntax::SolveWorld) 
     }
 }
 
+#[allow(unreachable_code, unused_variables)]
 pub(super) fn op_solve_candidates(payload: &str) -> String {
+    let _ = payload;
+    return refuse_kind_gone("solve_candidates");
     let request = match parse_solve_payload(payload) {
         Ok(request) => request,
         Err(message) => return error_json(&message),

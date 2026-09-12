@@ -11,40 +11,13 @@ use emath_core::tree::{
 };
 use emath_core::Diagnostics;
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
 
-/// Capsule-authored element symbols:
-/// `language/spec/capabilities/surface/element-symbols.emath`, FeatureID
-/// `std.capability.chemistry.element-symbols`. This module declares no
-/// element of its own.
-const ELEMENT_SYMBOLS_CAPSULE: &str =
-    include_str!("../../../../language/spec/capabilities/surface/element-symbols.emath");
-
+/// Named element catalogs are leftover. The constructor surface has no
+/// element FeatureID; the spelling table is empty (no catalog, no parser).
+/// The dormant `reaction_network` admission body below uses it only for
+/// element-balance checks, which skip on an empty table.
 fn element_symbols() -> &'static [&'static str] {
-    static SYMBOLS: OnceLock<Vec<&'static str>> = OnceLock::new();
-    SYMBOLS.get_or_init(load_element_symbols).as_slice()
-}
-
-fn load_element_symbols() -> Vec<&'static str> {
-    let Some(block_start) = ELEMENT_SYMBOLS_CAPSULE.find("emath feature ElementSymbols:") else {
-        return Vec::new();
-    };
-    let block = &ELEMENT_SYMBOLS_CAPSULE[block_start..];
-    let block = block.split("\nemath feature ").next().unwrap_or(block);
-    let semantics = block.lines().find_map(|raw| {
-        let line = raw.trim();
-        let (key, value) = line.split_once(':')?;
-        (key.trim() == "semantics").then(|| value.trim().trim_matches('"'))
-    });
-    let symbols = semantics.and_then(|semantics| {
-        semantics
-            .split(';')
-            .find_map(|part| part.trim().strip_prefix("symbols="))
-    });
-    let Some(symbols) = symbols else {
-        return Vec::new();
-    };
-    symbols.split('|').filter(|symbol| !symbol.is_empty()).collect()
+    &[]
 }
 
 /// Count atoms per element in one species spelling. `H2O` → {H:2, O:1};
@@ -852,15 +825,22 @@ pub(crate) fn admit_reaction_network(decl: &Declaration, diagnostics: &mut Diagn
 /// A forall-over-species binder expression: one binder, domain `species`,
 /// no guard — the admitted `constraints:` entry shape (pqs6).
 fn is_forall_over_species(expr: &Expr) -> bool {
-    matches!(
-        &expr.kind,
-        ExprKind::Binder {
-            kind: BinderKind::ForAll,
-            binders,
-            guard: None,
-            ..
-        } if binders.len() == 1 && binder_domain_is_species(&binders[0])
-    )
+    match &expr.kind {
+        ExprKind::CallableBinder { callee, domain, .. } => {
+            matches!(
+                &callee.kind,
+                ExprKind::Path { segments, .. }
+                    if segments.last().map(String::as_str) == Some("forall")
+            ) && matches!(
+                &domain.kind,
+                ExprKind::Path {
+                    segments,
+                    generics: None
+                } if segments.len() == 1 && segments[0] == "species"
+            )
+        }
+        _ => false,
+    }
 }
 
 /// The binder domain is the species carrier (`in species`).

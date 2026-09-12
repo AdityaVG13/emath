@@ -1,5 +1,5 @@
-//! `emath-sema` recognition-level admission tests (migrated from
-//! `crates/emath-sema/src/recognition.rs`).
+//! Kind-registry admission is leftover. Custom kinds do not remap a
+//! later declaration into a constructor.
 
 use emath_core::tree::{Declaration, Expr, ExprKind, Section, Stmt, StmtKind};
 use emath_sema::admit::SemanticTrace;
@@ -8,18 +8,28 @@ use emath_test_harness::Probe;
 use std::collections::BTreeMap;
 
 fn span() -> emath_core::Span {
-    emath_core::Span { file: emath_core::FileId(0), start: 0, end: 1 }
+    emath_core::Span {
+        file: emath_core::FileId(0),
+        start: 0,
+        end: 1,
+    }
 }
 
 fn equation_section() -> Section {
-    let bool_expr = || Expr { kind: ExprKind::Bool(true), source: span() };
+    let bool_expr = || Expr {
+        kind: ExprKind::Bool(true),
+        source: span(),
+    };
     Section {
         name: "equation".to_string(),
         generic: None,
         args: None,
         suite: emath_core::tree::Suite {
             statements: vec![Stmt {
-                kind: StmtKind::Equation { left: bool_expr(), right: bool_expr() },
+                kind: StmtKind::Equation {
+                    left: bool_expr(),
+                    right: bool_expr(),
+                },
                 source: span(),
             }],
             source: span(),
@@ -44,36 +54,46 @@ fn application(body: Vec<Stmt>) -> Declaration {
 }
 
 fn kind_defs() -> BTreeMap<String, KindDef> {
-    BTreeMap::from([("Liquid".to_string(), KindDef {
-        name: "Liquid".to_string(),
-        extends: None,
-        schema: vec![SchemaRule::RequireSection("equation".to_string())],
-    })])
+    BTreeMap::from([(
+        "Liquid".to_string(),
+        KindDef {
+            name: "Liquid".to_string(),
+            extends: None,
+            schema: vec![SchemaRule::RequireSection("equation".to_string())],
+        },
+    )])
 }
 
 fn admit(tree_decl: &Declaration) -> emath_core::Diagnostics {
     let mut package = emath_ir::SemanticPackage::new();
     let mut diagnostics = emath_core::Diagnostics::new();
-    admit_declaration(tree_decl, &kind_defs(), &mut package, &mut diagnostics, &mut SemanticTrace::default());
+    admit_declaration(
+        tree_decl,
+        &kind_defs(),
+        &mut package,
+        &mut diagnostics,
+        &mut SemanticTrace::default(),
+    );
     diagnostics
 }
 
 #[test]
 fn recognition_requires_the_equation_section() {
-    // No .emath parsing here (declarations are built directly), so no boot().
-    let mut p = Probe::new("recognition admits the required equation section and refuses its absence with E-KIND-003");
-    p.case("present", |p| {
+    let mut p = Probe::new("kind-registry admission refuses E-KIND-GONE");
+    p.case("present-gone", |p| {
         let decl = application(vec![Stmt {
             kind: StmtKind::Section(equation_section()),
             source: span(),
         }]);
-        let diagnostics = admit(&decl);
-        p.demand("admits", diagnostics.is_empty(), format!("required section must admit cleanly, got {diagnostics:?}"));
+        let codes: Vec<&str> = admit(&decl).errors().map(|d| d.code).collect();
+        p.eq("codes", codes, vec!["E-KIND-GONE"]);
     });
-    p.case("missing", |p| {
-        let diagnostics = admit(&application(Vec::new()));
-        let codes: Vec<&str> = diagnostics.errors().map(|d| d.code).collect();
-        p.eq("codes", codes, vec!["E-KIND-003"]);
+    p.case("missing-gone", |p| {
+        let codes: Vec<&str> = admit(&application(Vec::new()))
+            .errors()
+            .map(|d| d.code)
+            .collect();
+        p.eq("codes", codes, vec!["E-KIND-GONE"]);
     });
     p.finish();
 }
