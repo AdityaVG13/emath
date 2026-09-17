@@ -64,25 +64,10 @@ fn merge_constructor_admit(source: &str, path: Option<&Path>, diagnostics: &mut 
     };
     if let Err(error) = admitted {
         diagnostics.error(
-            constructor_admit_code(&error.code),
+            emath_exec_ir::constructor_layer::constructor_admit_code(&error.code),
             format!("{}: {}", error.code, error.message),
             emath_core::Span::default(),
         );
-    }
-}
-
-fn constructor_admit_code(code: &str) -> &'static str {
-    match code {
-        "E-KIND-GONE" => "E-KIND-GONE",
-        "E-PKG-050" => "E-PKG-050",
-        "E-USE-ADMISSION" => "E-USE-ADMISSION",
-        "E-TYPE-002" | "unbound" => "E-TYPE-002",
-        "E-NAME-020" => "E-NAME-020",
-        "E-TYPE-003" => "E-TYPE-003",
-        "E-TYPE-010" | "type" => "E-TYPE-010",
-        "E-SEC-101" => "E-SEC-101",
-        "E-KIND-011" => "E-KIND-011",
-        _ => "E-TYPE-002",
     }
 }
 

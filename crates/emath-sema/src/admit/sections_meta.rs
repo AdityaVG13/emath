@@ -186,7 +186,7 @@ fn check_constructor_user_file(
         package.seal();
     }
     if let Err(err) = emath_exec_ir::constructor_layer::admit_tree_at(tree, source) {
-        let code = constructor_admit_code(&err.code);
+        let code = emath_exec_ir::constructor_layer::constructor_admit_code(&err.code);
         // The per-declaration loop above already reported kind refusals
         // with real spans; this constructor pass is first-error-only. Append
         // its finding only when the loop did not record the same refusal —
@@ -203,17 +203,5 @@ fn check_constructor_user_file(
         diagnostics,
         trace,
         units_profiles,
-    }
-}
-
-fn constructor_admit_code(code: &str) -> &'static str {
-    match code {
-        "E-KIND-GONE" => "E-KIND-GONE",
-        "E-PKG-050" => "E-PKG-050",
-        "E-USE-ADMISSION" => "E-USE-ADMISSION",
-        "unbound" => "E-TYPE-002",
-        "method_unavailable" | "transformation_rule_unavailable" => "E-TYPE-003",
-        "E-NAME-020" => "E-NAME-020",
-        _ => "E-TYPE-012",
     }
 }

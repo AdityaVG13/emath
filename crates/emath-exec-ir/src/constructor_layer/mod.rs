@@ -153,6 +153,45 @@ impl fmt::Display for ConstructorError {
     }
 }
 
+/// The single constructor-fault → language-diagnostic-code mapping.
+///
+/// Every lane that surfaces a [`ConstructorError`] as a diagnostic (the
+/// sema admission pass and the CLI build lanes) goes through this one
+/// table; the private per-lane copies it replaced had divergent arms
+/// and defaults, so the same fault could surface as different codes
+/// depending on the reporting lane.
+///
+/// The mapping follows the diagnostics contract: unbound names are
+/// `E-TYPE-002`; faults where no method, implementation, transform, or
+/// dependency resolves are `E-TYPE-003` (unknown function); and the
+/// carrier/arity/value family — `type`, `arity`, `division_by_zero`,
+/// `overflow`, `non_finite_scalar`, `invalid_index`, `invalid_literal`,
+/// `nonexhaustive_match`, `invalid_code_construction`,
+/// `object_invariant_failed`, `unguarded_recursive_binding`,
+/// `recursion_depth_exceeded`, `incompatible_checkpoint`, and any future
+/// fault — is the documented "carrier or condition does not match"
+/// `E-TYPE-012`. Faults that already carry a language diagnostic code
+/// pass through unchanged (the closed set is enumerated because the
+/// return is a `&'static str`).
+#[must_use]
+pub fn constructor_admit_code(code: &str) -> &'static str {
+    match code {
+        "E-KIND-GONE" => "E-KIND-GONE",
+        "E-KIND-011" => "E-KIND-011",
+        "E-SEC-101" => "E-SEC-101",
+        "E-NAME-020" => "E-NAME-020",
+        "E-PKG-050" => "E-PKG-050",
+        "E-USE-ADMISSION" => "E-USE-ADMISSION",
+        "E-TYPE-002" => "E-TYPE-002",
+        "E-TYPE-003" => "E-TYPE-003",
+        "E-TYPE-010" => "E-TYPE-010",
+        "unbound" | "unbound_code" => "E-TYPE-002",
+        "method_unavailable" | "implementation_unavailable"
+        | "transformation_rule_unavailable" | "unresolved" | "stale_dependency" => "E-TYPE-003",
+        _ => "E-TYPE-012",
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TestObservation {
     pub label: String,
