@@ -56,15 +56,7 @@ pub fn congruence_checked(left: i64, right: i64, modulus: i64) -> Result<bool, &
         == i128::from(right).rem_euclid(i128::from(modulus)))
 }
 
-/// Factorial of n in [0, 20] (i64 range; panics outside).
-pub fn factorial(n: i64) -> i64 {
-    match factorial_checked(n) {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    }
-}
-
-/// Factorial with a typed error instead of a panic.
+/// Factorial over the i64 carrier; refuses typed past `n = 20`.
 pub fn factorial_checked(n: i64) -> Result<i64, &'static str> {
     if !(0..=20).contains(&n) {
         return Err("factorial overflow: n must be in [0, 20] for i64");
@@ -72,16 +64,8 @@ pub fn factorial_checked(n: i64) -> Result<i64, &'static str> {
     Ok((1..=n).fold(1i64, |acc, k| acc * k))
 }
 
-/// Multiplicative inverse of `a` modulo `m` (panics when the modulus is
-/// non-positive or no inverse exists).
-pub fn mod_inv(a: i64, m: i64) -> i64 {
-    match mod_inv_checked(a, m) {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    }
-}
-
-/// Multiplicative inverse with a typed error instead of a panic.
+/// Multiplicative inverse of `a` modulo `m`; refuses typed when the
+/// modulus is non-positive or no inverse exists.
 pub fn mod_inv_checked(a: i64, m: i64) -> Result<i64, &'static str> {
     if m <= 0 {
         return Err("mod_inv: modulus must be positive");
@@ -93,16 +77,8 @@ pub fn mod_inv_checked(a: i64, m: i64) -> Result<i64, &'static str> {
     Ok(x.rem_euclid(m))
 }
 
-/// Modular exponentiation `base^exp mod m` via square-and-multiply
-/// (panics on `m <= 0` or a negative exponent).
-pub fn pow_mod(base: i64, exp: i64, m: i64) -> i64 {
-    match pow_mod_checked(base, exp, m) {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    }
-}
-
-/// Modular exponentiation with a typed error instead of a panic.
+/// Modular exponentiation `base^exp mod m` via square-and-multiply;
+/// refuses typed on `m <= 0` or a negative exponent.
 /// Square-and-multiply over i128 intermediates: with `m <= 2^63` the
 /// widest product is `< 2^126`, so i64 operands never overflow the
 /// intermediate product (the naive `int_rem(base.pow(exp), m)` would).
@@ -127,16 +103,7 @@ pub fn pow_mod_checked(base: i64, exp: i64, m: i64) -> Result<i64, &'static str>
     Ok(result as i64)
 }
 
-/// Modular square root in F_p via Tonelli-Shanks (panics on an invalid
-/// modulus or a non-residue).
-pub fn sqrt_mod(a: i64, p: i64) -> i64 {
-    match sqrt_mod_checked(a, p) {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    }
-}
-
-/// Modular square root with a typed error instead of a panic.
+/// Modular square root in F_p via Tonelli-Shanks.
 /// Returns `x` with `x² ≡ a (mod p)` for prime `p`; refuses typed when
 /// `a` is a quadratic non-residue (mirrors `mod_inv`'s refusal style),
 /// `p <= 0`, or `p` is even and > 2. Deterministic tie-break: returns
@@ -234,15 +201,7 @@ fn pow_mod_i128(base: i128, exp: u64, modulus: i128) -> i128 {
 }
 
 /// Evaluate c[0] + c[1]x + ... + c[k-1]x^(k-1) over GF(p) by Horner's
-/// method (panics when the modulus is non-positive).
-pub fn poly_eval_mod(coeffs: &[f64], x: i64, p: i64) -> i64 {
-    match poly_eval_mod_checked(coeffs, x, p) {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    }
-}
-
-/// Polynomial evaluation over GF(p) with a typed error instead of a panic.
+/// method; refuses typed when the modulus is non-positive.
 pub fn poly_eval_mod_checked(coeffs: &[f64], x: i64, p: i64) -> Result<i64, &'static str> {
     if p <= 0 {
         return Err("poly_eval_mod: modulus must be positive");
@@ -265,16 +224,8 @@ fn horner_mod_i128(coeffs: &[f64], x: i64, p: i64) -> Result<i64, &'static str> 
     Ok(result as i64)
 }
 
-/// Reed-Solomon codeword: polynomial evaluation at x = 0..n over GF(p)
-/// (panics on an invalid modulus or codeword length).
-pub fn rs_encode(coeffs: &[f64], n: i64, p: i64) -> Vec<f64> {
-    match rs_encode_checked(coeffs, n, p) {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    }
-}
-
-/// Reed-Solomon codeword with a typed error instead of a panic.
+/// Reed-Solomon codeword: polynomial evaluation at x = 0..n over GF(p);
+/// refuses typed on an invalid modulus or codeword length.
 pub fn rs_encode_checked(coeffs: &[f64], n: i64, p: i64) -> Result<Vec<f64>, &'static str> {
     if p <= 0 {
         return Err("rs_encode: modulus must be positive");
@@ -338,16 +289,8 @@ pub fn eq_i64_f64(n: i64, x: f64) -> bool {
     matches!(cmp_i64_f64(n, x), Some(core::cmp::Ordering::Equal))
 }
 
-/// Hamming distance between two equal-length vectors (panics on length
-/// mismatch). Equality is bit-exact (`to_bits`).
-pub fn hamming_distance(a: &[f64], b: &[f64]) -> i64 {
-    match hamming_distance_checked(a, b) {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    }
-}
-
-/// Hamming distance with a typed error instead of a panic.
+/// Hamming distance between two equal-length vectors; refuses typed on
+/// length mismatch. Equality is bit-exact (`to_bits`).
 pub fn hamming_distance_checked(a: &[f64], b: &[f64]) -> Result<i64, &'static str> {
     if a.len() != b.len() {
         return Err("hamming_distance: vectors must have equal length");
@@ -472,14 +415,19 @@ pub fn fold_any_checked(
     Ok(acc)
 }
 
-/// Composite Simpson's rule quadrature over an even positive panel count
-/// (panics otherwise). Mirrors the historical inline order: h = (b-a)/n,
-/// weights 1/4/2.../4/1, acc * h / 3.
-pub fn simpson(f: &impl Fn(f64) -> f64, a: f64, b: f64, n: i64) -> f64 {
-    assert!(
-        n > 0 && n % 2 == 0,
-        "integral steps must be positive and even"
-    );
+/// Composite Simpson's rule quadrature over an even positive panel
+/// count; anything else refuses typed (never a panic — the runtime
+/// error model is typed refusals). Mirrors the historical inline
+/// order: h = (b-a)/n, weights 1/4/2.../4/1, acc * h / 3.
+pub fn simpson(
+    f: &impl Fn(f64) -> f64,
+    a: f64,
+    b: f64,
+    n: i64,
+) -> Result<f64, &'static str> {
+    if n <= 0 || n % 2 != 0 {
+        return Err("simpson: integral steps must be positive and even");
+    }
     let h = (b - a) / n as f64;
     let mut acc = 0.0;
     for i in 0..=n {
@@ -493,14 +441,15 @@ pub fn simpson(f: &impl Fn(f64) -> f64, a: f64, b: f64, n: i64) -> f64 {
         };
         acc += weight * f(x);
     }
-    acc * h / 3.0
+    Ok(acc * h / 3.0)
 }
 
 /// Numerical limit: sample f at target ± h for geometrically decreasing h
 /// (1e-1..1e-12), returning on 1% agreement between successive finite
 /// samples; otherwise the last finite sample. Direction: > 0.5 approaches
-/// from above, < -0.5 from below, otherwise two-sided.
-pub fn sample_limit(f: &impl Fn(f64) -> f64, target: f64, direction: f64) -> f64 {
+/// from above, < -0.5 from below, otherwise two-sided. Refuses typed when
+/// no sample in the progression is finite (never a panic).
+pub fn sample_limit(f: &impl Fn(f64) -> f64, target: f64, direction: f64) -> Result<f64, &'static str> {
     let dirs: &[f64] = if direction > 0.5 {
         &[1.0]
     } else if direction < -0.5 {
@@ -517,7 +466,7 @@ pub fn sample_limit(f: &impl Fn(f64) -> f64, target: f64, direction: f64) -> f64
             let fx = f(x);
             if fx.is_finite() {
                 if prev.is_finite() && (fx - prev).abs() <= fx.abs() * 0.01 + 1e-14 {
-                    return fx;
+                    return Ok(fx);
                 }
                 prev = fx;
                 best = fx;
@@ -525,9 +474,9 @@ pub fn sample_limit(f: &impl Fn(f64) -> f64, target: f64, direction: f64) -> f64
         }
     }
     if best.is_finite() {
-        best
+        Ok(best)
     } else {
-        panic!("sample_limit produced no finite values");
+        Err("sample_limit produced no finite values")
     }
 }
 

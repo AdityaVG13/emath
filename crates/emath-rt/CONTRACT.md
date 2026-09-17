@@ -42,10 +42,15 @@ Layer: foundation (std-only, no other emath crates).
   / Dirichlet; `stencil_2d` refuses `Dirichlet`.
   `OneSided` linearly extrapolates a ghost cell (`u[-1] = 2u[0] − u[1]`)
   so a central first-difference is exact on linear fields at the edge.
-- Every panicking kernel (e.g. `factorial`, `mod_inv`, `einsum_as_*`) has
-  a `_checked` twin (`Result<_, &'static str>` or `EinsumError`); the
-  panicking form delegates to it. Index/slice kernels are checked-only
-  (`IndexError`): there is no panicking `[]` wrapper.
+- Every panicking kernel (`einsum_as_*`, `stencil_2d`, `mat_mul_mat`)
+  has a `_checked` twin (`Result<_, &'static str>` or `EinsumError`);
+  the panicking form delegates to it or is refused ahead at codegen
+  time. Index/slice kernels are checked-only (`IndexError`): there is
+  no panicking `[]` wrapper. The i64 numeric wrappers
+  (`factorial`/`mod_inv`/`pow_mod`/`sqrt_mod`/`poly_eval_mod`/
+  `rs_encode`/`hamming_distance`) are gone; their `_checked` twins are
+  the only surface (nothing emitted or interpreted ever called the
+  panicking forms).
 
 ## Invariants
 
@@ -73,17 +78,18 @@ Layer: foundation (std-only, no other emath crates).
 - `stencil_2d` panics on `Dirichlet` (unreachable from generated code;
   the backend refuses 2D Dirichlet at codegen time; the interpreter
   pre-checks and returns a typed fault instead of calling).
-- `mod_inv` / `poly_eval_mod` / `rs_encode` / `hamming_distance` /
-  `factorial` / `einsum_as_*` panic on invalid inputs; the interpreter
-  calls `einsum_checked` / `*_checked` / `vec_index_checked` /
+- `mod_inv_checked` / `poly_eval_mod_checked` / `rs_encode_checked` /
+  `hamming_distance_checked` / `factorial_checked` and the rest of the
+  numeric body are checked-only; the interpreter calls
+  `einsum_checked` / `*_checked` / `vec_index_checked` /
   `tensor_slice_checked` and returns typed `EvalFault`s, so panics are
   unreachable from interpreted evaluation of admitted programs.
   Dimension-mismatched einsum is `EinsumError::Arithmetic`. Index/slice
   OOB is `IndexError::OutOfBounds` (mapped to `EvalFault::IndexOutOfBounds`
   in interp; generated evaluate methods return `Result<_, String>`).
-- `simpson` asserts on a non-positive or odd panel count `n`.
-- `sample_limit` panics when no sample in the geometric progression is
-  finite (`sample_limit produced no finite values`).
+- `simpson` refuses typed on a non-positive or odd panel count `n`.
+- `sample_limit` refuses typed when no sample in the geometric
+  progression is finite (`sample_limit produced no finite values`).
 - `mat_mul_mat` panics on ragged operands (direct `a[i][k]` / `b[k][j]`
   indexing, mirroring the historical inline semantics).
 - All remaining kernels are total on arbitrary input.
