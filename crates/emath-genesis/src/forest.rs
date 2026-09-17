@@ -469,39 +469,14 @@ impl ParseForest {
     }
 
     /// Deterministic `parse-forest.json` body (`emath.parse-forest`).
+    ///
+    /// Canonical receipts are hash preimages: `parse_id` is the FNV of the
+    /// same receipt without the id field, so both forms emit through one
+    /// [`Self::emit_receipt`] with the id gated. Byte stability is pinned
+    /// in `tests/emath-genesis/tests/forest.rs`.
     #[must_use]
     pub fn canonical_json(&self) -> String {
-        let mut out = String::new();
-        let _ = write!(
-            out,
-            "{{\"schema\":\"emath.parse-forest\",\"world_name\":\"{}\",\"body\":\"{}\",\"parse_id\":{},\"ambiguity_count\":{},\"node_count\":{},\"holes\":[",
-            json_escape(&self.world_name),
-            json_escape(&self.body),
-            self.parse_id,
-            self.ambiguity_count,
-            self.node_count
-        );
-        for (index, (id, reason)) in self.holes.iter().enumerate() {
-            if index > 0 {
-                out.push(',');
-            }
-            let _ = write!(
-                out,
-                "{{\"id\":\"{}\",\"reason\":\"{}\"}}",
-                json_escape(id),
-                json_escape(reason)
-            );
-        }
-        out.push(']');
-        if let Some(term) = &self.canonical_term {
-            let _ = write!(
-                out,
-                ",\"canonical_term\":\"{}\"",
-                json_escape(&term.canonical())
-            );
-        }
-        out.push_str(",\"recovery\":\"bounded-holes\"}");
-        out
+        self.emit_receipt(Some(self.parse_id))
     }
 
     /// FNV-1a64 identity over the canonical JSON (without the id field).
@@ -511,12 +486,23 @@ impl ParseForest {
     }
 
     fn json_without_id(&self) -> String {
+        self.emit_receipt(None)
+    }
+
+    fn emit_receipt(&self, parse_id: Option<u64>) -> String {
         let mut out = String::new();
         let _ = write!(
             out,
-            "{{\"schema\":\"emath.parse-forest\",\"world_name\":\"{}\",\"body\":\"{}\",\"ambiguity_count\":{},\"node_count\":{},\"holes\":[",
+            "{{\"schema\":\"emath.parse-forest\",\"world_name\":\"{}\",\"body\":\"{}\"",
             json_escape(&self.world_name),
-            json_escape(&self.body),
+            json_escape(&self.body)
+        );
+        if let Some(id) = parse_id {
+            let _ = write!(out, ",\"parse_id\":{id}");
+        }
+        let _ = write!(
+            out,
+            ",\"ambiguity_count\":{},\"node_count\":{},\"holes\":[",
             self.ambiguity_count,
             self.node_count
         );
@@ -546,54 +532,14 @@ impl ParseForest {
 
 impl SignatureInference {
     /// Deterministic `signature.json` body (`emath.signature`).
+    ///
+    /// Canonical receipts are hash preimages: `signature_id` is the FNV of
+    /// the same receipt without the id field, so both forms emit through
+    /// one [`Self::emit_receipt`] with the id gated. Byte stability is
+    /// pinned in `tests/emath-genesis/tests/forest.rs`.
     #[must_use]
     pub fn canonical_json(&self) -> String {
-        let mut out = String::new();
-        let _ = write!(
-            out,
-            "{{\"schema\":\"emath.signature\",\"world_name\":\"{}\",\"signature_id\":{},\"arities\":{{",
-            json_escape(&self.world_name),
-            self.signature_id
-        );
-        for (index, (symbol, arity)) in self.signature.iter().enumerate() {
-            if index > 0 {
-                out.push(',');
-            }
-            let _ = write!(out, "\"{}\":{}", json_escape(&symbol.0), arity);
-        }
-        out.push_str("},\"fixities\":{");
-        for (index, (symbol, fixity)) in self.fixities.iter().enumerate() {
-            if index > 0 {
-                out.push(',');
-            }
-            let _ = write!(
-                out,
-                "\"{}\":\"{}\"",
-                json_escape(&symbol.0),
-                fixity_name(*fixity)
-            );
-        }
-        out.push_str("},\"type_variables\":{");
-        for (index, (symbol, variable)) in self.type_variables.iter().enumerate() {
-            if index > 0 {
-                out.push(',');
-            }
-            let _ = write!(
-                out,
-                "\"{}\":\"{}\"",
-                json_escape(&symbol.0),
-                json_escape(variable)
-            );
-        }
-        out.push_str("},\"variables\":[");
-        for (index, variable) in self.variables.iter().enumerate() {
-            if index > 0 {
-                out.push(',');
-            }
-            let _ = write!(out, "\"{}\"", json_escape(&variable.0));
-        }
-        out.push_str("]}");
-        out
+        self.emit_receipt(Some(self.signature_id))
     }
 
     /// FNV-1a64 identity over the canonical JSON (without the id field).
@@ -603,12 +549,20 @@ impl SignatureInference {
     }
 
     fn json_without_id(&self) -> String {
+        self.emit_receipt(None)
+    }
+
+    fn emit_receipt(&self, signature_id: Option<u64>) -> String {
         let mut out = String::new();
         let _ = write!(
             out,
-            "{{\"schema\":\"emath.signature\",\"world_name\":\"{}\",\"arities\":{{",
+            "{{\"schema\":\"emath.signature\",\"world_name\":\"{}\"",
             json_escape(&self.world_name)
         );
+        if let Some(id) = signature_id {
+            let _ = write!(out, ",\"signature_id\":{id}");
+        }
+        let _ = write!(out, ",\"arities\":{{");
         for (index, (symbol, arity)) in self.signature.iter().enumerate() {
             if index > 0 {
                 out.push(',');

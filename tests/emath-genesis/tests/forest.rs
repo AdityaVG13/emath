@@ -29,6 +29,22 @@ fn parse_forest() {
         p.eq("ambiguity", first.ambiguity_count(), second.ambiguity_count());
         p.eq("unique", first.ambiguity_count(), 1);
     });
+    p.case("receipts-bytes-pinned", |p| {
+        // Canonical receipts are hash preimages: field order, separators,
+        // and the id splice must never drift. These bytes are the contract.
+        let forest = build_forest("a \u{22c8} b", &ForestLimits::default());
+        p.eq(
+            "forest-json",
+            forest.canonical_json(),
+            "{\"schema\":\"emath.parse-forest\",\"world_name\":\"\",\"body\":\"a \u{22c8} b\",\"parse_id\":5366070674144742212,\"ambiguity_count\":1,\"node_count\":3,\"holes\":[],\"canonical_term\":\"apply(\u{22c8},var(a),var(b))\",\"recovery\":\"bounded-holes\"}".to_string(),
+        );
+        let signature = infer_signature("a \u{22c8} b", &ForestLimits::default()).expect("infix parse");
+        p.eq(
+            "signature-json",
+            signature.canonical_json(),
+            "{\"schema\":\"emath.signature\",\"world_name\":\"\",\"signature_id\":268684321389020716,\"arities\":{\"\u{22c8}\":2},\"fixities\":{\"\u{22c8}\":\"infix\"},\"type_variables\":{\"\u{22c8}\":\"T0\"},\"variables\":[\"a\",\"b\"]}".to_string(),
+        );
+    });
     p.case("arguments-bounded", |p| {
         let limits = ForestLimits { max_nodes: 4096, max_alternatives: 16, max_depth: 64 };
         let started = std::time::Instant::now();
