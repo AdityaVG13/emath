@@ -162,7 +162,7 @@ pub(super) fn run_command(command: Command) -> CliExit {
         Command::Search(request) => compiled_search::run(request),
         Command::Step(request) => execution::step(request),
         Command::Api(request) => language_cmd::api(request),
-        Command::Test { path, out } => tooling_cmd::test_cmd(&path, &out),
+        Command::Test { path, out, work } => tooling_cmd::test_cmd(&path, &out, work),
         Command::Verify { dir, json } => {
             if !dir.is_dir() {
                 execution::verify(&dir, json)
@@ -229,12 +229,18 @@ pub(super) fn parse_new_request(
     Some((name, out, dry_run, force, json))
 }
 
-pub(super) fn parse_path_out_request(args: &[String]) -> Option<(PathBuf, PathBuf)> {
+pub(super) fn parse_path_out_request(args: &[String]) -> Option<(PathBuf, PathBuf, Option<u64>)> {
     let mut path = None;
     let mut out = None;
+    let mut work = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--work" => {
+                let value = take_nonflag_value(args, &mut index)?;
+                let limit: u64 = value.parse().ok()?;
+                assign_once(&mut work, limit)?;
+            }
             "--out" | "-o" => {
                 assign_once(
                     &mut out,
@@ -248,7 +254,7 @@ pub(super) fn parse_path_out_request(args: &[String]) -> Option<(PathBuf, PathBu
     }
     let path = path?;
     let out = out.unwrap_or_else(|| PathBuf::from("target/emath"));
-    Some((path, out))
+    Some((path, out, work))
 }
 
 pub(super) fn parse_required_path(args: &[String]) -> Option<PathBuf> {

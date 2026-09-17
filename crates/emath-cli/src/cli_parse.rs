@@ -111,6 +111,7 @@ pub(super) enum Command {
     Test {
         path: PathBuf,
         out: PathBuf,
+        work: Option<u64>,
     },
     Verify {
         dir: PathBuf,
@@ -440,11 +441,11 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         },
         "test" => require_single_file(
             "test",
-            "test <file.emath> [--out <dir>]",
+            "test <file.emath> [--work N] [--out <dir>]",
             rest,
-            |r| parse_path_out_request(r).map(|(path, out)| (path, out)),
+            |r| parse_path_out_request(r).map(|(path, out, work)| (path, out, work)),
         )
-        .map(|(path, out)| Command::Test { path, out }),
+        .map(|(path, out, work)| Command::Test { path, out, work }),
         "verify" => match parse_required_path(rest) {
             Some(dir) => Ok(Command::Verify {
                 dir,

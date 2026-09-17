@@ -32,7 +32,7 @@ pub fn capabilities_json() -> String {
         ("step", "Resume a constructor-layer continuation", "step <checkpoint.json> [--work N] [--json]"),
         ("inspect", "Read a saved constructor checkpoint", "inspect <checkpoint.json> [--json]"),
         ("verify", "Replay recorded observations; not a theorem", "verify <checkpoint.json> [--json]"),
-        ("test", "Authored tests", "test <file.emath>"),
+        ("test", "Authored tests", "test <file.emath> [--work N]"),
         ("build", "Emit fully lowered runnable Rust", "build <file.emath> [--out <dir>] [--json]"),
         ("api", "Constructor contracts and imported module exports", "api [--search text] [--json]"),
         ("new", "Deterministic project scaffold", "new <name> [--out <dir>] [--dry-run] [--force] [--json]"),

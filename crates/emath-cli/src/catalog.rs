@@ -176,7 +176,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
         }
-        "test" => "test <file.emath> [--out <dir>]",
+        "test" => "test <file.emath> [--work N] [--out <dir>]",
         "bench" => "bench <file.emath>",
         "verify" => "verify <artifact-dir> | verify <checkpoint.json> [--json]",
         "inspect" => "inspect <artifact-dir-or-checkpoint.json> [--json]",
@@ -474,6 +474,7 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
         ],
         "test" => &[
             "emath test program.emath",
+            "emath test program.emath --work 5000000",
         ],
         "verify" => &[
             "emath verify checkpoint.json --json",
@@ -770,7 +771,8 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "fit" => &["--json", "--help", "-h"],
         "build" => &["--json", "--out", "-o", "--dry-run", "--help", "-h"],
         "new" => &["--out", "-o", "--dry-run", "--force", "--json", "--help", "-h"],
-        "test" | "vendor" | "agent" | "signature" | "genesis" => {
+        "test" => &["--work", "--out", "-o", "--help", "-h"],
+        "vendor" | "agent" | "signature" | "genesis" => {
             &["--out", "-o", "--help", "-h"]
         }
         "parse" => &["--forest", "--out", "-o", "--help", "-h"],

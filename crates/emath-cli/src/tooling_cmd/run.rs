@@ -3,8 +3,10 @@
 
 use super::*;
 
-/// Run `tests:` examples through the constructor evaluator.
-pub(crate) fn test_cmd(file: &Path, _out: &Path) -> CliExit {
+/// Run `tests:` examples through the constructor evaluator. `work`
+/// raises the per-module budget (`--work N`), so large-instance rows
+/// are pinnable instead of refusing `budget_exhausted` at the default.
+pub(crate) fn test_cmd(file: &Path, _out: &Path, work: Option<u64>) -> CliExit {
     if let Some(code) = crate::refuse_malformed_project_lock(file) {
         return code;
     }
@@ -20,7 +22,15 @@ pub(crate) fn test_cmd(file: &Path, _out: &Path) -> CliExit {
         print_diagnostics(&diagnostics);
         return EXIT_ADMISSION;
     }
-    match emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(file)) {
+    let report = match work {
+        Some(limit) => emath_exec_ir::constructor_layer::evaluate_tree_budgeted_at(
+            &tree,
+            Some(file),
+            limit,
+        ),
+        None => emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(file)),
+    };
+    match report {
         Ok(report) => {
             let mut failed = 0;
             for test in &report.tests {

@@ -1,0 +1,31 @@
+# Budget-lane fixture: the heavy row needs more than the default 1M
+# work units (measured: between 5M and 20M), so the default test lane
+# refuses budget_exhausted on that row only, while
+# `emath test --work 20000000` admits it. Pinned in
+# tests/emath-cli/tests/test_lane_work.rs.
+# Run: emath test tests/fixtures/constructor/work_budget_row.emath --work 20000000
+
+emath function SumTo:
+    inputs:
+        i: Int
+        acc: Int
+        bound: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i > bound: acc else: SumTo(i + 1, acc + i, bound)
+
+emath function Walk:
+    inputs:
+        bound: Int
+    outputs:
+        result: Int
+    definitions:
+        result = SumTo(1, 0, bound)
+    tests:
+        example <light_row>:
+            given bound = 1000
+            expect result == 500500
+        example <heavy_row>:
+            given bound = 400000
+            expect result == 80000200000

@@ -6,12 +6,34 @@ pub fn evaluate_tree(tree: &SyntaxTree) -> Result<ModuleReport, ConstructorError
     evaluate_tree_at(tree, None)
 }
 
-/// Evaluate a module, resolving `use` paths from `source` or the repo roots.
+/// Evaluate a module at the default work budget, resolving `use` paths
+/// from `source` or the repo roots.
 pub fn evaluate_tree_at(
     tree: &SyntaxTree,
     source: Option<&Path>,
 ) -> Result<ModuleReport, ConstructorError> {
+    evaluate_tree_with(tree, source, DEFAULT_WORK)
+}
+
+/// Evaluate a module under an explicit work budget: every test example
+/// runs with `work_limit` available, so large-instance rows are pinnable
+/// in the test lane instead of refusing `budget_exhausted` at the
+/// default budget.
+pub fn evaluate_tree_budgeted_at(
+    tree: &SyntaxTree,
+    source: Option<&Path>,
+    work_limit: u64,
+) -> Result<ModuleReport, ConstructorError> {
+    evaluate_tree_with(tree, source, work_limit)
+}
+
+fn evaluate_tree_with(
+    tree: &SyntaxTree,
+    source: Option<&Path>,
+    work_limit: u64,
+) -> Result<ModuleReport, ConstructorError> {
     let mut engine = empty_engine();
+    engine.work_limit = work_limit;
     let mut uses = Vec::new();
     install_local_items(&mut engine, tree)?;
     load_imports(
