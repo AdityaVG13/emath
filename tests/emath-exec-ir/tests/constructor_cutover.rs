@@ -906,8 +906,8 @@ emath function sum_tree:
 "#;
         let (tree, diagnostics) = parse_str(source);
         p.demand("parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
-        let leaf = |n: i128| CValue::Sequence(vec![int(n)]);
-        let branch = |left, right| CValue::Sequence(vec![left, right]);
+        let leaf = |n: i128| CValue::Sequence(std::sync::Arc::new(vec![int(n)]));
+        let branch = |left, right| CValue::Sequence(std::sync::Arc::new(vec![left, right]));
         let node = branch(branch(leaf(1), leaf(2)), branch(leaf(3), leaf(4)));
         let inputs = BTreeMap::from([("node".into(), node)]);
         let full = evaluate_function(&tree, "sum_tree", &inputs).unwrap();
@@ -1779,14 +1779,14 @@ emath function Fib:
         let source = std::fs::read_to_string(&mat_path).unwrap();
         let (tree, diagnostics) = parse_str(&source);
         p.demand("matmul-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
-        let a = CValue::Sequence(vec![
-            CValue::Sequence(vec![int(1), int(2)]),
-            CValue::Sequence(vec![int(3), int(4)]),
-        ]);
-        let b = CValue::Sequence(vec![
-            CValue::Sequence(vec![int(5), int(6)]),
-            CValue::Sequence(vec![int(7), int(8)]),
-        ]);
+        let a = CValue::Sequence(std::sync::Arc::new(vec![
+            CValue::Sequence(std::sync::Arc::new(vec![int(1), int(2)])),
+            CValue::Sequence(std::sync::Arc::new(vec![int(3), int(4)])),
+        ]));
+        let b = CValue::Sequence(std::sync::Arc::new(vec![
+            CValue::Sequence(std::sync::Arc::new(vec![int(5), int(6)])),
+            CValue::Sequence(std::sync::Arc::new(vec![int(7), int(8)])),
+        ]));
         p.eq(
             "matmul-2x2",
             evaluate_function(
@@ -1795,10 +1795,10 @@ emath function Fib:
                 &BTreeMap::from([("a".into(), a), ("b".into(), b)]),
             )
             .unwrap(),
-            CValue::Sequence(vec![
-                CValue::Sequence(vec![int(19), int(22)]),
-                CValue::Sequence(vec![int(43), int(50)]),
-            ]),
+            CValue::Sequence(std::sync::Arc::new(vec![
+                CValue::Sequence(std::sync::Arc::new(vec![int(19), int(22)])),
+                CValue::Sequence(std::sync::Arc::new(vec![int(43), int(50)])),
+            ])),
         );
 
         let rk_path = emath_exec_ir::constructor_layer::resolve_module_path(
@@ -1867,7 +1867,7 @@ emath function Wrap:
         p.eq(
             "vm-list",
             vm.clone(),
-            CValue::Sequence(vec![int(1), int(2), int(3)]),
+            CValue::Sequence(std::sync::Arc::new(vec![int(1), int(2), int(3)])),
         );
         match lower_constructor_function(&tree, "Wrap") {
             Ok(lowered) => {
@@ -2427,7 +2427,7 @@ emath function apply_twice:
                 &BTreeMap::from([
                     (
                         "coefficients".into(),
-                        CValue::Sequence(vec![int(1), int(2), int(3)]),
+                        CValue::Sequence(std::sync::Arc::new(vec![int(1), int(2), int(3)])),
                     ),
                     ("point".into(), int(2)),
                     ("modulus".into(), int(17)),

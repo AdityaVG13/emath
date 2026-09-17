@@ -15,8 +15,10 @@ impl Engine {
                 }
                 if let ExprKind::Path { segments, .. } = &tail.kind {
                     if let Some(name) = segments.first() {
-                        self.env
-                            .insert(name.clone(), CValue::Sequence(values[1..].to_vec()));
+                        self.env.insert(
+                            name.clone(),
+                            CValue::Sequence(std::sync::Arc::new(values[1..].to_vec())),
+                        );
                     }
                 }
                 Ok(true)

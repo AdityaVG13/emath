@@ -127,7 +127,14 @@ pub(super) fn rebuild_expr(value: &CValue) -> Result<Expr, String> {
         CValue::Int(_) | CValue::Rat { .. } | CValue::Bool(_) | CValue::Float64(_) => {
             Ok(value_to_expr(value))
         }
-        CValue::Sequence(items) | CValue::Tuple(items) => {
+        CValue::Sequence(items) => {
+            let exprs = items
+                .iter()
+                .map(rebuild_expr)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(dummy_expr(ExprKind::Tuple(exprs)))
+        }
+        CValue::Tuple(items) => {
             let exprs = items
                 .iter()
                 .map(rebuild_expr)

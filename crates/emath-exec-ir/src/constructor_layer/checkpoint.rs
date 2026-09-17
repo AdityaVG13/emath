@@ -881,7 +881,7 @@ pub(super) fn encode_cvalue(value: &CValue, out: &mut String) {
         CValue::Absent => out.push('A'),
         CValue::Sequence(items) => {
             out.push_str("(seq");
-            for item in items {
+            for item in items.iter() {
                 out.push(' ');
                 encode_cvalue(item, out);
             }
@@ -1419,7 +1419,7 @@ pub(super) fn decode_cvalue_cur(cur: &mut Cursor<'_>) -> Result<CValue, Construc
                 while !cur.eat_char(')') {
                     items.push(decode_cvalue_cur(cur)?);
                 }
-                CValue::Sequence(items)
+                CValue::Sequence(std::sync::Arc::new(items))
             }
             "tup" => {
                 let mut items = Vec::new();
@@ -1677,7 +1677,7 @@ pub(super) fn decode_compound(text: &str, sequence: bool) -> Result<CValue, Cons
     let mut items = Vec::new();
     if count == 0 {
         return Ok(if sequence {
-            CValue::Sequence(items)
+            CValue::Sequence(std::sync::Arc::new(items))
         } else {
             CValue::Tuple(items)
         });
@@ -1689,7 +1689,7 @@ pub(super) fn decode_compound(text: &str, sequence: bool) -> Result<CValue, Cons
         items.push(decode_cvalue(&encoded)?);
     }
     Ok(if sequence {
-        CValue::Sequence(items)
+        CValue::Sequence(std::sync::Arc::new(items))
     } else {
         CValue::Tuple(items)
     })

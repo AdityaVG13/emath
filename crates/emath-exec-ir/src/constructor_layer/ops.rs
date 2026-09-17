@@ -61,7 +61,9 @@ pub(super) fn index_seq(seq: CValue, i: ExactInt) -> Result<CValue, ConstructorE
 pub(super) fn cons_values(head: CValue, tail: CValue) -> Result<CValue, ConstructorError> {
     match tail {
         CValue::Sequence(mut rest) => {
-            rest.insert(0, head);
+            // Copy-on-write: the copy happens only when the tail is
+            // still shared; a private tail is mutated in place.
+            std::sync::Arc::make_mut(&mut rest).insert(0, head);
             Ok(CValue::Sequence(rest))
         }
         other => Err(fault(
@@ -167,7 +169,7 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
         BinaryOp::In => match right {
             CValue::Sequence(xs) => {
                 let mut found = false;
-                for item in &xs {
+                for item in xs.iter() {
                     if eq_values(item, &left)? {
                         found = true;
                         break;
@@ -209,7 +211,7 @@ pub(super) fn eq_values(left: &CValue, right: &CValue) -> Result<bool, Construct
             if a.len() != b.len() {
                 return Ok(false);
             }
-            for (x, y) in a.iter().zip(b) {
+            for (x, y) in a.iter().zip(b.iter()) {
                 if !eq_values(x, y)? {
                     return Ok(false);
                 }

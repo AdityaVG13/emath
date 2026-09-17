@@ -43,6 +43,28 @@ fn constructor_carrier() {
     handle.join().expect("carrier thread panicked");
 }
 
+#[test]
+fn sequence_clone_is_shallow() {
+    // COW sequence representation (bead emath-g9rpo): the CPS kont
+    // bookkeeping clones argument values at every engine step, so a
+    // deep-copy clone made every big-sequence call O(len) per step
+    // (PE P8: 17.4s wall for ~13k indexed reads whose unit cost is
+    // sub-second). Cloning a sequence must share the backing storage.
+    // Failure-first: with Sequence(Vec<CValue>) there is no shared
+    // storage to compare — this test cannot even be expressed.
+    use std::sync::Arc;
+    let items: Vec<CValue> = (0..100_000)
+        .map(|i| CValue::Int(ExactInt::from(i)))
+        .collect();
+    let a = CValue::Sequence(Arc::new(items));
+    let b = a.clone();
+    let (CValue::Sequence(left), CValue::Sequence(right)) = (&a, &b) else {
+        unreachable!("both sides are sequences")
+    };
+    assert!(Arc::ptr_eq(left, right), "clone must share backing storage");
+    assert_eq!(a, b, "structural equality is unchanged by sharing");
+}
+
 fn run_cases() {
     let mut probe = Probe::new(
         "Constructor Int/Rat stay exact past i128, Rat.numer/denom project, and package sibling use loads.",
@@ -582,16 +604,16 @@ emath function Neighbors:
         p.eq(
             "ints",
             parse_constructor_scalar("[1, 2, 3]"),
-            CValue::Sequence(vec![
+            CValue::Sequence(std::sync::Arc::new(vec![
                 CValue::Int(ExactInt::from(1i128)),
                 CValue::Int(ExactInt::from(2i128)),
                 CValue::Int(ExactInt::from(3i128)),
-            ]),
+            ])),
         );
         p.eq(
             "rats",
             parse_constructor_scalar("[1/2, 6/4]"),
-            CValue::Sequence(vec![
+            CValue::Sequence(std::sync::Arc::new(vec![
                 CValue::Rat {
                     num: ExactInt::from(1i128),
                     den: ExactInt::from(2i128),
@@ -600,9 +622,13 @@ emath function Neighbors:
                     num: ExactInt::from(3i128),
                     den: ExactInt::from(2i128),
                 },
-            ]),
+            ])),
         );
-        p.eq("empty", parse_constructor_scalar("[]"), CValue::Sequence(vec![]));
+        p.eq(
+            "empty",
+            parse_constructor_scalar("[]"),
+            CValue::Sequence(std::sync::Arc::new(vec![])),
+        );
         p.demand(
             "malformed-stays-record",
             matches!(parse_constructor_scalar("[1, 2"), CValue::Record { .. }),

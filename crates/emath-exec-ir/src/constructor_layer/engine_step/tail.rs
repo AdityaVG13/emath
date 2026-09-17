@@ -128,11 +128,11 @@ impl Engine {
                 let left = expect_int(self.eval(&args[0])?, op)?;
                 let right = expect_int(self.eval(&args[1])?, op)?;
                 let (g, s, t) = ExactInt::egcd(&left, &right).map_err(exact_fault)?;
-                Ok(CValue::Sequence(vec![
+                Ok(CValue::Sequence(std::sync::Arc::new(vec![
                     CValue::Int(g),
                     CValue::Int(s),
                     CValue::Int(t),
-                ]))
+                ])))
             }
             "int_powmod" | "int_poly_eval" => {
                 if args.len() != 3 {
@@ -218,7 +218,7 @@ impl Engine {
         Ok(if as_tuple {
             CValue::Tuple(done)
         } else {
-            CValue::Sequence(done)
+            CValue::Sequence(std::sync::Arc::new(done))
         })
     }
 

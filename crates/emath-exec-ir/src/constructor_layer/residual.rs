@@ -64,7 +64,8 @@ pub fn residual_output_exprs(
 pub(super) fn cvalue_emittable(value: &CValue) -> bool {
     match value {
         CValue::Bool(_) | CValue::Int(_) | CValue::Rat { .. } | CValue::Float64(_) => true,
-        CValue::Sequence(items) | CValue::Tuple(items) => items.iter().all(cvalue_emittable),
+        CValue::Sequence(items) => items.iter().all(cvalue_emittable),
+        CValue::Tuple(items) => items.iter().all(cvalue_emittable),
         CValue::Record { fields, .. } => fields.values().all(cvalue_emittable),
         _ => false,
     }

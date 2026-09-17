@@ -319,9 +319,9 @@ fn value_to_cvalue(
             emath_exec_ir::exact_int::ExactInt::from(*den),
         )
         .map_err(|err| err.message),
-        (_, Value::Vector(items)) => Ok(CValue::Sequence(
+        (_, Value::Vector(items)) => Ok(CValue::Sequence(std::sync::Arc::new(
             items.iter().copied().map(CValue::Float64).collect(),
-        )),
+        ))),
         (_, other) => Err(format!(
             "given value `{other:?}` is not a constructor scalar, bool, or vector"
         )),

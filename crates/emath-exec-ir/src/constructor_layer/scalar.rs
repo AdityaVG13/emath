@@ -133,7 +133,7 @@ pub(super) fn bind_exact_given(name: &str, value: &Expr, rat_inputs: &BTreeSet<S
 pub fn parse_constructor_scalar(raw: &str) -> CValue {
     let raw = raw.trim();
     if let Some(items) = parse_constructor_sequence(raw) {
-        return CValue::Sequence(items);
+        return CValue::Sequence(std::sync::Arc::new(items));
     }
     if raw == "true" {
         return CValue::Bool(true);
@@ -231,7 +231,8 @@ pub(super) fn expect_int(value: CValue, name: &str) -> Result<ExactInt, Construc
 pub(super) fn expect_ints(value: CValue, name: &str) -> Result<Vec<ExactInt>, ConstructorError> {
     match value {
         CValue::Sequence(items) => items
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|item| expect_int(item, name))
             .collect(),
         other => Err(fault(

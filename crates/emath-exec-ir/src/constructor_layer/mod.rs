@@ -7,6 +7,7 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use emath_core::tree::{
     BinaryOp, Declaration, Expr, ExprKind, Item, StmtKind, SyntaxTree, TypeExpr, TypeKind, UnaryOp,
@@ -26,7 +27,15 @@ pub enum CValue {
     Int(ExactInt),
     Rat { num: ExactInt, den: ExactInt },
     Float64(f64),
-    Sequence(Vec<CValue>),
+    /// Dense sequence carrier. Copy-on-write: `Clone` shares the
+    /// backing storage (the CPS kont bookkeeping clones argument
+    /// values at every engine step, so a deep-copy clone made every
+    /// big-sequence call O(len) per step — bead emath-g9rpo, PE P8:
+    /// 17.4s wall for ~13k indexed reads); mutation goes through
+    /// `Arc::make_mut`, which copies only when shared. `Arc` (not
+    /// `Rc`) keeps the carrier `Send` for lanes that move values
+    /// across threads. Structural `PartialEq` is unchanged by sharing.
+    Sequence(Arc<Vec<CValue>>),
     Tuple(Vec<CValue>),
     Record {
         type_name: String,

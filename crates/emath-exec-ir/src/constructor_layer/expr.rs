@@ -525,16 +525,18 @@ pub(super) fn view_of(
                 ("callee".into(), code_of(*function.clone())),
                 (
                     "args".into(),
-                    CValue::Sequence(args.iter().cloned().map(code_of).collect()),
+                    CValue::Sequence(std::sync::Arc::new(
+                        args.iter().cloned().map(code_of).collect(),
+                    )),
                 ),
                 (
                     "children".into(),
-                    CValue::Sequence(
+                    CValue::Sequence(std::sync::Arc::new(
                         args.iter()
                             .cloned()
                             .map(|arg| pack(arg, None))
                             .collect(),
-                    ),
+                    )),
                 ),
             ]),
         ),
@@ -558,14 +560,17 @@ pub(super) fn view_of(
                     ("callee".into(), callee),
                     (
                         "args".into(),
-                        CValue::Sequence(vec![code_of(*left.clone()), code_of(*right.clone())]),
+                        CValue::Sequence(std::sync::Arc::new(vec![
+                            code_of(*left.clone()),
+                            code_of(*right.clone()),
+                        ])),
                     ),
                     (
                         "children".into(),
-                        CValue::Sequence(vec![
+                        CValue::Sequence(std::sync::Arc::new(vec![
                             pack(*left.clone(), None),
                             pack(*right.clone(), None),
-                        ]),
+                        ])),
                     ),
                 ]),
             )
@@ -576,11 +581,11 @@ pub(super) fn view_of(
                 ("callee".into(), schema_tag(&format!("{op:?}"))),
                 (
                     "args".into(),
-                    CValue::Sequence(vec![code_of(*value.clone())]),
+                    CValue::Sequence(std::sync::Arc::new(vec![code_of(*value.clone())])),
                 ),
                 (
                     "children".into(),
-                    CValue::Sequence(vec![pack(*value.clone(), None)]),
+                    CValue::Sequence(std::sync::Arc::new(vec![pack(*value.clone(), None)])),
                 ),
             ]),
         ),
@@ -589,17 +594,19 @@ pub(super) fn view_of(
             BTreeMap::from([
                 (
                     "elements".into(),
-                    CValue::Sequence(items.iter().cloned().map(code_of).collect()),
+                    CValue::Sequence(std::sync::Arc::new(
+                        items.iter().cloned().map(code_of).collect(),
+                    )),
                 ),
                 (
                     "children".into(),
-                    CValue::Sequence(
+                    CValue::Sequence(std::sync::Arc::new(
                         items
                             .iter()
                             .cloned()
                             .map(|item| pack(item, None))
                             .collect(),
-                    ),
+                    )),
                 ),
             ]),
         ),
@@ -618,7 +625,7 @@ pub(super) fn view_of(
             let mut fields = BTreeMap::from([
                 (
                     "arms".into(),
-                    CValue::Sequence(
+                    CValue::Sequence(std::sync::Arc::new(
                         arms.iter()
                             .map(|(cond, value)| {
                                 CValue::Tuple(vec![
@@ -627,20 +634,20 @@ pub(super) fn view_of(
                                 ])
                             })
                             .collect(),
-                    ),
+                    )),
                 ),
                 ("else".into(), code_of(*else_arm.clone())),
                 ("otherwise".into(), code_of(*else_arm.clone())),
                 (
                     "children".into(),
-                    CValue::Sequence({
+                    CValue::Sequence(std::sync::Arc::new({
                         let mut children = arms
                             .iter()
                             .map(|(_, value)| pack(value.clone(), None))
                             .collect::<Vec<_>>();
                         children.push(pack(*else_arm.clone(), None));
                         children
-                    }),
+                    })),
                 ),
             ]);
             if let Some(subject) = subject {
@@ -657,11 +664,11 @@ pub(super) fn view_of(
             then_value,
             else_value,
         } => {
-            let children = CValue::Sequence(vec![
+            let children = CValue::Sequence(std::sync::Arc::new(vec![
                 pack(*condition.clone(), None),
                 pack(*then_value.clone(), None),
                 pack(*else_value.clone(), None),
-            ]);
+            ]));
             view_record(
                 "Branch",
                 BTreeMap::from([
@@ -683,9 +690,11 @@ pub(super) fn view_of(
                 ("container".into(), code_of(*value.clone())),
                 (
                     "indices".into(),
-                    CValue::Sequence(indices.iter().cloned().map(code_of).collect()),
+                    CValue::Sequence(std::sync::Arc::new(
+                        indices.iter().cloned().map(code_of).collect(),
+                    )),
                 ),
-                ("children".into(), CValue::Sequence(index_pkgs)),
+                ("children".into(), CValue::Sequence(std::sync::Arc::new(index_pkgs))),
                 ("scrutinee".into(), pack(*value.clone(), None)),
             ]);
             if let Some(index) = indices.first() {
@@ -718,16 +727,16 @@ pub(super) fn view_of(
                     ("schema".into(), schema_tag(&type_path.join("."))),
                     (
                         "fields".into(),
-                        CValue::Sequence(
+                        CValue::Sequence(std::sync::Arc::new(
                             fields
                                 .iter()
                                 .map(|(name, value)| {
                                     CValue::Tuple(vec![schema_tag(name), code_of(value.clone())])
                                 })
                                 .collect(),
-                        ),
+                        )),
                     ),
-                    ("children".into(), CValue::Sequence(children)),
+                    ("children".into(), CValue::Sequence(std::sync::Arc::new(children))),
                 ]),
             )
         }
@@ -738,7 +747,10 @@ pub(super) fn view_of(
                 ("tail".into(), code_of(*tail.clone())),
                 (
                     "children".into(),
-                    CValue::Sequence(vec![pack(*head.clone(), None), pack(*tail.clone(), None)]),
+                    CValue::Sequence(std::sync::Arc::new(vec![
+                        pack(*head.clone(), None),
+                        pack(*tail.clone(), None),
+                    ])),
                 ),
             ]),
         ),

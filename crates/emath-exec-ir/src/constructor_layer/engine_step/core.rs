@@ -100,7 +100,7 @@ impl Engine {
                                 type_name: receipt.payload.clone().unwrap_or_default(),
                                 fields: BTreeMap::new(),
                             }),
-                            "remaining" => Ok(CValue::Sequence(
+                            "remaining" => Ok(CValue::Sequence(std::sync::Arc::new(
                                 receipt
                                     .remaining
                                     .iter()
@@ -109,8 +109,8 @@ impl Engine {
                                         fields: BTreeMap::new(),
                                     })
                                     .collect(),
-                            )),
-                            "evidence" => Ok(CValue::Sequence(
+                            ))),
+                            "evidence" => Ok(CValue::Sequence(std::sync::Arc::new(
                                 receipt
                                     .evidence
                                     .iter()
@@ -119,7 +119,7 @@ impl Engine {
                                         fields: BTreeMap::new(),
                                     })
                                     .collect(),
-                            )),
+                            ))),
                             _ => Err(fault(
                                 "unbound",
                                 format!("receipt has no field `{}`", segments[1]),
@@ -361,7 +361,7 @@ impl Engine {
                     e.sub(&ExactInt::one()).map_err(exact_fault)?
                 };
                 if last.cmp(&s) == std::cmp::Ordering::Less {
-                    return Ok(CValue::Sequence(Vec::new()));
+                    return Ok(CValue::Sequence(std::sync::Arc::new(Vec::new())));
                 }
                 let mut items = Vec::new();
                 let mut n = s;
@@ -378,7 +378,7 @@ impl Engine {
                     }
                     n = n.add(&ExactInt::one()).map_err(exact_fault)?;
                 }
-                Ok(CValue::Sequence(items))
+                Ok(CValue::Sequence(std::sync::Arc::new(items)))
             }
             ExprKind::Cases {
                 subject,
