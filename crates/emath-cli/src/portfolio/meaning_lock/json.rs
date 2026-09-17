@@ -229,9 +229,17 @@ pub(super) fn parse_string(bytes: &[u8], index: &mut usize) -> Option<String> {
                 }
                 *index += 2;
             }
-            byte => {
-                out.push(char::from(*byte));
-                *index += 1;
+            _ => {
+                // Multi-byte UTF-8 must advance by whole chars. The input
+                // is a `&str` (always valid UTF-8) and every branch in
+                // this loop advances on char boundaries, so the rest
+                // slice decodes; byte-at-a-time decoding mojibakes any
+                // non-ASCII lock field (hole ids, source paths) and the
+                // lock then refuses as tampered.
+                let rest = std::str::from_utf8(bytes.get(*index..)?).ok()?;
+                let ch = rest.chars().next()?;
+                out.push(ch);
+                *index += ch.len_utf8();
             }
         }
     }
@@ -249,7 +257,7 @@ pub(super) fn parse_number(bytes: &[u8], index: &mut usize) -> Option<String> {
     if *index == digits_start {
         return None;
     }
-    std::str::from_utf8(&bytes[start..*index])
+    std::str::from_utf8(bytes.get(start..*index)?)
         .ok()
         .map(ToOwned::to_owned)
 }
