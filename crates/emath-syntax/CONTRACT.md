@@ -30,7 +30,8 @@ admit without depending on this crate. The syntax tree is owned by
 - Exact spans on every token and node.
 - Indentation enforcement, duplicate-section checks, precedence handling.
   `example <name>:` (and `example name:`) may have an empty body and
-  admits as a worked example; other `:` heads still require `E-SYN-112`.
+  admits as a worked example; `inputs:` with no rows is a zero-input
+  constructor; other `:` heads still require `E-SYN-112`.
 - Stateless `emath function name(args) -> T:` head-args parse into
   `Declaration.signature` (untyped names store the `Infer` marker). Mixing
   head-args with an `inputs:` / `outputs:` section is `E-SYN-122`. Head-args

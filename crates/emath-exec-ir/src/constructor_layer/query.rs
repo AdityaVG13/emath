@@ -48,8 +48,11 @@ pub fn evaluate_function_budgeted(
     evaluate_function_budgeted_at(tree, name, inputs, work_limit, checkpoint, source_id, None, "")
 }
 
-/// Budgeted evaluation with an optional source path (for `use`) and source text (for CLI resume).
-pub fn evaluate_function_budgeted_at(
+/// Budgeted evaluation that also reports the work units a completed run
+/// consumed, for `--work` tuning telemetry (run receipts; a suspension
+/// still returns the checkpoint, whose `work`/`remaining` fields carry
+/// the same accounting).
+pub fn evaluate_function_budgeted_reported(
     tree: &SyntaxTree,
     name: &str,
     inputs: &BTreeMap<String, CValue>,
@@ -58,7 +61,7 @@ pub fn evaluate_function_budgeted_at(
     source_id: &str,
     source_path: Option<&Path>,
     source_text: &str,
-) -> Result<CValue, (ConstructorError, Checkpoint)> {
+) -> Result<(CValue, u64), (ConstructorError, Checkpoint)> {
     let mut engine = engine_from_tree_at(tree, source_path).map_err(|err| {
         (
             err,
@@ -89,8 +92,34 @@ pub fn evaluate_function_budgeted_at(
         engine.restore(checkpoint).map_err(|err| (err, checkpoint.clone()))?;
     }
     match evaluate_function_on(&mut engine, name, inputs) {
-        Ok(value) => Ok(value),
+        Ok(value) => Ok((value, engine.work)),
         Err(err) => Err((err, engine.snapshot())),
+    }
+}
+
+/// Budgeted evaluation with an optional source path (for `use`) and source text (for CLI resume).
+pub fn evaluate_function_budgeted_at(
+    tree: &SyntaxTree,
+    name: &str,
+    inputs: &BTreeMap<String, CValue>,
+    work_limit: u64,
+    checkpoint: Option<&Checkpoint>,
+    source_id: &str,
+    source_path: Option<&Path>,
+    source_text: &str,
+) -> Result<CValue, (ConstructorError, Checkpoint)> {
+    match evaluate_function_budgeted_reported(
+        tree,
+        name,
+        inputs,
+        work_limit,
+        checkpoint,
+        source_id,
+        source_path,
+        source_text,
+    ) {
+        Ok((value, _)) => Ok(value),
+        Err(err) => Err(err),
     }
 }
 

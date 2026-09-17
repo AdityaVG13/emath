@@ -51,7 +51,9 @@ pub(crate) fn test_cmd(file: &Path, _out: &Path, work: Option<u64>) -> CliExit {
         }
         Err(error) => {
             eprintln!("error: {}: {}", error.code, error.message);
-            if error.code == "E-KIND-GONE" {
+            // Shape refusals (not-a-constructor kinds, unrecognized test
+            // rows) are admission failures, not execution faults.
+            if error.code == "E-KIND-GONE" || error.code == "unknown_test_row" {
                 EXIT_ADMISSION
             } else {
                 EXIT_FAULT

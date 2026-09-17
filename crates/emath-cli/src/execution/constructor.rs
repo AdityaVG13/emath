@@ -66,6 +66,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
                     "satisfied",
                     constructor_representation(&value),
                     &value.to_string(),
+                    None,
                     EXIT_OK,
                 ));
             }
@@ -132,7 +133,7 @@ pub(super) fn run_constructor_budgeted(
     inputs: &BTreeMap<String, emath_exec_ir::constructor_layer::CValue>,
 ) -> CliExit {
     let source_id = content_id_of_str(source).0;
-    match emath_exec_ir::constructor_layer::evaluate_function_budgeted_at(
+    match emath_exec_ir::constructor_layer::evaluate_function_budgeted_reported(
         tree,
         name,
         inputs,
@@ -142,12 +143,13 @@ pub(super) fn run_constructor_budgeted(
         Some(&request.path),
         source,
     ) {
-        Ok(value) => print_constructor_json(
+        Ok((value, work)) => print_constructor_json(
             request.json,
             "returned",
             "satisfied",
             constructor_representation(&value),
             &value.to_string(),
+            Some(work),
             EXIT_OK,
         ),
         Err((err, mut checkpoint)) => {
@@ -165,6 +167,7 @@ pub(super) fn run_constructor_budgeted(
                     "partial",
                     "absent",
                     &format!("work={}", checkpoint.work),
+                    None,
                     EXIT_PARTIAL,
                 );
             }
@@ -254,7 +257,7 @@ pub(super) fn constructor_step(request: &RunRequest) -> Option<CliExit> {
     } else {
         64
     };
-    match emath_exec_ir::constructor_layer::evaluate_function_budgeted_at(
+    match emath_exec_ir::constructor_layer::evaluate_function_budgeted_reported(
         &tree,
         &checkpoint.function,
         &checkpoint.inputs,
@@ -264,12 +267,13 @@ pub(super) fn constructor_step(request: &RunRequest) -> Option<CliExit> {
         None,
         &checkpoint.source,
     ) {
-        Ok(value) => Some(print_constructor_json(
+        Ok((value, work)) => Some(print_constructor_json(
             request.json,
             "returned",
             "satisfied",
             constructor_representation(&value),
             &value.to_string(),
+            Some(work),
             EXIT_OK,
         )),
         Err((err, next)) => {
@@ -283,6 +287,7 @@ pub(super) fn constructor_step(request: &RunRequest) -> Option<CliExit> {
                     "partial",
                     "absent",
                     &format!("work={}", next.work),
+                    None,
                     EXIT_PARTIAL,
                 ));
             }
@@ -419,6 +424,7 @@ pub(super) fn print_constructor_json(
     fulfillment: &str,
     representation: &str,
     payload: &str,
+    work_consumed: Option<u64>,
     exit: CliExit,
 ) -> CliExit {
     if json {
@@ -430,6 +436,12 @@ pub(super) fn print_constructor_json(
         out.string("fulfillment", fulfillment);
         out.string("representation", representation);
         out.string("payload", payload);
+        // Work telemetry for `--work` tuning (bead emath-7zplf): the
+        // completed run's measured consumption, present only on the
+        // budgeted lanes that know it.
+        if let Some(work) = work_consumed {
+            out.int("work_consumed", work);
+        }
         out.objects("evidence", &[]);
         out.strings("remaining", &[]);
         println!("{}", out.finish());

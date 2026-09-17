@@ -215,11 +215,72 @@ pub(super) fn admit_query(engine: &Engine, decl: &Declaration) -> Result<(), Con
     admit_tests(engine, decl, &types)
 }
 
+/// Refuse unrecognized `tests:` row forms instead of silently skipping
+/// them (bead emath-7zplf). The collectors admit exactly `example
+/// <label>:` blocks (with `given`/`expect` rows inside), loose `given`
+/// and `expect` rows, and the legacy `given`-headed assignment inside
+/// an example. Anything else — an invented `fault <label>:` section, an
+/// expression row, a field row — used to vanish without a diagnostic,
+/// so authored intent silently did not run.
+pub(super) fn refuse_unknown_test_rows(decl: &Declaration) -> Result<(), ConstructorError> {
+    for section in decl.sections().filter(|section| section.name == "tests") {
+        for stmt in &section.suite.statements {
+            match &stmt.kind {
+                StmtKind::Section(example) if example.name == "example" => {
+                    for inner in &example.suite.statements {
+                        match &inner.kind {
+                            StmtKind::Given { .. } | StmtKind::Expect(_) => {}
+                            StmtKind::Assign { target, .. }
+                                if target.segments.first().map(String::as_str) == Some("given") => {}
+                            other => {
+                                return Err(fault(
+                                    "unknown_test_row",
+                                    format!(
+                                        "row inside `example {}` is not a test form ({}); \
+                                         admitted rows: `given <name> = <value>`, `expect <expr>`",
+                                        example.generic.as_deref().unwrap_or(""),
+                                        row_word(other),
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                }
+                StmtKind::Given { .. } | StmtKind::Expect(_) => {}
+                other => {
+                    return Err(fault(
+                        "unknown_test_row",
+                        format!(
+                            "row in `tests:` is not a test form ({}); admitted rows: \
+                             `example <label>:` blocks, `given <name> = <value>`, `expect <expr>`",
+                            row_word(other),
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// One- or two-word name of a refused row for the diagnostic message.
+fn row_word(kind: &StmtKind) -> String {
+    match kind {
+        StmtKind::Section(section) => format!("section `{}`", section.name),
+        StmtKind::Assign { .. } => "assignment row".into(),
+        StmtKind::Expr(_) => "expression row".into(),
+        StmtKind::Command { head, .. } => format!("command `{}`", head.join(" ")),
+        StmtKind::FieldDecl { name, .. } => format!("field `{name}`"),
+        _ => "statement row".into(),
+    }
+}
+
 pub(super) fn admit_tests(
     engine: &Engine,
     decl: &Declaration,
     types: &BTreeMap<String, CType>,
 ) -> Result<(), ConstructorError> {
+    refuse_unknown_test_rows(decl)?;
     for section in decl.sections().filter(|section| section.name == "tests") {
         for stmt in &section.suite.statements {
             let StmtKind::Section(example) = &stmt.kind else {

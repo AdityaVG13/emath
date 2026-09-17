@@ -8,11 +8,17 @@ impl super::Parser {
     }
 
     /// `example <name>:` with no indented body is a worked example, not
-    /// `E-SYN-112`. Other section heads still require a block. The section
-    /// name selects the suite's line grammar: `reactions:` parses T3
-    /// reaction lines instead of expression statements (04 section 3.1).
+    /// `E-SYN-112`; `inputs:` with no rows is a zero-input constructor
+    /// (bead emath-7zplf: a dummy `unused: Int` row was the old
+    /// workaround). Other section heads still require a block. The
+    /// section name selects the suite's line grammar: `reactions:`
+    /// parses T3 reaction lines instead of expression statements
+    /// (04 section 3.1).
     pub(super) fn parse_section_suite(&mut self, section_name: &str) -> Option<Suite> {
-        self.parse_suite_inner(section_name == "example", section_name == "reactions")
+        self.parse_suite_inner(
+            section_name == "example" || section_name == "inputs",
+            section_name == "reactions",
+        )
     }
 
     fn parse_suite_inner(&mut self, allow_empty: bool, reactions: bool) -> Option<Suite> {

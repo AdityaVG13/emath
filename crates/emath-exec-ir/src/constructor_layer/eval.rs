@@ -69,6 +69,9 @@ fn evaluate_tree_with(
         let Item::Declaration(decl) = item else {
             continue;
         };
+        // The test lane does not run the admission pass, so the same
+        // row-form refusal the check lane sees applies here directly.
+        super::admit::refuse_unknown_test_rows(decl)?;
         for section in decl.sections().filter(|section| section.name == "tests") {
             // §3.1: every `example <label>:` block is its own case. Loose
             // givens/expects outside any example form one anonymous case.
