@@ -185,7 +185,9 @@ impl CompilerSession {
     /// the merged tree goes through the normal admission lane
     /// (cross-file duplicate names refuse `E-NAME-022` there). An
     /// unresolved in-package module import refuses `E-PKG-050` — never
-    /// a silent inert entry. The plain single-file [`Self::check`]
+    /// a silent inert entry. Consumed in-package `use` items are
+    /// stripped from the merged tree so admission does not re-resolve
+    /// them from disk. The plain single-file [`Self::check`]
     /// keeps its existing behavior.
     pub fn check_package(&mut self, main: FileId) -> CheckResult {
         let Some(source_file) = self.store.get(main) else {
@@ -225,12 +227,20 @@ impl CompilerSession {
         // main file's authority (transitive file imports are the next
         // slice).
         let mut pre_diagnostics = Diagnostics::new();
-        let mut merged_items: Vec<Item> = tree.items.clone();
+        // In-package `use` items are this lane's authority: each either
+        // merges its sibling's declarations or refuses `E-PKG-050`, and
+        // the item is consumed rather than kept in the merged tree —
+        // the constructor admission must not re-resolve it from disk
+        // (the session store, not the filesystem, is the source of
+        // truth for this lane).
+        let mut merged_items: Vec<Item> = Vec::with_capacity(tree.items.len());
         for item in &tree.items {
             let Item::Use { path, source, .. } = item else {
+                merged_items.push(item.clone());
                 continue;
             };
             let Some(module) = file_import_module(path, package_path.as_deref()) else {
+                merged_items.push(item.clone());
                 continue;
             };
             let target = format!("{module}.emath");

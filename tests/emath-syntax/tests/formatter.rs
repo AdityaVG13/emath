@@ -90,10 +90,10 @@ fn formatter() {
     let f0 = p.failures().len();
 
     for (name, text) in [
-        ("square", include_str!("../../valid/square.emath")),
+        ("square", include_str!("../../valid/formatter_square.emath")),
         (
-            "affine_scorer",
-            include_str!("../../valid/affine_scorer.emath"),
+            "rationals",
+            include_str!("../../valid/formatter_rationals.emath"),
         ),
     ] {
         let parsed = parse_lossless(text, FileId(0), &Limits::default());
@@ -113,10 +113,10 @@ fn formatter() {
     let f0 = p.failures().len();
 
     for (name, text) in [
-        ("square", include_str!("../../valid/square.emath")),
+        ("square", include_str!("../../valid/formatter_square.emath")),
         (
-            "affine_scorer",
-            include_str!("../../valid/affine_scorer.emath"),
+            "rationals",
+            include_str!("../../valid/formatter_rationals.emath"),
         ),
     ] {
         let parsed = parse_lossless(text, FileId(0), &Limits::default());

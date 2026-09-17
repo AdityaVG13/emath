@@ -1,13 +1,11 @@
 //! Duplicate `example <name>:` blocks inside one function's `tests:`
-//! section must refuse typed (`E-NAME-022`) at admission.
-//!
-//! The generated test crate names each emitted test fn
-//! `<function>_<test name>`, so two blocks resolving to the same name
-//! collide in generated Rust (rustc E0428) — exactly the collision class
-//! E-NAME-022 exists for ("two declarations with the same name would
-//! collide in generated Rust, so the second is refused"). Before this
-//! check the collision surfaced as a raw rustc error inside
-//! `emath test` instead of a typed diagnostic at the .emath source.
+//! section admit and both rows run: example names are row labels in the
+//! constructor test lane (positional, not link keys), so a repeated
+//! label is not a collision. The pre-cutover `E-NAME-022` check existed
+//! because the recipe codegen emitted one Rust fn per
+//! `<function>_<test name>` and duplicates collided there (rustc E0428);
+//! that codegen is gone with the recipe lane. `E-NAME-022` still refuses
+//! duplicate declaration names.
 
 use emath_test_harness::{Probe, Source, boot};
 
@@ -16,15 +14,17 @@ const FUNCTION_BODY: &str = "emath function f:\n    inputs:\n        x: Int\n   
 #[test]
 fn duplicate_example_names() {
     boot();
-    let mut p = Probe::new("duplicate example names refuse E-NAME-022, distinct names admit");
-    p.case("duplicate-refuses", |p| {
+    let mut p = Probe::new(
+        "duplicate example names admit and both rows run; distinct names admit",
+    );
+    p.case("duplicate-admits-and-runs", |p| {
         Source::from_str(
             "dup-test-name",
             format!(
                 "{FUNCTION_BODY}        example <eval>:\n            given x = 1\n            expect y == 2\n        example <eval>:\n            given x = 2\n            expect y == 3\n"
             ),
         )
-        .must_refuse(p, &["E-NAME-022"]);
+        .eval_tests(p);
     });
     p.case("distinct-admits", |p| {
         Source::from_str(

@@ -44,7 +44,7 @@ fn layout_f2() {
 
     let path = scratch(
         "bracket.emath",
-        "emath function T:\n    inputs:\n        x: Float64\n    definitions:\n        y = (x +\n        1.0)\n",
+        "emath function T:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = (x +\n        1.0)\n",
     );
     let (diagnostics, _, _) = run_check(&path);
     p.demand("1",!diagnostics
@@ -89,7 +89,7 @@ fn layout_f2() {
 
     let path = scratch(
         "single.emath",
-        "emath function T:\n    inputs:\n        x: Float64\n    definitions:\n        y = x + 1.0\n",
+        "emath function T:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = x + 1.0\n",
     );
     let (diagnostics, _, _) = run_check(&path);
     p.demand("1",!diagnostics
@@ -125,14 +125,17 @@ fn layout_f2() {
     cleanup(&path);
 
     });
-    probe.case("refusal_exit_is_refused_for_hanging_infix", |p| {
+    probe.case("refusal_exit_is_usage_for_hanging_infix", |p| {
 
     let path = scratch(
         "hanging2.emath",
-        "emath function T:\n    inputs:\n        x: Float64\n    definitions:\n        y = x *\n        2.0\n",
+        "emath function T:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = x *\n        2.0\n",
     );
+    // Post-cutover exit contract: admission and parse refusals both map
+    // to `EXIT_ADMISSION == CliExit::Usage` (lib.rs); `Refused` is for
+    // command-level refusals, not check diagnostics.
     let exit = run_check_public(&path);
-    p.eq("1", exit, CliExit::Refused);
+    p.eq("1", exit, CliExit::Usage);
     cleanup(&path);
 
     });

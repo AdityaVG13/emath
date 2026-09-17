@@ -8,7 +8,7 @@ fn probe() {
     let mut p = Probe::new("explain file refuses; constructor check still admits");
     p.case("file-refuses", |p| {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../language/examples/intro/autodiff.emath");
+            .join("../../language/examples/code/autodiff.emath");
         p.eq(
             "exit-json",
             run(&[
@@ -28,13 +28,13 @@ fn probe() {
     });
     p.case("intro-checks", |p| {
         let scratch = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/language/intro/scratch.emath")
+            .join("../../tests/fixtures/language/scratch_bare.emath")
             .to_string_lossy()
             .into_owned();
         p.eq("scratch-refuses", run(&["check".into(), scratch]), EXIT_USAGE);
         for rel in [
-            "language/examples/intro/autodiff.emath",
-            "language/examples/numerical/heat-rod-sim.emath",
+            "language/examples/code/autodiff.emath",
+            "language/examples/objects/heat-rod-sim.emath",
         ] {
             let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../..")

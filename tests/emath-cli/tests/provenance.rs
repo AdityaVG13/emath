@@ -1,27 +1,44 @@
-//! `emath explain --provenance` rendering.
-use emath_cli::provenance_explanation;
+//! `provenance_explanation` on the constructor surface.
+//!
+//! The `provenance:` meta-section grammar was pruned with the recipe
+//! lane (it is not a constructor section), so a file carrying it refuses
+//! at admission. What stays live: the explanation renders the binding
+//! provenance the constructor admission records for a valid file.
+
+use emath_cli::{EXIT_REFUSED, provenance_explanation};
 use emath_test_harness::{Probe, boot};
+
 #[test]
 fn probe() {
     boot();
-    let mut p = Probe::new("provenance explanation renders text and JSON DAG");
-    let path = std::env::temp_dir().join(format!("emath-prov-{}", std::process::id()));
-    std::fs::write(&path, "emath function Calibration:
-    inputs:
-        value: Float64
-        missing_source: Float64
-    definitions:
-        result = value
-    provenance:
-        value:
-            kind: \"Assumed\"
-            reason: \"calibration fixture\"
-        missing_source:
-            kind: \"Unstated\"
-").expect("fixture");
-    let text = provenance_explanation(&path, false).expect("text");
-    p.case("text", |p| { p.contains("assumed", &text, "Calibration.value -> Assumed(reason=calibration fixture)"); p.contains("unstated", &text, "Calibration.missing_source -> Unstated"); });
-    let json = provenance_explanation(&path, true).expect("json");
-    p.case("json", |p| { for needle in ["\"schema\": \"emath.provenance-explanation.v1\"", "\"binding\": \"Calibration.value\"", "\"kind\": \"Assumed\"", "\"kind\": \"Unstated\""] { p.contains(needle, &json, needle); } });
+    let mut p = Probe::new(
+        "provenance explanation renders constructor bindings; the pruned provenance section refuses",
+    );
+    let valid = std::env::temp_dir().join(format!("emath-prov-ok-{}", std::process::id()));
+    std::fs::write(
+        &valid,
+        "emath function Calibration:\n    inputs:\n        value: Float64\n    outputs:\n        result: Float64\n    definitions:\n        result = value\n",
+    )
+    .expect("fixture");
+    match provenance_explanation(&valid, false) {
+        Ok(text) => {
+            p.contains("renders", &text, "provenance");
+        }
+        Err(_) => {
+            p.fail("renders", "a constructor-valid file must explain");
+        }
+    }
+
+    let sectioned = std::env::temp_dir().join(format!("emath-prov-bad-{}", std::process::id()));
+    std::fs::write(
+        &sectioned,
+        "emath function Calibration:\n    inputs:\n        value: Float64\n        missing_source: Float64\n    definitions:\n        result = value\n    provenance:\n        value:\n            kind: \"Assumed\"\n            reason: \"calibration fixture\"\n        missing_source:\n            kind: \"Unstated\"\n",
+    )
+    .expect("fixture");
+    p.eq(
+        "pruned-section",
+        provenance_explanation(&sectioned, false).err(),
+        Some(EXIT_REFUSED),
+    );
     p.finish();
 }

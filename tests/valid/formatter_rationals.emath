@@ -1,0 +1,16 @@
+emath function Rationals:
+    inputs:
+        a: Rat
+        b: Rat
+
+    outputs:
+        sum: Rat
+
+    definitions:
+        sum = a + b
+
+    tests:
+        example <half_plus_third>:
+            given a = 1 / 2
+            given b = 1 / 3
+            expect sum == 5 / 6

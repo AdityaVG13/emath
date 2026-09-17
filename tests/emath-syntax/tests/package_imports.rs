@@ -8,9 +8,10 @@
 //! refuse through the normal lane (`E-NAME-022`), and an in-package
 //! module import that does not resolve to a loaded source refuses
 //! typed (`E-PKG-050` — never a silent inert entry, the negative
-//! seed's silent-success). The whole path is session-level: the plain
-//! single-file `check` keeps its existing behavior (module imports
-//! stay inert entries there — this slice changes no existing lane).
+//! seed's silent-success). The merged lane is session-level: the
+//! plain single-file `check` resolves `use` from the source file's
+//! directory on disk (constructor lane) and never consults the
+//! session store.
 
 use emath_core::limits::Limits;
 use emath_sema::CompilerSession;
@@ -136,17 +137,19 @@ fn package_imports() {
     if p.failures().len() != f0 { return; }
 
     });
-    probe.case("plain_file_check_is_unchanged", |p| {
+    probe.case("plain_check_never_merges_store_siblings", |p| {
     let f0 = p.failures().len();
 
-    // Boundary: the plain single-file `check` keeps its existing
-    // behavior — file imports are inert entries there, no E-PKG-050,
-    // no merged declarations (the session method is purely additive).
+    // Boundary: the plain single-file `check` never consults the
+    // session store — geometry is loaded but does not merge — and an
+    // in-package import that cannot resolve from the source file's
+    // directory on disk refuses `E-PKG-050` (the constructor lane
+    // resolves `use` from the filesystem; no silent inert entry).
     let (mut session, main) = session_with(&main_source(), Some(&geometry_source()));
     let result = session.check(main);
     let codes = error_codes(&result);
-    p.demand("1",!codes.contains(&"E-PKG-050".to_string()), format!(
-        "plain check keeps its lane: no new refusal, got {codes:?}"
+    p.demand("1",codes.contains(&"E-PKG-050".to_string()), format!(
+        "plain check refuses unresolvable imports, got {codes:?}"
     ));
     if p.failures().len() != f0 { return; }
     let names: Vec<&str> = result
@@ -156,7 +159,7 @@ fn package_imports() {
         .map(|declaration| declaration.name.leaf())
         .collect();
     p.demand("2",!names.contains(&"dist"), format!(
-        "plain check does not merge siblings: {names:?}"
+        "plain check does not merge store siblings: {names:?}"
     ));
     if p.failures().len() != f0 { return; }
 
