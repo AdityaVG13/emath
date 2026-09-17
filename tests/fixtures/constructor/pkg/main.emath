@@ -1,0 +1,15 @@
+package demo
+
+use demo.sib
+
+emath function UseSib:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = twice(3)
+    tests:
+        example <six>:
+            given unused = 0
+            expect result == 6

@@ -1,7 +1,5 @@
 //! Core EMIR value and configuration types.
 
-use super::*;
-
 /// Evaluation resource budget. Resource exhaustion is a typed refusal
 /// (`EvalFault::BudgetExhausted`) — never partial authority.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

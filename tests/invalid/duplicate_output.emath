@@ -1,7 +1,10 @@
-# expect: E-NAME-020 duplicate field
+# expect: E-NAME-020
+# Two outputs with the same name: the duplicate is refused, not last-wins.
 emath function Bad:
+    inputs:
+        x: Float64
     outputs:
         y: Float64
         y: Float64
     definitions:
-        y = 1
+        y = x

@@ -86,19 +86,6 @@ fn validate(kind: u8, params: &[f64]) -> Result<(), ProbError> {
     }
 }
 
-/// Sample `draws` values from the kernel code with the given seed. Same
-/// seed ⟹ bit-identical draws (the reproducibility law). Zero draws
-/// is the legal empty stream; a draw count that is not a non-negative
-/// integer or exceeds the compute budget refuses.
-pub fn prob_sample(
-    kind: u8,
-    params: &[f64],
-    seed: f64,
-    draws: f64,
-) -> Result<Vec<f64>, ProbError> {
-    prob_sample_in_stream(kind, params, seed, draws, "")
-}
-
 /// Sample from one declared stream path. Dot-separated labels define split
 /// topology; the empty spelling is the root stream.
 pub fn prob_sample_in_stream(

@@ -1,0 +1,52 @@
+# Module acceptance fixture: reverse-direction rollout is exact.
+# Signed h = -1/2 from t = 1, y = 1/2 under y' = -y steps backward to
+# t = 1/2 with y = 3/4 — the exact inverse of the forward step that
+# produced 1/2 from 3/4. rollout_to with direction = -1 clips the
+# final step to a backward endpoint the same way.
+# Run: emath test tests/fixtures/modules/evolution_reverse.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+
+emath function BackwardRollout:
+    inputs:
+        unused: Int
+    outputs:
+        y_steps: Rat
+        t_steps: Rat
+        y_to: Rat
+        t_to: Rat
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        s0 = SimState: {t: 1 / 1, y: [1 / 2]}
+        stepped = rollout_steps(decay_f, euler_tableau(0), 1, 0 - 1 / 2, 1, s0)
+        y_steps = stepped.y[0]
+        t_steps = stepped.t
+        rolled = rollout_to(decay_f, euler_tableau(0), 1, 1 / 2, 0 - 1, 1 / 4, s0, 4)
+        final = rolled.final_state
+        y_to = final.y[0]
+        t_to = rolled.accepted_t
+    tests:
+        example <backward_steps_exact>:
+            given unused = 0
+            expect t_steps == 1 / 2
+            expect y_steps == 3 / 4
+        example <backward_to_clips>:
+            given unused = 0
+            expect t_to == 1 / 4
+            expect rolled_complete(rolled)
+        example <backward_two_step_value>:
+            given unused = 0
+            expect y_to == 15 / 16
+
+emath function rolled_complete:
+    inputs:
+        r: RolloutResult
+    outputs:
+        result: Bool
+    definitions:
+        result = r.complete
+    tests:
+        example <complete_flag>:
+            given r = RolloutResult: {final_state: SimState: {t: 0 / 1, y: [1 / 1]}, accepted_t: 0 / 1, attempted_t: 0 / 1, n_steps: 0, complete: true}
+            expect result == true

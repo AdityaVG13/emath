@@ -278,20 +278,21 @@ pub(super) fn parse_diff_request(args: &[String]) -> Option<(PathBuf, PathBuf, b
 
 pub(super) fn parse_explain_request(args: &[String]) -> Option<ExplainRequest> {
     let mut path = None;
-    let mut symbol = None;
     let mut json = false;
-    let mut provenance = false;
-    let mut show_defaults = false;
     let mut list_codes = false;
+    // The file lane is a pinned refusal (`explain_cmd`), so
+    // `--provenance`, `--show-defaults`, and a second positional are
+    // accepted for surface compatibility only and are intentionally
+    // not carried into the request.
+    let mut _symbol: Option<String> = None;
     for arg in args {
         match arg.as_str() {
             "--json" => json = true,
-            "--provenance" => provenance = true,
-            "--show-defaults" => show_defaults = true,
+            "--provenance" | "--show-defaults" => {}
             "--list-codes" => list_codes = true,
             other if other.starts_with('-') && other != "-" => return None,
             other if path.is_none() => path = Some(other.to_string()),
-            other if symbol.is_none() => symbol = Some(other.to_string()),
+            other if _symbol.is_none() => _symbol = Some(other.to_string()),
             _ => return None,
         }
     }
@@ -307,13 +308,7 @@ pub(super) fn parse_explain_request(args: &[String]) -> Option<ExplainRequest> {
             json,
         })
     } else {
-        Some(ExplainRequest::File {
-            path: PathBuf::from(path),
-            symbol,
-            provenance,
-            json,
-            show_defaults,
-        })
+        Some(ExplainRequest::File { json })
     }
 }
 

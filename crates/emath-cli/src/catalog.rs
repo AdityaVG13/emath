@@ -131,7 +131,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "check" => "check <file.emath|-> [--verify-data] [--json]",
         "plan" => "plan <file.emath> [--json]",
         "planner" => "planner <file.emath> [--json] [--parametric]",
-        "build" => "build <file.emath> [--out <dir>] [--verify] [--bin <entrypoint>] [--dry-run] [--json]",
+        "build" => "build <file.emath> [--out <dir>] [--dry-run] [--json]",
         "parse" => "parse --forest <file.emath> [--out <dir>]",
         "expand" => "expand <file.emath> [--json]",
         "solve" => "solve --check <file.emath> [--json] [--apply <label>]",
@@ -171,7 +171,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
             "explain <E-CODE> [--list-codes] [--json]"
         }
         "run" => {
-            "run <file.emath> [--function NAME] [--set name=value] [--work N] [--out dir] [--json]"
+            "run <file.emath> [--function NAME] [--set name=value] [--set-file path.json] [--work N] [--out dir] [--json]"
         }
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
@@ -363,8 +363,6 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--help" | "-h" => "print help information",
         "--verify-data" => "re-hash declared sha256 provenance data files",
         "--out" | "-o" => "output directory or file path",
-        "--verify" => "run verification gates during build",
-        "--bin" => "specify binary entrypoint",
         "--parametric" => "lift missing operators during planning",
         "--method" => "ignored on simulate; write an ordinary stepper function and use `emath run`",
         "--dt" => "ignored on simulate; not a constructor flag",
@@ -375,7 +373,8 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--rtol" => "relative error tolerance",
         "--dt-max" => "maximum allowed adaptive step size",
         "--event" => "event trigger specification (name=value)",
-        "--set" => "parameter override (name=value)",
+        "--set" => "parameter override (name=value); value may be a scalar or [v0, v1, …]",
+        "--set-file" => "JSON object of name to scalar or array; --set overrides the same name",
         "--value" => "refused: not constructor surface",
         "--sf" => "refused: not constructor surface",
         "--from" => "refused: unit catalogs are not constructor surface",
@@ -438,7 +437,7 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
             "emath build program.emath",
             "emath build program.emath --out dist/",
             "emath build program.emath --dry-run",
-            "emath build program.emath --verify --json",
+            "emath build program.emath --json",
         ],
         "new" => &[
             "emath new my_program",
@@ -736,6 +735,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "run" => &[
             "--function",
             "--set",
+            "--set-file",
             "--work",
             "--cancel-file",
             "--measure",
@@ -768,9 +768,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "freeze" => &["--json", "--out", "-o", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
         "fit" => &["--json", "--help", "-h"],
-        "build" => &[
-            "--json", "--out", "-o", "--verify", "--bin", "--dry-run", "--help", "-h",
-        ],
+        "build" => &["--json", "--out", "-o", "--dry-run", "--help", "-h"],
         "new" => &["--out", "-o", "--dry-run", "--force", "--json", "--help", "-h"],
         "test" | "vendor" | "agent" | "signature" | "genesis" => {
             &["--out", "-o", "--help", "-h"]
@@ -843,6 +841,7 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--dt-max"
             | "--event"
             | "--set"
+            | "--set-file"
             | "--function"
             | "--work"
             | "--expect-revision"
@@ -859,7 +858,6 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--raise"
             | "--apply"
             | "--receipt"
-            | "--bin"
     )
 }
 

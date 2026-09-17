@@ -1,0 +1,29 @@
+# Module acceptance fixture: held-out step h = 1/10. The order-3
+# contract member (alpha = 1/6) has certified one-step error strictly
+# below the training winner's (alpha = 2/15) where it matters: the
+# contract member's UPPER bound is under 1/100000 while the training
+# winner's LOWER bound is above it. Single-case tuning at h = 1
+# picked the wrong method contract.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/integrator_contract_heldout.emath
+
+use search.order_contract_demo
+
+emath function HeldoutVerdict:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+        contract_hi: Rat
+        training_lo: Rat
+    definitions:
+        enc = exp_enclosure(1 / 10)
+        contract_hi = certified_error_hi(stability_form(1 / 6, 1 / 10), enc.lo, enc.hi)
+        training_lo = certified_error_lo(stability_form(2 / 15, 1 / 10), enc.lo, enc.hi)
+        result = contract_hi < training_lo
+    tests:
+        example <contract_better_where_it_matters>:
+            given unused = 0
+            expect result == true
+            expect contract_hi < 1 / 100000
+            expect training_lo > 1 / 100000

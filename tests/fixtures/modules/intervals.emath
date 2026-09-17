@@ -1,0 +1,274 @@
+# Interval fixtures: certified rational-endpoint enclosures as a
+# reusable algebra (point/add/neg/scale/mul/width/mid/contains/hull),
+# irrational producers (q-th roots, 2-norms, alternating-Taylor
+# exp(-h)), and bisection refinement with an authored bit budget.
+#
+# Failure-first: authored BEFORE the module exists (first run:
+# E-USE-ADMISSION unbound import). Refusal cases follow the t19
+# convention: the named code in the failure line IS the expected
+# evidence.
+#
+# Hand-derived pins:
+#   [1/2,3/4] + [1/4,1]   = [3/4, 7/4]
+#   -[1/2,3/4]            = [-3/4, -1/2]
+#   -2 * [1/2,1]          = [-2, -1]        (sign flip)
+#   [-1,2] * [2,3]        = [-3, 6]         (products -2,-3,4,6)
+#   hull([0,1],[2,3])     = [0, 3]
+#   sqrt(2) one-shot      = [1, 2]          (floor 1, ceil 2)
+#   sqrt(2) two bisections= [5/4, 3/2]      (9/4 > 2 keeps low half;
+#                                            25/16 <= 2 keeps high half)
+#   norm (3,4)            = [5, 5] exact    (sqrt 25)
+#   norm (1,1)            = [1, 2]          (same bracket as sqrt 2)
+#   exp(-1)               = (S_41, S_40): 11/30 < lo < hi < 53/144
+#                            (odd partials rise to exp(-1), even fall;
+#                             width telescopes to exactly 1/41!)
+
+use analysis.intervals
+
+emath function ifact:
+    # Fixture-local integer factorial: derives 41! by INTEGER
+    # recursion, independent of the module's term recurrence that
+    # divides by (j+1) stepwise — a cross-check, not a tautology.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 1: 1 else: n * ifact(n - 1)
+    tests:
+        example <five_factorial>:
+            given n = 5
+            expect result == 120
+
+emath function fixture_algebra_pins:
+    inputs:
+        unused: Int
+    outputs:
+        summed: Itv
+        negated: Itv
+        scaled: Itv
+        hulled: Itv
+        width_one: Rat
+        mid_three_halves: Rat
+    definitions:
+        summed = itv_add(Itv: {lo: 1 / 2, hi: 3 / 4}, Itv: {lo: 1 / 4, hi: 1 / 1})
+        negated = itv_neg(Itv: {lo: 1 / 2, hi: 3 / 4})
+        scaled = itv_scale(Itv: {lo: 1 / 2, hi: 1 / 1}, 0 - 2 / 1)
+        hulled = itv_hull(Itv: {lo: 0 / 1, hi: 1 / 1}, Itv: {lo: 2 / 1, hi: 3 / 1})
+        width_one = itv_width(Itv: {lo: 1 / 1, hi: 2 / 1})
+        mid_three_halves = itv_mid(Itv: {lo: 1 / 1, hi: 2 / 1})
+    tests:
+        example <endpoint_algebra_exact>:
+            given unused = 0
+            expect summed == Itv: {lo: 3 / 4, hi: 7 / 4}
+            expect negated == Itv: {lo: 0 - 3 / 4, hi: 0 - 1 / 2}
+            expect scaled == Itv: {lo: 0 - 2 / 1, hi: 0 - 1 / 1}
+            expect hulled == Itv: {lo: 0 / 1, hi: 3 / 1}
+            expect width_one == 1 / 1
+            expect mid_three_halves == 3 / 2
+
+emath function fixture_mul_cross_signs:
+    # Both-sign operands force the four-candidate min/max: products
+    # -2, -3, 4, 6 -> [-3, 6].
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+    definitions:
+        result = itv_mul(Itv: {lo: 0 - 1 / 1, hi: 2 / 1}, Itv: {lo: 2 / 1, hi: 3 / 1})
+    tests:
+        example <cross_sign_product>:
+            given unused = 0
+            expect result == Itv: {lo: 0 - 3 / 1, hi: 6 / 1}
+
+emath function fixture_contains_bounds:
+    inputs:
+        unused: Int
+    outputs:
+        inside: Bool
+        below: Bool
+        above: Bool
+    definitions:
+        box = Itv: {lo: 1 / 4, hi: 3 / 4}
+        inside = itv_contains(box, 1 / 2)
+        below = itv_contains(box, 0 / 1)
+        above = itv_contains(box, 1 / 1)
+    tests:
+        example <endpoints_in_gaps_out>:
+            given unused = 0
+            expect inside == true
+            expect below == false
+            expect above == false
+
+emath function fixture_sqrt_two_bracket:
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+        w: Rat
+    definitions:
+        result = sqrt_enclosure(2 / 1)
+        w = itv_width(result)
+    tests:
+        example <one_shot_bracket>:
+            given unused = 0
+            expect result == Itv: {lo: 1 / 1, hi: 2 / 1}
+            expect w == 1 / 1
+
+emath function fixture_sqrt_exact_collapses:
+    # 9/4 = (3/2)^2: both integer roots exact, the bounds coincide,
+    # width exactly zero — the enclosure CERTIFIES the value.
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+        w: Rat
+    definitions:
+        result = sqrt_enclosure(9 / 4)
+        w = itv_width(result)
+    tests:
+        example <exact_square_pinches>:
+            given unused = 0
+            expect result == Itv: {lo: 3 / 2, hi: 3 / 2}
+            expect w == 0 / 1
+
+emath function fixture_cube_root_exact:
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+    definitions:
+        result = root_enclosure(8 / 1, 3)
+    tests:
+        example <cube_root_of_eight>:
+            given unused = 0
+            expect result == Itv: {lo: 2 / 1, hi: 2 / 1}
+
+emath function fixture_bisect_two_steps:
+    # [1,2] -> mid 3/2, (3/2)^2 = 9/4 > 2, root below -> [1, 3/2];
+    # mid 5/4, (5/4)^2 = 25/16 <= 2, root above -> [5/4, 3/2].
+    # 7/5 = 1.4 stays inside; 8/5 = 1.6 is now outside.
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+        seven_fifths: Bool
+        eight_fifths: Bool
+    definitions:
+        result = bisect_sqrt(2 / 1, 1 / 1, 2 / 1, 2, 64)
+        seven_fifths = itv_contains(result, 7 / 5)
+        eight_fifths = itv_contains(result, 8 / 5)
+    tests:
+        example <two_refinements_narrow>:
+            given unused = 0
+            expect result == Itv: {lo: 5 / 4, hi: 3 / 2}
+            expect seven_fifths == true
+            expect eight_fifths == false
+
+emath function fixture_norm_exact_and_bracket:
+    # (3,4): 25 is a perfect square, the norm is certified exactly 5.
+    # (1,1): the sum is 2, the same bracket as sqrt(2).
+    inputs:
+        unused: Int
+    outputs:
+        exact: Itv
+        bracket: Itv
+        w: Rat
+    definitions:
+        exact = norm2_enclosure([3 / 1, 4 / 1])
+        bracket = norm2_enclosure([1 / 1, 1 / 1])
+        w = itv_width(exact)
+    tests:
+        example <pythagoras_certified>:
+            given unused = 0
+            expect exact == Itv: {lo: 5 / 1, hi: 5 / 1}
+            expect w == 0 / 1
+            expect bracket == Itv: {lo: 1 / 1, hi: 2 / 1}
+
+emath function fixture_exp_neg_one:
+    # Alternating Taylor: odd partial below exp(-1), even above, width
+    # telescoping to exactly the 41st term = 1/41! (derived here by
+    # independent integer recursion). Placement cross-checks the
+    # certified bracket (11/30, 53/144) used by the adaptive fixtures.
+    inputs:
+        unused: Int
+    outputs:
+        enc: Itv
+        width_is_term41: Bool
+    definitions:
+        enc = exp_neg_enclosure(1 / 1)
+        width_is_term41 = itv_width(enc) == 1 / ifact(41)
+    tests:
+        example <bracketed_with_exact_width>:
+            given unused = 0
+            expect enc.lo > 11 / 30
+            expect enc.hi < 53 / 144
+            expect enc.lo < enc.hi
+            expect width_is_term41 == true
+
+emath function case_exp_domain_zero_refuses:
+    # The alternating certificate needs 0 < h <= 1: h = 0 refuses.
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+    definitions:
+        result = exp_neg_enclosure(0 / 1)
+    tests:
+        example <zero_h_refuses_by_name>:
+            given unused = 0
+            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+
+emath function case_exp_domain_above_one_refuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+    definitions:
+        result = exp_neg_enclosure(5 / 4)
+    tests:
+        example <h_above_one_refuses_by_name>:
+            given unused = 0
+            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+
+emath function case_sqrt_negative_refuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+    definitions:
+        result = sqrt_enclosure(0 - 1 / 1)
+    tests:
+        example <negative_radicand_refuses_by_name>:
+            given unused = 0
+            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+
+emath function case_bisect_budget_refuses:
+    # Budget 4 admits the first refinement (mid 3/2, den bits 2,
+    # 2*2 <= 4) and refuses the second (mid 5/4, den bits 3, 3*2 > 4)
+    # BEFORE evaluating its square — the authored gate fires with the
+    # one-step bracket as evidence, never an over-budget test.
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+    definitions:
+        result = bisect_sqrt(2 / 1, 1 / 1, 2 / 1, 8, 4)
+    tests:
+        example <budget_exhausted_refuses_by_name>:
+            given unused = 0
+            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+
+emath function case_bisect_bad_bracket_refuses:
+    # lo > hi is a malformed bracket (endpoint order or sign): the
+    # cheap structural check refuses before any bisection work.
+    inputs:
+        unused: Int
+    outputs:
+        result: Itv
+    definitions:
+        result = bisect_sqrt(2 / 1, 2 / 1, 1 / 1, 4, 64)
+    tests:
+        example <bad_bracket_refuses_by_name>:
+            given unused = 0
+            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}

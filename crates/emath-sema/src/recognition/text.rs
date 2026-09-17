@@ -1,24 +1,7 @@
 //! Text helper functions — pure rendering of expressions and types for
 //! trace text.
 
-use emath_core::tree::{CommandArgument, Expr, ExprKind, Place, TypeExpr, TypeKind};
-
-pub(super) fn place_text(place: &Place) -> String {
-    place.segments.join(".")
-}
-
-pub(super) fn argument_text(argument: &CommandArgument) -> String {
-    match argument {
-        CommandArgument::Expr(expr) => expr_text(expr),
-        CommandArgument::Assignment { name, value } => {
-            format!("{name} = {}", expr_text(value))
-        }
-        CommandArgument::List(items) => format!(
-            "[{}]",
-            items.iter().map(expr_text).collect::<Vec<_>>().join(", ")
-        ),
-    }
-}
+use emath_core::tree::{Expr, ExprKind, TypeExpr, TypeKind};
 
 /// Compact deterministic rendering of an expression for trace text.
 #[must_use]

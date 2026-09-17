@@ -16,7 +16,6 @@ mod exprs;
 mod goals;
 mod helpers;
 mod series;
-pub(super) mod sibling_calls;
 mod terms;
 
 use super::equations::*;
@@ -30,84 +29,6 @@ use crate::recognition::expr_text;
 /// Typed refusal: a tolerance-less `≈` edge. An approximation without a
 /// declared tolerance is never admitted as if it were exact (04 §6.4).
 const E_APPROX_TOL: &str = "E-APPROX-TOL";
-
-fn capability_input_admits(input: &str, infer: &Infer) -> bool {
-    match input.trim() {
-        "Float64" | "F64" => matches!(infer, Infer::F64 | Infer::Nat | Infer::Int),
-        "Bool" => matches!(infer, Infer::Bool),
-        // Naturals are integers: admitting a Nat argument where `Int` is
-        // declared preserves exactness, and value-level kernel guards
-        // (checked arithmetic, positive-domain refusals) still fire at
-        // evaluation. Literal `1` infers as Nat, so refusing Nat here
-        // would make every integer-literal capsule call unusable.
-        "Int" => matches!(infer, Infer::Int | Infer::Nat),
-        "Nat" => matches!(infer, Infer::Nat | Infer::Int),
-        "ExactInt" | "PositiveExactInt" | "PrimeModulus" => {
-            matches!(infer, Infer::Int | Infer::Nat | Infer::BigInt | Infer::F64)
-        }
-        "Rat" | "Rational" => matches!(infer, Infer::Rat),
-        "BigInt" => matches!(infer, Infer::BigInt),
-        text if text.starts_with("Vector<") => match infer {
-            Infer::Vector { element, .. } => capability_input_admits(
-                &text[7..text.len()-1], element.as_deref().unwrap_or(&Infer::F64)),
-            _ => false,
-        },
-        text if text.starts_with("Record<") && text.ends_with('>') =>
-            matches!(infer, Infer::Record(name) if name == &text[7..text.len()-1]),
-        "Text" => matches!(infer, Infer::Text),
-        text if text.starts_with("Vector") => matches!(infer, Infer::Vector { .. }),
-        text if text.starts_with("Dense") => matches!(
-            infer,
-            Infer::Vector { .. }
-                | Infer::Matrix { .. }
-                | Infer::Tensor { .. }
-                | Infer::HostDeferred
-        ),
-        text if text.starts_with("Matrix") => matches!(infer, Infer::Matrix { .. }),
-        text if text.starts_with("Tensor") || text.starts_with("SameTensor") => {
-            matches!(infer, Infer::Tensor { .. } | Infer::HostDeferred)
-        }
-        "Sequence" => matches!(infer, Infer::Set(_) | Infer::Sequence | Infer::Opaque),
-        "I64" => matches!(infer, Infer::Int | Infer::Nat),
-        "Program" => true,
-        _ => false,
-    }
-}
-
-/// The declared-output type text of a capability cell → the call's
-/// inferred type. The mapping reads the cell declaration's OWN contract
-/// (the small closed set of Phase-1 type spellings); anything outside
-/// it is opaque — never a silently-assumed scalar.
-fn capability_result_infer(output: Option<&str>) -> Infer {
-    match output.map(str::trim) {
-        Some("Float64") | Some("F64") => Infer::F64,
-        Some("Bool") => Infer::Bool,
-        Some("Int") | Some("ExactInt") => Infer::Int,
-        Some("Nat") => Infer::Nat,
-        Some("Rat") | Some("Rational") => Infer::Rat,
-        Some("BigInt") => Infer::BigInt,
-        Some("Text") => Infer::Text,
-        Some(text) if text.starts_with("Record<") && text.ends_with('>') =>
-            Infer::Record(text[7..text.len()-1].into()),
-        Some(text) if text.starts_with("Vector<") && text.ends_with('>') => Infer::Vector {
-            extent: None,
-            element: Some(Box::new(capability_result_infer(Some(&text[7..text.len()-1])))),
-        },
-        Some(text) if text.starts_with("Vector") => Infer::Vector {
-            extent: None,
-            element: None,
-        },
-        Some(text) if text.starts_with("Matrix") => Infer::Matrix {
-            rows: None,
-            cols: None,
-        },
-        Some(text) if text.starts_with("Tensor") || text.starts_with("SameTensor") => {
-            Infer::HostDeferred
-        }
-        Some(text) if text.starts_with("Estimate") => Infer::Record("Estimate".into()),
-        _ => Infer::Opaque,
-    }
-}
 
 fn interpolation_paths(template: &str) -> Vec<&str> {
     let mut paths = Vec::new();
@@ -387,25 +308,5 @@ impl super::Admitter {
                 None
             }
         }
-    }
-
-    pub(super) fn lower_requirement(&mut self, expr: &Expr) -> Option<ExprId> {
-        // Claim expressions (limit, series, asymp) are admitted as stated
-        // claims in require/invariant. They produce Bool(true) — the claim
-        // is recorded but not computationally verified in Phase 1.
-        let prev_claim = self.in_claim_context;
-        self.in_claim_context = true;
-        let result = self.lower_expr(expr);
-        self.in_claim_context = prev_claim;
-        let (id, infer) = result?;
-        if !matches!(infer, Infer::Bool) {
-            self.error(
-                "E-CTOR-032",
-                "`require` must be a Boolean expression",
-                expr.source,
-            );
-            return None;
-        }
-        Some(id)
     }
 }

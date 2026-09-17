@@ -17,4 +17,4 @@ mod template;
 
 pub use model::*;
 pub use render::*;
-pub use template::*;
+use template::*;

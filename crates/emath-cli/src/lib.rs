@@ -48,7 +48,6 @@ pub use project_lock::refuse_malformed_project_lock;
 pub use cli_json::*;
 pub use cli_parse::*;
 
-use emath_build::{BuildOptions, build_file};
 use emath_core::Diagnostics;
 use emath_plan::{
     PlanInspection, PlannerConfig, PlanningOutcome, emit_provider_trait, lift_missing,

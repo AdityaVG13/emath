@@ -1,0 +1,21 @@
+# Module expected-refusal fixture: an invalid tableau (a has 1 entry
+# for s = 2) refuses invalid_tableau at admission, before any stage
+# runs.
+# Expected outcome: exits nonzero with `invalid_tableau`.
+# Run: emath test tests/fixtures/modules/evolution_refuse_bad_tableau.emath
+
+use analysis.evolution.one_step
+
+emath function BadTableauRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: SimState
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        broken = Tableau: {s: 2, a: [0 / 1], b: [1 / 1], c: [0 / 1]}
+        result = butcher_step(decay_f, broken, 1, 1 / 2, SimState: {t: 0 / 1, y: [1 / 1]})
+    tests:
+        example <short_a>:
+            given unused = 0
+            expect result == result

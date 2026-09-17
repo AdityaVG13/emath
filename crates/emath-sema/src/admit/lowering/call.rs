@@ -1,15 +1,13 @@
 //! Generic call lowering.
 //!
 //! Executable mathematical calls resolve through capsule-installed FeatureID
-//! bindings. The only direct call families retained here are declared sibling
-//! functions and the language's structural Option/Result carriers.
+//! bindings; the language's structural Option/Result carriers lower directly.
 
 use emath_core::tree::{Expr, ExprKind};
-use emath_ir::{CapabilityId, ExprId, ExprNode, Extent, Literal};
+use emath_ir::{ExprId, ExprNode, Extent, Literal};
 
 use super::super::infer::*;
 use super::super::{E_UNKNOWN_FUNCTION, E_UNSUPPORTED_TYPE};
-use super::{capability_input_admits, capability_result_infer};
 
 mod carriers;
 
@@ -119,56 +117,6 @@ fn known_element_indices(infer: &Infer) -> Option<Vec<Vec<usize>>> {
     }
 }
 
-fn last_input_is_sequence(inputs: &[String]) -> bool {
-    inputs
-        .last()
-        .is_some_and(|input| input.trim().starts_with("Sequence"))
-}
-
-fn capability_call_bounds(arity: Option<usize>, inputs: &[String]) -> (usize, usize) {
-    if last_input_is_sequence(inputs) {
-        let prefix = inputs.len().saturating_sub(1);
-        return (prefix.saturating_add(1), usize::MAX);
-    }
-    if let Some(exact) = arity {
-        return (exact, exact);
-    }
-    if inputs.is_empty() {
-        return (0, usize::MAX);
-    }
-    let optional = inputs
-        .iter()
-        .rev()
-        .take_while(|input| input.trim().ends_with('?'))
-        .count();
-    (inputs.len().saturating_sub(optional), inputs.len())
-}
-
-fn declared_capability_input_admits(input: &str, infer: &Infer, expr: &Expr) -> bool {
-    let input = input.trim().strip_suffix('?').unwrap_or(input.trim());
-    match input {
-        "Text" => matches!(infer, Infer::Text),
-        "Scalar" => matches!(
-            infer,
-            Infer::F64 | Infer::Nat | Infer::Int | Infer::HostDeferred
-        ),
-        "LiteralFloat64" => matches!(infer, Infer::F64) && matches!(&expr.kind, ExprKind::Float(_)),
-        "PositiveLiteralFloat64" => {
-            matches!(infer, Infer::F64)
-                && matches!(
-                    &expr.kind,
-                    ExprKind::Float(text)
-                        if text.replace('_', "").parse::<f64>().is_ok_and(
-                            |value| value.is_finite() && value > 0.0
-                        )
-                )
-        }
-        "SameMatrix<Float64>" => matches!(infer, Infer::Matrix { .. } | Infer::HostDeferred),
-        "SameTensor<Float64>" => matches!(infer, Infer::Tensor { .. } | Infer::HostDeferred),
-        _ => capability_input_admits(input, infer),
-    }
-}
-
 impl super::super::Admitter {
     pub(super) fn lower_call_expr_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
         let ExprKind::Call { function, args } = &expr.kind else {
@@ -183,172 +131,6 @@ impl super::super::Admitter {
             return None;
         };
         let name = segments.join("::");
-        let dotted = name.contains("::").then(|| name.replace("::", "."));
-        // Declaration authority: a sibling `emath function` in this file
-        // shadows any ambient capability alias with the same leaf
-        // (`inner` the user function must never hijack to the geometry
-        // inner-product alias). Siblings key by leaf; one file is one
-        // package.
-        let sibling_leaf = name.rsplit("::").next().unwrap_or(&name).to_string();
-        if self.sibling_functions.contains_key(&sibling_leaf) {
-            return self.lower_sibling_call(&sibling_leaf, args, expr.source);
-        }
-        if let Some(binding) = self
-            .capability_cells
-            .iter()
-            .find(|binding| binding.key == name || dotted.as_deref() == Some(binding.key.as_str()))
-            .cloned()
-        {
-            let (min_arity, max_arity) = capability_call_bounds(binding.arity, &binding.inputs);
-            if !(min_arity..=max_arity).contains(&args.len()) {
-                if universal_unary_op(&name).is_none() && universal_binary_op(&name).is_none() {
-                    self.error(
-                        "E-TYPE-012",
-                        format!(
-                            "`{name}` expects {} argument(s), found {}",
-                            if min_arity == max_arity {
-                                min_arity.to_string()
-                            } else {
-                                format!("{min_arity}..{max_arity}")
-                            },
-                            args.len()
-                        ),
-                        expr.source,
-                    );
-                    return None;
-                }
-            } else {
-                let mut arguments = Vec::with_capacity(args.len());
-                let mut inferred = Vec::with_capacity(args.len());
-                for (index, argument) in args.iter().enumerate() {
-                    let (argument_id, infer) = if binding.inputs.get(index).is_some_and(|input| input == "Program") {
-                        self.lower_program_argument(argument)?
-                    } else {
-                        self.lower_expr(argument)?
-                    };
-                    arguments.push(argument_id);
-                    inferred.push(infer);
-                }
-                if last_input_is_sequence(&binding.inputs)
-                    && arguments.len() >= binding.inputs.len()
-                {
-                    let prefix = binding.inputs.len() - 1;
-                    let rest = arguments.split_off(prefix);
-                    let guards = vec![None; rest.len()];
-                    let packed = self.push_expr(
-                        ExprNode::Set {
-                            elements: rest,
-                            guards,
-                        },
-                        expr.source,
-                    );
-                    arguments.push(packed);
-                    inferred.truncate(prefix);
-                    inferred.push(Infer::Set(Box::new(Infer::Opaque)));
-                }
-                for (index, input) in binding.inputs.iter().enumerate() {
-                    let declared = input.trim().strip_suffix('?').unwrap_or(input.trim());
-                    let same_shape = match declared {
-                        "SameMatrix<Float64>" => match (inferred.first(), inferred.get(index)) {
-                            (
-                                Some(Infer::Matrix {
-                                    rows: expected_rows,
-                                    cols: expected_cols,
-                                }),
-                                Some(Infer::Matrix { rows, cols }),
-                            ) => expected_rows == rows && expected_cols == cols,
-                            (
-                                Some(Infer::HostDeferred),
-                                Some(Infer::Matrix { .. } | Infer::HostDeferred),
-                            ) => true,
-                            _ => false,
-                        },
-                        "SameTensor<Float64>" => match (inferred.first(), inferred.get(index)) {
-                            (
-                                Some(Infer::Tensor { shape: expected }),
-                                Some(Infer::Tensor { shape }),
-                            ) => expected == shape,
-                            (
-                                Some(Infer::HostDeferred),
-                                Some(Infer::Tensor { .. } | Infer::HostDeferred),
-                            ) => true,
-                            _ => false,
-                        },
-                        _ => continue,
-                    };
-                    if !same_shape {
-                        self.error(
-                            "E-SHAPE-005",
-                            format!("`{name}` field arguments must have equal shapes"),
-                            args[index].source,
-                        );
-                        return None;
-                    }
-                }
-                let types_ok = binding.inputs.is_empty()
-                    || !binding.inputs.iter().zip(inferred.iter().zip(args)).any(
-                        |(input, (infer, argument))| {
-                            !declared_capability_input_admits(input, infer, argument)
-                        },
-                    );
-                let types_ok = types_ok || {
-                    const DOMAIN_DIAGNOSTIC: &str = "factorial-domain";
-                    binding.diagnostic.as_deref() == Some(DOMAIN_DIAGNOSTIC)
-                        && inferred.iter().all(is_scalar_numeric)
-                };
-                if !types_ok {
-                    if universal_unary_op(&name).is_none() && universal_binary_op(&name).is_none() {
-                        self.error(
-                            "E-LANG-FEATURE",
-                            format!(
-                            "{}: `{name}` requires ({}) and refuses the supplied argument types",
-                            binding.diagnostic.as_deref().unwrap_or("type-mismatch"),
-                            binding.inputs.join(", ")
-                        ),
-                            expr.source,
-                        );
-                        return None;
-                    }
-                } else {
-                    let id = self.push_expr(
-                        ExprNode::Apply {
-                            capability: CapabilityId(binding.capability),
-                            arguments,
-                        },
-                        expr.source,
-                    );
-                    let result = match binding.output.as_deref() {
-                        Some("ExactInt")
-                            if inferred.iter().any(|infer| *infer == Infer::BigInt) =>
-                        {
-                            Infer::BigInt
-                        }
-                        Some("SameVector<Float64>") => match inferred.first() {
-                            Some(Infer::Vector { extent, .. }) => Infer::Vector {
-                                extent: extent.clone(),
-                                element: None,
-                            },
-                            _ => Infer::HostDeferred,
-                        },
-                        Some("SameMatrix<Float64>") => match inferred.first() {
-                            Some(Infer::Matrix { rows, cols }) => Infer::Matrix {
-                                rows: rows.clone(),
-                                cols: cols.clone(),
-                            },
-                            _ => Infer::HostDeferred,
-                        },
-                        Some("SameTensor<Float64>") => match inferred.first() {
-                            Some(Infer::Tensor { shape }) => Infer::Tensor {
-                                shape: shape.clone(),
-                            },
-                            _ => Infer::HostDeferred,
-                        },
-                        _ => capability_result_infer(binding.output.as_deref()),
-                    };
-                    return Some((id, result));
-                }
-            }
-        }
         // Carrier cardinality is a universal machine op, not a FeatureID.
         if operator_leaf(&name) == "length" {
             return self.lower_length_call(args, expr);

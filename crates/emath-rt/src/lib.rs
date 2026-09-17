@@ -18,7 +18,6 @@ mod linalg;
 mod pde;
 mod polynomial;
 mod probability;
-mod sequence;
 
 pub use body::*;
 pub use category::{CategoryError, category_check, diagram_commutative};
@@ -66,6 +65,9 @@ pub const SOURCE: &str = concat!(
     include_str!("body/poly.rs"),
     include_str!("body/control.rs"),
     include_str!("body/exact.rs"),
+    "\npub mod exact_int {\n",
+    include_str!("body/exact_int.rs"),
+    "\n}\npub use exact_int::{ExactError, ExactInt, exact_int_hamming, exact_int_poly_eval, exact_int_prod, exact_int_prod_from, exact_int_sum, exact_int_sum_from, exact_int_weighted_prod, exact_ratio};\n",
     "\npub mod special {\n",
     include_str!("../../emath-core/src/special.rs"),
     "\n}\n"

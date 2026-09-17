@@ -2,8 +2,19 @@
 
 Hard contract, not a snapshot of today's `emath check`.
 
-Pinned in `tests/emath-syntax/tests/official_examples_corpus.rs` via
-`emath_test_harness::{demand_workspace_corpora, demand_language_gaps}`.
+`demand_workspace_corpora` is pinned in
+`tests/emath-syntax/tests/official_examples_corpus.rs` (the
+`workspace_corpora` case). It walks the four on-disk corpora and fails
+on every broken contract row; the current red census is the pre-cutover
+fixture mass (files written for the removed `model`/`policy`/`kind`
+surface and dead diagnostic codes), not a machine defect — reconcile
+those files with the current surface to turn the lane green.
+
+`demand_language_gaps` is defined in the harness but deliberately NOT
+wired into the suite: its rows (RK45 stepping, range slices, interval
+endpoint arithmetic) are red by design until the engine grows, and a
+red-by-design demand cannot sit in a green test. Wire it the day those
+capabilities land, or split it into its own expect-red test.
 
 ## Valid / examples
 
@@ -19,9 +30,9 @@ The probe demands each pinned code as Error. Missing pins are failures.
 
 ## Upgrade gaps
 
-`demand_language_gaps` additionally demands RK45 stepping, range slices, and
-interval endpoint arithmetic. Those rows are red until the engine grows.
-Do not weaken them to match current no-claims.
+`demand_language_gaps` (unwired; see above) demands RK45 stepping, range
+slices, and interval endpoint arithmetic. Those rows are red until the
+engine grows. Do not weaken them to match current no-claims.
 
 ## CLI oracles
 

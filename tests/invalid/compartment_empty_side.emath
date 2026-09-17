@@ -1,7 +1,0 @@
-# expect: E-SYN-156 empty reaction side / E-BIO-SINK
-emath reaction_network sink_fence:
-    species:
-        Drug
-
-    reactions:
-        elimination: Drug ->

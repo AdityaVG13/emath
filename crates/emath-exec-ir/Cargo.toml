@@ -13,6 +13,7 @@ emath-rt = { workspace = true }
 emath-term = { workspace = true }
 emath-schema = { workspace = true }
 emath-syntax = { workspace = true }
+stacker = "0.1.21"
 
 [lints]
 workspace = true

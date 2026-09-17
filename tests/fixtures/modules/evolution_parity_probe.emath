@@ -1,0 +1,33 @@
+# Module acceptance parity probe: one RK4 family step and one clipped
+# rollout, used to prove the VM (emath run) and emitted Rust
+# (emath build) agree on canonical result values for the same
+# computation. Emitted-runnable parity is deferred until constructor
+# emission lowers closure/record programs (recorded boundary).
+# Run: emath run tests/fixtures/modules/evolution_parity_probe.emath --function ParityProbe --set unused=0
+#      emath build tests/fixtures/modules/evolution_parity_probe.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+
+emath function ParityProbe:
+    inputs:
+        unused: Int
+    outputs:
+        rk4_y: Rat
+        clip_t: Rat
+        clip_y: Rat
+    definitions:
+        growth_f = function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[0]]}
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        stepped = family_rk4_step(growth_f, 1 / 1, SimState: {t: 0 / 1, y: [1 / 1]})
+        rk4_y = stepped.y[0]
+        rolled = rollout_to(decay_f, euler_tableau(0), 1, 1 / 2, 1, 3 / 4, SimState: {t: 0 / 1, y: [1 / 1]}, 4)
+        final = rolled.final_state
+        clip_t = rolled.accepted_t
+        clip_y = final.y[0]
+    tests:
+        example <known_values>:
+            given unused = 0
+            expect rk4_y == 65 / 24
+            expect clip_t == 3 / 4
+            expect clip_y == 3 / 8

@@ -17,6 +17,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         EmirOp::ConstF64(_)
         | EmirOp::ConstI64(_)
         | EmirOp::ConstBigInt(_)
+        | EmirOp::ConstExactInt(_)
         | EmirOp::ConstText(_)
         | EmirOp::ConstComplex(_, _)
         | EmirOp::ConstBool(_)
@@ -83,6 +84,9 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         | EmirOp::ListCreate(arguments)
         | EmirOp::ApplyCapability {
             args: arguments, ..
+        }
+        | EmirOp::ExactIntCall {
+            args: arguments, ..
         } => out.extend(arguments.iter().copied()),
         EmirOp::SeriesSample { series, time } => out.extend([*series, *time]),
         EmirOp::CallProgram { program, inputs }
@@ -144,6 +148,7 @@ pub fn is_total(op: &EmirOp, _program: &EmirProgram) -> bool {
         EmirOp::ConstF64(_)
             | EmirOp::ConstI64(_)
             | EmirOp::ConstBigInt(_)
+            | EmirOp::ConstExactInt(_)
             | EmirOp::ConstText(_)
             | EmirOp::ConstComplex(_, _)
             | EmirOp::ConstBool(_)

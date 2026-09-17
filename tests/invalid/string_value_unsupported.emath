@@ -1,7 +1,11 @@
-# expect: E-TYPE-012 untyped string value is not a numeric definition
-emath function text_report_probe:
+# expect: E-TYPE-012
+# A string literal is not a numeric value: no carrier matches the
+# definition feeding a Float64 output.
+emath function TextReport:
     inputs:
         x: Float64
-
+    outputs:
+        y: Float64
     definitions:
-        headline = "x = {x:.3f}"
+        headline = "x is a number"
+        y = headline

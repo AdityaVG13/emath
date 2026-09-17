@@ -1,0 +1,23 @@
+# Module acceptance fixture: direction filtering keeps a wrong-sign
+# crossing silent. y' = -1 from y = 1 falls through 1/2, but the event
+# is declared RISING (+1): nothing fires and the rollout completes
+# untouched. (Mutation check target: removing direction filtering
+# makes this event fire and the terminal stop breaks the fixture.)
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/events_direction_filter.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.events
+
+emath function DirectionFilter:
+    inputs:
+        unused: Int
+    outputs:
+        result: EventRun
+    definitions:
+        fall = function t in Rat: function s in SimState: SimState: {t: t, y: [0 - 1 / 1]}
+        result = event_rollout(fall, cash_karp_pair(0), 4, 5, [1 / 4], [1 / 4], 1 / 1, 1 / 4, 1 / 1, 8, 4, [Event: {guard: function t in Rat: function s in SimState: s.y[0] - 1 / 2, direction: 1, terminal: true, priority: 0, reset: function s in SimState: s}], SimState: {t: 0 / 1, y: [1 / 1]}, 1 / 1)
+    tests:
+        example <wrong_sign_stays_silent>:
+            given unused = 0
+            expect result == EventRun: {t: 1 / 1, y: [0 / 1], complete: true, attempts_used: 1, rejections: 0, events_fired: 0, outcome: 0}

@@ -1,7 +1,8 @@
-//! Artifact corpus search over the pinned frankensearch engine (spike).
+//! Artifact corpus search: doc-id codec and errors.
 //!
-//! Search adapter external to the protected set; `search` feature (default
-//! OFF) pulls the pinned frankensearch git revision. Default build is
+//! The frankensearch engine adapter (feature `search`) was removed with the
+//! never-compilable engine — the pinned fork lives in `forks/franken` and the
+//! pre-cut engine is recoverable from git history. Default build is
 //! std-only, first-party-only.
 
 #![forbid(unsafe_code)]
@@ -9,11 +10,5 @@
 mod corpus;
 mod error;
 
-#[cfg(feature = "search")]
-mod engine;
-
 pub use corpus::{ArtifactDoc, DOC_ID_SEPARATOR, from_fs_doc_id, to_fs_doc_id};
 pub use error::SearchError;
-
-#[cfg(feature = "search")]
-pub use engine::{CorpusSearch, Hit, HitSource, IndexStats, LexicalArmStats};

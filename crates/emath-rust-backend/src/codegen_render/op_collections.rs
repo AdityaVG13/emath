@@ -212,7 +212,12 @@ pub(super) fn op_collection_exprs(
         }
         EmirOp::VectorIndex { vector, index } => {
             let collection = render_expr(&operand(program, *vector));
-            let materialize = match kind_at(kinds, *vector) { ValueKind::Vector(element) if !element.is_copy() => "", ValueKind::Matrix(_) => "", _ => ".cloned()" };
+            let materialize = match kind_at(kinds, *vector) {
+                ValueKind::Vector(element) if *element == ValueKind::ExactInt => ".cloned()",
+                ValueKind::Vector(element) if !element.is_copy() => "",
+                ValueKind::Matrix(_) => "",
+                _ => ".cloned()",
+            };
             if kind_at(kinds, *index) == ValueKind::I64 {
                 let index = render_expr(&operand(program, *index));
                 Ok(map_runtime_result(format!("usize::try_from({index}).ok().and_then(|index| ({collection}).get(index)){materialize}.ok_or(\"vector index out of bounds\")")))

@@ -29,5 +29,5 @@ mod linalg;
 pub use model::*;
 pub use solve::*;
 pub use measured::*;
-pub use linalg::*;
+use linalg::*;
 

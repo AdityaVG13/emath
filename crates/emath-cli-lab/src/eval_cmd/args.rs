@@ -29,8 +29,6 @@ pub(super) const WORLD_IR_WORLD_NAMES: [&str; 8] = [
 /// Default evaluation world when `--world` / `:world` is omitted.
 pub(super) const DEFAULT_WORLD: &str = "free_symbolic";
 
-pub(super) const UNKNOWN_REPL: &str = "unknown command; :portfolio :world <name> :explain :quit";
-
 /// One VM evaluation with ADR-004 provenance on every print.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct EvalReceipt {

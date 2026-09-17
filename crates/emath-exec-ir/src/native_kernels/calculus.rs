@@ -29,7 +29,7 @@
 
 use std::collections::HashMap;
 
-use crate::interp::{self, EvalFault, Value};
+use crate::interp::{self, Value};
 use crate::native_kernel::NativeKernel;
 use crate::{BuiltinId, EmirOp, EmirProgram, EmirValue};
 
@@ -186,6 +186,12 @@ fn evaluate_dual(program: &EmirProgram, point: &[f64], var_index: u16) -> Result
             },
             EmirOp::ConstI64(value) => Dual {
                 primal: *value as f64,
+                tangent: 0.0,
+            },
+            EmirOp::ConstExactInt(text) => Dual {
+                primal: emath_rt::ExactInt::parse(text)
+                    .map(|value| value.to_f64())
+                    .unwrap_or(f64::NAN),
                 tangent: 0.0,
             },
             // Bool constants encode as 1.0/0.0, like the dual-space bool ops.
@@ -649,6 +655,7 @@ fn backward_step(
     match op {
         EmirOp::ConstF64(_)
         | EmirOp::ConstI64(_)
+        | EmirOp::ConstExactInt(_)
         | EmirOp::ConstBigInt(_)
         | EmirOp::ConstText(_)
         | EmirOp::ConstComplex(..)

@@ -290,26 +290,3 @@ pub(super) fn kill_condition_from_json(value: &JsonValue) -> Result<KillConditio
         )),
     }
 }
-
-/// Token for a frozen statistical protocol reference (lives in `stats`).
-#[must_use]
-pub fn protocol_token(protocol: &StatisticalProtocol) -> String {
-    format!(
-        "warm={}:reps={}:min={}:paired={}:seed={}:outlier={}:retain={}:randomize={}",
-        protocol.warmup_repetitions,
-        protocol.repetitions,
-        protocol.min_repetitions,
-        protocol.paired,
-        protocol.seed,
-        outlier_token(&protocol.outlier),
-        protocol.retain_raw,
-        protocol.randomize_order
-    )
-}
-
-pub(super) fn outlier_token(outlier: &crate::stats::OutlierPolicy) -> String {
-    match outlier {
-        crate::stats::OutlierPolicy::KeepAll => "keep-all".to_string(),
-        crate::stats::OutlierPolicy::MadTrim { factor } => format!("mad-trim:{factor}"),
-    }
-}

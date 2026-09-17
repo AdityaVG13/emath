@@ -1,0 +1,35 @@
+# Module acceptance fixture: the exhaustive policy-enumeration
+# cross-check on the 12-state reference game graph. 16 controller
+# policies x 16 adversary policies x 12 starts = 3,072 complete plays
+# decide each start independently of the attractor: forced_by_enumeration
+# is true exactly on the attractor region {A, B, C, E, G, H, J}.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/reachability_enumeration_crosscheck.emath
+
+use discrete.reachability
+
+emath function EnumerationCrosscheck:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        g = GameGraph: {succs: [[1, 11], [6, 2], [6], [6, 11], [3, 1], [5, 6], [], [7, 6], [3], [2, 7], [5, 3], []], controllers: [0, 2, 4, 7, 8, 10], goals: [6]}
+        region = attractor_set(g)
+        result = matches_at(g, region, 11)
+    tests:
+        example <plays_agree_with_attractor>:
+            given unused = 0
+            expect result == true
+
+emath function matches_at:
+    # forced_by_enumeration(i) is true exactly when i is in the region;
+    # the query is only made at in-range starts.
+    inputs:
+        g: GameGraph
+        region: sequence(Int)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if i < 0: true else: if forced_by_enumeration(g, i) == list_contains(region, i): matches_at(g, region, i - 1) else: false

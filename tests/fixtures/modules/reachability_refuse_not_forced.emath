@@ -1,0 +1,21 @@
+# Module expected-refusal fixture: a forced strategy is requested at a
+# node that is not a forced controller node. On the reference graph K
+# (id 10) is a controller node but not forced, and G (id 6) is the goal
+# (no choice is needed); both refuse not_forced.
+# Expected outcome: exits nonzero with `not_forced`.
+# Run: emath test tests/fixtures/modules/reachability_refuse_not_forced.emath
+
+use discrete.reachability
+
+emath function StrategyRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        g = GameGraph: {succs: [[1, 11], [6, 2], [6], [6, 11], [3, 1], [5, 6], [], [7, 6], [3], [2, 7], [5, 3], []], controllers: [0, 2, 4, 7, 8, 10], goals: [6]}
+        result = strategy_at(g, 10)
+    tests:
+        example <no_strategy_for_unforced>:
+            given unused = 0
+            expect result == result

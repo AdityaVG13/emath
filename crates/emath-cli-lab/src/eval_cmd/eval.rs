@@ -193,20 +193,3 @@ pub(super) fn render_json(receipt: &EvalReceipt) -> String {
     }
     object.finish()
 }
-
-pub(super) fn print_portfolio(analysis: &Analysis, worlds: &[WorldIr]) {
-    for world in worlds {
-        let receipt = evaluate_world(analysis, world);
-        println!(
-            "world {} {:016x} answer {}",
-            receipt.world_name, receipt.world_id, receipt.answer
-        );
-    }
-}
-
-pub(super) fn print_explain(receipt: &EvalReceipt) {
-    println!(
-        "world {} {:016x}\nvm_steps {}\nvaluation {}",
-        receipt.world_name, receipt.world_id, receipt.vm_steps, receipt.valuation
-    );
-}

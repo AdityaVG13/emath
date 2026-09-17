@@ -1,0 +1,39 @@
+# Module acceptance fixture: the contract-gated integrator-family
+# search receipt. Training (certified one-step error argmin over
+# alpha = n/120, n = 0..30, h = 1) picks n = 16 (alpha = 2/15); the
+# frozen order-3 contract admits only n = 20 (alpha = 1/6); the
+# unconstrained training winner is NOT promoted, and its certified
+# error is more than 100x below the alpha = 0 baseline.
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/modules/integrator_contract_gate.emath
+
+use search.order_contract_demo
+use search.fitting
+
+emath function GateReceipt:
+    inputs:
+        unused: Int
+    outputs:
+        training_winner: Int
+        contract_winner: Int
+        promoted: Bool
+        baseline_hi: Rat
+        winner_lo: Rat
+    definitions:
+        enc = exp_enclosure(1 / 1)
+        score = function n in Int: grid_score(n, 1 / 1, enc.lo, enc.hi)
+        training_winner = argmin_first(domain_list(0, 30), score)
+        adm = admissible_domain(30, [])
+        contract_winner = argmin_first(adm, score)
+        promoted = list_contains(adm, training_winner)
+        baseline_hi = grid_score(0, 1 / 1, enc.lo, enc.hi)
+        winner_lo = certified_error_lo(stability_form(training_winner / 120, 1 / 1), enc.lo, enc.hi)
+    tests:
+        example <contract_gates_promotion>:
+            given unused = 0
+            expect training_winner == 16
+            expect contract_winner == 20
+            expect promoted == false
+        example <hundredfold_over_baseline>:
+            given unused = 0
+            expect baseline_hi > 100 * winner_lo

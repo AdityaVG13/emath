@@ -1,0 +1,19 @@
+# Module expected-refusal fixture: a graph with no states refuses
+# empty_domain (inherited selection-domain discipline).
+# Expected outcome: exits nonzero with `empty_domain`.
+# Run: emath test tests/fixtures/modules/reachability_refuse_empty_domain.emath
+
+use discrete.reachability
+
+emath function EmptyGraphRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        g = GameGraph: {succs: [], controllers: [], goals: []}
+        result = witness_set(g)
+    tests:
+        example <no_states>:
+            given unused = 0
+            expect result == result

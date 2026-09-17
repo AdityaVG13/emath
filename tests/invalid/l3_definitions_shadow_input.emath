@@ -1,4 +1,5 @@
 # expect: E-NAME-020 definition shadows an `inputs:` name
+# conformance: std.kind.function negative:shadowed-input
 emath function Scale:
     inputs:
         factor: Float64

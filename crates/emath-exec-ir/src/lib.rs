@@ -19,6 +19,7 @@ pub mod native_kernel;
 pub mod progress;
 pub mod optimize;
 pub mod reference_views;
+pub mod exact_int;
 pub mod constructor_layer;
 pub mod constructor_emir;
 pub mod runner;
@@ -43,7 +44,6 @@ mod program;
 mod types;
 
 pub use op::*;
-pub use ops_impl::*;
 pub use program::*;
 pub use types::*;
 

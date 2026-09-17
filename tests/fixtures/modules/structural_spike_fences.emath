@@ -1,0 +1,82 @@
+# Structural-spike fences.
+#
+# Failure-first: authored BEFORE the spike module exists; the first run
+# fails at admission (unknown module). Two named fences:
+#
+#   cubic_no_fit    — the cubic target is outside the quadratic
+#                     grammar: every arm keeps POSITIVE training,
+#                     holdout, and rollout error, never force-fit; AND
+#                     the reported holdout is the recomputed holdout of
+#                     the selected candidate (a training-scored report
+#                     is a fake win and must be caught).
+#   budget_accounting — the three-arm comparison is budget-matched:
+#                     every arm's cap is 65, every arm stays within its
+#                     cap, and the scan arms use exactly their 65 (the
+#                     climb arm records its actual count, which may be
+#                     less — convergence is allowed to finish early,
+#                     extra evaluations are not).
+#
+# The cubic target is re-derived inline here on purpose: the fence
+# checks the DRIVER's data path, not a shared constant.
+
+use search.structural_spike
+
+emath function cubic_no_fit_fence:
+    inputs:
+        unused: Int
+    outputs:
+        all_positive: Bool
+        honest_report: Bool
+        honest_enum: Bool
+        honest_param: Bool
+    definitions:
+        arms = cubic_arms(0)
+        s = arms[0]
+        e = arms[1]
+        p = arms[2]
+        all_positive = s.train_sse > 0 / 1 and s.holdout_sse > 0 / 1 and s.rollout_sse > 0 / 1 and e.train_sse > 0 / 1 and e.holdout_sse > 0 / 1 and e.rollout_sse > 0 / 1 and p.train_sse > 0 / 1 and p.holdout_sse > 0 / 1 and p.rollout_sse > 0 / 1
+        f = function z in Rat: 3 / 2 * z - 1 / 2 * z * z * z
+        t = quadratic_template(0)
+        honest_report = s.holdout_sse == cand_score(t, f, holdout_inputs(0), [s.a, s.b])
+        honest_enum = e.holdout_sse == cand_score(t, f, holdout_inputs(0), [e.a, e.b])
+        honest_param = p.holdout_sse == cand_score(t, f, holdout_inputs(0), [p.a, p.b])
+    tests:
+        example <cubic_never_force_fit>:
+            given unused = 0
+            expect all_positive == true
+            expect honest_report == true
+            expect honest_enum == true
+            expect honest_param == true
+
+emath function budget_accounting_fence:
+    inputs:
+        unused: Int
+    outputs:
+        caps_equal: Bool
+        within_caps: Bool
+        scans_use_full_budget: Bool
+        climbs_record_actual: Bool
+    definitions:
+        lg = logistic_arms(0)
+        ln = linear_arms(0)
+        cb = cubic_arms(0)
+        ls = lg[0]
+        le = lg[1]
+        lp = lg[2]
+        ns = ln[0]
+        ne = ln[1]
+        np = ln[2]
+        cs = cb[0]
+        ce = cb[1]
+        cp = cb[2]
+        caps_equal = ls.budget == 65 and le.budget == 65 and lp.budget == 65 and ns.budget == 65 and ne.budget == 65 and np.budget == 65 and cs.budget == 65 and ce.budget == 65 and cp.budget == 65
+        within_caps = ls.evals <= ls.budget and le.evals <= le.budget and lp.evals <= lp.budget and ns.evals <= ns.budget and ne.evals <= ne.budget and np.evals <= np.budget and cs.evals <= cs.budget and ce.evals <= ce.budget and cp.evals <= cp.budget
+        scans_use_full_budget = le.evals == 65 and lp.evals == 65 and ne.evals == 65 and np.evals == 65 and ce.evals == 65 and cp.evals == 65
+        climbs_record_actual = ls.evals >= 1 and ns.evals >= 1 and cs.evals >= 1
+    tests:
+        example <equal_budgets_all_arms>:
+            given unused = 0
+            expect caps_equal == true
+            expect within_caps == true
+            expect scans_use_full_budget == true
+            expect climbs_record_actual == true

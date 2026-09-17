@@ -1,0 +1,13 @@
+# expect: E-TYPE-002
+# conformance: std.syntax.recur mutation:iterate-keyword
+# `iterate` is not a keyword: recursion goes through `recur` or an
+# ordinary self-call, and the loop binder spelling is refused rather
+# than guessed.
+emath function Iterate:
+    inputs:
+        unused: Int
+    outputs:
+        r: Int
+    definitions:
+        v = [1, 2, 3]
+        r = iterate x in v: x

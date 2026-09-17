@@ -1,0 +1,22 @@
+# Module expected-refusal fixture: an end time on the wrong side of
+# the signed direction refuses direction_mismatch instead of
+# integrating backward under a forward contract. Direction +1 with
+# t_end < t0.
+# Expected outcome: exits nonzero with `direction_mismatch`.
+# Run: emath test tests/fixtures/modules/evolution_refuse_direction.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+
+emath function DirectionMismatchRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: RolloutResult
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        result = rollout_to(decay_f, euler_tableau(0), 1, 1 / 2, 1, 0 - 1 / 1, SimState: {t: 0 / 1, y: [1 / 1]}, 4)
+    tests:
+        example <forward_direction_backward_target>:
+            given unused = 0
+            expect result == result

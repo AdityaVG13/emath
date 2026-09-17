@@ -43,6 +43,36 @@ pub(super) fn op_arith_exprs(
             let value = map_runtime_result(format!("emath_rt::{function}({}, {})", render_expr(&operand(program, left)), render_expr(&operand(program, right))));
             return Ok(if negate { Expr::Un { op: UnOp::Not, value: Box::new(value) } } else { value });
         }
+        if matches!(kind_at(kinds, left), ValueKind::ExactInt | ValueKind::I64)
+            && matches!(kind_at(kinds, right), ValueKind::ExactInt | ValueKind::I64)
+            && (kind_at(kinds, left) == ValueKind::ExactInt
+                || kind_at(kinds, right) == ValueKind::ExactInt)
+        {
+            let left_e = render_expr(&exact_int_operand(program, left, kinds));
+            let right_e = render_expr(&exact_int_operand(program, right, kinds));
+            let value = match function {
+                "ratio_add" => map_runtime_result(format!("{left_e}.add(&{right_e}).map_err(|err| err.to_string())")),
+                "ratio_sub" => map_runtime_result(format!("{left_e}.sub(&{right_e}).map_err(|err| err.to_string())")),
+                "ratio_mul" => map_runtime_result(format!("{left_e}.mul(&{right_e}).map_err(|err| err.to_string())")),
+                "ratio_div" => map_runtime_result(format!(
+                    "emath_rt::exact_ratio({left_e}, {right_e}).map_err(|err| err.to_string())"
+                )),
+                "ratio_lt" => Expr::Raw(format!("{left_e}.cmp(&{right_e}) == core::cmp::Ordering::Less")),
+                _ => {
+                    return Err(BackendError::UnsupportedType(
+                        "exact integer comparison is ordered".into(),
+                    ));
+                }
+            };
+            return Ok(if negate {
+                Expr::Un {
+                    op: UnOp::Not,
+                    value: Box::new(value),
+                }
+            } else {
+                value
+            });
+        }
     }
     if let EmirOp::Neg(value) = op {
         if kind_at(kinds, *value) == ValueKind::Rational {
@@ -120,6 +150,17 @@ pub(super) fn op_arith_exprs(
             &kinds,
         )),
         EmirOp::F64Div(l, r) => {
+            if matches!(kind_at(&kinds, *l), ValueKind::I64 | ValueKind::ExactInt)
+                && matches!(kind_at(&kinds, *r), ValueKind::I64 | ValueKind::ExactInt)
+                && (kind_at(&kinds, *l) == ValueKind::ExactInt
+                    || kind_at(&kinds, *r) == ValueKind::ExactInt)
+            {
+                return Ok(map_runtime_result(format!(
+                    "emath_rt::exact_ratio({}, {}).map_err(|err| err.to_string())",
+                    render_expr(&exact_int_operand(program, *l, &kinds)),
+                    render_expr(&exact_int_operand(program, *r, &kinds))
+                )));
+            }
             if kind_at(&kinds, *l) == ValueKind::I64 && kind_at(&kinds, *r) == ValueKind::I64 {
                 return Ok(map_runtime_result(format!(
                     "emath_rt::ratio_div((i128::from({}), 1), (i128::from({}), 1))",
@@ -145,6 +186,11 @@ pub(super) fn op_arith_exprs(
                     method: "checked_neg".to_string(),
                     args: Vec::new(),
                 }))
+            } else if operand_kind(&kinds, *value) == ValueKind::ExactInt {
+                Ok(map_runtime_result(format!(
+                    "{}.checked_neg().map_err(|err| err.to_string())",
+                    render_expr(&operand(program, *value))
+                )))
             } else {
                 Ok(Expr::Un {
                     op: UnOp::Neg,

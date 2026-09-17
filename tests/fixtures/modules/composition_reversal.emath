@@ -1,0 +1,153 @@
+# Composition fixtures: exact reversal,
+# momentum involution, museum-recipe equivalence, honest energy
+# boundaries.
+#
+# Failure-first: authored BEFORE the module exists; the first run
+# fails at admission (unknown module). Every value below is
+# hand-derived from the museum recipe (runner/simulate/implicit.rs
+# velocity_verlet_step: v_half = v + (h/2)a(q); q1 = q + h*v_half;
+# v1 = v_half + (h/2)a(q1)) in exact rationals.
+
+use analysis.evolution.composition
+
+emath function fixture_exact_drift_reversal:
+    # The museum's literal acceptance instance: step(-1/2, step(1/2,
+    # (0,2))) == (0,2) EXACTLY on the free-particle drift.
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        s0 = SimState: {t: 0 / 1, y: [0 / 1, 2 / 1]}
+        result = drift(0 - 1 / 2, drift(1 / 2, s0)) == s0
+    tests:
+        example <drift_reverses_exactly>:
+            given unused = 0
+            expect result == true
+
+emath function fixture_verlet_free_particle:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        a0 = function q in Rat: function p in Rat: 0 / 1
+        s0 = SimState: {t: 0 / 1, y: [0 / 1, 2 / 1]}
+        one = verlet_step(a0, 1 / 2, s0)
+        back = verlet_step(a0, 0 - 1 / 2, one)
+        result = one == SimState: {t: 0 / 1, y: [1 / 1, 2 / 1]} and back == s0
+    tests:
+        example <free_particle_forward_and_back>:
+            given unused = 0
+            expect result == true
+
+emath function fixture_verlet_exact_reversal_harmonic:
+    # Exact negative-step reversal on a NONZERO acceleration (stronger
+    # than the free-particle case): kick-drift-kick is palindromic and
+    # adjacent same-type subflows merge in exact rational arithmetic.
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q
+        s0 = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        fwd = verlet_step(a, 1 / 2, s0)
+        back = verlet_step(a, 0 - 1 / 2, fwd)
+        s1 = SimState: {t: 0 / 1, y: [3 / 1, 0 - 1 / 2]}
+        fwd1 = verlet_step(a, 1 / 4, s1)
+        back1 = verlet_step(a, 0 - 1 / 4, fwd1)
+        result = back == s0 and back1 == s1
+    tests:
+        example <harmonic_reverses_exactly>:
+            given unused = 0
+            expect result == true
+
+emath function fixture_museum_recipe_values:
+    # Equivalence evidence: the museum formula applied to dyadic
+    # inputs gives exactly (7/8, -15/32) in f64; the exact rational
+    # port agrees digit for digit. Two composed steps give
+    # (17/32, -105/128).
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q
+        s0 = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        one = verlet_step(a, 1 / 2, s0)
+        two = verlet_step(a, 1 / 2, one)
+        result = one == SimState: {t: 0 / 1, y: [7 / 8, 0 - 15 / 32]} and two == SimState: {t: 0 / 1, y: [17 / 32, 0 - 105 / 128]}
+    tests:
+        example <museum_values_exact>:
+            given unused = 0
+            expect result == true
+
+emath function fixture_momentum_involution:
+    # The physical reversal involution R(q,p) = (q,-p) is its OWN
+    # contract, distinct from negative-step inversion. The museum's
+    # free-particle numbers: (0,2) evolves h=1/2 to (1,2); momentum
+    # reversal gives (1,-2) which evolves to (0,-2). The general
+    # contract R o step(h) o R == step(-h) asserted on the harmonic
+    # oscillator.
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        a0 = function q in Rat: function p in Rat: 0 / 1
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q
+        s0 = SimState: {t: 0 / 1, y: [0 / 1, 2 / 1]}
+        fwd = verlet_step(a0, 1 / 2, s0)
+        rev = momentum_reversal(fwd)
+        back = verlet_step(a0, 1 / 2, rev)
+        free_ok = fwd == SimState: {t: 0 / 1, y: [1 / 1, 2 / 1]} and rev == SimState: {t: 0 / 1, y: [1 / 1, 0 - 2 / 1]} and back == SimState: {t: 0 / 1, y: [0 / 1, 0 - 2 / 1]}
+        sh = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        lhs = momentum_reversal(verlet_step(a, 1 / 2, momentum_reversal(sh)))
+        rhs = verlet_step(a, 0 - 1 / 2, sh)
+        result = free_ok and lhs == rhs
+    tests:
+        example <involution_contract>:
+            given unused = 0
+            expect result == true
+
+emath function fixture_energy_not_exact:
+    # Symmetry is NOT exact energy conservation: one Verlet step on
+    # the harmonic oscillator changes H by exactly -15/2048 (nonzero,
+    # pinned). A regression that claims exact conservation fails here.
+    inputs:
+        unused: Int
+    outputs:
+        delta: Rat
+    definitions:
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q
+        v = function q in Rat: q * q / 2
+        s0 = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        h1 = energy(v, verlet_step(a, 1 / 2, s0))
+        h0 = energy(v, s0)
+        delta = h1 - h0
+    tests:
+        example <verlet_energy_delta_nonzero>:
+            given unused = 0
+            expect delta == 0 - 15 / 2048
+
+emath function fixture_damped_energy_decreases:
+    # The deliberate dissipative case: the damped composition's energy
+    # delta is exactly -959/51200 (nonzero, negative, pinned) —
+    # strictly more dissipative than the Verlet error (-15/2048).
+    inputs:
+        unused: Int
+    outputs:
+        delta: Rat
+    definitions:
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q
+        v = function q in Rat: q * q / 2
+        s0 = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        h1 = energy(v, damped_step(a, 1 / 5, 1 / 2, s0))
+        h0 = energy(v, s0)
+        delta = h1 - h0
+    tests:
+        example <damped_delta_pinned_negative>:
+            given unused = 0
+            expect delta == 0 - 959 / 51200
+            expect delta < 0 - 15 / 2048

@@ -1,0 +1,20 @@
+# Expected refusal: bad_attempt_budget. A negative attempt budget is a
+# contract error.
+# Run: emath test tests/fixtures/modules/adaptive_refuse_bad_budget.emath
+
+use analysis.evolution.control
+use analysis.evolution.one_step
+
+emath function BadBudget:
+    inputs:
+        unused: Int
+    outputs:
+        result: AdaptiveRun
+    definitions:
+        decay = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        result = adaptive_rollout(decay, cash_karp_pair(0), 4, 5, [1 / 1024], [1 / 1024], 1 / 2, 1 / 8, 1 / 1, 0 - 1, SimState: {t: 0 / 1, y: [1 / 1]}, 1 / 1)
+
+    tests:
+        example <refuses_by_named_code>:
+            given unused = 0
+            expect result == result

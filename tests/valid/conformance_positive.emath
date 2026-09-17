@@ -1,0 +1,165 @@
+# Keyed positive conformance at the current constructor surface. Each
+# declaration realizes a capsule conformance label named in the header.
+# Run: emath test tests/valid/conformance_positive.emath
+# conformance: std.kind.function positive:function-square
+# conformance: std.capability.scalar positive:two-plus-one
+# conformance: std.kind.object positive:object-record
+# conformance: std.world.reference positive:reference-eval
+# conformance: std.syntax.quote positive:capture-identity
+# conformance: std.syntax.recur positive:tree-walk
+# conformance: std.kind.query positive:code-request
+# conformance: std.syntax.quote negative:opaque-guess
+# conformance: std.syntax.quote mutation:name-inferred-derivative
+# conformance: std.capability.scalar mutation:hidden-fallback
+
+emath function Square:
+    inputs:
+        n: Int
+    outputs:
+        r: Int
+    definitions:
+        r = n * n
+    tests:
+        example <square_seven>:
+            given n = 7
+            expect r == 49
+
+emath function TwoPlusOne:
+    inputs:
+        unused: Int
+    outputs:
+        r: Int
+    definitions:
+        r = 2 + 1
+    tests:
+        example <two_plus_one>:
+            given unused = 0
+            expect r == 3
+
+emath object Reading:
+    representation:
+        kind = "abstract"
+
+emath function RecordRoundTrip:
+    inputs:
+        v: Int
+    outputs:
+        r: Int
+    definitions:
+        packed = Reading.pack(v)
+        r = Reading.open x in packed: x
+    tests:
+        example <pack_open_round_trip>:
+            given v = 41
+            expect r == 41
+
+emath function ReferenceEval:
+    inputs:
+        n: Int
+    outputs:
+        r: Int
+    definitions:
+        step = function k in Int: k + 1
+        r = step(step(n))
+    tests:
+        example <applied_twice>:
+            given n = 4
+            expect r == 6
+
+emath function CaptureIdentity:
+    inputs:
+        unused: Int
+    outputs:
+        same: Bool
+        differs: Bool
+    definitions:
+        a = quote(function x in Rat: x * x)
+        b = quote(function y in Rat: y * y)
+        c = quote(function y in Rat: y + y)
+        same = quote.identity(a) == quote.identity(b)
+        differs = quote.identity(a) == quote.identity(c)
+    tests:
+        example <alpha_equivalent_share_identity>:
+            given unused = 0
+            expect same == true
+            expect differs == false
+
+use quote.walk
+
+emath function TreeWalk:
+    inputs:
+        unused: Int
+    outputs:
+        r: Int
+    definitions:
+        r = quote.evaluate(walk_term(quote(1 + (2 + 3))))
+    tests:
+        example <nested_sum>:
+            given unused = 0
+            expect r == 6
+
+emath query CodeRequestConformance:
+    inputs:
+        unused: Int
+    definitions:
+        target = quote(function x in Rat: x * x)
+    question:
+        target = target
+        scope = unused
+        assumptions = []
+    answer:
+        form = code
+        accept = unchecked
+    tests:
+        example <code_form_satisfied>:
+            given unused = 0
+            expect receipt.fulfillment == satisfied
+
+emath function OpaqueGuess:
+    inputs:
+        unused: Int
+    outputs:
+        r: Int
+    definitions:
+        r = constructor_refuse(quote(no_inverse))
+    tests:
+        example <opaque_rule_refuses>:
+            given unused = 0
+            expect diagnostic.code == no_inverse
+
+emath function NameIsUsers:
+    inputs:
+        x: Rat
+    outputs:
+        a: Rat
+    definitions:
+        derivative = function y in Rat: y * 2
+        a = derivative(x)
+    tests:
+        example <name_is_the_users>:
+            given x = 2
+            expect a == 4
+
+emath function NameNeverDispatches:
+    inputs:
+        unused: Int
+    outputs:
+        r: Int
+    definitions:
+        r = quote.evaluate(quote(jacobian(3)))
+    tests:
+        example <name_never_dispatches>:
+            given unused = 0
+            expect diagnostic.code == unbound_code
+
+emath function HiddenFallback:
+    inputs:
+        unused: Int
+    outputs:
+        r: Float64
+    definitions:
+        r = 1.0 / 0.0
+    tests:
+        example <no_silent_infinity>:
+            given unused = 0
+            expect diagnostic.code == division_by_zero

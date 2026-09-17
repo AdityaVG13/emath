@@ -4,19 +4,13 @@ use super::*;
 
 /// Register-inlined SSA body renderer: single-use, provably-total
 /// registers inline into their consumer; multi-use/fault-capable ops stay
-/// bound as lets, preserving strict eager fault timing. `var_index` also
-/// renders the tangent (`__d`) space for the AD torsos.
+/// bound as lets, preserving strict eager fault timing.
 pub(crate) struct FlatSsa {
     /// `let __eN = <src>;` lines for registers that must stay bound, in
     /// register order.
     pub e_lets: Vec<(String, String)>,
-    /// `let __dN = <src>;` tangent lines (same rule, tangent space).
-    pub d_lets: Vec<(String, String)>,
     /// Fully resolved primal source of the result register.
     pub e_tail: String,
-    /// Fully resolved tangent source of the result register (empty when
-    /// `var_index` was `None`).
-    pub d_tail: String,
 }
 
 /// Scratch state for one body's flattening; resolves a register to fully
@@ -24,11 +18,24 @@ pub(crate) struct FlatSsa {
 pub(super) struct Resolver<'a> {
     program: &'a EmirProgram,
     e_src: &'a [String],
-    d_src: &'a [String],
     inline_e: &'a [bool],
-    inline_d: &'a [bool],
     e_memo: HashMap<u32, String>,
-    d_memo: HashMap<u32, String>,
+}
+
+/// Inline a register definition at its use site. A single Rust token
+/// (identifier or numeric literal) is safe bare wherever the register
+/// token stood; every other shape keeps one paren layer so the
+/// substitution cannot change how the surrounding expression parses.
+fn inline_token(definition: String) -> String {
+    let bare = !definition.is_empty()
+        && definition
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_');
+    if bare {
+        definition
+    } else {
+        format!("({definition})")
+    }
 }
 
 impl Resolver<'_> {
@@ -46,32 +53,14 @@ impl Resolver<'_> {
         Ok(out)
     }
 
-    fn d(&mut self, i: u32) -> Result<String, BackendError> {
-        if let Some(s) = self.d_memo.get(&i) {
-            return Ok(s.clone());
-        }
-        let src = self
-            .d_src
-            .get(i as usize)
-            .ok_or_else(|| BackendError::Lowering("flat d-register out of range".into()))?
-            .clone();
-        let out = self.substitute(&src)?;
-        self.d_memo.insert(i, out.clone());
-        Ok(out)
-    }
-
-    /// Expand `__e{N}`/`__d{N}` tokens for inlined registers to their
+    /// Expand `__e{N}` tokens for inlined registers to their
     /// (parenthesized) defining expression; others keep their bound name.
     fn substitute(&mut self, src: &str) -> Result<String, BackendError> {
         let mut out = String::with_capacity(src.len());
         let mut i = 0usize;
         while i < src.len() {
-            let token_len = if src[i..].starts_with("__e") || src[i..].starts_with("__d") {
-                let (kind, start) = if src[i..].starts_with("__e") {
-                    ('e', i + 3)
-                } else {
-                    ('d', i + 3)
-                };
+            let token_len = if src[i..].starts_with("__e") {
+                let start = i + 3;
                 let digits_len = src[start..]
                     .bytes()
                     .take_while(|b| b.is_ascii_digit())
@@ -79,15 +68,12 @@ impl Resolver<'_> {
                 if digits_len > 0 {
                     if let Ok(idx) = src[start..(start + digits_len)].parse::<u32>() {
                         if (idx as usize) < self.program.ops.len() {
-                            let replacement = match (
-                                kind,
-                                self.inline_e.get(idx as usize),
-                                self.inline_d.get(idx as usize),
-                            ) {
-                                ('e', Some(true), _) => format!("({})", self.e(idx)?),
-                                ('d', _, Some(true)) => format!("({})", self.d(idx)?),
-                                _ => src[i..(start + digits_len)].to_string(),
-                            };
+                            let replacement =
+                                if self.inline_e.get(idx as usize) == Some(&true) {
+                                    inline_token(self.e(idx)?)
+                                } else {
+                                    src[i..(start + digits_len)].to_string()
+                                };
                             out.push_str(&replacement);
                             start + digits_len - i
                         } else {
@@ -122,9 +108,7 @@ impl Resolver<'_> {
 /// rendered source). Such programs fall back to non-flat rendering.
 pub(super) fn reg_token_collision(names: &[String], states: &[String]) -> bool {
     let is_like = |name: &str| {
-        let name = name
-            .strip_prefix("__e")
-            .or_else(|| name.strip_prefix("__d"));
+        let name = name.strip_prefix("__e");
         matches!(name, Some(rest) if rest.chars().next().is_some_and(|c| c.is_ascii_digit()))
     };
     names.iter().any(|n| is_like(n)) || states.iter().any(|n| is_like(n))
@@ -172,7 +156,6 @@ pub(crate) fn flat_ssa(
     names: &[String],
     states: &[String],
     input_kinds: &InputKinds,
-    var_index: Option<u16>,
 ) -> Result<FlatSsa, BackendError> {
     let n = program.ops.len();
     // Primal sources for every register.
@@ -197,33 +180,17 @@ pub(crate) fn flat_ssa(
         inline_e[i] =
             !collision && !nested && e_direct[i] <= 1 && is_total(&program.ops[i].0, program);
     }
-    // Tangent programs are no longer a backend operation. They must arrive
-    // as a capability artifact rather than reopening mathematical dispatch.
-    if var_index.is_some() {
-        return Err(BackendError::MissingArtifactContract(
-            "tangent program".to_string(),
-        ));
-    }
-    let d_src = Vec::new();
-    let inline_d = vec![false; n];
     let mut resolver = Resolver {
         program,
         e_src: &e_src,
-        d_src: &d_src,
         inline_e: &inline_e,
-        inline_d: &inline_d,
         e_memo: HashMap::new(),
-        d_memo: HashMap::new(),
     };
     let mut e_lets = Vec::new();
-    let mut d_lets = Vec::new();
     let result = program.result;
     for i in 0..n {
         if !inline_e[i] {
             e_lets.push((format!("__e{i}"), resolver.e(i as u32)?));
-        }
-        if var_index.is_some() && !inline_d[i] {
-            d_lets.push((format!("__d{i}"), resolver.d(i as u32)?));
         }
     }
     let result_idx = result.0 as usize;
@@ -232,22 +199,5 @@ pub(crate) fn flat_ssa(
     } else {
         format!("__e{}", result.0)
     };
-    let d_tail = if var_index.is_some() {
-        if result_idx < n && inline_d[result_idx] {
-            resolver.d(result.0)?
-        } else {
-            format!("__d{}", result.0)
-        }
-    } else {
-        String::new()
-    };
-    // e_lets must precede d_lets, then the inferred result bindings follow
-    // register order within each space; fault order is unchanged because
-    // d-sources never fault and e-lets keep relative order.
-    Ok(FlatSsa {
-        e_lets,
-        d_lets,
-        e_tail,
-        d_tail,
-    })
+    Ok(FlatSsa { e_lets, e_tail })
 }

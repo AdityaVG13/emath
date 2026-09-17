@@ -1,0 +1,32 @@
+# Module acceptance fixture: rollout_to clips the final step to the
+# endpoint. h = 1/2 toward t_end = 3/4 from t = 0 takes one full step
+# then one clipped step of 1/4, landing exactly on 3/4 with y = 3/8 for
+# y' = -y, y0 = 1 (exact: 1/2 - (1/4)(1/2) = 3/8).
+# Run: emath test tests/fixtures/modules/evolution_clipping.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+
+emath function ClipToEndpoint:
+    inputs:
+        unused: Int
+    outputs:
+        y: Rat
+        t: Rat
+        n_steps: Int
+        complete: Bool
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        rolled = rollout_to(decay_f, euler_tableau(0), 1, 1 / 2, 1, 3 / 4, SimState: {t: 0 / 1, y: [1 / 1]}, 4)
+        final = rolled.final_state
+        y = final.y[0]
+        t = rolled.accepted_t
+        n_steps = rolled.n_steps
+        complete = rolled.complete
+    tests:
+        example <lands_exactly_on_endpoint>:
+            given unused = 0
+            expect t == 3 / 4
+            expect y == 3 / 8
+            expect n_steps == 2
+            expect complete == true

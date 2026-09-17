@@ -1,0 +1,46 @@
+# Module acceptance fixture: existential backward reachability on the
+# 12-state reference game graph (controller A, C, E, H, I, K at ids
+# 0, 2, 4, 7, 8, 10; adversary B, D, F, J at 1, 3, 5, 9; goal G = 6;
+# dead end L = 11). Every state except the dead end has SOME path to
+# the goal, and the forward depth-first agreement check says the same
+# from every start.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/reachability_witness_paths.emath
+
+use discrete.reachability
+
+emath function WitnessPaths:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        g = GameGraph: {succs: [[1, 11], [6, 2], [6], [6, 11], [3, 1], [5, 6], [], [7, 6], [3], [2, 7], [5, 3], []], controllers: [0, 2, 4, 7, 8, 10], goals: [6]}
+        w = witness_set(g)
+        result = w == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] and agrees_forward(g, 11)
+    tests:
+        example <all_but_dead_end>:
+            given unused = 0
+            expect result == true
+
+emath function agrees_forward:
+    inputs:
+        g: GameGraph
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        w = witness_set(g)
+        result = agrees_at(g, w, 11)
+
+emath function agrees_at:
+    # forward_reaches(start) is true exactly for the witness states;
+    # the query is only made at in-range starts.
+    inputs:
+        g: GameGraph
+        w: sequence(Int)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if i < 0: true else: if forward_reaches(g, i) == list_contains(w, i): agrees_at(g, w, i - 1) else: false

@@ -3,8 +3,6 @@
 // intermediates can refuse; no operation converts an exact value to a float.
 pub type ExactRatio = (i128, i128);
 type ExactResult<T> = Result<T, String>;
-const QZERO: ExactRatio = (0, 1);
-const QONE: ExactRatio = (1, 1);
 fn q_overflow() -> String {
     "E-RAT-002: exact rational intermediate exceeds i128".into()
 }

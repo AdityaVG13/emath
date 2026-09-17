@@ -36,7 +36,7 @@ mod genesis;
 mod worlds;
 
 pub use analysis::*;
-pub use answer::*;
+use answer::*;
 pub use commands::*;
 pub use compile::*;
 pub use genesis::*;

@@ -1,0 +1,14 @@
+# 10^20 * 10^20 = 10^40, past i128 (~1.7e38). A wrapping i128
+# carrier cannot produce this exact product.
+emath function WideSquare:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        a = 100000000000000000000
+        result = a * a
+    tests:
+        example <ten_to_forty>:
+            given unused = 0
+            expect result == 10000000000000000000000000000000000000000

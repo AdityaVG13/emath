@@ -1,0 +1,40 @@
+# Module acceptance fixture: refinement study on the 2D ballistic
+# problem x' = v, v' = a with a = -2, from (x, v) = (0, 1), target
+# t = 1. Exact rational reference: x(1) = 0 + 1 - 2/2 = 0,
+# v(1) = 1 - 2 = -1. The solution is a degree-2 polynomial in t, and
+# an order-5 method is exact on polynomial solutions of degree <= 5,
+# so the DECLARED error goal is exact zero, met exactly, at both
+# declared tolerances. Exercises the two-component scaled norm and
+# tolerance vectors. (The originally drafted y' = y*y study is
+# unapproachable in exact rationals: each RK stage squares the
+# previous stage's denominator exponents, so digits grow doubly
+# exponentially per step — one step already produces ~330-bit
+# rationals. Bit-budgeted nonlinear studies belong to the
+# bit-budgeted iteration lane.)
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/modules/adaptive_refine_ballistic.emath
+
+use analysis.evolution.control
+use analysis.evolution.one_step
+
+emath function BallisticStudy:
+    inputs:
+        unused: Int
+    outputs:
+        x: Rat
+        v: Rat
+    definitions:
+        ball = function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], 0 - 2 / 1]}
+        coarse = adaptive_rollout(ball, cash_karp_pair(0), 4, 5, [1 / 1024, 1 / 1024], [1 / 1024, 1 / 1024], 1 / 8, 1 / 16, 1 / 2, 32, SimState: {t: 0 / 1, y: [0 / 1, 1 / 1]}, 1 / 1)
+        fine = adaptive_rollout(ball, cash_karp_pair(0), 4, 5, [1 / 1000000, 1 / 1000000], [1 / 1000000, 1 / 1000000], 1 / 8, 1 / 256, 1 / 2, 64, SimState: {t: 0 / 1, y: [0 / 1, 1 / 1]}, 1 / 1)
+        x = coarse.y[0]
+        v = coarse.y[1]
+    tests:
+        example <coarse_meets_declared_goal_exactly>:
+            given unused = 0
+            expect coarse.complete == true
+            expect coarse.y == [0 / 1, 0 - 1 / 1]
+        example <fine_meets_declared_goal_exactly>:
+            given unused = 0
+            expect fine.complete == true
+            expect fine.y == [0 / 1, 0 - 1 / 1]

@@ -1,7 +1,7 @@
 //! Constructor teaching examples run.
 
 use emath_cli::{run, CliExit};
-use emath_test_harness::{boot, Probe};
+use emath_test_harness::{boot, demand_workspace_corpora, Probe};
 
 #[test]
 fn corpora_and_language_gaps() {
@@ -69,6 +69,9 @@ fn corpora_and_language_gaps() {
             argv.insert(1.min(argv.len()), path.to_string_lossy().into_owned());
             probe.eq(name, run(&argv), expected);
         }
+    });
+    probe.case("workspace_corpora", |probe| {
+        demand_workspace_corpora(probe);
     });
     probe.finish();
 }

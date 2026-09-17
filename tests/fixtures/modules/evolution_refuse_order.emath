@@ -1,0 +1,22 @@
+# Module expected-refusal fixture: an order claim without authored
+# evidence refuses order_conditions_unmet. Forward Euler's tableau
+# holds order-1 evidence only; claiming order 2 (b.c = 1/2 fails:
+# Euler has b.c = 0) is refused. This is the hard gate a
+# contract-gated integrator search invokes.
+# Expected outcome: exits nonzero with `order_conditions_unmet`.
+# Run: emath test tests/fixtures/modules/evolution_refuse_order.emath
+
+use analysis.evolution.one_step
+
+emath function UnmetOrderClaimRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: SimState
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        result = butcher_step(decay_f, euler_tableau(0), 2, 1 / 2, SimState: {t: 0 / 1, y: [1 / 1]})
+    tests:
+        example <euler_cannot_claim_order_two>:
+            given unused = 0
+            expect result == result

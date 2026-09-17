@@ -1,0 +1,7 @@
+# expect: E-KIND-011
+# conformance: std.kind.object negative:missing-representation
+# An object without a `representation:` section has no declared
+# representation; admission is refused rather than guessed.
+emath object NoRepr:
+    fields:
+        value: Int

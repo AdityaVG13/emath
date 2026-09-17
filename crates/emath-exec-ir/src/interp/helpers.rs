@@ -15,6 +15,7 @@ pub(super) fn f64_of(
     match register(registers, value)? {
         Value::F64(value) => Ok(*value),
         Value::I64(value) => Ok(*value as f64),
+        Value::ExactInt(value) => Ok(value.to_f64()),
         Value::Complex { re, im } if *im == 0.0 => Ok(*re),
         _ => Err(EvalFault::TypeConfusion {
             register: value.0,
@@ -30,6 +31,10 @@ pub(super) fn i64_of(
 ) -> Result<i64, EvalFault> {
     match register(registers, value)? {
         Value::I64(value) => Ok(*value),
+        Value::ExactInt(n) => n.to_i64().ok_or(EvalFault::TypeConfusion {
+            register: value.0,
+            op,
+        }),
         Value::F64(value)
             if value.is_finite()
                 && value.fract() == 0.0
@@ -122,7 +127,7 @@ pub(super) fn eq_ne(
     registers: &[Value],
     left: EmirValue,
     right: EmirValue,
-    op: &'static str,
+    _op: &'static str,
     equal: bool,
 ) -> Result<Value, EvalFault> {
     let left_value = register(registers, left)?;

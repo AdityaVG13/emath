@@ -6,8 +6,8 @@
 //! words themselves; a wholesale PARTIAL is never stored).
 //!
 //! Ratings are honest to what computes today: a FULL facet cites an artifact
-//! (a runnable example under `language/examples/` or a laws pack under
-//! `language/stdlib/laws/`); SYNTAX-ONLY facets are contracts the reference
+//! (a runnable example under `language/examples/` or a live module under
+//! `language/modules/`); SYNTAX-ONLY facets are contracts the reference
 //! defines but that do not compute end-to-end yet; MISSING facets are the
 //! gap backlog (B-items) with no contract. Super-domain granularity is the
 //! seed snapshot; sub-area (57-row) granularity upgrades as the matrix is
@@ -75,12 +75,12 @@ pub const SEED: [DomainSeed; 12] = [
             "FULL",
         ],
         artifacts: [
-            Some("language/stdlib/laws/algebra-number-theory.emath"),
-            Some("language/stdlib/laws/algebra-number-theory.emath"),
+            Some("language/modules/exact/integers.emath"),
+            Some("language/modules/exact/modular.emath"),
             Some("language/reference/goals-requests-strategies-and-resolution.md"),
             Some("language/reference/lexical-layout-and-source.md"),
             NONE,
-            Some("language/stdlib/laws/algebra-number-theory.emath"),
+            Some("language/examples/algebra/gcd-lcm.emath"),
         ],
         packages: &[
             "core::math",
@@ -95,12 +95,12 @@ pub const SEED: [DomainSeed; 12] = [
         label: "symbolic simplification, algebraic slices",
         ratings: ["FULL", "FULL", "MISSING", "SYNTAX-ONLY", "MISSING", "FULL"],
         artifacts: [
-            Some("language/stdlib/laws/algebra-number-theory.emath"),
-            Some("language/stdlib/laws/algebra-number-theory.emath"),
+            Some("language/modules/exact/integers.emath"),
+            Some("language/modules/algebra/matmul.emath"),
             NONE,
             Some("language/reference/expressions-equations-state-and-events.md"),
             NONE,
-            Some("language/stdlib/laws/algebra-number-theory.emath"),
+            Some("language/examples/algebra/chinese-remainder.emath"),
         ],
         packages: &["core::algebra"],
     },
@@ -130,12 +130,12 @@ pub const SEED: [DomainSeed; 12] = [
         label: "endpoint/Taylor/contraction slices, forward AD, ODE solves",
         ratings: ["FULL", "FULL", "FULL", "SYNTAX-ONLY", "MISSING", "FULL"],
         artifacts: [
-            Some("language/stdlib/laws/analysis.emath"),
+            Some("language/modules/analysis/powers.emath"),
             Some("language/examples/code/autodiff.emath"),
             Some("language/examples/code/autodiff.emath"),
             Some("language/reference/expressions-equations-state-and-events.md"),
             NONE,
-            Some("language/stdlib/laws/analysis.emath"),
+            Some("language/modules/calculus/diff.emath"),
         ],
         packages: &[
             "core::calculus",
@@ -165,12 +165,12 @@ pub const SEED: [DomainSeed; 12] = [
         label: "finite KKT, Bellman, Lyapunov slices; constraint goals",
         ratings: ["FULL", "FULL", "SYNTAX-ONLY", "MISSING", "MISSING", "FULL"],
         artifacts: [
-            Some("language/stdlib/laws/optimization-control.emath"),
+            Some("language/modules/discrete/combinatorics.emath"),
             Some("language/examples/functions/optimize.emath"),
             Some("language/examples/functions/optimize.emath"),
             NONE,
             NONE,
-            Some("language/stdlib/laws/optimization-control.emath"),
+            Some("language/examples/functions/optimize.emath"),
         ],
         packages: &[
             "core::optimization",
@@ -194,12 +194,12 @@ pub const SEED: [DomainSeed; 12] = [
             "FULL",
         ],
         artifacts: [
-            Some("language/stdlib/laws/probability-statistics.emath"),
+            Some("language/examples/probability/binomial-mean.emath"),
             Some("language/reference/expressions-equations-state-and-events.md"),
             Some("language/reference/goals-requests-strategies-and-resolution.md"),
             NONE,
             NONE,
-            Some("language/stdlib/laws/probability-statistics.emath"),
+            Some("language/modules/probability/markov.emath"),
         ],
         packages: &[
             "core::probability",
@@ -218,7 +218,7 @@ pub const SEED: [DomainSeed; 12] = [
             Some("tests/fixtures/language/numerical/explicit-mass-spring.emath"),
             Some("language/reference/diagnostics-and-tooling-contract.md"),
             Some("language/reference/total-compilation-protocol.md"),
-            Some("language/stdlib/laws/computer-science.emath"),
+            Some("language/modules/discrete/combinatorics.emath"),
         ],
         packages: &[
             "core::shapes",
@@ -239,12 +239,12 @@ pub const SEED: [DomainSeed; 12] = [
             "FULL",
         ],
         artifacts: [
-            Some("language/stdlib/laws/computer-science.emath"),
-            Some("language/stdlib/laws/computer-science.emath"),
+            Some("language/modules/discrete/combinatorics.emath"),
+            Some("language/modules/discrete/combinatorics.emath"),
             Some("language/reference/goals-requests-strategies-and-resolution.md"),
             Some("language/reference/lexical-layout-and-source.md"),
             NONE,
-            Some("language/stdlib/laws/computer-science.emath"),
+            Some("language/modules/discrete/combinatorics.emath"),
         ],
         packages: &["core::graphs", "core::artifact", "core::host", "cs::laws"],
     },
@@ -254,12 +254,12 @@ pub const SEED: [DomainSeed; 12] = [
         label: "classical mechanics laws, special relativity slice",
         ratings: ["FULL", "FULL", "FULL", "SYNTAX-ONLY", "MISSING", "FULL"],
         artifacts: [
-            Some("language/stdlib/laws/physics-classical.emath"),
-            Some("language/stdlib/laws/physics-classical.emath"),
-            Some("language/stdlib/laws/physics-classical.emath"),
+            Some("language/examples/applied/heat.emath"),
+            Some("language/examples/objects/heat-rod-sim.emath"),
+            Some("language/examples/applied/heat.emath"),
             Some("language/reference/expressions-equations-state-and-events.md"),
             NONE,
-            Some("language/stdlib/laws/physics-relativity.emath"),
+            Some("language/examples/objects/dae-rc-circuit.emath"),
         ],
         packages: &["physics::classical", "physics::relativity"],
     },

@@ -629,6 +629,8 @@ fn value_json(value: &Value) -> String {
             format!("[{}]", body.join(", "))
         }
         Value::Rat { num, den } => format!("{num}/{den}"),
+        Value::ExactInt(value) => format!("{value}"),
+        Value::ExactRat { num, den } => format!("{num}/{den}"),
         Value::Complex { re, im } => {
             if *im == 0.0 {
                 format_f64(*re)

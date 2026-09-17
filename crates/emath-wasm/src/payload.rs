@@ -285,16 +285,3 @@ pub(super) fn declaration_names(package: &emath_ir::SemanticPackage) -> Vec<Stri
     names
 }
 
-pub(super) fn crate_name_of(package: &emath_ir::SemanticPackage) -> String {
-    package
-        .identity
-        .as_ref()
-        .map(|identity| identity.name.clone())
-        .or_else(|| {
-            package
-                .declarations
-                .first()
-                .map(|declaration| declaration.name.leaf().to_string())
-        })
-        .unwrap_or_else(|| "package".to_string())
-}

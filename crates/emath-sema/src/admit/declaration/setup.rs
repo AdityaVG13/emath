@@ -7,8 +7,6 @@ use super::*;
 pub(super) fn admit_declaration_setup<'a>(
     decl: &'a emath_core::tree::Declaration,
     host_types: &BTreeSet<String>,
-    capability_cells: &[CapabilityCallBinding],
-    sibling_functions: &BTreeMap<String, SiblingFunction>,
 ) -> (
     Admitter,
     String,
@@ -20,8 +18,6 @@ pub(super) fn admit_declaration_setup<'a>(
 ) {
     let mut admitter = Admitter::new();
     admitter.host_types = host_types.clone();
-    admitter.capability_cells = capability_cells.to_vec();
-    admitter.sibling_functions = sibling_functions.clone();
     let kind_label = decl.as_kind.clone();
     if matches!(
         kind_label.as_str(),

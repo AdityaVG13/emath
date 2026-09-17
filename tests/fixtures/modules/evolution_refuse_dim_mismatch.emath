@@ -1,0 +1,38 @@
+# Module expected-refusal fixture: dimension mismatch between state
+# and rate refuses dim_mismatch (family admission), and mismatched
+# state combinations refuse the same code through the spaces
+# admission. Against the pre-family scalar wrappers there was no
+# vector state at all, so no dimension contract existed.
+# Expected outcome: exits nonzero with `dim_mismatch`.
+# Run: emath test tests/fixtures/modules/evolution_refuse_dim_mismatch.emath
+
+use algebra.linear.spaces
+use analysis.evolution.one_step
+
+emath function RateDimMismatchRefuses:
+    # Rate dimension 1 against state dimension 2.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        bad_rate = function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[0]]}
+        stepped = family_euler_step(bad_rate, 1 / 2, SimState: {t: 0 / 1, y: [1 / 1, 2 / 1]})
+        result = stepped.y
+    tests:
+        example <rate_dim_one_state_dim_two>:
+            given unused = 0
+            expect result == result
+
+emath function VecAddMismatchRefuses:
+    # Direct spaces admission: length 1 against length 2.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = vec_add([1 / 1], [1 / 1, 2 / 1])
+    tests:
+        example <add_length_one_against_two>:
+            given unused = 0
+            expect result == result

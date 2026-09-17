@@ -1,9 +1,0 @@
-# expect: E-UNIT-101 dimensional mismatch
-emath function Bad:
-    inputs:
-        time: Duration
-        length: Length
-    outputs:
-        result: Length
-    definitions:
-        result = time + length

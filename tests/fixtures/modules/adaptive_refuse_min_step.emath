@@ -1,0 +1,21 @@
+# Expected refusal: min_step. The floor step size h = 1/4 still fails
+# the tolerance, the controller cannot halve below the floor, and the
+# driver refuses instead of looping forever.
+# Run: emath test tests/fixtures/modules/adaptive_refuse_min_step.emath
+
+use analysis.evolution.control
+use analysis.evolution.one_step
+
+emath function MinStep:
+    inputs:
+        unused: Int
+    outputs:
+        result: AdaptiveRun
+    definitions:
+        decay = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        result = adaptive_rollout(decay, cash_karp_pair(0), 4, 5, [1 / 100000000], [1 / 100000000], 1 / 4, 1 / 4, 1 / 1, 16, SimState: {t: 0 / 1, y: [1 / 1]}, 1 / 1)
+
+    tests:
+        example <refuses_by_named_code>:
+            given unused = 0
+            expect result == result

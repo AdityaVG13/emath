@@ -1,0 +1,40 @@
+# Closure memo keys must distinguish structurally different closure
+# bodies. Two curried closures whose bodies differ only inside record
+# literals apply at identical arguments; the second must see its own
+# body, not the first's memoized result. Regression for the `(opaque)`
+# body encoding that once collapsed record-bearing bodies.
+
+emath object MemoState:
+    representation:
+        t: Rat
+        y: sequence(Rat)
+
+emath function MemoNeg:
+    inputs:
+        f: Rat -> MemoState -> MemoState
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        rated = f(0 / 1, MemoState: {t: 0 / 1, y: [x]})
+        result = rated.y[0]
+    tests:
+        example <neg>:
+            given f = function t in Rat: function s in MemoState: MemoState: {t: t, y: [0 / 1 - s.y[0]]}
+            given x = 1 / 1
+            expect result == 0 - 1 / 1
+
+emath function MemoId:
+    inputs:
+        f: Rat -> MemoState -> MemoState
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        rated = f(0 / 1, MemoState: {t: 0 / 1, y: [x]})
+        result = rated.y[0]
+    tests:
+        example <id>:
+            given f = function t in Rat: function s in MemoState: MemoState: {t: t, y: [s.y[0]]}
+            given x = 1 / 1
+            expect result == 1 / 1

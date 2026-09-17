@@ -24,7 +24,7 @@ mod kinds;
 pub(crate) mod kernels;
 mod rtcalls;
 
-pub(crate) use carrier::*;
+use carrier::*;
 pub(crate) use flat::*;
 pub(crate) use kinds::*;
 pub(crate) use kernels::element_tensor_expr;
@@ -71,10 +71,27 @@ pub(crate) fn op_expr(
         }
         EmirOp::IntegerQuotient(left, right) => {
             let kinds = value_kinds(program, names, states, input_kinds);
-            if kind_at(&kinds, *left) != ValueKind::I64 || kind_at(&kinds, *right) != ValueKind::I64 {
-                return Err(BackendError::UnsupportedType("quotient requires two Int operands".into()));
+            let left_k = kind_at(&kinds, *left);
+            let right_k = kind_at(&kinds, *right);
+            if left_k == ValueKind::I64 && right_k == ValueKind::I64 {
+                return Ok(checked_integer_result(Expr::MethodCall {
+                    receiver: Box::new(operand(program, *left)),
+                    method: "checked_div_euclid".to_string(),
+                    args: vec![operand(program, *right)],
+                }));
             }
-            Ok(map_runtime_result(format!("{}.checked_div({}).ok_or(\"E-INTEGER-QUOTIENT: zero divisor or i64 overflow\")", render_expr(&operand(program, *left)), render_expr(&operand(program, *right)))))
+            if matches!(left_k, ValueKind::I64 | ValueKind::ExactInt)
+                && matches!(right_k, ValueKind::I64 | ValueKind::ExactInt)
+            {
+                return Ok(map_runtime_result(format!(
+                    "{}.quot(&{}).map_err(|err| err.to_string())",
+                    render_expr(&exact_int_operand(program, *left, &kinds)),
+                    render_expr(&exact_int_operand(program, *right, &kinds))
+                )));
+            }
+            Err(BackendError::UnsupportedType(
+                "quotient requires two Int operands".into(),
+            ))
         }
         EmirOp::SameBits(left, right) => {
             let kinds = value_kinds(program, names, states, input_kinds);
@@ -82,6 +99,13 @@ pub(crate) fn op_expr(
         }
         EmirOp::ConstF64(bits) => Ok(Expr::F64(*bits)),
         EmirOp::ConstI64(value) => Ok(Expr::Int(*value)),
+        EmirOp::ConstExactInt(digits) => Ok(Expr::Raw(format!(
+            "emath_rt::ExactInt::parse(\"{digits}\").expect(\"const-exact-int digits\")"
+        ))),
+        EmirOp::ExactIntCall { name, args } => {
+            let kinds = value_kinds(program, names, states, input_kinds);
+            Ok(exact_int_call_expr(name, args, program, &kinds)?)
+        },
         EmirOp::ConstBigInt(digits) => Ok(Expr::Raw(format!(
             "emath_rt::UBig::parse_decimal(\"{digits}\").expect(\"const-bigint digits\")"
         ))),

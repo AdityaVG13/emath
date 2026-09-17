@@ -1,0 +1,92 @@
+# Constructor conformance: hazard-family labels from the image authority
+# capsules (language/spec/constructors/). Realized demand rows only.
+#
+# conformance: std.capability.scalar negative:div-zero
+# conformance: std.capability.sequence positive:index-length
+# conformance: std.capability.sequence negative:out-of-range-index
+# conformance: std.capability.sequence mutation:unchecked-index
+# conformance: std.capability.refusal mutation:refusal-as-value
+# conformance: std.kind.query negative:value-without-method
+# conformance: std.kind.query mutation:fake-success
+# conformance: std.capability.refusal positive:named-refusal
+#
+# The fault-demand rows use the diagnostic.code idiom: a faulting example
+# passes only when its expects demand that exact named fault, and a wrong
+# fault name fails the example.
+#
+# Check: emath check tests/fixtures/language/constructor_conformance.emath
+#        emath run tests/fixtures/language/constructor_conformance.emath
+
+emath function ScalarDivZeroFault:
+    inputs:
+        n: Int
+    outputs:
+        q: Rat
+    definitions:
+        q = n / 0
+    tests:
+        example <div_zero_faults>:
+            given n = 7
+            expect diagnostic.code == division_by_zero
+
+emath function RefusalIsNotAValue:
+    inputs:
+        n: Int
+    outputs:
+        r: Int
+    definitions:
+        r = constructor_refuse(quote(no_inverse))
+    tests:
+        example <refusal_faults_not_values>:
+            given n = 3
+            expect diagnostic.code == no_inverse
+
+emath function SequenceIndexBounds:
+    inputs:
+        i: Int
+    outputs:
+        r: Int
+    definitions:
+        xs = [1, 2, 3]
+        r = xs[i]
+    tests:
+        example <checked_index_in_range>:
+            given i = 2
+            expect r == 3
+        example <stored_length_starts_at_zero>:
+            given i = 0
+            expect r == 1
+        example <out_of_range_faults>:
+            given i = 5
+            expect diagnostic.code == invalid_index
+
+emath function NamedRefusalCarriesItsReason:
+    inputs:
+        n: Int
+    outputs:
+        r: Int
+    definitions:
+        r = constructor_refuse(quote(domain_empty))
+    tests:
+        example <named_refusal>:
+            given n = 1
+            expect diagnostic.code == domain_empty
+
+emath query QueryRefusesWithoutMethod:
+    inputs:
+        unused: Int
+    definitions:
+        result = 0
+    question:
+        target = result
+        scope = unused
+        assumptions = []
+    using:
+        method = missing
+    answer:
+        form = value
+        accept = unchecked
+    tests:
+        example <no_method_no_success>:
+            given unused = 0
+            expect diagnostic.code == method_unavailable

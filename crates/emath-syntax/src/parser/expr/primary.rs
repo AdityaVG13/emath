@@ -601,6 +601,13 @@ impl super::super::Parser {
                 })
             }
             other => {
+                // A keyword in expression identifier position is not an
+                // expression; name the one-edit identifier repair rather
+                // than the generic "expected an expression".
+                if let TokenKind::Keyword(keyword) = other {
+                    self.error_keyword_as_ident(keyword);
+                    return None;
+                }
                 // F2: a NEWLINE after a binary
                 // operator is a hanging infix, not a statement boundary;
                 // teach the bracket idiom instead of a bare type error.

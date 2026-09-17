@@ -1,0 +1,28 @@
+# Module expected-refusal fixture: the unique-identifier request under
+# nonidentifiability. From rest (0,0) all 17 coefficients fit exactly,
+# so fit_unique refuses non_identifiable instead of returning a fake
+# unique answer (the feasible set is the companion response, see
+# fitting_nonidentifiable_set.emath).
+# Expected outcome: exits nonzero with `non_identifiable`.
+# Run: emath test tests/fixtures/modules/fitting_refuse_nonidentifiable.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use search.fitting
+
+emath function NonidentifiableRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: FitCandidate
+    definitions:
+        fam = function c in Rat: function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], 0 / 1 - s.y[0] - c * s.y[1]]}
+        z0 = SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+        zdata = rollout_trace(fam(1 / 2), euler_tableau(0), 1, 1 / 8, 16, z0)
+        score = function k in Int: sse_eval(fam, 0, k / 8, zdata, z0, 1 / 8, 16)
+        param_of = function k in Int: k / 8
+        result = fit_unique(domain_list(0, 16), score, param_of, 0, 1, 0, 1)
+    tests:
+        example <nonidentifiable>:
+            given unused = 0
+            expect result == result

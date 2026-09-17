@@ -1,0 +1,7 @@
+# expect: E-KIND-GONE
+# conformance: std.world.reference negative:math-world-catalog
+# A catalog verb is not a second language: world contents are ordinary
+# declarations, not a catalog kind.
+emath catalog StdWorld:
+    entries:
+        math: Int

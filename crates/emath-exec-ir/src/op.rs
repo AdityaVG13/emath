@@ -12,6 +12,8 @@ pub enum EmirOp {
     ConstF64(u64),
     ConstI64(i64),
     ConstBigInt(String),
+    /// Signed arbitrary-precision integer decimal (constructor ExactInt).
+    ConstExactInt(String),
     ConstText(String),
     ConstComplex(f64, f64),
     ConstBool(bool),
@@ -30,8 +32,10 @@ pub enum EmirOp {
     ToInt(EmirValue),
     /// Convert a numeric scalar to binary64 without applying arithmetic.
     ToF64(EmirValue),
-    /// Truncating signed integer quotient; rejects zero divisors and overflow.
+    /// Euclidean signed integer quotient; rejects zero divisors.
     IntegerQuotient(EmirValue, EmirValue),
+    /// Generic exact-integer machine call (`quot`, `rem`, `root`, `gcd`, ...).
+    ExactIntCall { name: String, args: Vec<EmirValue> },
     /// Binary64 representation equality, including signed zero and NaN payloads.
     SameBits(EmirValue, EmirValue),
     UnaryBuiltin(BuiltinId, EmirValue),

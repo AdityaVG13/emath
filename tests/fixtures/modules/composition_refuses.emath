@@ -1,0 +1,79 @@
+# Composition refusal fixtures:
+#
+# Refusal-fixture convention (t19/events style): each case below
+# REFUSES by name; its "failed <name> -- <message>" line IS the
+# expected signature. The file is authored failure-first — the first
+# run fails at admission (unknown module) before the module exists.
+#
+# Ported refusal semantics:
+#   non_separable_acceleration — the museum's two-momenta probe
+#       (implicit.rs): an acceleration that depends on p is not the
+#       separable carrier `q' = v, v' = a(q)`; symplectic integrators
+#       preserve structure only for structure-preserving problems.
+#   non_separable_carrier — the museum's exactly-two-states gate.
+#   non_advancing_step — E-ODE-003: a zero step must never return the
+#       input as an integrated value.
+#   negative_step_non_reversible — api.rs: negative dt is legal ONLY
+#       on the time-reversible symplectic path (velocity Verlet);
+#       every other path is forward-only. The damped composition is
+#       dissipative and not reversible: backward steps refuse.
+
+use analysis.evolution.composition
+
+emath function case_non_separable_acceleration:
+    # a(q, p) = -q - p depends on p: probed at p and p + 1 the values
+    # differ, so the splitting is invalid.
+    inputs:
+        unused: Int
+    outputs:
+        result: SimState
+    definitions:
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q - p
+        result = verlet_step(a, 1 / 2, SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]})
+    tests:
+        example <p_dependent_acceleration_refuses>:
+            given unused = 0
+            expect result == SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+
+emath function case_non_separable_carrier:
+    # A three-component state is not the (q, p) carrier.
+    inputs:
+        unused: Int
+    outputs:
+        result: SimState
+    definitions:
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q
+        result = verlet_step(a, 1 / 2, SimState: {t: 0 / 1, y: [1 / 1, 0 / 1, 0 / 1]})
+    tests:
+        example <three_component_state_refuses>:
+            given unused = 0
+            expect result == SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+
+emath function case_non_advancing_step:
+    inputs:
+        unused: Int
+    outputs:
+        result: SimState
+    definitions:
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q
+        result = verlet_step(a, 0 / 1, SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]})
+    tests:
+        example <zero_step_refuses>:
+            given unused = 0
+            expect result == SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+
+emath function case_negative_step_non_reversible:
+    # Backward steps on the DISSIPATIVE composition refuse: cooling by
+    # (1 - c*h) is not inverted by (1 + c*h) — dissipation has no time
+    # reversal, and receipts must not conflate the two contracts.
+    inputs:
+        unused: Int
+    outputs:
+        result: SimState
+    definitions:
+        a = function q in Rat: function p in Rat: 0 - 1 / 1 * q
+        result = damped_step(a, 1 / 5, 0 - 1 / 2, SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]})
+    tests:
+        example <backward_damped_refuses>:
+            given unused = 0
+            expect result == SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}

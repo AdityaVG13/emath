@@ -1,0 +1,15 @@
+# floor_root of 2^300. A language binary search on [0, n+1) native-aborts
+# (~150 VM frames). Machine int_root does not.
+use analysis.powers
+
+emath function WideRoot:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = floor_root(2037035976334486086268445688409378161051468393665936250636140449354381299763336706183397376, 2)
+    tests:
+        example <sqrt_two_to_three_hundred>:
+            given unused = 0
+            expect result == 1427247692705959881058285969449495136382746624

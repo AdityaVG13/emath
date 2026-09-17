@@ -1,0 +1,39 @@
+# Module acceptance fixture: museum-contract equivalence for the
+# Cash-Karp port. The Stage 0 extraction (runner/simulate rk45) packs
+# the 5th-order update over FOUR rates (k1,k3,k4,k6) and the 4th-order
+# update over FIVE (k1,k3,k4,k5,k6): asserted as the zero pattern of
+# the pair data. Derivation evidence (exact, not regression): the
+# four-rate set satisfies the order-5 chain and bush conditions and
+# the halving identity dev5(1) == 64*dev5(1/2) on y' = -y; the
+# five-rate set is genuinely order 4 (dev4(1) != 64*dev4(1/2)); both
+# carry complete rooted-tree order-4 evidence.
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/modules/adaptive_cash_karp_equivalence.emath
+
+use analysis.evolution.control
+use analysis.evolution.one_step
+
+emath function Equivalence:
+    inputs:
+        unused: Int
+    outputs:
+        four_rate_is_advance: Bool
+        advance_order5: Bool
+        reference_genuine_order4: Bool
+        both_rooted_tree_order4: Bool
+    definitions:
+        pair = cash_karp_pair(0)
+        four_rate_is_advance = pair.b[1] == 0 / 1 and pair.b[4] == 0 / 1 and pair.b_hat[1] == 0 / 1 and pair.b_hat[4] != 0 / 1
+        deriv = cash_karp_derivation(0)
+        advance_order5 = deriv.advance_order5
+        reference_genuine_order4 = deriv.reference_genuine_order4
+        both_rooted_tree_order4 = deriv.advance_rooted_tree_order4 and deriv.reference_rooted_tree_order4
+    tests:
+        example <museum_packing_contract>:
+            given unused = 0
+            expect four_rate_is_advance == true
+            expect both_rooted_tree_order4 == true
+        example <derived_orders>:
+            given unused = 0
+            expect advance_order5 == true
+            expect reference_genuine_order4 == true

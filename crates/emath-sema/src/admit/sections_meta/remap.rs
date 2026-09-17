@@ -109,9 +109,6 @@ pub(super) fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset
 pub(super) fn remap_ids(
     declaration: &mut emath_ir::Declaration,
     tests: &mut [emath_ir::constructor::TestCase],
-    residuals: &mut [ModelResidual],
-    events: &mut [EventDecl],
-    transitions: &mut [TransitionDecl],
     expr_offset: u32,
     type_offset: u32,
 ) {
@@ -158,8 +155,7 @@ pub(super) fn remap_ids(
             remap_type(id);
         }
     }
-    // Evidence claims: no ExprId fields, only string metadata
-    // Constructors
+    // Test cases: given bindings and the expected value.
     for test in tests.iter_mut() {
         for (_, id) in &mut test.given {
             remap_expr(id);
@@ -168,36 +164,4 @@ pub(super) fn remap_ids(
             remap_expr(id);
         }
     }
-    // Model residuals
-    for residual in residuals.iter_mut() {
-        remap_expr(&mut residual.expr);
-    }
-    // Hybrid event rules (ch7): condition and action
-    // expressions live in the same expression arena.
-    for event in events.iter_mut() {
-        remap_expr(&mut event.condition);
-        remap_expr(&mut event.action.expr);
-    }
-    // Hybrid transition rules (ch7): each action's
-    // expression lives in the same expression arena.
-    for transition in transitions.iter_mut() {
-        for action in &mut transition.actions {
-            remap_expr(&mut action.expr);
-        }
-    }
-}
-
-pub(super) fn host_imported_types(imports: &[ImportEntry]) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    for import in imports {
-        if import.path.first().map(String::as_str) != Some("host") {
-            continue;
-        }
-        if let ImportSelection::Named(pairs) = &import.selection {
-            for (name, alias) in pairs {
-                names.insert(alias.clone().unwrap_or_else(|| name.clone()));
-            }
-        }
-    }
-    names
 }

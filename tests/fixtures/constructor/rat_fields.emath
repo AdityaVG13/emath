@@ -1,0 +1,15 @@
+emath function Parts:
+    inputs:
+        unused: Int
+    outputs:
+        n: Int
+        d: Int
+    definitions:
+        r = 6 / 4
+        n = r.numer
+        d = r.denom
+    tests:
+        example <reduced_pair>:
+            given unused = 0
+            expect n == 3
+            expect d == 2

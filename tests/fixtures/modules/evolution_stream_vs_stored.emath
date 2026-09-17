@@ -1,0 +1,84 @@
+# Module acceptance fixture: the streaming fold and the stored-
+# trajectory fold agree exactly on the same rollout. Euler decay,
+# h = 1/4, n = 3 from y0 = 1: states 3/4, 9/16, 27/64; their sum is
+# 111/64 exactly. One objective g over SimState serves both carriers:
+# trace rows [t, y..] are rehydrated to SimState by row_state, so the
+# same authored function is applied to both fold paths.
+# Run: emath test tests/fixtures/modules/evolution_stream_vs_stored.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use algebra.linear.spaces
+
+emath function FoldsAgree:
+    inputs:
+        unused: Int
+    outputs:
+        streamed: Rat
+        from_trace: Rat
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        s0 = SimState: {t: 0 / 1, y: [1 / 1]}
+        g_state = function s in SimState: s.y[0]
+        streamed = rollout_fold(decay_f, euler_tableau(0), 1, 1 / 4, 3, s0, g_state, 0 / 1)
+        trace = rollout_trace(decay_f, euler_tableau(0), 1, 1 / 4, 3, s0)
+        from_trace = trace_sum(trace, g_state, 1)
+    tests:
+        example <exact_agreement>:
+            given unused = 0
+            expect streamed == 111 / 64
+            expect from_trace == 111 / 64
+            expect streamed == from_trace
+
+emath function trace_sum:
+    # Sum the state objective over trace rows from index `from` on
+    # (row 0 is the initial state; the fold sees successor states only).
+    # Rows are rehydrated to SimState so the objective is the same
+    # authored function the streaming fold used.
+    inputs:
+        trace: sequence(sequence(Rat))
+        g: SimState -> Rat
+        from: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = trace_sum_at(trace, g, from, length(trace) - 1, 0 / 1)
+    tests:
+        example <skips_initial>:
+            given trace = [[0 / 1, 1 / 1], [1 / 4, 3 / 4]]
+            given g = function s in SimState: s.y[0]
+            given from = 1
+            expect result == 3 / 4
+
+emath function trace_sum_at:
+    inputs:
+        trace: sequence(sequence(Rat))
+        g: SimState -> Rat
+        from: Int
+        i: Int
+        acc: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = if i < from: acc else: trace_sum_at(trace, g, from, i - 1, acc + g(row_state(trace[i])))
+    tests:
+        example <sums_tail_rows>:
+            given trace = [[0 / 1, 1 / 1], [1 / 4, 3 / 4], [1 / 2, 9 / 16]]
+            given g = function s in SimState: s.y[0]
+            given from = 1
+            given i = 2
+            given acc = 0 / 1
+            expect result == 21 / 16
+
+emath function row_state:
+    # Rehydrate a trace row [t, y_0, y_1, ...] into a SimState.
+    inputs:
+        row: sequence(Rat)
+    outputs:
+        result: SimState
+    definitions:
+        result = SimState: {t: row[0], y: seq_tail(row)}
+    tests:
+        example <roundtrip_row>:
+            given row = [1 / 4, 3 / 4]
+            expect result == SimState: {t: 1 / 4, y: [3 / 4]}

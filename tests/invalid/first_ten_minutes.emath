@@ -1,6 +1,11 @@
-# expect: E-TYPE-002 — a first-minute form that requires a hidden default is
-# refused: bare `sin` would need the compiler to guess
-# "treat the function as sin(x)" and `over 0..6.28` would need an ambient
-# range. The admitted spelling is `plot sin(x)` (see
-# tests/fixtures/language/intro/first-ten-minutes.emath).
-plot sin over 0..6.28
+# expect: E-TYPE-002
+# A first-minute form that needs a hidden default is refused: bare `sin`
+# would require the compiler to guess "treat the function as sin(x)".
+# No standard-image FeatureID or alias supplies it.
+emath function PlotSin:
+    inputs:
+        x: Float64
+    outputs:
+        y: Float64
+    definitions:
+        y = sin

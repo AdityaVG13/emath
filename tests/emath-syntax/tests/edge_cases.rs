@@ -1120,9 +1120,9 @@ emath function if:
         p.demand(
             "1",
             diags.errors().any(|e| {
-                e.code == "E-SYN-101"
+                e.code == "E-SYN-110"
                     && e.message
-                        .contains("keyword `if` cannot be used as an identifier")
+                        .contains("keyword `if` cannot be used as an identifier; rename it to `if_`")
             }),
             format!(
                 "keyword declaration name must refuse, got {:?}",
@@ -1153,9 +1153,9 @@ emath function F:
         p.demand(
             "1",
             diags.errors().any(|e| {
-                e.code == "E-SYN-101"
+                e.code == "E-SYN-110"
                     && e.message
-                        .contains("keyword `if` cannot be used as an identifier")
+                        .contains("keyword `if` cannot be used as an identifier; rename it to `if_`")
             }),
             format!(
                 "keyword field name must refuse, got {:?}",
@@ -1185,9 +1185,9 @@ emath function F:
         p.demand(
             "1",
             diags.errors().any(|e| {
-                e.code == "E-SYN-101"
+                e.code == "E-SYN-110"
                     && e.message
-                        .contains("keyword `if` cannot be used as an identifier")
+                        .contains("keyword `if` cannot be used as an identifier; rename it to `if_`")
             }),
             format!(
                 "keyword package segment must refuse, got {:?}",
@@ -1274,6 +1274,75 @@ emath function f() -> Float64:
             panic!("expected Binary, got {:?}", expr.kind);
         };
         p.eq("2", *op, BinaryOp::Mul);
+    });
+
+    probe.case("leading_operator_continuation_parses", |p| {
+        let f0 = p.failures().len();
+
+        // A definition whose right-hand side continues on the next line
+        // with a leading binary operator is a legal continuation.
+        let source = "\
+emath function Cont:
+    inputs:
+        a: Int
+        b: Int
+    outputs:
+        result: Int
+    definitions:
+        result = a
+            + b
+";
+        let (_tree, diags) = parse_str(source);
+        p.demand(
+            "1",
+            !diags.has_errors(),
+            format!(
+                "leading-operator continuation must parse, got {:?}",
+                diags
+                    .errors()
+                    .map(|e| (e.code, e.message.clone()))
+                    .collect::<Vec<_>>()
+            ),
+        );
+        if p.failures().len() != f0 {
+            return;
+        }
+    });
+
+    probe.case("keyword_field_and_expression_use_is_e_syn_110", |p| {
+        let f0 = p.failures().len();
+
+        // `over` is a reserved connector keyword; using it as a field
+        // name or an expression identifier refuses with the one-edit
+        // `over_` repair.
+        let source = "\
+emath function F:
+    inputs:
+        over: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = over
+";
+        let (_tree, diags) = parse_str(source);
+        let errors: Vec<_> = diags
+            .errors()
+            .filter(|e| e.code == "E-SYN-110" && e.message.contains("over_"))
+            .collect();
+        p.demand(
+            "1",
+            !errors.is_empty(),
+            format!(
+                "keyword `over` misuse must be E-SYN-110 naming `over_`, got {:?}",
+                diags
+                    .errors()
+                    .map(|e| (e.code, e.message.clone()))
+                    .collect::<Vec<_>>()
+            ),
+        );
+        if p.failures().len() != f0 {
+            return;
+        }
     });
 
     probe.finish();

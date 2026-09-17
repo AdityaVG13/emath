@@ -1,0 +1,35 @@
+# Module acceptance fixture: the E1 bounded inverse fit at full scale.
+# System x' = v, v' = -x - c*v; Euler observations at truth c = 1/2,
+# h = 1/8, 16 steps, initial state (1,0); domain c = k/8, k = 0..16.
+# The strict-improvement hillclimb from c = 0 accepts exactly
+# 0 -> 1/8 -> 1/4 -> 3/8 -> 1/2 with monotonically decreasing exact SSE
+# ending at exactly zero.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/fitting_exact_chain.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use search.fitting
+
+emath function ExactChain:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        fam = function c in Rat: function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], 0 / 1 - s.y[0] - c * s.y[1]]}
+        s0 = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        data_rows = rollout_trace(fam(1 / 2), euler_tableau(0), 1, 1 / 8, 16, s0)
+        score = function k in Int: sse_eval(fam, 0, k / 8, data_rows, s0, 1 / 8, 16)
+        param_of = function k in Int: k / 8
+        arch = hillclimb_archive(domain_list(0, 16), score, param_of, 0, 1, 0, 1)
+        a0 = arch[0]
+        a1 = arch[1]
+        a2 = arch[2]
+        a3 = arch[3]
+        a4 = arch[4]
+        result = length(arch) == 5 and a0.c == 0 / 1 and a1.c == 1 / 8 and a2.c == 1 / 4 and a3.c == 3 / 8 and a4.c == 1 / 2 and a0.score > a1.score and a1.score > a2.score and a2.score > a3.score and a3.score > a4.score and a4.score == 0 / 1 and a4.parent == 3 and a4.move == 1
+    tests:
+        example <chain_to_half>:
+            given unused = 0
+            expect result == true

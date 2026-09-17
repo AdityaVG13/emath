@@ -84,19 +84,9 @@ pub fn exactness_json_document(
     out.finish()
 }
 
-/// Stdout envelope for `emath plan --json`.
-/// `goals` is `[{kind, target}]` with `kind` = `GoalKind::as_str()`.
-pub fn plan_json_document(admitted: bool, goals: &[emath_ir::Goal], plans: u64) -> String {
-    let mut object = emath_artifact::JsonWriter::object();
-    object.string("command", "plan");
-    object.bool("admitted", admitted);
-    object.int("plans", plans);
-    object.objects("goals", &goal_json_rows(goals));
-    object.finish()
-}
-
 /// Stdout envelope for `emath agent plan`. Same `goals[{kind,target}]` as
-/// [`plan_json_document`]; unique keys so first-win parse sees the array.
+/// emath-cli's `plan_json_document` (`emath plan --json`); unique keys so
+/// first-win parse sees the array.
 pub fn agent_plan_json_document(admitted: bool, goals: &[emath_ir::Goal], plans: u64) -> String {
     let mut object = emath_artifact::JsonWriter::object();
     object.string("schema", "emath.agent");

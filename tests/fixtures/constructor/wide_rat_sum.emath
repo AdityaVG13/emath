@@ -1,0 +1,13 @@
+# Three 1/10^15 terms. Unreduced cross-products hit ~10^45, past i128.
+emath function TripleTiny:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        x = 1 / 1000000000000000
+        result = x + x + x
+    tests:
+        example <three_over_1e15>:
+            given unused = 0
+            expect result == 3 / 1000000000000000

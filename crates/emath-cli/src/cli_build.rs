@@ -74,7 +74,10 @@ fn merge_constructor_admit(source: &str, path: Option<&Path>, diagnostics: &mut 
 fn constructor_admit_code(code: &str) -> &'static str {
     match code {
         "E-KIND-GONE" => "E-KIND-GONE",
+        "E-PKG-050" => "E-PKG-050",
+        "E-USE-ADMISSION" => "E-USE-ADMISSION",
         "E-TYPE-002" | "unbound" => "E-TYPE-002",
+        "E-NAME-020" => "E-NAME-020",
         "E-TYPE-003" => "E-TYPE-003",
         "E-TYPE-010" | "type" => "E-TYPE-010",
         "E-SEC-101" => "E-SEC-101",
@@ -137,8 +140,6 @@ pub enum BuildRequest {
     Ready {
         spec: PathBuf,
         out: PathBuf,
-        verify: bool,
-        bin: Option<String>,
         dry_run: bool,
         json: bool,
     },
@@ -147,8 +148,6 @@ pub enum BuildRequest {
 pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
     let mut path = None;
     let mut out = None;
-    let mut verify = false;
-    let mut bin = None;
     let mut dry_run = false;
     let mut json = false;
     let mut index = 0;
@@ -160,14 +159,6 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
                     PathBuf::from(take_nonflag_value(args, &mut index)?),
                 )?;
             }
-            "--bin" => {
-                let value = take_nonflag_value(args, &mut index)?;
-                if !value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                    return None;
-                }
-                assign_once(&mut bin, value.to_string())?;
-            }
-            "--verify" => verify = true,
             "--dry-run" => dry_run = true,
             "--json" => json = true,
             other if other.starts_with('-') => return None,
@@ -182,22 +173,17 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
     Some(BuildRequest::Ready {
         spec,
         out,
-        verify,
-        bin,
         dry_run,
         json,
     })
 }
 
-/// `build <file> [--out <dir>] [--verify] [--bin <entrypoint>] [--dry-run] [--json]`
+/// `build <file> [--out <dir>] [--dry-run] [--json]`
 /// (default out: `target/emath` under the working directory).
-#[allow(unreachable_code, unused_variables)]
 pub fn build(request: BuildRequest) -> CliExit {
     let BuildRequest::Ready {
         spec,
         out,
-        verify,
-        bin,
         dry_run,
         json,
     } = request;
@@ -254,28 +240,14 @@ pub fn build(request: BuildRequest) -> CliExit {
             obj.string("package_id", &package_id.0);
             obj.string("crate", &crate_name);
             obj.string("target_dir", &out.display().to_string());
-            obj.bool("verify", verify);
-            if let Some(ref b) = bin {
-                obj.string("bin_entrypoint", b);
-            }
             println!("{}", obj.finish());
         } else {
             println!("dry-run: emath build `{}`", spec.display());
             println!("target directory: {}", out.display());
             println!("crate: {crate_name} (package {})", package_id.0);
-            if verify {
-                println!("verification: crate test gate enabled");
-            }
-            if let Some(ref b) = bin {
-                println!("entrypoint probe: {b}");
-            }
         }
         return EXIT_OK;
     }
-    let options = BuildOptions {
-        verify_generated_crate: verify,
-        bin_entrypoint: bin,
-    };
     if let Some(exit) = build_constructor_file(&spec, &out, json) {
         return exit;
     }
@@ -286,60 +258,6 @@ pub fn build(request: BuildRequest) -> CliExit {
         "E-KIND-GONE",
         "`emath build` emits constructor functions. Write `emath object`, `emath function`, or `emath query`.",
     );
-    match build_file(&spec, &out, options) {
-        Ok(report) => {
-            if json {
-                let mut object = emath_artifact::JsonWriter::object();
-                object.string("command", "build");
-                object.string("status", "ok");
-                object.string("artifact_id", &report.artifact_id.0);
-                object.string("package_id", &report.package_id.0);
-                object.string("crate", &report.crate_name);
-                object.string("artifact_dir", &report.artifact_dir.display().to_string());
-                if let Some(probe) = &report.probe_binary {
-                    object.string("probe_binary", &probe.display().to_string());
-                }
-                object.strings("plan_ids", &report.plan_ids);
-                object.strings("exports", &report.exports);
-                println!("{}", object.finish());
-            } else {
-                println!(
-                    "artifact {} (crate {}) → {}",
-                    report.artifact_id.0,
-                    report.crate_name,
-                    report.artifact_dir.display()
-                );
-                for assumption in &report.assumptions {
-                    println!("  assumption: {assumption}");
-                }
-                if let Some(probe) = &report.probe_binary {
-                    println!("compiled-probe → {}", probe.display());
-                }
-            }
-            EXIT_OK
-        }
-        Err(error) => {
-            let text = error.to_string();
-            eprintln!("error: {text}");
-            if json {
-                let (code, message) = if text.starts_with("cannot read spec:") {
-                    ("E-PKG-080", text.as_str())
-                } else {
-                    split_error_code(&text).unwrap_or(("error", text.as_str()))
-                };
-                print_json_diagnostics(
-                    "build",
-                    false,
-                    &[json_diagnostic_entry(code, "error", message)],
-                );
-            }
-            if text.contains("admission refused") {
-                EXIT_REFUSED
-            } else {
-                EXIT_USAGE
-            }
-        }
-    }
 }
 
 /// Plan inspections for `emath explain <file>` / `--json`.
@@ -593,6 +511,11 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
     let mut rust = String::from("#![forbid(unsafe_code)]\n\n");
     let mut runnable = true;
     let mut unresolved = Vec::new();
+    // One runnable entry per crate (Phase 1): a second runnable
+    // function would emit a second `pub fn entry` into the same
+    // lib.rs — a duplicate symbol the crate could never compile.
+    // Not-runnable siblings emit as comments and never count.
+    let mut entries = 0usize;
     for name in &functions {
         match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, name) {
             Ok(lowered) => {
@@ -607,6 +530,18 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
                 match emath_rust_backend::emit_constructor_program(&lowered.program, &lowered.inputs)
                 {
                     Ok(body) => {
+                        entries += 1;
+                        if entries > 1 {
+                            return Some(refuse_coded(
+                                "build",
+                                json,
+                                EXIT_ADMISSION,
+                                "E-CODEGEN-013",
+                                &format!(
+                                    "`emath build` emits one entry per crate (Phase 1): `{name}` is a second runnable function in this file. Split the file into one `emath function` per file."
+                                ),
+                            ));
+                        }
                         rust.push_str(&format!("// function `{name}`\n"));
                         rust.push_str(&body);
                         rust.push('\n');

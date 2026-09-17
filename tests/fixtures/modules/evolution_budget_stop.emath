@@ -1,0 +1,37 @@
+# Module expected-refusal fixture: the authored step budget is a
+# contract. t_end = 2 needs 4 steps of h = 1/2; max_steps = 1 stops
+# the run with the named refusal code recorded on the result path
+# (complete = false, accepted_t = 1/2, attempted_t = 1) — never the
+# requested final time.
+# Expected outcome: the test example fails with `step_budget_exhausted`
+# only when the budget guard is dropped (mutation check b); the
+# completed-contract assertions here hold on the unmutated family.
+# Run: emath test tests/fixtures/modules/evolution_budget_stop.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use analysis.evolution.control
+
+emath function BudgetStopReported:
+    inputs:
+        unused: Int
+    outputs:
+        complete: Bool
+        accepted_t: Rat
+        attempted_t: Rat
+        n_steps: Int
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        rolled = rollout_to(decay_f, euler_tableau(0), 1, 1 / 2, 1, 2 / 1, SimState: {t: 0 / 1, y: [1 / 1]}, 1)
+        complete = rolled.complete
+        accepted_t = rolled.accepted_t
+        attempted_t = rolled.attempted_t
+        n_steps = rolled.n_steps
+    tests:
+        example <stops_at_budget_not_target>:
+            given unused = 0
+            expect complete == false
+            expect accepted_t == 1 / 2
+            expect attempted_t == 1 / 1
+            expect n_steps == 1
+            expect step_budget_ok(2, 1) == false

@@ -1,0 +1,105 @@
+# Linear-systems fixtures: authored dense
+# solves — triangular substitution, elimination with zero-pivot swap,
+# singular-outcome refusal, ill-conditioning policy gate.
+#
+# Failure-first: authored BEFORE the module exists (first run:
+# E-USE-ADMISSION unbound import). Refusal cases follow the t19
+# convention: the `failed <name> -- mathematical method refused: <code>`
+# line IS the expected signature.
+
+use algebra.linear.systems
+
+emath function fixture_triangular_solves:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        low = forward_substitution([[2 / 1, 0 / 1], [1 / 1, 4 / 1]], [4 / 1, 6 / 1])
+        up = back_substitution([[2 / 1, 1 / 1], [0 / 1, 4 / 1]], [6 / 1, 4 / 1])
+        result = low == [2 / 1, 1 / 1] and up == [5 / 2, 1 / 1]
+    tests:
+        example <triangular_pins>:
+            given unused = 0
+            expect result == true
+
+emath function fixture_dense_solve:
+    # [[2,1],[1,3]] x = [3,5]: det 5; x = (4/5, 7/5) by hand.
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        x = solve_dense([[2 / 1, 1 / 1], [1 / 1, 3 / 1]], [3 / 1, 5 / 1], 0 / 1)
+        result = x == [4 / 5, 7 / 5]
+    tests:
+        example <dense_two_by_two>:
+            given unused = 0
+            expect result == true
+
+emath function fixture_pivot_swap:
+    # A zero pivot in column 0: elimination must swap rows, not divide
+    # by zero. [[0,1],[1,0]] x = [2,3] -> x = (3,2).
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        x = solve_dense([[0 / 1, 1 / 1], [1 / 1, 0 / 1]], [2 / 1, 3 / 1], 0 / 1)
+        result = x == [3 / 1, 2 / 1]
+    tests:
+        example <zero_pivot_swaps>:
+            given unused = 0
+            expect result == true
+
+emath function case_singular_refuses:
+    # [[1,2],[2,4]] is singular (row 2 = 2 x row 1): no nonzero pivot
+    # exists in column 1 after elimination; the solve refuses by name.
+    # A dropped singular-outcome refusal would return garbage here.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = solve_dense([[1 / 1, 2 / 1], [2 / 1, 4 / 1]], [1 / 1, 2 / 1], 0 / 1)
+    tests:
+        example <singular_refuses_by_name>:
+            given unused = 0
+            expect result == [0 / 1, 0 / 1]
+
+emath function case_ill_conditioned_refuses:
+    # Exact arithmetic needs no pivoting for stability; the pivot floor
+    # is a CALLER POLICY demanding margin. With floor 1/100 the pivot
+    # 1/1000 is below policy and the solve refuses by name.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = solve_dense([[1 / 1000, 1 / 1], [1 / 1, 1 / 1]], [1 / 1, 2 / 1], 1 / 100)
+    tests:
+        example <pivot_below_policy_refuses>:
+            given unused = 0
+            expect result == [0 / 1, 0 / 1]
+
+emath function fixture_ill_conditioned_allows_when_floor_zero:
+    # The same matrix with floor 0 solves EXACTLY (no float noise in
+    # exact arithmetic): det = 1/1000 - 1 = -999/1000;
+    # x = ((2 - 1)/det_ish...) — computed exactly by the module; the
+    # point is the receipt, not the hand value: it does NOT refuse.
+    inputs:
+        unused: Int
+    outputs:
+        refused: Bool
+        plausible: Bool
+    definitions:
+        x = solve_dense([[1 / 1000, 1 / 1], [1 / 1, 1 / 1]], [1 / 1, 2 / 1], 0 / 1)
+        # x = (1000/999, 1000/999·?) — verify by residual instead:
+        r0 = (1 / 1000) * x[0] + x[1] - 1 / 1
+        r1 = x[0] + x[1] - 2 / 1
+        refused = false
+        plausible = r0 == 0 / 1 and r1 == 0 / 1
+    tests:
+        example <floor_zero_solves_exact>:
+            given unused = 0
+            expect plausible == true

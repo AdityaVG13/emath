@@ -301,19 +301,24 @@ fn value_to_cvalue(
     use emath_exec_ir::constructor_layer::CValue;
     match (declared, value) {
         (Some("Int"), Value::F64(n))
-            if n.is_finite() && n.fract() == 0.0 && *n >= i128::MIN as f64 && *n <= i128::MAX as f64 =>
+            if n.is_finite()
+                && n.fract() == 0.0
+                && n.abs() <= 9_007_199_254_740_992.0 =>
         {
-            Ok(CValue::Int(*n as i128))
+            Ok(CValue::Int(emath_exec_ir::exact_int::ExactInt::from(
+                *n as i64,
+            )))
         }
-        (Some("Int"), Value::I64(n)) => Ok(CValue::Int(i128::from(*n))),
+        (Some("Int"), Value::I64(n)) => Ok(CValue::Int(emath_exec_ir::exact_int::ExactInt::from(*n))),
         (Some("Float64"), Value::F64(n)) => Ok(CValue::Float64(*n)),
         (_, Value::F64(n)) => Ok(CValue::Float64(*n)),
-        (_, Value::I64(n)) => Ok(CValue::Int(i128::from(*n))),
+        (_, Value::I64(n)) => Ok(CValue::Int(emath_exec_ir::exact_int::ExactInt::from(*n))),
         (_, Value::Bool(flag)) => Ok(CValue::Bool(*flag)),
-        (_, Value::Rat { num, den }) => Ok(CValue::Rat {
-            num: *num,
-            den: *den,
-        }),
+        (_, Value::Rat { num, den }) => emath_exec_ir::constructor_layer::exact_rat(
+            emath_exec_ir::exact_int::ExactInt::from(*num),
+            emath_exec_ir::exact_int::ExactInt::from(*den),
+        )
+        .map_err(|err| err.message),
         (_, Value::Vector(items)) => Ok(CValue::Sequence(
             items.iter().copied().map(CValue::Float64).collect(),
         )),

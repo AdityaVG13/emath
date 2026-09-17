@@ -1,0 +1,22 @@
+# Module acceptance fixture: a reset event that does not stop the
+# rollout. y' = 1 from y = 0; the guard y - 3/4 rises through 3/4 at
+# t = 3/4 (dyadic, exact); the reset adds 1; the rollout continues and
+# completes at t = 1 with y = 2 exactly.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/events_reset_continues.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.events
+
+emath function ResetContinues:
+    inputs:
+        unused: Int
+    outputs:
+        result: EventRun
+    definitions:
+        grow = function t in Rat: function s in SimState: SimState: {t: t, y: [1 / 1]}
+        result = event_rollout(grow, cash_karp_pair(0), 4, 5, [1 / 4], [1 / 4], 1 / 1, 1 / 4, 1 / 1, 8, 4, [Event: {guard: function t in Rat: function s in SimState: s.y[0] - 3 / 4, direction: 1, terminal: false, priority: 0, reset: function s in SimState: SimState: {t: s.t, y: [s.y[0] + 1 / 1]}}], SimState: {t: 0 / 1, y: [0 / 1]}, 1 / 1)
+    tests:
+        example <reset_then_complete_at_two>:
+            given unused = 0
+            expect result == EventRun: {t: 1 / 1, y: [2 / 1], complete: true, attempts_used: 2, rejections: 0, events_fired: 1, outcome: 0}

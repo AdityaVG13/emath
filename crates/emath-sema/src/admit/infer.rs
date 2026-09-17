@@ -3,7 +3,7 @@
 
 use super::Admitter;
 use emath_core::tree::Expr;
-use emath_ir::{check_compatible, Extent, TypeNode, Unit, UnitDim, UnitFamily};
+use emath_ir::{check_compatible, Extent, Unit, UnitDim, UnitFamily};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Infer {
@@ -52,9 +52,6 @@ pub(super) enum Infer {
     /// A datum, not a scalar; arithmetic on it is not admitted in this
     /// slice (evaluation is the named next one).
     Series,
-    /// A memoized linear recurrence / formal power series. Coefficients
-    /// are obtained explicitly through indexing or `coefficient`.
-    Sequence,
     /// An `Option<T>` carrier value (from an Option-typed declaration,
     /// option_some, or option_none). Intentionally element-INSENSITIVE at
     /// this inference layer: only the carrier shape is tracked, not the
@@ -99,10 +96,6 @@ impl Infer {
         } else {
             Self::quantity(unit.dims, unit.family, false)
         }
-    }
-
-    pub(super) fn from_dims(dims: UnitDim, family: UnitFamily) -> Self {
-        Self::quantity(dims, family, false)
     }
 
     pub(super) fn from_dims_affine(dims: UnitDim, family: UnitFamily, affine: bool) -> Self {
@@ -154,7 +147,6 @@ impl Infer {
             Self::Opaque => "opaque host value".into(),
             Self::HostDeferred => "host-deferred field".into(),
             Self::Series => "Series".into(),
-            Self::Sequence => "Sequence".into(),
             Self::OptionCarrier => "Option".into(),
             Self::ResultCarrier => "Result".into(),
         }
@@ -209,44 +201,6 @@ pub(super) enum NumericCombine {
     Sub,
     Mul,
     Div,
-}
-
-pub(super) fn infer_from_node(node: &TypeNode) -> Infer {
-    match node {
-        TypeNode::Bool => Infer::Bool,
-        TypeNode::Other(name) if name.0 == "Text" => Infer::Text,
-        TypeNode::Nat => Infer::Nat,
-        TypeNode::Int => Infer::Int,
-        TypeNode::Complex(_) => Infer::Complex,
-        TypeNode::Rational => Infer::Rat,
-        TypeNode::BigInt => Infer::BigInt,
-        TypeNode::Set(element) => Infer::Set(Box::new(infer_from_node(element))),
-        TypeNode::Record(name) => Infer::Record(name.0.clone()),
-        TypeNode::Vector { element, extent } => Infer::Vector {
-            extent: extent.clone(),
-            element: Some(Box::new(infer_from_node(element))),
-        },
-        TypeNode::Matrix { rows, cols, .. } => Infer::Matrix {
-            rows: rows.clone(),
-            cols: cols.clone(),
-        },
-        TypeNode::Tensor { shape, .. } => Infer::Tensor {
-            shape: shape.clone(),
-        },
-        TypeNode::UnitRef { dims, family, .. } => Infer::from_dims(*dims, *family),
-        TypeNode::Refinement { base, .. } | TypeNode::Interval(base) => infer_from_node(base),
-        TypeNode::Opaque { .. } => Infer::Opaque,
-        TypeNode::Series { .. } => Infer::Series,
-        // Composite carriers:
-        // Option/Result map to their carrier Inference so constructors
-        // and predicates flow through the generic builtin-call path. The
-        // prime field is Int-backed (exact i64 modular arithmetic), never
-        // F64, per the spec.
-        TypeNode::OptionType(_) => Infer::OptionCarrier,
-        TypeNode::Result { .. } => Infer::ResultCarrier,
-        TypeNode::FieldPrime { .. } => Infer::Int,
-        _ => Infer::F64,
-    }
 }
 
 pub(super) fn extents_compatible(got: Option<&Extent>, declared: Option<&Extent>) -> bool {
@@ -322,7 +276,6 @@ pub(super) fn infer_conforms(got: &Infer, declared: &Infer) -> bool {
         | (Infer::BigInt, Infer::BigInt)
         | (Infer::Opaque, Infer::Opaque)
         | (Infer::Series, Infer::Series)
-        | (Infer::Sequence, Infer::Sequence)
         // Carriers conform carrier-to-carrier. Element-insensitive by
         // design (see the enum docs): `Infer::OptionCarrier` conforms to
         // any Option carrier regardless of payload type, matching the

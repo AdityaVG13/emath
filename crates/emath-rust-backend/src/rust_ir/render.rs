@@ -702,11 +702,13 @@ pub fn render_expr(expr: &Expr) -> String {
             args,
         } => {
             let args = args.iter().map(render_expr).collect::<Vec<_>>().join(", ");
-            format!(
-                "({}.{}({args}))",
-                render_expr(receiver),
-                escape_ident(method)
-            )
+            // A method call is a primary expression: it binds tighter
+            // than unary, binary, cast, and range operators in every
+            // consumer position, so no outer paren is needed. Wrapping
+            // every call stacked redundant layers
+            // (`(((a).checked_add((b))).expect(..))`); the Pow arm keeps
+            // its own receiver wrap for cast/compound operands.
+            format!("{}.{}({args})", render_expr(receiver), escape_ident(method))
         }
         Expr::Bin { op, left, right } => {
             if *op == BinOp::Pow {

@@ -102,6 +102,19 @@ impl super::Parser {
                 let (head, argument) = self.parse_command_tail(vec!["on".to_string()])?;
                 Some(self.stmt(start, StmtKind::Command { head, argument }))
             }
+            // `keyword:` / `keyword =` in a section field position is a
+            // reserved word used as a field or binding name (e.g.
+            // `over: Rat` under `inputs:`), not a command head. Refuse
+            // with the one-edit identifier repair. Grammar arms that
+            // legitimately lead with a keyword (`invariant:`, `on X:`)
+            // are matched above this arm.
+            TokenKind::Keyword(keyword)
+                if matches!(self.peek_at(1), TokenKind::Colon | TokenKind::Eq) =>
+            {
+                self.error_keyword_as_ident(keyword);
+                self.skip_to_line_end();
+                None
+            }
             TokenKind::Keyword(
                 Keyword::Where
                 | Keyword::Over

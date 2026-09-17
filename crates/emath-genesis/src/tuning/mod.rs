@@ -18,7 +18,7 @@ mod calibrate;
 mod codec;
 mod model;
 
-pub use apply::*;
+use apply::*;
 pub use calibrate::*;
-pub use codec::*;
+use codec::*;
 pub use model::*;

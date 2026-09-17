@@ -1,0 +1,39 @@
+# Module acceptance fixture: guards fire over ACCEPTED segments only.
+# y' = -y, y0 = 1, target 1, tolerance 1/1000000: the h = 1 and h = 1/2
+# attempts REJECT, the first accepted segment is [0, 1/4], and the
+# falling guard y - 1/2 fires inside the third accepted segment with
+# the event time in the certified window (2/3, 7/10) — ln(2) = 0.6931.
+# (Mutation check target: evaluating guards on attempted segments
+# fires inside the rejected h = 1 attempt at t ~ 0.57, outside the
+# asserted window, and the fixture fails.)
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/events_accepted_segments_only.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.events
+
+emath function AcceptedOnly:
+    inputs:
+        unused: Int
+    outputs:
+        t_ev: Rat
+        y_ev: Rat
+        outcome: Int
+        events_fired: Int
+    definitions:
+        decay = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        run = event_rollout(decay, cash_karp_pair(0), 4, 5, [1 / 1000000], [1 / 1000000], 1 / 1, 1 / 4, 1 / 1, 64, 4, [Event: {guard: function t in Rat: function s in SimState: s.y[0] - 1 / 2, direction: 0 - 1, terminal: true, priority: 0, reset: function s in SimState: s}], SimState: {t: 0 / 1, y: [1 / 1]}, 1 / 1)
+        t_ev = run.t
+        y_ev = run.y[0]
+        outcome = run.outcome
+        events_fired = run.events_fired
+    tests:
+        example <event_bracketed_on_accepted_segment>:
+            given unused = 0
+            expect outcome == 3
+            expect events_fired == 1
+            expect run.rejections >= 2
+            expect t_ev > 2 / 3
+            expect t_ev < 7 / 10
+            expect y_ev < 1 / 2 + 1 / 1000
+            expect y_ev > 1 / 2 - 1 / 1000

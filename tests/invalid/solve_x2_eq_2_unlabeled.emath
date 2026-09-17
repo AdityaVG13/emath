@@ -1,2 +1,0 @@
-# expect: E-SYN-151 unlabeled numeric root is not the unique solution
-solve x^2 = 2 uniquely 1.41421356237

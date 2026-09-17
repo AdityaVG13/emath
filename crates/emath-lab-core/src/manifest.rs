@@ -6,8 +6,7 @@
 //! with canonical encoding (`lab:...`) and deterministic canonical JSON.
 
 use crate::error::LabError;
-use crate::json::{self, JsonValue};
-use crate::stats::StatisticalProtocol;
+use crate::json;
 use emath_core::{ContentId, fnv1a64_bytes};
 
 mod model;

@@ -192,13 +192,6 @@ pub fn category_check_status(dom: &[f64], cod: &[f64], comp: &[Vec<f64>]) -> Cat
     }
 }
 
-/// Total check view (generated-code convention): TRUE only when the
-/// carrier certifies; every law failure reads false (the reference
-/// interpreter surfaces the typed E-CAT codes).
-pub fn category_check(dom: &[f64], cod: &[f64], comp: &[Vec<f64>]) -> bool {
-    matches!(category_check_status(dom, cod, comp), CategoryStatus::Valid)
-}
-
 /// Diagram commutativity over face path-pairs (status view): the
 /// carrier must certify first, then each face's two paths fold through
 /// the table; a face is commutative iff both composites are the SAME

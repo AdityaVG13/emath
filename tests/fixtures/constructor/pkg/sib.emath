@@ -1,0 +1,7 @@
+emath function twice:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = x + x

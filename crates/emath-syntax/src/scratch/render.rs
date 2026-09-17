@@ -168,12 +168,6 @@ pub(super) fn collect_names(text: &str, used: &mut Vec<String>, bound: &mut Vec<
     }
 }
 
-pub(super) fn first_free_ident(text: &str) -> Option<&str> {
-    scan_idents(text)
-        .into_iter()
-        .find(|ident| !is_builtin(ident))
-}
-
 pub(super) fn split_assignment(line: &str) -> Option<(&str, &str)> {
     let bytes = line.as_bytes();
     let mut index = 0;

@@ -1,35 +1,20 @@
 //! Recognition-level admission (corpus front-end).
 //!
-//! Package identity, `use` imports, declaration-kind admission, the
-//! custom-kind schema registry, and per-kind structural validation.
-//! Out-of-subset constructs get a typed refusal; body expressions are
-//! validated structurally (typed SIR lowering is the intent-compiler lane).
+//! Package identity and `use` imports. Out-of-subset constructs get a
+//! typed refusal; body expressions are validated structurally (typed
+//! SIR lowering is the intent-compiler lane).
 
 use crate::admit::SemanticTrace;
 use emath_core::Diagnostics;
-use emath_core::tree::{Expr, ExprKind, Item, StmtKind, UseTree};
+use emath_core::tree::{Item, UseTree};
 use emath_ir::{ImportEntry, ImportSelection};
-use std::collections::BTreeMap;
 
 /// Declaration kinds admitted by this front-end.
 pub const RECOGNIZED_KINDS: &[&str] = &["object", "function", "query"];
 
-mod capability;
-mod declaration;
-mod feature_capsule;
-mod reaction;
-mod schema;
-mod sections;
 mod text;
 
-pub use declaration::admit_declaration;
-pub(crate) use declaration::validate_kind_application;
-pub(super) use sections::*;
-
-pub use schema::{KindDef, SchemaRule};
 pub use text::{expr_text, type_text};
-
-use schema::*;
 
 // ---- admission ------------------------------------------------------------
 
@@ -40,56 +25,6 @@ pub struct V6FrontEnd {
     pub package_path: Option<Vec<String>>,
     /// Admitted imports in source order.
     pub imports: Vec<ImportEntry>,
-}
-
-/// `emath kind` is not a core kind. The custom-kind registry is empty.
-#[must_use]
-pub fn collect_kind_defs(tree: &emath_core::tree::SyntaxTree) -> BTreeMap<String, KindDef> {
-    let _ = tree;
-    BTreeMap::new()
-}
-
-#[allow(dead_code)]
-fn schema_rules_from_section(section: &emath_core::tree::Section) -> Vec<SchemaRule> {
-    let mut rules = Vec::new();
-    for stmt in &section.suite.statements {
-        match &stmt.kind {
-            StmtKind::Require(expr) => {
-                if let Some(head) = require_head(expr) {
-                    rules.push(head);
-                }
-            }
-            // `allow section <name>` → [.., "section", name].
-            StmtKind::Command { head, .. }
-                if head.first().map(String::as_str) == Some("allow")
-                    && head.get(1).map(String::as_str) == Some("section") =>
-            {
-                if let Some(name) = head.get(2) {
-                    rules.push(SchemaRule::AllowSection(name.clone()));
-                }
-            }
-            _ => {}
-        }
-    }
-    rules
-}
-
-/// Interpret a `require <expr>` schema statement as a rule.
-/// The parser folds `section input` / `exactly_one output` into a plain
-/// path expression (`["section", "input"]`).
-#[allow(dead_code)]
-fn require_head(expr: &Expr) -> Option<SchemaRule> {
-    let ExprKind::Path { segments, .. } = &expr.kind else {
-        return None;
-    };
-    match segments.first().map(String::as_str) {
-        Some("section") => segments.get(1).cloned().map(SchemaRule::RequireSection),
-        Some("exactly_one") => segments
-            .get(1)
-            .cloned()
-            .map(SchemaRule::RequireExactlyOneSection),
-        _ => None,
-    }
 }
 
 /// Admit the file-level front-end items (`package`, `use`).

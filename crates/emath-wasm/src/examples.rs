@@ -4,39 +4,6 @@
 /// ABI version carried by the `version` op.
 pub const ABI_VERSION: u32 = 1;
 
-/// Classic `hello-square` example served by the `examples` op.
-pub const HELLO_SQUARE: &str = include_str!("../../../tests/fixtures/language/intro/hello-square.emath");
-/// Stateful affine-scorer tutorial served by the `examples` op.
-pub const AFFINE_SCORER: &str =
-    include_str!("../../../tests/fixtures/language/intro/stateful-affine-scorer.emath");
-/// Sum-1-to-5 example served by the `examples` op.
-pub const SUM_ONE_TO_FIVE: &str =
-    include_str!("../../../tests/fixtures/language/intro/sum-one-to-five.emath");
-/// Tensor-face fixture served by the `examples` op.
-pub const TENSOR_FACE: &str =
-    include_str!("../../../tests/fixtures/language/intro/tensor-face.emath");
-/// Vector `given`/`expect` example served by the `examples` op.
-pub const VECTOR_GIVEN: &str =
-    include_str!("../../../tests/fixtures/language/intro/vector-given.emath");
-/// Factorial fixture served by the `examples` op.
-pub const FACTORIAL: &str = include_str!("../../../tests/fixtures/language/intro/factorial.emath");
-/// Range-sum fixture served by the `examples` op.
-pub const RANGE_SUM: &str = include_str!("../../../tests/fixtures/language/intro/range-sum.emath");
-/// Quantifier fixture served by the `examples` op.
-pub const FORALL_EXISTS: &str =
-    include_str!("../../../tests/fixtures/language/intro/forall-exists.emath");
-/// Integral fixture served by the `examples` op.
-pub const INTEGRAL: &str = include_str!("../../../tests/fixtures/language/intro/integral.emath");
-/// Autodiff example served by the `examples` op.
-pub const AUTODIFF: &str = include_str!("../../../language/examples/code/autodiff.emath");
-/// Equation-solving example served by the `examples` op.
-pub const SOLVE: &str = include_str!("../../../tests/fixtures/language/intro/solve.emath");
-/// Optimization example served by the `examples` op.
-pub const OPTIMIZE: &str = include_str!("../../../language/examples/functions/optimize.emath");
-/// Constrained-optimization fixture served by the `examples` op.
-pub const CONSTRAINED_OPT: &str =
-    include_str!("../../../tests/fixtures/language/intro/constrained-optimization.emath");
-
 /// Tutorial 1 source: quickstart and scratchpad.
 pub const TUTORIAL_01_QUICKSTART: &str = "\
 # Tutorial 1: Quickstart & Scratchpad
@@ -137,20 +104,3 @@ pub fn curated_examples() -> &'static [(&'static str, &'static str)] {
         ),
     ]
 }
-
-#[allow(dead_code)]
-const LEFTOVER_RECIPE_EXAMPLES: &[(&str, &str)] = &[
-    ("Stateful Scorer", AFFINE_SCORER),
-    ("Hello Square (Classic)", HELLO_SQUARE),
-    ("Sum 1 to 5", SUM_ONE_TO_FIVE),
-    ("Tensor Face", TENSOR_FACE),
-    ("Vector Given", VECTOR_GIVEN),
-    ("Factorial (inclusive 1..=n)", FACTORIAL),
-    ("Range Sum (variable-bound fold)", RANGE_SUM),
-    ("Forall / Exists (quantifier binders)", FORALL_EXISTS),
-    ("Integral (numerical integration)", INTEGRAL),
-    ("Autodiff (forward-mode derivative)", AUTODIFF),
-    ("Solve (Newton's method root-finding)", SOLVE),
-    ("Optimize (Newton on ∇f = 0)", OPTIMIZE),
-    ("Constrained optimization (penalty method)", CONSTRAINED_OPT),
-];

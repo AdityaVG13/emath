@@ -84,7 +84,7 @@ fn einsum_contract(args: &[Value]) -> Result<Value, String> {
         })?;
     match shape.as_slice() {
         [] => Ok(Value::F64(data.first().copied().unwrap_or(0.0))),
-        [len] => Ok(Value::Vector(data)),
+        [_] => Ok(Value::Vector(data)),
         [rows, cols] => Ok(Value::Matrix {
             rows: *rows,
             cols: *cols,

@@ -23,6 +23,6 @@ mod json;
 mod lock;
 mod model;
 
-pub use json::*;
+use json::*;
 pub use lock::*;
 pub use model::*;

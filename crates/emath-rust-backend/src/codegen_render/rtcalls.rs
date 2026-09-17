@@ -64,7 +64,7 @@ pub(crate) fn program_may_fault(program: &EmirProgram) -> bool {
         EmirOp::Branch { then_body, else_body, .. } => program_may_fault(then_body) || program_may_fault(else_body),
         EmirOp::CallFrame { .. } | EmirOp::CallSelf { .. } | EmirOp::DenseRepack { .. } | EmirOp::DenseValues(_)
         | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_)
-        | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) | EmirOp::ToInt(_) | EmirOp::IntegerQuotient(_, _) | EmirOp::CallProgram { .. } | EmirOp::CallScalarProgram { .. } | EmirOp::CallRealProgram { .. } | EmirOp::TryCallRealProgram { .. } => true,
+        | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) | EmirOp::ToInt(_) | EmirOp::IntegerQuotient(_, _) | EmirOp::ExactIntCall { .. } | EmirOp::CallProgram { .. } | EmirOp::CallScalarProgram { .. } | EmirOp::CallRealProgram { .. } | EmirOp::TryCallRealProgram { .. } => true,
         EmirOp::VectorIndex { .. }
         | EmirOp::MatrixCreate { .. }
         | EmirOp::MatrixRows(_)
@@ -225,6 +225,11 @@ pub(super) fn register_rust_ty(
     let op = &program.ops.get(value.0 as usize)?.0;
     match op {
         EmirOp::ConstI64(_) => Some("i64".to_string()),
+        EmirOp::ConstExactInt(_) => Some("emath_rt::ExactInt".to_string()),
+        EmirOp::ExactIntCall { name, .. } if name == "int_egcd" => {
+            Some("Vec<emath_rt::ExactInt>".to_string())
+        }
+        EmirOp::ExactIntCall { .. } => Some("emath_rt::ExactInt".to_string()),
         EmirOp::ConstF64(_) | EmirOp::SeriesSample { .. } => Some("f64".to_string()),
         EmirOp::ConstBool(_)
         | EmirOp::SetContains { .. }
@@ -251,6 +256,151 @@ pub(super) fn register_rust_ty(
 
 fn input_rust_ty(name: Option<&String>, input_kinds: &InputKinds) -> Option<String> {
     name.and_then(|name| input_kinds.get(name)).and_then(|kind| kind.rust_ty().ok()).map(|ty| crate::rust_ir::render::render_ty(&ty))
+}
+
+pub(super) fn exact_int_operand(
+    program: &EmirProgram,
+    value: EmirValue,
+    kinds: &[ValueKind],
+) -> Expr {
+    match kind_at(kinds, value) {
+        ValueKind::ExactInt => operand(program, value),
+        ValueKind::I64 => Expr::Raw(format!(
+            "emath_rt::ExactInt::from({})",
+            render_expr(&operand(program, value))
+        )),
+        _ => operand(program, value),
+    }
+}
+
+pub(super) fn exact_int_call_expr(
+    name: &str,
+    args: &[EmirValue],
+    program: &EmirProgram,
+    kinds: &[ValueKind],
+) -> Result<Expr, BackendError> {
+    let as_int = |index: usize| -> Result<String, BackendError> {
+        args.get(index)
+            .map(|arg| render_expr(&exact_int_operand(program, *arg, kinds)))
+            .ok_or_else(|| BackendError::UnsupportedType(format!("{name} argument count")))
+    };
+    let as_seq = |index: usize| -> Result<String, BackendError> {
+        let arg = args
+            .get(index)
+            .ok_or_else(|| BackendError::UnsupportedType(format!("{name} argument count")))?;
+        Ok(match kind_at(kinds, *arg) {
+            ValueKind::Vector(inner) if *inner == ValueKind::ExactInt => {
+                format!("({}).clone()", render_expr(&operand(program, *arg)))
+            }
+            _ => format!(
+                "({}).iter().cloned().map(emath_rt::ExactInt::from).collect::<Vec<_>>()",
+                render_expr(&operand(program, *arg))
+            ),
+        })
+    };
+    let code = match name {
+        "int_quot" => format!("{}.quot(&{}).map_err(|err| err.to_string())", as_int(0)?, as_int(1)?),
+        "int_rem" => format!(
+            "{}.rem_euclid(&{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_root" => format!(
+            "{}.floor_root(&{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_gcd" => format!(
+            "emath_rt::ExactInt::gcd(&{}, &{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_egcd" => format!(
+            "emath_rt::ExactInt::egcd(&{}, &{}).map(|(g, s, t)| vec![g, s, t]).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_binom" => format!(
+            "{}.binomial(&{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_fact" => format!("{}.factorial().map_err(|err| err.to_string())", as_int(0)?),
+        "int_double_fact" => format!(
+            "{}.double_factorial().map_err(|err| err.to_string())",
+            as_int(0)?
+        ),
+        "int_totient" => format!("{}.totient().map_err(|err| err.to_string())", as_int(0)?),
+        "int_modinv" => format!(
+            "{}.mod_inv(&{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_sqrt_mod" => format!(
+            "{}.sqrt_mod(&{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_rising" => format!(
+            "{}.rising(&{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_falling" => format!(
+            "{}.falling(&{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?
+        ),
+        "int_powmod" => format!(
+            "{}.pow_mod(&{}, &{}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int(1)?,
+            as_int(2)?
+        ),
+        "int_pow" => format!("{}.pow(&{}).map_err(|err| err.to_string())", as_int(0)?, as_int(1)?),
+        "int_sum" => format!(
+            "emath_rt::exact_int_sum(&{}).map_err(|err| err.to_string())",
+            as_seq(0)?
+        ),
+        "int_prod" => format!(
+            "emath_rt::exact_int_prod(&{}).map_err(|err| err.to_string())",
+            as_seq(0)?
+        ),
+        "int_sum_from" => format!(
+            "emath_rt::exact_int_sum_from(&{}, &{}).map_err(|err| err.to_string())",
+            as_seq(0)?,
+            as_int(1)?
+        ),
+        "int_prod_from" => format!(
+            "emath_rt::exact_int_prod_from(&{}, &{}).map_err(|err| err.to_string())",
+            as_seq(0)?,
+            as_int(1)?
+        ),
+        "int_hamming" => format!(
+            "emath_rt::exact_int_hamming(&{}, &{}).map_err(|err| err.to_string())",
+            as_seq(0)?,
+            as_seq(1)?
+        ),
+        "int_weighted_prod" => format!(
+            "emath_rt::exact_int_weighted_prod(&{}, &{}, &{}, &{}).map_err(|err| err.to_string())",
+            as_seq(0)?,
+            as_seq(1)?,
+            as_int(2)?,
+            as_int(3)?
+        ),
+        "int_poly_eval" => format!(
+            "emath_rt::exact_int_poly_eval(&{}, &{}, &{}).map_err(|err| err.to_string())",
+            as_seq(0)?,
+            as_int(1)?,
+            as_int(2)?
+        ),
+        other => {
+            return Err(BackendError::UnsupportedType(format!(
+                "unknown exact integer op `{other}`"
+            )));
+        }
+    };
+    Ok(map_runtime_result(code))
 }
 
 thread_local! { static LOCAL_STATE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }

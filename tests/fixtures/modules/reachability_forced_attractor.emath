@@ -1,0 +1,28 @@
+# Module acceptance fixture: the AND-OR forced attractor on the
+# 12-state reference game graph (ids A..L = 0..11; goal G = 6, dead end
+# L = 11; controllers A, C, E, H, I, K; adversaries B, D, F, J).
+# Least-fixed-point waves in iteration order: {G}, then {C, H}, then
+# {B, J}, then {A, E}; the forced region is exactly {A, B, C, E, G, H,
+# J}. Semantics the waves encode: the dead end L never wins (vacuity
+# guard); adversary D and F have paths but escapes (not forced);
+# controller H is forced despite its self-loop.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/reachability_forced_attractor.emath
+
+use discrete.reachability
+
+emath function ForcedAttractor:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        g = GameGraph: {succs: [[1, 11], [6, 2], [6], [6, 11], [3, 1], [5, 6], [], [7, 6], [3], [2, 7], [5, 3], []], controllers: [0, 2, 4, 7, 8, 10], goals: [6]}
+        waves = attractor_waves(g)
+        region = attractor_set(g)
+        table = outcome_table(g)
+        result = waves == [[6], [2, 7], [1, 9], [0, 4]] and region == [0, 1, 2, 4, 6, 7, 9] and table == [2, 2, 2, 1, 2, 1, 2, 2, 1, 2, 1, 0]
+    tests:
+        example <waves_region_outcomes>:
+            given unused = 0
+            expect result == true

@@ -1,0 +1,22 @@
+# Module expected-refusal fixture: a zero step is refused, never
+# silently an identity. The family refuses non_positive_step. Against
+# the pre-family scalar wrappers this program would NOT refuse (the
+# old modules returned y unchanged) — that gap is the failure-first
+# case this fixture closes.
+# Expected outcome: exits nonzero with `non_positive_step`.
+# Run: emath test tests/fixtures/modules/evolution_refuse_zero_step.emath
+
+use analysis.evolution.one_step
+
+emath function ZeroStepRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: SimState
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        result = family_euler_step(decay_f, 0 / 1, SimState: {t: 0 / 1, y: [1 / 1]})
+    tests:
+        example <zero_step>:
+            given unused = 0
+            expect result == result

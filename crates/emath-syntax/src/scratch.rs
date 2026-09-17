@@ -13,10 +13,10 @@ mod render;
 mod text;
 mod types;
 
-pub(super) use intent::*;
+use intent::*;
 pub use lower::*;
-pub(super) use render::*;
-pub(super) use text::*;
+use render::*;
+use text::*;
 pub use types::*;
 
 const SYNTH_DECL: &str = "Scratch";
@@ -43,8 +43,6 @@ const SECTION_HEADS: &[&str] = &[
     "tests",
     "transitions",
 ];
-
-const SOLVE_CANDIDATES: &str = "Real, Complex, modular, symbolic, numeric";
 
 const BUILTINS: &[&str] = &[
     "abs",

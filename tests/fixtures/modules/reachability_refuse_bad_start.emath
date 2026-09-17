@@ -1,0 +1,19 @@
+# Module expected-refusal fixture: a query start outside the state set
+# refuses bad_start.
+# Expected outcome: exits nonzero with `bad_start`.
+# Run: emath test tests/fixtures/modules/reachability_refuse_bad_start.emath
+
+use discrete.reachability
+
+emath function BadStartRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        g = GameGraph: {succs: [[1], []], controllers: [0], goals: [1]}
+        result = forward_reaches(g, 99)
+    tests:
+        example <start_out_of_range>:
+            given unused = 0
+            expect result == result

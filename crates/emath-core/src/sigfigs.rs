@@ -50,37 +50,6 @@ pub const E_SF_UNDER_REPORT: &str = "E-SF-UNDER-REPORT";
 /// sf-values in one precision context. A receipt, never a refusal.
 pub const E_SF_MIXED_KINDS: &str = "E-SF-MIXED-KINDS";
 
-/// Sig-fig attribute mode: `display` (record + round) or `enforce`
-/// (under-report = warning receipt).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SigFigMode {
-    Display,
-    Enforce,
-}
-
-/// A recorded `@significant_figures` spec.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SigFigSpec {
-    pub mode: SigFigMode,
-    pub count: u32,
-}
-
-impl SigFigSpec {
-    /// Enforce-mode check: a literal with fewer significant figures than
-    /// declared produces a warning receipt. More-or-equal sf is admitted.
-    #[must_use]
-    pub fn enforce_check(&self, literal_sf: u32) -> Option<PrecisionWarning> {
-        if self.mode == SigFigMode::Enforce && literal_sf < self.count {
-            Some(PrecisionWarning::UnderReported {
-                declared: self.count,
-                literal: literal_sf,
-            })
-        } else {
-            None
-        }
-    }
-}
-
 /// Precision warnings are receipts, never refusals: sig-figs are a display
 /// contract and mixing kinds is a communication hazard, not a math error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

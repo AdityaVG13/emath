@@ -32,6 +32,13 @@ pub enum Value {
     /// form: gcd-reduced with `den > 0`, so equality is componentwise.
     /// Built only from integer arithmetic — never from f64.
     Rat { num: i128, den: i128 },
+    /// Signed constructor integer that does not fit `i64`.
+    ExactInt(emath_rt::ExactInt),
+    /// Rational whose numerator or denominator does not fit `i128`.
+    ExactRat {
+        num: emath_rt::ExactInt,
+        den: emath_rt::ExactInt,
+    },
     /// Stage-2 big integer (emath-t63iz): exact NON-NEGATIVE field
     /// element with |F| < 2^256, produced by `ConstBigInt` and the six
     /// modular number-theory builtins when any operand is big. Never
@@ -112,6 +119,61 @@ impl PartialEq for Value {
         match (self, other) {
             (Self::F64(left), Self::F64(right)) => left.to_bits() == right.to_bits(),
             (Self::I64(left), Self::I64(right)) => left == right,
+            (Self::ExactInt(left), Self::ExactInt(right)) => left == right,
+            (Self::ExactInt(left), Self::I64(right)) => left == &emath_rt::ExactInt::from(*right),
+            (Self::I64(left), Self::ExactInt(right)) => emath_rt::ExactInt::from(*left) == *right,
+            (Self::ExactInt(left), Self::Rat { num, den })
+            | (Self::Rat { num, den }, Self::ExactInt(left)) => {
+                left.mul(&emath_rt::ExactInt::from(*den)).ok().as_ref()
+                    == Some(&emath_rt::ExactInt::from(*num))
+            }
+            (
+                Self::ExactInt(left),
+                Self::ExactRat {
+                    num: right_num,
+                    den: right_den,
+                },
+            )
+            | (
+                Self::ExactRat {
+                    num: right_num,
+                    den: right_den,
+                },
+                Self::ExactInt(left),
+            ) => left.mul(right_den).ok().as_ref() == Some(right_num),
+            (
+                Self::ExactRat {
+                    num: left_num,
+                    den: left_den,
+                },
+                Self::ExactRat {
+                    num: right_num,
+                    den: right_den,
+                },
+            ) => left_num == right_num && left_den == right_den,
+            (
+                Self::ExactRat {
+                    num: left_num,
+                    den: left_den,
+                },
+                Self::Rat {
+                    num: right_num,
+                    den: right_den,
+                },
+            )
+            | (
+                Self::Rat {
+                    num: right_num,
+                    den: right_den,
+                },
+                Self::ExactRat {
+                    num: left_num,
+                    den: left_den,
+                },
+            ) => {
+                left_num.mul(&emath_rt::ExactInt::from(*right_den)).ok()
+                    == emath_rt::ExactInt::from(*right_num).mul(left_den).ok()
+            }
             (Self::I64(left), Self::F64(right)) => emath_rt::eq_i64_f64(*left, *right),
             (Self::F64(left), Self::I64(right)) => emath_rt::eq_i64_f64(*right, *left),
             (Self::BigInt(left), Self::BigInt(right)) => left == right,
@@ -256,9 +318,11 @@ impl Value {
     /// widened. Int-typed registers stay `I64` until this conversion.
     #[must_use]
     pub fn as_real_f64(&self) -> Option<f64> {
-        match *self {
-            Self::F64(v) => Some(v),
-            Self::I64(v) => Some(v as f64),
+        match self {
+            Self::F64(v) => Some(*v),
+            Self::I64(v) => Some(*v as f64),
+            Self::ExactInt(v) => Some(v.to_f64()),
+            Self::ExactRat { num, den } => Some(num.to_f64() / den.to_f64()),
             _ => None,
         }
     }
@@ -269,6 +333,8 @@ impl fmt::Display for Value {
         match self {
             Self::F64(value) => f.write_str(&format_f64(*value)),
             Self::I64(value) => write!(f, "{value}"),
+            Self::ExactInt(value) => write!(f, "{value}"),
+            Self::ExactRat { num, den } => write!(f, "{num}/{den}"),
             Self::Bool(value) => write!(f, "{value}"),
             Self::Text(value) => f.write_str(value),
             Self::Series {
@@ -534,8 +600,8 @@ impl Value {
         use emath_core::JsonWriter;
         let mut out = JsonWriter::object();
         let kind = match self {
-            Self::I64(_) => "Int", Self::F64(_) => "Float64", Self::Bool(_) => "Bool",
-            Self::Rat { .. } => "Rat", Self::BigInt(_) => "BigInt", Self::BigVector(_) => "Vector<BigInt>",
+            Self::I64(_) => "Int", Self::ExactInt(_) => "Int", Self::F64(_) => "Float64", Self::Bool(_) => "Bool",
+            Self::Rat { .. } | Self::ExactRat { .. } => "Rat", Self::BigInt(_) => "BigInt", Self::BigVector(_) => "Vector<BigInt>",
             Self::Vector(_) => "Vector<Float64>", Self::Matrix { .. } => "Matrix<Float64>",
             Self::Tensor { .. } => "Tensor<Float64>", Self::Complex { .. } => "Complex",
             Self::Interval { .. } => "Interval<Float64>", Self::Text(_) => "Text", Self::Series { .. } => "Series",
@@ -582,7 +648,7 @@ impl Value {
                 out.objects("captures", &program.captures.iter().map(Self::json).collect::<Vec<_>>());
             }
             Self::DenseLayout(layout) => { out.string("layout", &format!("{layout:?}")); }
-            Self::I64(_) | Self::Bool(_) | Self::Text(_) | Self::BigInt(_) => {}
+            Self::I64(_) | Self::Bool(_) | Self::Text(_) | Self::BigInt(_) | Self::ExactInt(_) | Self::ExactRat { .. } => {}
         }
         out.finish()
     }

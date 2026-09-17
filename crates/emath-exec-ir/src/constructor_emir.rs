@@ -12,6 +12,8 @@ use emath_core::tree::{
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{DomainObligation, EmirOp, EmirProgram, EmirValue};
+use crate::constructor_layer::machine_int_basename;
+use crate::exact_int::ExactInt;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LoweredFunction {
@@ -307,6 +309,22 @@ impl Lowerer {
             let value = self.expr(&args[0])?;
             return Ok(self.push(EmirOp::VectorLength(value)));
         }
+        if let Some(op) = machine_int_basename(&called) {
+            let mut inputs = Vec::new();
+            for arg in args {
+                inputs.push(self.expr(arg)?);
+            }
+            return Ok(self.push(EmirOp::ExactIntCall {
+                name: op.to_string(),
+                args: inputs,
+            }));
+        }
+        if called == "constructor_refuse" {
+            return Err(
+                "constructor_refuse is an intentional refusal ABI; it is not emitted as a successful call"
+                    .into(),
+            );
+        }
         if called.starts_with("quote.") {
             return Err(format!("call is not yet emitted: {called}"));
         }
@@ -432,14 +450,11 @@ impl Lowerer {
 
     fn expr(&mut self, expr: &Expr) -> Result<EmirValue, String> {
         match &expr.kind {
-            ExprKind::Int(text) => {
-                let value = parse_i64(text)?;
-                Ok(self.push(EmirOp::ConstI64(value)))
-            }
+            ExprKind::Int(text) => Ok(self.push(const_exact_int(text)?)),
             ExprKind::Bool(value) => Ok(self.push(EmirOp::ConstBool(*value))),
             ExprKind::Rational { numer, denom } => {
-                let num = self.push(EmirOp::ConstI64(parse_i64(numer)?));
-                let den = self.push(EmirOp::ConstI64(parse_i64(denom)?));
+                let num = self.push(const_exact_int(numer)?);
+                let den = self.push(const_exact_int(denom)?);
                 self.obligations.push(DomainObligation::DivisionNonZero);
                 Ok(self.push(EmirOp::F64Div(num, den)))
             }
@@ -798,12 +813,6 @@ fn collect_called_names(expr: &Expr, out: &mut BTreeSet<String>) {
     }
 }
 
-fn parse_i64(text: &str) -> Result<i64, String> {
-    text.replace('_', "")
-        .parse::<i64>()
-        .map_err(|_| format!("integer `{text}` does not fit the emitted i64 carrier"))
-}
-
 fn section_fields(decl: &Declaration, name: &str) -> Vec<String> {
     let mut names = Vec::new();
     for section in decl.sections().filter(|section| section.name == name) {
@@ -876,13 +885,8 @@ pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate:
     use crate::interp::Value;
     match value {
         CValue::Bool(v) => Ok(Value::Bool(*v)),
-        CValue::Int(v) => i64::try_from(*v)
-            .map(Value::I64)
-            .map_err(|_| format!("Int `{v}` does not fit emitted i64")),
-        CValue::Rat { num, den } => Ok(Value::Rat {
-            num: *num,
-            den: *den,
-        }),
+        CValue::Int(v) => Ok(value_from_exact(v.clone())),
+        CValue::Rat { num, den } => Ok(value_from_rat(num.clone(), den.clone())),
         CValue::Float64(v) => Ok(Value::F64(*v)),
         CValue::Sequence(items) => {
             let converted = items
@@ -905,14 +909,91 @@ pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate:
     }
 }
 
-pub fn values_equal(left: &crate::interp::Value, right: &crate::constructor_layer::CValue) -> bool {
-    cvalue_to_emir(right).is_ok_and(|converted| emir_values_equal(left, &converted))
+pub fn values_equal(
+    left: &crate::interp::Value,
+    right: &crate::constructor_layer::CValue,
+) -> Result<bool, String> {
+    let converted = cvalue_to_emir(right)?;
+    Ok(emir_values_equal(left, &converted))
+}
+
+fn value_from_exact(value: ExactInt) -> crate::interp::Value {
+    match value.to_i64() {
+        Some(n) => crate::interp::Value::I64(n),
+        None => crate::interp::Value::ExactInt(value),
+    }
+}
+
+fn value_from_rat(num: ExactInt, den: ExactInt) -> crate::interp::Value {
+    match (num.to_i128(), den.to_i128()) {
+        (Some(num), Some(den)) => crate::interp::Value::Rat { num, den },
+        _ => crate::interp::Value::ExactRat { num, den },
+    }
+}
+
+fn const_exact_int(text: &str) -> Result<EmirOp, String> {
+    let cleaned = text.replace('_', "");
+    if let Ok(value) = cleaned.parse::<i64>() {
+        return Ok(EmirOp::ConstI64(value));
+    }
+    ExactInt::parse(&cleaned)
+        .map(|_| EmirOp::ConstExactInt(cleaned))
+        .map_err(|_| format!("not Int: {text}"))
 }
 
 fn emir_values_equal(left: &crate::interp::Value, right: &crate::interp::Value) -> bool {
     match (left, right) {
+        (crate::interp::Value::ExactInt(a), crate::interp::Value::ExactInt(b)) => a == b,
+        (crate::interp::Value::ExactInt(a), crate::interp::Value::I64(b)) => {
+            a == &ExactInt::from(*b)
+        }
+        (crate::interp::Value::I64(a), crate::interp::Value::ExactInt(b)) => {
+            ExactInt::from(*a) == *b
+        }
+        (
+            crate::interp::Value::ExactRat { num: an, den: ad },
+            crate::interp::Value::ExactRat { num: bn, den: bd },
+        ) => an.mul(bd).ok().is_some_and(|left| {
+            bn.mul(ad)
+                .ok()
+                .is_some_and(|right| left == right)
+        }),
+        (
+            crate::interp::Value::ExactRat { num: an, den: ad },
+            crate::interp::Value::Rat { num: bn, den: bd },
+        )
+        | (
+            crate::interp::Value::Rat { num: bn, den: bd },
+            crate::interp::Value::ExactRat { num: an, den: ad },
+        ) => an
+            .mul(&ExactInt::from(*bd))
+            .ok()
+            .is_some_and(|left| ExactInt::from(*bn).mul(ad).ok().is_some_and(|right| left == right)),
         (crate::interp::Value::Rat { num: a, den: ad }, crate::interp::Value::Rat { num: b, den: bd }) => {
             a * bd == b * ad
+        }
+        (crate::interp::Value::ExactInt(a), crate::interp::Value::Rat { num, den })
+        | (crate::interp::Value::Rat { num, den }, crate::interp::Value::ExactInt(a)) => a
+            .mul(&ExactInt::from(*den))
+            .ok()
+            .is_some_and(|left| left == ExactInt::from(*num)),
+        (
+            crate::interp::Value::ExactInt(a),
+            crate::interp::Value::ExactRat { num, den },
+        )
+        | (
+            crate::interp::Value::ExactRat { num, den },
+            crate::interp::Value::ExactInt(a),
+        ) => a
+            .mul(den)
+            .ok()
+            .is_some_and(|left| left == *num),
+        (crate::interp::Value::I64(a), crate::interp::Value::ExactRat { num, den })
+        | (crate::interp::Value::ExactRat { num, den }, crate::interp::Value::I64(a)) => {
+            ExactInt::from(*a)
+                .mul(den)
+                .ok()
+                .is_some_and(|left| left == *num)
         }
         (crate::interp::Value::I64(a), crate::interp::Value::Rat { num, den }) => {
             i128::from(*a) * *den == *num

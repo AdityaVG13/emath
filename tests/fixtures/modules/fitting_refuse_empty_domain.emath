@@ -1,0 +1,19 @@
+# Module expected-refusal fixture: an empty candidate domain refuses
+# empty_domain (inherited discipline from optimization.bounded), never
+# silently returns a value.
+# Expected outcome: exits nonzero with `empty_domain`.
+# Run: emath test tests/fixtures/modules/fitting_refuse_empty_domain.emath
+
+use search.fitting
+
+emath function EmptyDomainRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = argmin_first([], function k in Int: k / 8)
+    tests:
+        example <empty>:
+            given unused = 0
+            expect result == result

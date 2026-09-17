@@ -1,0 +1,31 @@
+# Module acceptance fixture: the rank-decreasing forced strategy on
+# the 12-state reference game graph. For every controller node in the
+# forced region the chosen edge strictly decreases rank (so the
+# strategy cannot loop inside the winning set), and the reference
+# choices are A -> B, C -> G, E -> B, H -> G.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/reachability_forced_strategy.emath
+
+use discrete.reachability
+
+emath function ForcedStrategy:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        g = GameGraph: {succs: [[1, 11], [6, 2], [6], [6, 11], [3, 1], [5, 6], [], [7, 6], [3], [2, 7], [5, 3], []], controllers: [0, 2, 4, 7, 8, 10], goals: [6]}
+        ranks = ranks_of(g)
+        a_choice = strategy_at(g, 0)
+        c_choice = strategy_at(g, 2)
+        e_choice = strategy_at(g, 4)
+        h_choice = strategy_at(g, 7)
+        r0 = ranks[0]
+        r2 = ranks[2]
+        r4 = ranks[4]
+        r7 = ranks[7]
+        result = a_choice == 1 and c_choice == 6 and e_choice == 1 and h_choice == 6 and ranks[a_choice] < r0 and ranks[c_choice] < r2 and ranks[e_choice] < r4 and ranks[h_choice] < r7
+    tests:
+        example <rank_decreasing_edges>:
+            given unused = 0
+            expect result == true

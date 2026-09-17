@@ -614,7 +614,6 @@ impl super::super::Admitter {
                 }
                 _ => vec![extent.clone()],
             },
-            Infer::Sequence => vec![None],
             Infer::Matrix { rows, cols } => vec![rows.clone(), cols.clone()],
             Infer::Tensor { shape } => shape.iter().cloned().map(Some).collect(),
             _ => {

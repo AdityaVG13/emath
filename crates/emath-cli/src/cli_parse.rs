@@ -132,11 +132,7 @@ pub(super) enum Command {
 
 pub(crate) enum ExplainRequest {
     File {
-        path: PathBuf,
-        symbol: Option<String>,
-        provenance: bool,
         json: bool,
-        show_defaults: bool,
     },
     Law {
         json: bool,
@@ -324,7 +320,7 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         .map(Command::Planner),
         "build" => require_single_file(
             "build",
-            "build <file.emath> [--out <dir>] [--verify] [--bin <entrypoint>] [--dry-run] [--json]",
+            "build <file.emath> [--out <dir>] [--dry-run] [--json]",
             rest,
             parse_build_request,
         )

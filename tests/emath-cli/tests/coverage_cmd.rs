@@ -51,6 +51,17 @@ fn coverage_ledger_contract() {
             }
         }
     });
+    p.case("no-stdlib-laws", |p| {
+        for seed in coverage_seed::SEED.iter() {
+            for artifact in seed.artifacts.iter().flatten() {
+                p.demand(
+                    format!("{}:{artifact}", seed.msc),
+                    !artifact.contains("language/stdlib/laws"),
+                    "SEED artifact must not cite language/stdlib/laws",
+                );
+            }
+        }
+    });
     p.case("ledger", |p| {
         let first = ledger_json().expect("ledger generates");
         let second = ledger_json().expect("ledger regenerates");

@@ -1,0 +1,19 @@
+# Expected refusal: empty_event_set. An empty event set is a contract
+# error, not a rollout that never fires.
+# Run: emath test tests/fixtures/modules/events_refuse_empty_set.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.events
+
+emath function EmptySet:
+    inputs:
+        unused: Int
+    outputs:
+        result: EventRun
+    definitions:
+        grow = function t in Rat: function s in SimState: SimState: {t: t, y: [1 / 1]}
+        result = event_rollout(grow, cash_karp_pair(0), 4, 5, [1 / 4], [1 / 4], 1 / 2, 1 / 4, 1 / 1, 8, 4, [], SimState: {t: 0 / 1, y: [0 / 1]}, 1 / 1)
+    tests:
+        example <refuses_by_named_code>:
+            given unused = 0
+            expect result == result

@@ -14,23 +14,13 @@ fn gone<T>() -> Result<T, String> {
 }
 
 mod newton;
-pub use newton::{authored_implicit_explicit_step, causal_newton, residual_model_step_program};
+pub use newton::{authored_implicit_explicit_step, residual_model_step_program};
 
-use crate::EmirExprRef;
 use crate::interp::Value;
-use emath_ir::{Declaration, EventDecl, SemanticPackage, TransitionDecl};
-use std::collections::{BTreeMap, BTreeSet};
+use emath_ir::{Declaration, SemanticPackage};
+use std::collections::BTreeMap;
 mod api;
-mod events;
-mod implicit;
-mod inner;
-mod rk45;
 mod types;
 
 pub use api::*;
 pub use types::*;
-
-use events::*;
-use implicit::*;
-use inner::*;
-use rk45::*;

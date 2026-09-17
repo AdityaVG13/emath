@@ -1,0 +1,12 @@
+# expect: E-TYPE-002
+# conformance: std.capability.scalar mutation:alias-add
+# `x + y` is the scalar operation; there is no `add` alias export. The
+# dotted name does not resolve and is refused, not aliased.
+emath function AliasAdd:
+    inputs:
+        a: Int
+        b: Int
+    outputs:
+        r: Int
+    definitions:
+        r = std.capability.math.add(a, b)

@@ -234,20 +234,6 @@ pub(super) fn format_stmt_kind_inner(out: &mut String, kind: &StmtKind, level: u
             out.push(' ');
             format_reaction_side(out, rhs);
         }
-        StmtKind::Reaction {
-            name,
-            lhs,
-            arrow,
-            rhs,
-        } => {
-            out.push_str(name);
-            out.push_str(": ");
-            format_reaction_side(out, lhs);
-            out.push(' ');
-            out.push_str(arrow.as_str());
-            out.push(' ');
-            format_reaction_side(out, rhs);
-        }
         StmtKind::Command { head, argument } => {
             out.push_str(&head.join(" "));
             match argument {

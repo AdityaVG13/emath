@@ -1,0 +1,187 @@
+# Implicit/stiff fixtures: the reference stiff
+# probes reproduced in exact rationals, receipt kinds kept distinct,
+# named refusal paths.
+#
+# Failure-first: authored BEFORE the modules exist (first run:
+# E-USE-ADMISSION unbound import). Refusal cases follow the t19
+# convention.
+#
+# Environment honesty: the reference environment's 1,734-bit /
+# 27,800-bit denominator counts come from a bignum backend. The
+# constructor engine's Rat is CHECKED i128 (E-RAT-002 beyond ~2^127),
+# so the SAME Newton trajectory (same exact iterates, same doubling
+# bit growth) is capped by the engine boundary around update 4. The
+# AUTHORED bit budget here is 40: one Newton update on a quadratic
+# residual constructs intermediates of roughly THREE times the
+# current denominator bit length (the residual squares the
+# denominator, the ratio multiplies it again), so 40 caps verified
+# construction near 120 bits, safely under the engine boundary. The
+# gate trips at the 50-bit third iterate — BEFORE the engine fault,
+# with the trace as evidence, never a promoted unverified winner.
+
+use analysis.equations.iteration
+use analysis.evolution.one_step
+
+emath function fixture_stiff_linear_exact:
+    # y' = -1000y, h = 1/10, y0 = 1: the residual G(z) = 101z - 1 is
+    # LINEAR, so one exact Newton step solves it: z = 1/101, residual
+    # EXACTLY zero, receipt kind exact (0). This is also the value the
+    # deferred emitted comparison must reproduce identically.
+    inputs:
+        unused: Int
+    outputs:
+        z: Rat
+        kind: Int
+        residual: Rat
+    definitions:
+        f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - 1000 * s.y[0]]}
+        dfz = function z in Rat: 0 - 1000 / 1
+        r = backward_euler_step(f, dfz, 0 / 1, 1 / 1, 1 / 10, 1 / 1000000, 12, 64)
+        z = r.root
+        kind = r.kind
+        residual = r.residual
+    tests:
+        example <one_hundred_first_exact>:
+            given unused = 0
+            expect z == 1 / 101
+            expect kind == 0
+            expect residual == 0 / 1
+
+emath function fixture_stiff_linear_vector:
+    # The n-D linear path composes the authored dense solve:
+    # (I - hA) z = y with A = diag(-1000, -1), h = 1/10, y = (1, 1)
+    # -> z = (1/101, 10/11), exactly.
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        z = backward_euler_linear([[0 - 1000 / 1, 0 / 1], [0 / 1, 0 - 1 / 1]], [1 / 1, 1 / 1], 1 / 10, 0 / 1)
+        result = z == [1 / 101, 10 / 11]
+    tests:
+        example <vector_linear_exact>:
+            given unused = 0
+            expect result == true
+
+emath function fixture_picard_control:
+    # Naive Picard on the stiff linear case AMPLIFIES the error by
+    # EXACTLY 100 per iteration (z_{k+1} = 1 - 100 z_k): from z0 = 1,
+    # z1 = -99 and |z1 - 1/101| = 100 * |z0 - 1/101| exactly. This is
+    # the control that REJECTS Picard for stiffness (|h*lambda| = 100
+    # >> 1, precisely the regime where backward Euler is stable).
+    inputs:
+        unused: Int
+    outputs:
+        z1: Rat
+        amplification: Rat
+    definitions:
+        g = function z in Rat: 1 / 1 - 100 * z
+        trail = picard_run(g, 1 / 1, 1)
+        z1 = trail[1]
+        e0 = 1 / 1 - 1 / 101
+        e1 = z1 - 1 / 101
+        amplification = (0 / 1 - e1) / e0
+    tests:
+        example <picard_amplifies_exactly_hundred>:
+            given unused = 0
+            expect z1 == 0 - 99 / 1
+            expect amplification == 100 / 1
+
+emath function fixture_stiff_quadratic_budget:
+    # y' = -1000 y^2, y0 = 1: G(z) = 100 z^2 + z - 1 with the IRRATIONAL
+    # positive root (sqrt(401) - 1)/200 — exact Newton can never reach
+    # it in finitely many exact steps. The first two iterates are pinned
+    # (101/201, then 1060501/4100601 — coprime by the Euclidean run in
+    # the derivation notes); denominators double in bit length per
+    # update (the third iterate's denominator is exactly 886553220781401
+    # — 50 bits), so the AUTHORED bit budget 40 trips at the third
+    # iterate, BEFORE constructing a fourth whose ratio intermediates
+    # (~2^150) would cross the engine's checked i128 boundary —
+    # verification_budget_exhausted with the trace as evidence, never
+    # a promoted unverified winner.
+    inputs:
+        unused: Int
+    outputs:
+        z1: Rat
+        z2: Rat
+        updates: Int
+    definitions:
+        gres = function z in Rat: 100 * z * z + z - 1 / 1
+        gder = function z in Rat: 200 * z + 1 / 1
+        trail = newton_trace(gres, gder, 1 / 1, 1 / 1000000, 12, 40)
+        z1 = trail[1]
+        z2 = trail[2]
+        updates = length(trail) - 1
+    tests:
+        example <first_iterates_pinned>:
+            given unused = 0
+            expect z1 == 101 / 201
+            expect z2 == 1060501 / 4100601
+            expect updates == 3
+
+emath function case_stiff_quadratic_budget_refuses:
+    # The solve wrapper refuses by name at the budget; the trace above
+    # is the evidence contract.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        gres = function z in Rat: 100 * z * z + z - 1 / 1
+        gder = function z in Rat: 200 * z + 1 / 1
+        result = newton_solve(gres, gder, 1 / 1, 1 / 1000000, 12, 40).root
+    tests:
+        example <budget_exhausted_refuses>:
+            given unused = 0
+            expect result == 0 / 1
+
+emath function fixture_receipt_kinds_distinct:
+    # Rational-approximation / certified-enclosure / exact are DISTINCT
+    # receipt kinds: sqrt(2) by Newton reaches |residual| <= 1/100 at
+    # 17/12 (kind 1, the iterate is NOT the root); the bracket [1, 2]
+    # certifies an enclosure (kind 2); 101z - 1 is exact (kind 0).
+    inputs:
+        unused: Int
+    outputs:
+        distinct: Bool
+    definitions:
+        f2 = function z in Rat: z * z - 2 / 1
+        d2 = function z in Rat: 2 * z
+        approx = newton_solve(f2, d2, 1 / 1, 1 / 100, 12, 64)
+        encl = bracket_root(f2, 1 / 1, 2 / 1)
+        lin = newton_solve(function z in Rat: 101 * z - 1 / 1, function z in Rat: 101 / 1, 1 / 1, 1 / 1000000, 12, 64)
+        distinct = approx.kind == 1 and approx.root == 17 / 12 and encl.kind == 2 and encl.bracket_lo == 1 / 1 and encl.bracket_hi == 2 / 1 and lin.kind == 0 and lin.root == 1 / 101
+    tests:
+        example <three_kinds_three_claims>:
+            given unused = 0
+            expect distinct == true
+
+emath function case_singular_jacobian_refuses:
+    # f = x^2 + 1 from x0 = 0: df(0) = 0 — the Newton direction is
+    # undefined; refuses singular_jacobian.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = newton_solve(function z in Rat: z * z + 1 / 1, function z in Rat: 2 * z, 0 / 1, 1 / 100, 12, 64).root
+    tests:
+        example <zero_derivative_refuses>:
+            given unused = 0
+            expect result == 0 / 1
+
+emath function case_nonconvergence_refuses:
+    # The classic Newton CYCLE: f = x^3 - 2x + 2 from x0 = 0 alternates
+    # 0 -> 1 -> 0 -> 1 forever; the update budget exhausts with
+    # residual 2 or 1 (never within tolerance, never exact) and the
+    # solve refuses nonconvergence.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = newton_solve(function z in Rat: z * z * z - 2 * z + 2 / 1, function z in Rat: 3 * z * z - 2 / 1, 0 / 1, 1 / 100, 12, 64).root
+    tests:
+        example <cycle_refuses_nonconvergence>:
+            given unused = 0
+            expect result == 0 / 1

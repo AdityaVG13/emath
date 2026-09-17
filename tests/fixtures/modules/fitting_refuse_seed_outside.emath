@@ -1,0 +1,25 @@
+# Module expected-refusal fixture: a hillclimb seeded outside the
+# ordered domain refuses seed_outside_domain before any rollout work.
+# Expected outcome: exits nonzero with `seed_outside_domain`.
+# Run: emath test tests/fixtures/modules/fitting_refuse_seed_outside.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use search.fitting
+
+emath function SeedOutsideRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(FitCandidate)
+    definitions:
+        fam = function c in Rat: function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], 0 / 1 - s.y[0] - c * s.y[1]]}
+        s0 = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        data_rows = rollout_trace(fam(1 / 2), euler_tableau(0), 1, 1 / 8, 4, s0)
+        score = function k in Int: sse_eval(fam, 0, k / 8, data_rows, s0, 1 / 8, 4)
+        param_of = function k in Int: k / 8
+        result = hillclimb_archive(domain_list(0, 8), score, param_of, 99, 1, 0, 1)
+    tests:
+        example <outside>:
+            given unused = 0
+            expect result == result

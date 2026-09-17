@@ -1,0 +1,24 @@
+# Module acceptance fixture: held-out generalization of the E1 fit. The
+# coefficient c = 1/2 recovered from the (1,0) trajectory reproduces the
+# held-out initial state (2,1) over 8 steps with exactly zero error.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/fitting_heldout_zero.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use search.fitting
+
+emath function HeldoutZero:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        fam = function c in Rat: function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], 0 / 1 - s.y[0] - c * s.y[1]]}
+        held_s0 = SimState: {t: 0 / 1, y: [2 / 1, 1 / 1]}
+        held_data = rollout_trace(fam(1 / 2), euler_tableau(0), 1, 1 / 8, 8, held_s0)
+        result = sse_eval(fam, 0, 1 / 2, held_data, held_s0, 1 / 8, 8)
+    tests:
+        example <zero_error>:
+            given unused = 0
+            expect result == 0 / 1

@@ -1,0 +1,35 @@
+# Module acceptance fixture: the verified-unique fit request at E1 full
+# scale. Lexicographic acceptance: the hillclimb rests on the global
+# optimum, the exhaustive scan confirms uniqueness, and the returned
+# candidate record is accepted with scope 1, exact-zero score and a
+# tight bound.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/fitting_verified_fit.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use search.fitting
+
+emath function VerifiedFit:
+    inputs:
+        unused: Int
+    outputs:
+        result: FitCandidate
+    definitions:
+        fam = function c in Rat: function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], 0 / 1 - s.y[0] - c * s.y[1]]}
+        s0 = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        data_rows = rollout_trace(fam(1 / 2), euler_tableau(0), 1, 1 / 8, 16, s0)
+        score = function k in Int: sse_eval(fam, 0, k / 8, data_rows, s0, 1 / 8, 16)
+        param_of = function k in Int: k / 8
+        result = fit_unique(domain_list(0, 16), score, param_of, 0, 1, 0, 1)
+    tests:
+        example <accepted_record>:
+            given unused = 0
+            expect result.accepted == true
+            expect result.c == 1 / 2
+            expect result.scope == 1
+            expect result.score == 0 / 1
+            expect result.bound == 0 / 1
+            expect result.witness == 4
+            expect result.counterexample == -1
+            expect result.refusal == 0

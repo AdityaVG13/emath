@@ -20,7 +20,6 @@ use std::collections::BTreeMap;
 use emath_core::{ArtifactId, MeaningId, RecipeId};
 
 const MATERIALIZATION_SCHEMA_V1: &str = "emath.materialization-recipe.v1";
-const ARTIFACT_FRAMING_V1: &str = "emath.materialization-artifact.v1";
 
 /// A materialization recipe: the four inputs whose identity is
 /// `RecipeId`. The recipe carries the meaning it was specialized from —

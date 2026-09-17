@@ -357,7 +357,7 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
             "continuation",
             "constructor-layer checkpoint; `emath step` resumes the saved continuation",
         );
-        out.string("parameter_values", "--set supports Bool, Int, Rat, and Float64; other carriers use source examples");
+        out.string("parameter_values", "--set supports Bool, Int, Rat, Float64, and sequences ([1, 2] or [1/2, 3/4]); --set-file reads a JSON object of those values");
         out.objects("commands", &commands);
         out.string("search", &request.search);
         out.int("offset", request.offset as u64);

@@ -77,11 +77,14 @@ fn all_passed(name: &str) {
 }
 
 fn int(n: i128) -> CValue {
-    CValue::Int(n)
+    CValue::Int(n.into())
 }
 
 fn rat(num: i128, den: i128) -> CValue {
-    CValue::Rat { num, den }
+    CValue::Rat {
+        num: num.into(),
+        den: den.into(),
+    }
 }
 
 fn rec_field(value: CValue, name: &str) -> CValue {
@@ -93,6 +96,23 @@ fn rec_field(value: CValue, name: &str) -> CValue {
 
 fn unused_inputs() -> BTreeMap<String, CValue> {
     BTreeMap::from([("unused".into(), int(0))])
+}
+
+fn demand_values_equal(
+    p: &mut Probe,
+    name: impl Into<String>,
+    emitted: &Value,
+    expected: &CValue,
+) {
+    let name = name.into();
+    match values_equal(emitted, expected) {
+        Ok(equal) => {
+            p.demand(name, equal, format!("{emitted:?} vs {expected:?}"));
+        }
+        Err(err) => {
+            p.fail(name, err);
+        }
+    }
 }
 
 fn demand_emission_parity(
@@ -135,11 +155,7 @@ fn demand_emission_parity(
             };
             match evaluate(&lowered.program, &emir_inputs, &[]) {
                 Ok(emitted) => {
-                    p.demand(
-                        format!("{name}-vm-vs-emir"),
-                        values_equal(&emitted, &vm),
-                        format!("{emitted:?} vs {vm:?}"),
-                    );
+                    demand_values_equal(p, format!("{name}-vm-vs-emir"), &emitted, &vm);
                 }
                 Err(err) => {
                     p.fail(format!("{name}-emir"), format!("{err:?}"));
@@ -413,6 +429,278 @@ fn t1_through_t18_and_seams() {
             evaluate_function(&tree, "left_sub", &unused).unwrap(),
             int(7),
         );
+    });
+
+    probe.case("scalar-carrier-joins", |p| {
+        // Ordering is a checked carrier operation on every numeric carrier:
+        // Float64 `<`/`<=`/`>`/`>=` must COMPUTE (the reference ships them),
+        // and mixed exact/Float64 comparisons join exactly — a finite
+        // binary64 IS an exact rational, so `1 / 2 == 0.5` is true and never
+        // a rounded or representation-strict comparison.
+        let ordering = r#"
+emath function FltOrder:
+    inputs:
+        unused: Int
+    outputs:
+        a: Bool
+        b: Bool
+        c: Bool
+        d: Bool
+    definitions:
+        a = (1.0) > (2.0)
+        b = (2.0) > (1.0)
+        c = (1.0) <= (1.0)
+        d = (1.0e+300) > (1.0)
+"#;
+        let (tree, diagnostics) = parse_str(ordering);
+        p.demand("flt-order-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        let unused = BTreeMap::from([("unused".into(), int(0))]);
+        let vm = evaluate_function(&tree, "FltOrder", &unused).unwrap();
+        p.eq("flt-gt-false", rec_field(vm.clone(), "a"), CValue::Bool(false));
+        p.eq("flt-gt-true", rec_field(vm.clone(), "b"), CValue::Bool(true));
+        p.eq("flt-le-equal", rec_field(vm.clone(), "c"), CValue::Bool(true));
+        p.eq("flt-gt-scale", rec_field(vm, "d"), CValue::Bool(true));
+
+        let joins = r#"
+emath function CarrierJoins:
+    inputs:
+        unused: Int
+    outputs:
+        eq_ir: Bool
+        eq_if: Bool
+        eq_rf: Bool
+        ne_ir: Bool
+        ne_if: Bool
+    definitions:
+        eq_ir = 2 == 2 / 1
+        eq_if = 2 == 2.0
+        eq_rf = 1 / 2 == 0.5
+        ne_ir = 2 == 3 / 1
+        ne_if = 2 == 3.5
+"#;
+        let (tree, diagnostics) = parse_str(joins);
+        p.demand("joins-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        let vm = evaluate_function(&tree, "CarrierJoins", &unused).unwrap();
+        p.eq("eq-int-rat", rec_field(vm.clone(), "eq_ir"), CValue::Bool(true));
+        p.eq("eq-int-float", rec_field(vm.clone(), "eq_if"), CValue::Bool(true));
+        p.eq("eq-rat-float", rec_field(vm.clone(), "eq_rf"), CValue::Bool(true));
+        p.eq("ne-int-rat", rec_field(vm.clone(), "ne_ir"), CValue::Bool(false));
+        p.eq("ne-int-float", rec_field(vm, "ne_if"), CValue::Bool(false));
+    });
+
+    probe.case("rat-annotation-exact-decimals", |p| {
+        // Reference (types chapter): "A rational annotation selects `Rat`.
+        // A decimal literal without a floating annotation denotes its exact
+        // decimal rational." Under a `Rat` annotation `0.1 + 0.2` is exactly
+        // `3/10` — never the binary64 sum. Suffixed literals keep Float64
+        // and refuse the Rat output. The rewrite is annotation-directed: a
+        // `Float64` annotation keeps the rounded carrier.
+        let dec = r#"
+emath function DecRat:
+    inputs:
+        unused: Int
+    outputs:
+        a: Rat
+        b: Rat
+        c: Rat
+        d: Rat
+        e: Rat
+    definitions:
+        a = 1.5
+        b = 0.1 + 0.2
+        c = 1.5 * 3
+        d = 1.5e+2
+        e = -2.5
+"#;
+        let (tree, diagnostics) = parse_str(dec);
+        p.demand("decrat-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        match evaluate_function(&tree, "DecRat", &unused_inputs()) {
+            Ok(vm) => {
+                p.eq("one-point-five", rec_field(vm.clone(), "a"), rat(3, 2));
+                p.eq("tenths-exact", rec_field(vm.clone(), "b"), rat(3, 10));
+                p.eq("times-three", rec_field(vm.clone(), "c"), rat(9, 2));
+                p.eq("exponent-exact", rec_field(vm.clone(), "d"), rat(150, 1));
+                p.eq("negated", rec_field(vm, "e"), rat(-5, 2));
+            }
+            Err(err) => {
+                p.fail("decrat-eval", err.to_string());
+            }
+        }
+
+        // A suffixed literal under a Rat output is a typed refusal: the
+        // floating annotation is explicit, so no silent coercion.
+        let suffixed = r#"
+emath function DecSuffix:
+    inputs:
+        unused: Int
+    outputs:
+        r: Rat
+    definitions:
+        r = 1.5f64
+"#;
+        let (tree, diagnostics) = parse_str(suffixed);
+        p.demand("suffix-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        let refused = emath_exec_ir::constructor_layer::admit_tree(&tree);
+        p.demand(
+            "suffix-refused",
+            refused.is_err(),
+            format!("f64 literal under Rat output admitted: {refused:?}"),
+        );
+
+        // A Float64 annotation is untouched: bare decimals keep the
+        // binary64 carrier (0.1 + 0.2 rounds).
+        let f64_lane = r#"
+emath function DecF64:
+    inputs:
+        unused: Int
+    outputs:
+        r: Float64
+    definitions:
+        r = 0.1 + 0.2
+"#;
+        let (tree, diagnostics) = parse_str(f64_lane);
+        p.demand("decf64-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        match evaluate_function(&tree, "DecF64", &unused_inputs()) {
+            Ok(vm) => {
+                p.eq("f64-rounds", rec_field(vm, "r"), CValue::Float64(0.1 + 0.2));
+            }
+            Err(err) => {
+                p.fail("decf64-eval", err.to_string());
+            }
+        }
+    });
+
+    probe.case("user-bound-names-win", |p| {
+        // A name the user binds is the user's: a local closure named like a
+        // module method (`partial`, `derivative`, `sin`) resolves to the
+        // user's closure at admission AND evaluation. The reserved-recipe
+        // refusal exists for UNBOUND name UX, not to seize user spellings.
+        let bound = r#"
+emath function BoundNames:
+    inputs:
+        x: Rat
+    outputs:
+        a: Rat
+        b: Rat
+        c: Rat
+    definitions:
+        partial = function y in Rat: y * 2
+        derivative = function y in Rat: y + 1
+        sin = function y in Rat: y
+        a = partial(x)
+        b = derivative(x)
+        c = sin(x)
+"#;
+        let (tree, diagnostics) = parse_str(bound);
+        p.demand("bound-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        let x_two = BTreeMap::from([("x".into(), rat(2, 1))]);
+        match evaluate_function(&tree, "BoundNames", &x_two) {
+            Ok(vm) => {
+                // Integral Rat x Int arithmetic canonicalizes to Int (the
+                // machine's exact join); the point here is NAME ownership.
+                p.eq("partial-is-users", rec_field(vm.clone(), "a"), int(4));
+                p.eq("derivative-is-users", rec_field(vm.clone(), "b"), int(3));
+                p.eq("sin-is-users", rec_field(vm.clone(), "c"), rat(2, 1));
+            }
+            Err(err) => {
+                p.fail("bound-eval", err.to_string());
+            }
+        }
+        // Admission agrees: the declaration must admit (an unbound recipe
+        // call still refuses method_unavailable — pinned in the corpus).
+        let admitted = emath_exec_ir::constructor_layer::admit_tree(&tree);
+        p.demand(
+            "bound-admitted",
+            admitted.is_ok(),
+            format!("user-bound recipe names refused: {admitted:?}"),
+        );
+    });
+
+    probe.case("recur-depth-faults-not-crashes", |p| {
+        // The call-depth budget (256) must fire as `recursion_depth_exceeded`
+        // BEFORE native stack exhaustion: at the observed ~50 KiB per authored
+        // call the default 8 MiB stack dies near 200 frames. The pin evaluates
+        // on a 64 MiB stack exactly like the CLI worker thread, so a mutant
+        // that drops the depth guard crashes this pin instead of passing it.
+        let depth = r#"
+emath function DepthFault:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur f in Int -> Int: function k in Int: if k <= 0: 0 else: f(k + 1))(n)
+"#;
+        let (tree, diagnostics) = parse_str(depth);
+        p.demand("depth-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        let worker = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                evaluate_function(
+                    &tree,
+                    "DepthFault",
+                    &BTreeMap::from([("n".into(), int(1))]),
+                )
+            })
+            .expect("spawn depth probe thread");
+        match worker.join().expect("join depth probe thread") {
+            Ok(_) => {
+                p.fail("depth-fault", "growing self-call returned a value");
+            }
+            Err(err) => {
+                p.demand(
+                    "depth-fault",
+                    err.code == "recursion_depth_exceeded",
+                    format!("growing self-call faulted `{}`", err.code),
+                );
+            }
+        }
+    });
+
+    probe.case("library-depth-faults-not-crashes", |p| {
+        // Library callers embed the engine on ordinary threads — no 64 MiB
+        // worker to hide behind. The growth redline must exceed one
+        // authored call's native frame cost (~50-100 KiB across the
+        // K-machine frames between growth points); with the old 64 KiB
+        // redline a default 2 MiB thread hit the guard page at ~40 levels
+        // and aborted the process. The fault, not the crash, is the
+        // contract.
+        let depth = r#"
+emath function DepthFault:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur f in Int -> Int: function k in Int: if k <= 0: 0 else: f(k + 1))(n)
+"#;
+        let (tree, diagnostics) = parse_str(depth);
+        p.demand("library-depth-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        let worker = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                evaluate_function(
+                    &tree,
+                    "DepthFault",
+                    &BTreeMap::from([("n".into(), int(1))]),
+                )
+            })
+            .expect("spawn library depth probe thread");
+        match worker.join().expect("join library depth probe thread") {
+            Ok(_) => {
+                p.fail(
+                    "library-depth-fault",
+                    "growing self-call returned a value on a 2 MiB thread",
+                );
+            }
+            Err(err) => {
+                p.demand(
+                    "library-depth-fault",
+                    err.code == "recursion_depth_exceeded",
+                    format!("growing self-call faulted `{}`", err.code),
+                );
+            }
+        }
     });
 
     probe.case("t15-fair-finds-sequential-unmet", |p| {
@@ -698,15 +986,23 @@ emath function sum_tree:
         );
         let restored = emath_exec_ir::constructor_layer::Checkpoint::decode(&encoded)
             .expect("decode tree checkpoint");
-        let resumed = evaluate_function_budgeted(
+        let resumed = match evaluate_function_budgeted(
             &tree,
             "sum_tree",
             &inputs,
             1_000_000,
             Some(&restored),
             "tree-v1",
-        )
-        .unwrap();
+        ) {
+            Ok(value) => value,
+            Err((err, _)) => {
+                p.fail(
+                    "tree-resume",
+                    format!("{err}\n{}", restored.encode()),
+                );
+                return;
+            }
+        };
         p.eq("tree-resume", resumed, full.clone());
         let tight = evaluate_function_budgeted(
             &tree,
@@ -766,7 +1062,7 @@ emath query Forged:
                     .iter()
                     .map(|capsule| capsule.feature_id.to_string())
                     .collect();
-                p.eq("capsule-count", ids.len(), 7usize);
+                p.eq("capsule-count", ids.len(), 9usize);
                 p.demand(
                     "no-recipe-binders",
                     ids.iter().all(|id| {
@@ -823,11 +1119,7 @@ emath function Square:
                 p.demand("square-runnable", lowered.runnable, format!("{:?}", lowered.unresolved));
                 match evaluate(&lowered.program, &[Value::I64(7)], &[]) {
                     Ok(emitted) => {
-                        p.demand(
-                            "vm-vs-emir",
-                            values_equal(&emitted, &vm),
-                            format!("{emitted:?} vs {vm:?}"),
-                        );
+                        demand_values_equal(p, "vm-vs-emir", &emitted, &vm);
                     }
                     Err(err) => {
                         p.fail("emir-eval", format!("{err:?}"));
@@ -865,11 +1157,7 @@ emath function Half:
         match lower_constructor_function(&tree, "Half") {
             Ok(lowered) => match evaluate(&lowered.program, &[Value::I64(0)], &[]) {
                 Ok(emitted) => {
-                    p.demand(
-                        "half-vm-vs-emir",
-                        values_equal(&emitted, &vm),
-                        format!("{emitted:?} vs {vm:?}"),
-                    );
+                    demand_values_equal(p, "half-vm-vs-emir", &emitted, &vm);
                 }
                 Err(err) => {
                     p.fail("half-emir", format!("{err:?}"));
@@ -923,11 +1211,7 @@ emath function RecurSum:
                 p.demand("recur-runnable", lowered.runnable, format!("{:?}", lowered.unresolved));
                 match evaluate(&lowered.program, &[Value::I64(5)], &[]) {
                     Ok(emitted) => {
-                        p.demand(
-                            "recur-vm-vs-emir",
-                            values_equal(&emitted, &vm),
-                            format!("{emitted:?} vs {vm:?}"),
-                        );
+                        demand_values_equal(p, "recur-vm-vs-emir", &emitted, &vm);
                     }
                     Err(err) => {
                         p.fail("recur-emir", format!("{err:?}"));
@@ -957,11 +1241,7 @@ emath function RecurFactorial:
                 p.demand("fact-runnable", lowered.runnable, format!("{:?}", lowered.unresolved));
                 match evaluate(&lowered.program, &[Value::I64(5)], &[]) {
                     Ok(emitted) => {
-                        p.demand(
-                            "fact-vm-vs-emir",
-                            values_equal(&emitted, &vm),
-                            format!("{emitted:?} vs {vm:?}"),
-                        );
+                        demand_values_equal(p, "fact-vm-vs-emir", &emitted, &vm);
                     }
                     Err(err) => {
                         p.fail("fact-emir", format!("{err:?}"));
@@ -994,11 +1274,7 @@ emath function Fib:
                 p.demand("fib-runnable", lowered.runnable, format!("{:?}", lowered.unresolved));
                 match evaluate(&lowered.program, &[Value::I64(6)], &[]) {
                     Ok(emitted) => {
-                        p.demand(
-                            "fib-vm-vs-emir",
-                            values_equal(&emitted, &int(8)),
-                            format!("{emitted:?}"),
-                        );
+                        demand_values_equal(p, "fib-vm-vs-emir", &emitted, &int(8));
                     }
                     Err(err) => {
                         p.fail("fib-emir", format!("{err:?}"));
@@ -1598,11 +1874,7 @@ emath function Wrap:
                 p.demand("list-runnable", lowered.runnable, format!("{:?}", lowered.unresolved));
                 match evaluate(&lowered.program, &[Value::I64(0)], &[]) {
                     Ok(emitted) => {
-                        p.demand(
-                            "list-vm-vs-emir",
-                            values_equal(&emitted, &vm),
-                            format!("{emitted:?} vs {vm:?}"),
-                        );
+                        demand_values_equal(p, "list-vm-vs-emir", &emitted, &vm);
                     }
                     Err(err) => {
                         p.fail("list-emir", format!("{err:?}"));
@@ -1689,11 +1961,7 @@ emath function SignAbs:
                 p.demand("match-runnable", lowered.runnable, format!("{:?}", lowered.unresolved));
                 match evaluate(&lowered.program, &[Value::I64(3)], &[]) {
                     Ok(emitted) => {
-                        p.demand(
-                            "match-emir",
-                            values_equal(&emitted, &int(1)),
-                            format!("{emitted:?}"),
-                        );
+                        demand_values_equal(p, "match-emir", &emitted, &int(1));
                     }
                     Err(err) => {
                         p.fail("match-emir", format!("{err:?}"));
@@ -1890,7 +2158,10 @@ emath function rebound:
         inner = quote.view(outer.body)
         result = if outer.param == inner.param: 0 else: 1
 
-emath function subst_outer:
+emath function subst_preserved:
+    # Naming the root binder's OWN parameter substitutes nothing: the
+    # parameter's occurrences are bound, not free (L2). The code is
+    # preserved — identity is unchanged — not edited.
     inputs:
         unused: Int
     outputs:
@@ -1899,8 +2170,19 @@ emath function subst_outer:
         form = quote.bind x in Int: quote.bind y in Int: x + y
         node = quote.view(form)
         replaced = quote.substitute(form, node.param, 2)
-        clos = quote.evaluate(replaced)
-        result = clos(3)
+        result = if quote.identity(replaced) == quote.identity(form): 1 else: 0
+
+emath function applied_code:
+    # Feeding a binder goes through evaluation and call, not
+    # substitution: quote.evaluate returns the closure, the call
+    # applies the argument.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        program = quote.evaluate(quote(function j in Int: 5 + j))
+        result = program(2)
 "#;
         let (tree, diagnostics) = parse_str(source);
         p.demand("bind-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
@@ -1910,9 +2192,14 @@ emath function subst_outer:
             int(1),
         );
         p.eq(
-            "subst-outer-only",
-            evaluate_function(&tree, "subst_outer", &BTreeMap::from([("unused".into(), int(0))])).unwrap(),
-            int(5),
+            "subst-bound-param-preserves-code",
+            evaluate_function(&tree, "subst_preserved", &BTreeMap::from([("unused".into(), int(0))])).unwrap(),
+            int(1),
+        );
+        p.eq(
+            "apply-idiom",
+            evaluate_function(&tree, "applied_code", &BTreeMap::from([("unused".into(), int(0))])).unwrap(),
+            int(7),
         );
 
         let open = r#"
@@ -1936,7 +2223,21 @@ emath function OpenChild:
         );
 
         let viewed = r#"
-emath function ViewBranch:
+emath function ViewBranchClosed:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        form = quote(if 0 == 0: 1 else: 2)
+        node = quote.view(form)
+        rebuilt = quote.make(node)
+        result = quote.evaluate(rebuilt)
+
+emath function ViewBranchOpen:
+    # `unused` is a free name in the ambient environment: the guarded
+    # L1 evaluator refuses instead of leaking the ambient binding
+    # (t19_l1_closed_code pins the same contract with fault demands).
     inputs:
         unused: Int
     outputs:
@@ -1950,9 +2251,17 @@ emath function ViewBranch:
         let (tree, diagnostics) = parse_str(viewed);
         p.demand("view-if-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
         p.eq(
-            "view-if",
-            evaluate_function(&tree, "ViewBranch", &BTreeMap::from([("unused".into(), int(0))])).unwrap(),
+            "view-if-closed",
+            evaluate_function(&tree, "ViewBranchClosed", &BTreeMap::from([("unused".into(), int(0))])).unwrap(),
             int(1),
+        );
+        p.eq(
+            "view-if-open-refuses",
+            evaluate_function(&tree, "ViewBranchOpen", &BTreeMap::from([("unused".into(), int(0))]))
+                .unwrap_err()
+                .code
+                .as_str(),
+            "unbound_code",
         );
     });
 
@@ -2206,7 +2515,17 @@ emath function IdWalk:
         let walk_if = r#"
 use quote.walk
 
-emath function WalkIf:
+emath function WalkIfClosed:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.evaluate(walk_term(quote(if 0 == 0: 1 else: 2)))
+
+emath function WalkIfOpen:
+    # Same guard as ViewBranchOpen: a free ambient name refuses
+    # unbound_code under the guarded L1 evaluator.
     inputs:
         unused: Int
     outputs:
@@ -2217,15 +2536,31 @@ emath function WalkIf:
         let (if_tree, if_diag) = parse_str(walk_if);
         p.demand("walk-if-parsed", !if_diag.has_errors(), format!("{if_diag:?}"));
         p.eq(
-            "walk-if",
-            evaluate_function(&if_tree, "WalkIf", &BTreeMap::from([("unused".into(), int(0))]))
+            "walk-if-closed",
+            evaluate_function(&if_tree, "WalkIfClosed", &BTreeMap::from([("unused".into(), int(0))]))
                 .unwrap(),
             int(1),
+        );
+        p.eq(
+            "walk-if-open-refuses",
+            evaluate_function(&if_tree, "WalkIfOpen", &BTreeMap::from([("unused".into(), int(0))]))
+                .unwrap_err()
+                .code
+                .as_str(),
+            "unbound_code",
         );
         let walk_match = r#"
 use quote.walk
 
-emath function WalkMatch:
+emath function WalkMatchClosed:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.evaluate(walk_term(quote(match 0 { 0 => 4, _ => 5 })))
+
+emath function WalkMatchOpen:
     inputs:
         unused: Int
     outputs:
@@ -2236,10 +2571,26 @@ emath function WalkMatch:
         let (match_tree, match_diag) = parse_str(walk_match);
         p.demand("walk-match-parsed", !match_diag.has_errors(), format!("{match_diag:?}"));
         p.eq(
-            "walk-match",
-            evaluate_function(&match_tree, "WalkMatch", &BTreeMap::from([("unused".into(), int(0))]))
-                .unwrap(),
+            "walk-match-closed",
+            evaluate_function(
+                &match_tree,
+                "WalkMatchClosed",
+                &BTreeMap::from([("unused".into(), int(0))]),
+            )
+            .unwrap(),
             int(4),
+        );
+        p.eq(
+            "walk-match-open-refuses",
+            evaluate_function(
+                &match_tree,
+                "WalkMatchOpen",
+                &BTreeMap::from([("unused".into(), int(0))]),
+            )
+            .unwrap_err()
+            .code
+            .as_str(),
+            "unbound_code",
         );
         let _ = tree;
     });

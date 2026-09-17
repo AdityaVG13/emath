@@ -1,0 +1,22 @@
+# Expected refusal: zero_scale. Degenerate tolerance vector
+# (atol = rtol = 0) demands exactness; the estimator gap is nonzero,
+# so the scaled norm refuses instead of guessing an infinite value.
+# Run: emath test tests/fixtures/modules/adaptive_refuse_zero_scale.emath
+
+use analysis.evolution.control
+use analysis.evolution.one_step
+
+emath function ZeroScale:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        decay = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        stepped = embedded_step(decay, cash_karp_pair(0), 4, 1 / 1, SimState: {t: 0 / 1, y: [1 / 1]})
+        result = scaled_error_norm(pair_gap(stepped.next, stepped.alt), [1 / 1], [1 / 1], [0 / 1], [0 / 1])
+
+    tests:
+        example <refuses_by_named_code>:
+            given unused = 0
+            expect result == result

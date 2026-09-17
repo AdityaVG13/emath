@@ -1,0 +1,37 @@
+# Module acceptance fixture: refinement study on y' = -y, y0 = 1,
+# target t = 1, over the Cash-Karp 4(5) pair with the halve/double
+# controller. Reference = the certified alternating-Taylor bracket of
+# exp(-1): S5 = 11/30 < exp(-1) < S6 = 53/144. Declared goals (same
+# change): at BOTH declared tolerances (atol = rtol = 1/1024 and
+# 1/1000000) the final value lies strictly inside the certified
+# bracket, with the tight run exercising rejections and completing.
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/modules/adaptive_refine_decay.emath
+
+use analysis.evolution.control
+use analysis.evolution.one_step
+
+emath function DecayStudy:
+    inputs:
+        unused: Int
+    outputs:
+        y_coarse: Rat
+        y_fine: Rat
+    definitions:
+        decay = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        coarse = adaptive_rollout(decay, cash_karp_pair(0), 4, 5, [1 / 1024], [1 / 1024], 1 / 1, 1 / 256, 1 / 1, 64, SimState: {t: 0 / 1, y: [1 / 1]}, 1 / 1)
+        fine = adaptive_rollout(decay, cash_karp_pair(0), 4, 5, [1 / 1000000], [1 / 1000000], 1 / 1, 1 / 256, 1 / 1, 64, SimState: {t: 0 / 1, y: [1 / 1]}, 1 / 1)
+        y_coarse = coarse.y[0]
+        y_fine = fine.y[0]
+    tests:
+        example <coarse_meets_declared_goal>:
+            given unused = 0
+            expect coarse.complete == true
+            expect y_coarse > 11 / 30
+            expect y_coarse < 53 / 144
+        example <fine_meets_declared_goal>:
+            given unused = 0
+            expect fine.complete == true
+            expect fine.rejections >= 2
+            expect y_fine > 11 / 30
+            expect y_fine < 53 / 144

@@ -1,15 +1,13 @@
 //! The Phase 1 admission pass: syntax → typed neutral SIR with stable
 //! diagnostics and a source-to-SIR trace.
 
-use emath_core::tree::{Expr, ExprKind, Stmt, UnaryOp as SynUnOp};
+use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
 use emath_core::{Diagnostics, Span};
-use emath_ir::{
-    BinaryOp, EventDecl, ExprId, ExprNode, Literal, ModelResidual, TransitionDecl, TypeId, TypeNode,
-};
+use emath_ir::{BinaryOp, ExprId, ExprNode, Literal, TypeId, TypeNode};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod declaration;
-use declaration::{admit_constructor_declaration, admit_declaration};
+use declaration::admit_constructor_declaration;
 mod attributes;
 pub(crate) mod expr_helpers;
 use expr_helpers::*;
@@ -19,8 +17,7 @@ mod equations;
 mod lowering;
 mod sections;
 mod sections_meta;
-mod types;
-pub use sections_meta::check_tree;
+pub use sections_meta::{check_tree, check_tree_at};
 
 pub const E_DUPLICATE_FIELD: &str = "E-NAME-020";
 pub const E_UNKNOWN_VARIABLE: &str = "E-TYPE-002";
@@ -131,18 +128,6 @@ struct Admitter {
     definitions: BTreeMap<String, (ExprId, Infer)>,
     /// Constraint expression IDs from `constraints:` section, for penalty method.
     constraints: Vec<ExprId>,
-    /// Causalized implicit residuals admitted from `equations:` (unknowns
-    /// solved by Newton at each time step; see `crate::ModelResidual`).
-    residuals: Vec<ModelResidual>,
-    /// Hybrid event rules admitted from `events:` payload suites
-    /// (ch7, event-execution slice). Bare event
-    /// declarations without a payload suite contribute nothing.
-    events: Vec<EventDecl>,
-    /// Transition rules admitted from `transitions:` `on <Event>:`
-    /// suites (ch7, transitions slice). Each rule
-    /// attaches deterministic re-assignments to a declared event;
-    /// action values may reference the event's captured parameters.
-    transitions: Vec<TransitionDecl>,
     /// Synthetic inputs `__rate_<state>` that replace `der(state)` inside
     /// residual expressions; inferred like the state field they derive.
     rate_placeholders: BTreeMap<String, Infer>,
@@ -155,20 +140,11 @@ struct Admitter {
     /// as Bool(true) instead of erroring. Set during require/invariant
     /// lowering; false during definitions lowering.
     in_claim_context: bool,
-    /// Declared capability cells visible to this declaration: the
-    /// canonical/bare match keys, the cell's index in the package
-    /// capability arena, and its declared output type text. The GENERIC
-    /// declared-capability call data — a call resolving here lowers to
-    /// `ExprNode::Apply` (the emitter's ApplyCapability path), never a
-    /// new builtin name or domain keyword.
+    /// Declared capability cells visible to this declaration. The
+    /// constructor lane admits no cells (always empty), but the goal
+    /// surface still consults it and refuses with the pinned
+    /// "not executable in the loaded Language Image" diagnostics.
     capability_cells: Vec<CapabilityCallBinding>,
-    /// Sibling `emath function` declarations callable from lowering time
-    /// function DATA for the generic declared-call seam's
-    /// inline path — no new AST node, no registry entry.
-    sibling_functions: BTreeMap<String, SiblingFunction>,
-    /// Inline-substitution cycle guard: the stack of callee names
-    /// currently being inlined.
-    inline_stack: Vec<String>,
     /// Binder names shadowing same-named definitions during the
     /// current `inline_defs` walk. A reference inside a binder body to
     /// a name that a binder rebinds must stay a `Variable` (it reads
@@ -176,25 +152,14 @@ struct Admitter {
     inline_shadows: Vec<String>,
 }
 
+/// A capability cell consult entry. The constructor lane admits no cells,
+/// so only the consult keys are ever read; the shape fields exist for the
+/// consult sites' pinned refusal paths.
 #[derive(Clone)]
 pub(super) struct CapabilityCallBinding {
     pub(super) key: String,
     pub(super) capability: u32,
-    pub(super) inputs: Vec<String>,
-    pub(super) output: Option<String>,
-    pub(super) arity: Option<usize>,
-    pub(super) diagnostic: Option<String>,
     pub(super) kernel: Option<String>,
-}
-
-/// One sibling `emath function` callable from lowering time: parameter
-/// names with their inferred types, the output binding name, and the
-/// cloned `definitions:` statements.
-#[derive(Clone)]
-pub(super) struct SiblingFunction {
-    pub(super) params: Vec<(String, Infer)>,
-    pub(super) output_name: String,
-    pub(super) definitions: Vec<Stmt>,
 }
 
 impl Admitter {
@@ -207,9 +172,6 @@ impl Admitter {
             states: BTreeMap::new(),
             definitions: BTreeMap::new(),
             constraints: Vec::new(),
-            residuals: Vec::new(),
-            events: Vec::new(),
-            transitions: Vec::new(),
             rate_placeholders: BTreeMap::new(),
             exprs: Vec::new(),
             types: Vec::new(),
@@ -217,8 +179,6 @@ impl Admitter {
             index_locals: BTreeMap::new(),
             in_claim_context: false,
             capability_cells: Vec::new(),
-            sibling_functions: BTreeMap::new(),
-            inline_stack: Vec::new(),
             inline_shadows: Vec::new(),
         }
     }

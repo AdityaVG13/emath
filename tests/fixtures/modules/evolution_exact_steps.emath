@@ -1,0 +1,66 @@
+# Module acceptance fixture: exact rational step values through the
+# evolution family and the delegation wrappers. Euler decay y' = -y,
+# y0 = 1, h = 1/2 gives exactly 1/2 — the exact recurrence value, NOT
+# exp(-1/2); exact Rat arithmetic records no rounding. RK4 growth
+# y' = y, h = 1 gives 65/24. Two-dimensional system y' = [y2, y1]
+# from (1, 0) gives (37/24, 7/6).
+# Run: emath test tests/fixtures/modules/evolution_exact_steps.emath
+
+use analysis.evolution.one_step
+use numerics.euler
+use numerics.rk4
+
+emath function Decay:
+    inputs:
+        unused: Int
+    outputs:
+        euler_one: Rat
+        euler_two: Rat
+        rk4_growth: Rat
+    definitions:
+        decay_f = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        growth_f = function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[0]]}
+        s0 = SimState: {t: 0 / 1, y: [1 / 1]}
+        euler_one = family_euler_step(decay_f, 1 / 2, s0).y[0]
+        euler_two = family_euler_step(decay_f, 1 / 2, family_euler_step(decay_f, 1 / 2, s0)).y[0]
+        rk4_growth = family_rk4_step(growth_f, 1 / 1, s0).y[0]
+    tests:
+        example <euler_exact>:
+            given unused = 0
+            expect euler_one == 1 / 2
+            expect euler_two == 1 / 4
+        example <rk4_exact>:
+            given unused = 0
+            expect rk4_growth == 65 / 24
+
+emath function TwoDim:
+    inputs:
+        unused: Int
+    outputs:
+        y1: Rat
+        y2: Rat
+    definitions:
+        f = function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], s.y[0]]}
+        stepped = family_rk4_step(f, 1 / 1, SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]})
+        y1 = stepped.y[0]
+        y2 = stepped.y[1]
+    tests:
+        example <rk4_two_dim>:
+            given unused = 0
+            expect y1 == 37 / 24
+            expect y2 == 7 / 6
+
+emath function WrappersStillExact:
+    inputs:
+        unused: Int
+    outputs:
+        euler: Rat
+        rk4: Rat
+    definitions:
+        euler = euler_step(1 / 1, 0 / 1, 1 / 2, function t in Rat: function y in Rat: 0 / 1 - y)
+        rk4 = rk4_step(1 / 1, 0 / 1, 1 / 1, function t in Rat: function y in Rat: y)
+    tests:
+        example <delegated_values>:
+            given unused = 0
+            expect euler == 1 / 2
+            expect rk4 == 65 / 24

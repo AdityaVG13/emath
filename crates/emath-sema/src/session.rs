@@ -1,7 +1,7 @@
 //! Compiler session: load → check → plan. The build step (backend +
 //! artifact emission) lives in `emath-build`.
 
-use crate::admit::{CheckResult, check_tree};
+use crate::admit::{CheckResult, check_tree_at};
 use emath_core::parse::source_parser;
 use emath_core::tree::{
     ArgumentValue, CommandArgument, ExprKind, Item, Section, StmtKind, SyntaxTree,
@@ -164,7 +164,9 @@ impl CompilerSession {
                     };
                 }
             };
-        let mut result = check_tree(&tree);
+        let source = Path::new(&source_file.name);
+        let source = (!source_file.name.is_empty()).then_some(source);
+        let mut result = check_tree_at(&tree, source);
         result.diagnostics.extend_from(&parse_diagnostics);
         result
     }
@@ -265,10 +267,15 @@ impl CompilerSession {
                 }
             }
         }
-        let mut result = check_tree(&SyntaxTree {
-            source: tree.source,
-            items: merged_items,
-        });
+        let source = Path::new(&source_file.name);
+        let source = (!source_file.name.is_empty()).then_some(source);
+        let mut result = check_tree_at(
+            &SyntaxTree {
+                source: tree.source,
+                items: merged_items,
+            },
+            source,
+        );
         result.diagnostics.extend_from(&parse_diagnostics);
         result.diagnostics.extend_from(&pre_diagnostics);
         result
@@ -316,7 +323,9 @@ impl CompilerSession {
                 };
             }
         };
-        let mut check = check_tree(&tree);
+        let source = Path::new(&source_file.name);
+        let source = (!source_file.name.is_empty()).then_some(source);
+        let mut check = check_tree_at(&tree, source);
         check.diagnostics.extend_from(&parse_diagnostics);
         let mut diagnostics = check.diagnostics;
         let mut package = check.package;

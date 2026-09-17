@@ -1,0 +1,13 @@
+# expect: E-TYPE-012
+# conformance: std.syntax.recur negative:unguarded-binding
+# The recur body must be a function literal (or a record of function
+# literals). An unguarded body faults `unguarded_recursive_binding` at
+# the constructor seam, so admission refuses it here — recur is never a
+# fixed-point solver that guesses an escape.
+emath function Unguarded:
+    inputs:
+        n: Int
+    outputs:
+        r: Int
+    definitions:
+        r = (recur f in Int -> Int: n)(n)

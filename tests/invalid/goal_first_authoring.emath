@@ -1,2 +1,0 @@
-# expect: E-SYN-146 unlabeled default that hides solve candidates
-solve x^2 = 2 hide alternatives

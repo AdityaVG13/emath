@@ -14,3 +14,10 @@ include!("body/graphs.rs");
 include!("body/poly.rs");
 include!("body/control.rs");
 include!("body/exact.rs");
+pub mod exact_int {
+    include!("body/exact_int.rs");
+}
+pub use exact_int::{
+    ExactError, ExactInt, exact_int_hamming, exact_int_poly_eval, exact_int_prod,
+    exact_int_prod_from, exact_int_sum, exact_int_sum_from, exact_int_weighted_prod, exact_ratio,
+};

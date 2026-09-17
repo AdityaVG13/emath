@@ -1,0 +1,27 @@
+# Module acceptance fixture: nonidentifiability answered with the
+# feasible set, never a fake unique. From rest (0,0) every coefficient
+# c = k/8, k = 0..16 fits the (all-zero) trajectory exactly, so the
+# exact minimum is 17-way and the feasible set is the whole domain.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/fitting_nonidentifiable_set.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use search.fitting
+
+emath function NonidentifiableSet:
+    inputs:
+        unused: Int
+    outputs:
+        count: Int
+    definitions:
+        fam = function c in Rat: function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], 0 / 1 - s.y[0] - c * s.y[1]]}
+        z0 = SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+        zdata = rollout_trace(fam(1 / 2), euler_tableau(0), 1, 1 / 8, 16, z0)
+        score = function k in Int: sse_eval(fam, 0, k / 8, zdata, z0, 1 / 8, 16)
+        feas = feasible_set(domain_list(0, 16), score)
+        count = length(feas)
+    tests:
+        example <seventeen_way_tie>:
+            given unused = 0
+            expect count == 17

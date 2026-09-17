@@ -1,4 +1,6 @@
-# expect: E-KIND-011 kind `model` requires section `definitions` or `equations`
+# expect: E-KIND-GONE
+# conformance: std.kind.object mutation:kind-model
+# `model` is not a core kind; write an ordinary `emath function`.
 emath model M:
     inputs:
         x: Float64

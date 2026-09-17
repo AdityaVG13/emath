@@ -1,0 +1,6 @@
+# expect: E-KIND-GONE
+# conformance: std.kind.function mutation:kind-policy
+# `policy` is not a core kind; write an ordinary `emath function`.
+emath policy P:
+    inputs:
+        x: Float64

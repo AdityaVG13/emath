@@ -1,3 +1,0 @@
-# expect: E-SYN-147 freeze must not upgrade open holes into claimed exactness
-f = ?
-exact

@@ -1,0 +1,22 @@
+# Module acceptance fixture: a terminal event found EXACTLY. y' = -1
+# from y = 1; the guard y - 1/2 (falling) crosses at t = 1/2 — the
+# Hermite interpolant of a line is the line, and 1/2 is dyadic, so the
+# 40-iteration bracket returns the root exactly. Terminal stops there.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/events_terminal_exact.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.events
+
+emath function Terminal:
+    inputs:
+        unused: Int
+    outputs:
+        result: EventRun
+    definitions:
+        fall = function t in Rat: function s in SimState: SimState: {t: t, y: [0 - 1 / 1]}
+        result = event_rollout(fall, cash_karp_pair(0), 4, 5, [1 / 4], [1 / 4], 1 / 1, 1 / 4, 1 / 1, 8, 4, [Event: {guard: function t in Rat: function s in SimState: s.y[0] - 1 / 2, direction: 0 - 1, terminal: true, priority: 0, reset: function s in SimState: s}], SimState: {t: 0 / 1, y: [1 / 1]}, 1 / 1)
+    tests:
+        example <exact_half_terminal>:
+            given unused = 0
+            expect result == EventRun: {t: 1 / 2, y: [1 / 2], complete: false, attempts_used: 1, rejections: 0, events_fired: 1, outcome: 3}

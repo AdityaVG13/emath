@@ -1,0 +1,57 @@
+# A multi-output function whose LAST definition is a bare call to a
+# named function must still return its packed result record: the tail
+# call must not hijack the frame and return the callee's value alone.
+# Regression for the TCO path that once skipped `function_result`
+# record packing, so callers saw the last definition's raw value and
+# `enc.lo` style projections faulted as unbound.
+
+emath function Passthrough:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x
+
+emath function TailCallOutput:
+    inputs:
+        h: Rat
+    outputs:
+        lo: Rat
+        hi: Rat
+    definitions:
+        lo = Passthrough(h)
+        hi = Passthrough(h + h)
+
+emath function TailCallReader:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+        lo_check: Rat
+        hi_check: Rat
+    definitions:
+        enc = TailCallOutput(1 / 1)
+        result = enc.lo + enc.hi
+        lo_check = enc.lo
+        hi_check = enc.hi
+    tests:
+        example <record_projects>:
+            given unused = 0
+            expect result == 3 / 1
+            expect lo_check == 1 / 1
+            expect hi_check == 2 / 1
+
+emath function MemoTailReader:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        first = TailCallOutput(1 / 1)
+        second = TailCallOutput(1 / 1)
+        result = first.lo + second.hi
+    tests:
+        example <memoized_call_returns_record>:
+            given unused = 0
+            expect result == 3 / 1

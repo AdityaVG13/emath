@@ -1,0 +1,37 @@
+# Module acceptance fixture: the attempt-budget stop. Two attempts
+# are budgeted; both reject (tight tolerance against the h = 1
+# estimator gap). The run stops INCOMPLETE reporting the last ACCEPTED
+# time (0 — nothing was accepted) and the UNCHANGED initial state:
+# a rejected step never mutates the committed trajectory, and the
+# budget stop never reports the requested final time.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/adaptive_budget_stops_incomplete.emath
+
+use analysis.evolution.control
+use analysis.evolution.one_step
+
+emath function BudgetStop:
+    inputs:
+        unused: Int
+    outputs:
+        t: Rat
+        y: sequence(Rat)
+        complete: Bool
+        attempts_used: Int
+        rejections: Int
+    definitions:
+        decay = function t in Rat: function s in SimState: SimState: {t: t, y: [0 / 1 - s.y[0]]}
+        run = adaptive_rollout(decay, cash_karp_pair(0), 4, 5, [1 / 1000000], [1 / 1000000], 1 / 1, 1 / 4, 1 / 1, 2, SimState: {t: 0 / 1, y: [1 / 1]}, 1 / 1)
+        t = run.t
+        y = run.y
+        complete = run.complete
+        attempts_used = run.attempts_used
+        rejections = run.rejections
+    tests:
+        example <stops_at_two_rejections_uncommitted>:
+            given unused = 0
+            expect complete == false
+            expect t == 0 / 1
+            expect y == [1 / 1]
+            expect attempts_used == 2
+            expect rejections == 2

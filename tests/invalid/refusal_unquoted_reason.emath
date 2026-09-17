@@ -1,0 +1,17 @@
+# Unquoted refusal reason: constructor_refuse takes a quoted identifier;
+# an unquoted reason is an unbound name and must refuse at admission —
+# never silently bind, and never fabricate a fault string from prose.
+# conformance: std.capability.refusal negative:unquoted-reason
+# expect: E-TYPE-002
+
+emath function RefusalUnquotedReason:
+    inputs:
+        n: Int
+    outputs:
+        r: Int
+    definitions:
+        r = constructor_refuse(no_inverse)
+    tests:
+        example <unquoted_reason_refuses>:
+            given n = 3
+            expect r == 1

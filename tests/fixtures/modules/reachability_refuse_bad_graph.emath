@@ -1,0 +1,19 @@
+# Module expected-refusal fixture: a declared controller id outside
+# the state set refuses bad_graph before any analysis runs.
+# Expected outcome: exits nonzero with `bad_graph`.
+# Run: emath test tests/fixtures/modules/reachability_refuse_bad_graph.emath
+
+use discrete.reachability
+
+emath function BadGraphRefuses:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        g = GameGraph: {succs: [[1], []], controllers: [99], goals: [1]}
+        result = attractor_set(g)
+    tests:
+        example <id_out_of_range>:
+            given unused = 0
+            expect result == result

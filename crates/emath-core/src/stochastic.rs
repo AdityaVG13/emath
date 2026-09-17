@@ -31,10 +31,6 @@ use crate::hash::fnv1a64_bytes;
 pub const E_STOCH_ALGORITHM: &str = "E-STOCH-1";
 /// `E-STOCH-2` — a malformed declared stream path (empty label).
 pub const E_STOCH_STREAM: &str = "E-STOCH-2";
-/// `E-STOCH-3` — undeclared entropy access (ambient randomness is a
-/// capability refusal, never silent pseudo-randomness).
-pub const E_STOCH_ENTROPY: &str = "E-STOCH-3";
-
 /// The named counter-based generator of record: Philox4x32 with 10
 /// rounds (Random123 construction). Identity is RECORDED in receipts;
 /// providers may exist only behind this declared name.
@@ -158,40 +154,4 @@ pub fn stream_value(
 /// re-maps to this function without touching the generators themselves.
 pub fn local_stream_seed(seed: &Seed, path: &StreamPath) -> Result<u64, String> {
     stream_value(seed, ALGORITHM_PHILOX4X32_10, path, 0)
-}
-
-/// The replay record: (seed, algorithm, stream path). A stochastic answer
-/// that cites this receipt is replayable to the byte by re-deriving the
-/// same streams under the same identity.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StochasticReceipt {
-    seed: u64,
-    algorithm: String,
-    stream: String,
-}
-
-impl StochasticReceipt {
-    pub fn new(seed: &Seed, algorithm: &str, stream: &StreamPath) -> Self {
-        StochasticReceipt {
-            seed: seed.value(),
-            algorithm: algorithm.to_string(),
-            stream: stream.canonical(),
-        }
-    }
-
-    /// Canonical one-line binding of the triple.
-    pub fn canonical(&self) -> String {
-        format!(
-            "stochastic-receipt seed={} algorithm={} stream={}",
-            self.seed, self.algorithm, self.stream
-        )
-    }
-
-    /// Content id over the canonical binding.
-    pub fn content_id(&self) -> String {
-        format!(
-            "fnv1a64:{:016x}",
-            fnv1a64_bytes(self.canonical().as_bytes())
-        )
-    }
 }

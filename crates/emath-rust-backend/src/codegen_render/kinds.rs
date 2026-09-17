@@ -8,6 +8,8 @@ pub(crate) type InputKinds = BTreeMap<String, ValueKind>;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ValueKind {
     I64,
+    /// Signed constructor integer that may exceed i64.
+    ExactInt,
     F64,
     Rational,
     Bool,
@@ -35,6 +37,7 @@ impl ValueKind {
             }
             match text.trim() {
                 "Int" | "I64" | "Nat" => ValueKind::I64,
+                "ExactInt" => ValueKind::ExactInt,
                 "Float64" => ValueKind::F64,
                 "Rat" => ValueKind::Rational,
                 "Bool" => ValueKind::Bool,
@@ -77,6 +80,7 @@ impl ValueKind {
         use crate::rust_ir::render::render_ty;
         Ok(match self {
             Self::I64 => Ty::I64,
+            Self::ExactInt => Ty::Named("emath_rt::ExactInt".into()),
             Self::F64 => Ty::F64,
             Self::Complex => Ty::Named("(f64, f64)".into()),
             Self::Rational => Ty::Named("emath_rt::ExactRatio".into()),
@@ -190,9 +194,22 @@ pub(super) fn kind_of_op(
         EmirOp::ConstI64(_)
         | EmirOp::VectorLength(_)
         | EmirOp::ToInt(_)
-        | EmirOp::IntegerQuotient(_, _)
         | EmirOp::MatrixRows(_)
         | EmirOp::MatrixCols(_) => ValueKind::I64,
+        EmirOp::ConstExactInt(_) => ValueKind::ExactInt,
+        EmirOp::ExactIntCall { name, .. } if name == "int_egcd" => {
+            ValueKind::Vector(Box::new(ValueKind::ExactInt))
+        }
+        EmirOp::ExactIntCall { .. } => ValueKind::ExactInt,
+        EmirOp::IntegerQuotient(left, right) => {
+            if kind_at(kinds, *left) == ValueKind::ExactInt
+                || kind_at(kinds, *right) == ValueKind::ExactInt
+            {
+                ValueKind::ExactInt
+            } else {
+                ValueKind::I64
+            }
+        }
         EmirOp::MatrixPack { .. } | EmirOp::MatrixCreate { .. } => {
             ValueKind::Matrix(Box::new(ValueKind::F64))
         }
@@ -384,11 +401,13 @@ pub(super) fn kind_of_op(
                 || kind_at(kinds, *right) == ValueKind::Complex
             {
                 ValueKind::Complex
-            } else if (kind_at(kinds, *left) == ValueKind::Rational
-                && kind_at(kinds, *right) == ValueKind::Rational)
-                || (kind_at(kinds, *left) == ValueKind::I64
-                    && kind_at(kinds, *right) == ValueKind::I64)
-            {
+            } else if matches!(
+                kind_at(kinds, *left),
+                ValueKind::Rational | ValueKind::I64 | ValueKind::ExactInt
+            ) && matches!(
+                kind_at(kinds, *right),
+                ValueKind::Rational | ValueKind::I64 | ValueKind::ExactInt
+            ) {
                 ValueKind::Rational
             } else {
                 ValueKind::F64
@@ -397,7 +416,19 @@ pub(super) fn kind_of_op(
         EmirOp::LoadInput(index) => input_kind(names.get(*index as usize), input_kinds),
         EmirOp::LoadState(index) => input_kind(states.get(*index as usize), input_kinds),
         EmirOp::F64Add(left, right) | EmirOp::F64Sub(left, right) | EmirOp::F64Mul(left, right) => {
-            if kind_at(kinds, *left) == ValueKind::I64 && kind_at(kinds, *right) == ValueKind::I64 {
+            if (kind_at(kinds, *left) == ValueKind::ExactInt
+                || kind_at(kinds, *right) == ValueKind::ExactInt)
+                && matches!(
+                    kind_at(kinds, *left),
+                    ValueKind::I64 | ValueKind::ExactInt
+                )
+                && matches!(
+                    kind_at(kinds, *right),
+                    ValueKind::I64 | ValueKind::ExactInt
+                )
+            {
+                ValueKind::ExactInt
+            } else if kind_at(kinds, *left) == ValueKind::I64 && kind_at(kinds, *right) == ValueKind::I64 {
                 ValueKind::I64
             } else if kind_at(kinds, *left) == ValueKind::Rational
                 && kind_at(kinds, *right) == ValueKind::Rational
@@ -438,6 +469,10 @@ pub(super) fn kind_of_op(
             let else_kind = kind_at(kinds, *else_value);
             if then_kind == else_kind {
                 then_kind
+            } else if matches!(then_kind, ValueKind::I64 | ValueKind::ExactInt)
+                && matches!(else_kind, ValueKind::I64 | ValueKind::ExactInt)
+            {
+                ValueKind::ExactInt
             } else {
                 ValueKind::F64
             }
@@ -549,10 +584,17 @@ pub(super) fn cmp_expr(
     let lk = operand_kind(kinds, left);
     let rk = operand_kind(kinds, right);
     match (&lk, &rk) {
-        (ValueKind::I64, ValueKind::I64) | (ValueKind::Bool, ValueKind::Bool) => Expr::Bin {
+        (ValueKind::I64, ValueKind::I64)
+        | (ValueKind::ExactInt, ValueKind::ExactInt)
+        | (ValueKind::Bool, ValueKind::Bool) => Expr::Bin {
             op,
             left: Box::new(operand(program, left)),
             right: Box::new(operand(program, right)),
+        },
+        (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt) => Expr::Bin {
+            op,
+            left: Box::new(exact_int_operand(program, left, kinds)),
+            right: Box::new(exact_int_operand(program, right, kinds)),
         },
         (ValueKind::I64, ValueKind::F64) => mixed_i64_f64_cmp(
             op,
@@ -698,7 +740,7 @@ pub(crate) fn value_expr(
         let expression = op_expr(&program.ops[0].0, program, names, states, input_kinds)?;
         return owned_result(program, expression, names, states, input_kinds);
     }
-    let flat = flat_ssa(program, names, states, input_kinds, None)?;
+    let flat = flat_ssa(program, names, states, input_kinds)?;
     let mut statements: Vec<Stmt> = Vec::with_capacity(flat.e_lets.len() + 1);
     for (pattern, src) in flat.e_lets {
         statements.push(Stmt::Let {

@@ -1,0 +1,19 @@
+# Expected refusal: bad_direction. A direction outside {-1, 0, 1} is a
+# contract error.
+# Run: emath test tests/fixtures/modules/events_refuse_bad_direction.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.events
+
+emath function BadDirection:
+    inputs:
+        unused: Int
+    outputs:
+        result: EventRun
+    definitions:
+        grow = function t in Rat: function s in SimState: SimState: {t: t, y: [1 / 1]}
+        result = event_rollout(grow, cash_karp_pair(0), 4, 5, [1 / 4], [1 / 4], 1 / 2, 1 / 4, 1 / 1, 8, 4, [Event: {guard: function t in Rat: function s in SimState: s.y[0], direction: 2, terminal: false, priority: 0, reset: function s in SimState: s}], SimState: {t: 0 / 1, y: [0 / 1]}, 1 / 1)
+    tests:
+        example <refuses_by_named_code>:
+            given unused = 0
+            expect result == result

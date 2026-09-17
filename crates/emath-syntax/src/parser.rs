@@ -515,12 +515,14 @@ impl Parser {
 
     /// Keywords are not identifiers. A keyword in a name position must
     /// refuse rather than parse as a different construct or drop the
-    /// segment silently.
+    /// segment silently. The suggested repair is the one-edit suffix:
+    /// `word_` is the nearest legal identifier spelling.
     pub(crate) fn error_keyword_as_ident(&mut self, keyword: Keyword) {
         self.error_here(
-            "E-SYN-101",
+            "E-SYN-110",
             format!(
-                "keyword `{}` cannot be used as an identifier",
+                "keyword `{}` cannot be used as an identifier; rename it to `{}_`",
+                keyword.spelling(),
                 keyword.spelling()
             ),
         );

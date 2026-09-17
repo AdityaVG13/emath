@@ -30,50 +30,6 @@ impl ParamShape {
     }
 }
 
-/// Inferred element shape of a compiled subterm.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Shape {
-    Scalar,
-    Vector,
-    /// Dense matrix carrier (`Matrix<Float64>` params and the graph
-    /// call slots; slice 2).
-    Matrix,
-    /// Comparison results (`lt`/`le`/`gt`/`ge`/`eq`/`ne`): the closed
-    /// vocabulary composes booleans NOWHERE (every other arm matches
-    /// Scalar/Vector only).
-    Bool,
-    /// An Option carrier (`option_some`/`option_none`). Carriers are
-    /// OPAQUE at the shape level: the inner payload shape is not
-    /// tracked — only the polarity/unwrap/error_of arms admit them
-    /// (call surface).
-    OptionCarrier,
-    /// A Result carrier (`result_ok`/`result_err`). Same opacity law as
-    /// the Option carrier; the error payload shares the Result slot
-    /// (`Value::Result { ok, payload }`).
-    ResultCarrier,
-}
-
-impl Shape {
-    /// The concrete payload/default shapes the Option/Result call
-    /// surface admits: Scalar, Vector, Matrix. Carriers refuse (they
-    /// are opaque) and Bool refuses (the closed vocabulary composes
-    /// booleans NOWHERE).
-    pub(super) const fn is_concrete_payload(self) -> bool {
-        matches!(self, Self::Scalar | Self::Vector | Self::Matrix)
-    }
-
-    /// True for a (nested) carrier shape. Nested payloads are the
-    /// type-honest rule lifted in
-    /// `Option<T>` and `Result<T,E>` are themselves payloads, so
-    /// a carrier is an acceptable payload for the three CONSTRUCTORS
-    /// (`option_some`/`result_ok`/`result_err`) and an acceptable
-    /// unwrap_or DEFAULT when the retrieved payload is a carrier. Bool
-    /// still composes nowhere (not a carrier, not concrete).
-    pub(super) const fn is_payload_candidate(self) -> bool {
-        self.is_concrete_payload() || matches!(self, Self::OptionCarrier | Self::ResultCarrier)
-    }
-}
-
 /// Data-driven contract guard run at the VM seam BEFORE the compiled
 /// body, in declared order. Guards are cell data, not VM branches: a
 /// violation is the capability layer's typed refusal (`E-CELL-006`),

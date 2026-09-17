@@ -31,7 +31,6 @@ use emath_sema::CompilerSession;
 use emath_term::{Term, VariableId};
 use emath_world_ir::WorldIr;
 use std::collections::BTreeMap;
-use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 
 mod args;
@@ -41,7 +40,7 @@ mod spec;
 mod sweep;
 
 pub(crate) use args::*;
-pub(crate) use eval::*;
-pub(crate) use repl::*;
-pub(crate) use spec::*;
+use eval::*;
+use repl::*;
+use spec::*;
 pub(crate) use sweep::*;

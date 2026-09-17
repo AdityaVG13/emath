@@ -1,5 +1,5 @@
 use super::{MAX_EXPR_DEPTH, comparison_operator};
-use crate::token::{Keyword, NablaForm, TokenKind};
+use crate::token::{Keyword, TokenKind};
 use crate::tree::{
     ApproxTolerance, BinaryOp, Expr, ExprKind, NotationFixity,
     UnaryOp, UnitExpr, UnitQueryKind,

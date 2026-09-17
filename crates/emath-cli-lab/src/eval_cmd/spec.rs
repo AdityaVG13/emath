@@ -27,10 +27,18 @@ fn eval_constructor_file(args: &EvalArgs) -> Option<CliExit> {
     }
     let mut inputs = std::collections::BTreeMap::new();
     for (name, raw) in &args.set {
-        inputs.insert(name.clone(), parse_constructor_eval_literal(raw));
+        inputs.insert(
+            name.clone(),
+            emath_exec_ir::constructor_layer::parse_constructor_scalar(raw),
+        );
     }
     if let Some(name) = &args.function {
-        match emath_exec_ir::constructor_layer::evaluate_function(&tree, name, &inputs) {
+        match emath_exec_ir::constructor_layer::evaluate_function_at(
+            &tree,
+            name,
+            &inputs,
+            Some(&args.path),
+        ) {
             Ok(value) => {
                 if args.json {
                     println!(
@@ -56,7 +64,7 @@ fn eval_constructor_file(args: &EvalArgs) -> Option<CliExit> {
             Err(err) => return Some(refuse_eval_coded(&err.code, &err.message, args.json)),
         }
     }
-    match emath_exec_ir::constructor_layer::evaluate_tree(&tree) {
+    match emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(&args.path)) {
         Ok(_) => Some(EXIT_OK),
         Err(err) => Some(refuse_eval_coded(&err.code, &err.message, args.json)),
     }
@@ -479,27 +487,3 @@ pub(super) fn value_map_json(entries: &[(String, String)]) -> String {
     object.finish().trim_end().to_string()
 }
 
-fn parse_constructor_eval_literal(raw: &str) -> emath_exec_ir::constructor_layer::CValue {
-    let trimmed = raw.trim();
-    if trimmed == "true" {
-        return emath_exec_ir::constructor_layer::CValue::Bool(true);
-    }
-    if trimmed == "false" {
-        return emath_exec_ir::constructor_layer::CValue::Bool(false);
-    }
-    if let Some((num, den)) = trimmed.split_once('/') {
-        if let (Ok(n), Ok(d)) = (num.parse::<i128>(), den.parse::<i128>()) {
-            return emath_exec_ir::constructor_layer::CValue::Rat { num: n, den: d };
-        }
-    }
-    if let Ok(n) = trimmed.parse::<i128>() {
-        return emath_exec_ir::constructor_layer::CValue::Int(n);
-    }
-    if let Ok(x) = trimmed.parse::<f64>() {
-        return emath_exec_ir::constructor_layer::CValue::Float64(x);
-    }
-    emath_exec_ir::constructor_layer::CValue::Record {
-        type_name: trimmed.into(),
-        fields: std::collections::BTreeMap::new(),
-    }
-}
