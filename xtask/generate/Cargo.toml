@@ -1,0 +1,11 @@
+[package]
+name = "emath-language-generator"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+emath-exec-ir = { path = "../../crates/emath-exec-ir" }
+emath-schema = { path = "../../crates/emath-schema" }

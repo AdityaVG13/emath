@@ -9,20 +9,44 @@ publish = false
 [[bin]]
 name = "xtask"
 path = "src/main.rs"
+required-features = ["demos"]
+
+[[bin]]
+name = "generate-language"
+path = "src/bin/generate_language.rs"
+
+[features]
+default = []
+# Language generation stays lightweight (emath-schema + emath-exec-ir
+# only); every demo dependency is opt-in so `cargo xtask
+# generate-language` does not compile the demo stack. `cargo xtask demo
+# all` still routes to the main binary with `demos` enabled.
+demos = [
+    "dep:emath-core",
+    "dep:emath-genesis",
+    "dep:emath-lab-core",
+    "dep:emath-cli",
+    "dep:emath-cli-lab",
+    "dep:emath-sema",
+    "dep:emath-store",
+    "dep:emath-syntax",
+    "dep:emath-term",
+    "dep:emath-world-ir",
+]
 
 [lints]
 workspace = true
 
 [dependencies]
-emath-core = { path = "../crates/emath-core" }
-emath-genesis.workspace = true
-emath-lab-core.workspace = true
 emath-exec-ir.workspace = true
-emath-cli.workspace = true
-emath-cli-lab.workspace = true
-emath-sema = { path = "../crates/emath-sema" }
-emath-store = { path = "../crates/emath-store" }
-emath-syntax = { path = "../crates/emath-syntax" }
 emath-schema = { path = "../crates/emath-schema" }
-emath-term.workspace = true
-emath-world-ir.workspace = true
+emath-core = { path = "../crates/emath-core", optional = true }
+emath-genesis = { workspace = true, optional = true }
+emath-lab-core = { workspace = true, optional = true }
+emath-cli = { workspace = true, optional = true }
+emath-cli-lab = { workspace = true, optional = true }
+emath-sema = { path = "../crates/emath-sema", optional = true }
+emath-store = { path = "../crates/emath-store", optional = true }
+emath-syntax = { path = "../crates/emath-syntax", optional = true }
+emath-term = { workspace = true, optional = true }
+emath-world-ir = { workspace = true, optional = true }
