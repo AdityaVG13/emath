@@ -11,7 +11,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
-use emath_term::{SymbolId, Term, VariableId};
+use emath_term::{SymbolId, Term, VariableId, escape_canonical_token as escape};
 use emath_world_ir::fnv1a64;
 
 /// Scoped-binder schema id for artifacts and receipts.
@@ -467,18 +467,4 @@ fn fresh_name(original: &VariableId, avoid: &BTreeSet<VariableId>) -> VariableId
         }
         counter += 1;
     }
-}
-
-fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '(' => out.push_str("\\("),
-            ')' => out.push_str("\\)"),
-            ',' => out.push_str("\\,"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }

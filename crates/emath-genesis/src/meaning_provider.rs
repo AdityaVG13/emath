@@ -12,6 +12,8 @@ use std::fmt::Write as _;
 
 use emath_world_ir::fnv1a64;
 
+use emath_term::escape_canonical_token as escape;
+
 use crate::json_emit::{emit_object, Json};
 use crate::synth::{LawViolation, MAX_CARRIER_SIZE, OpTable, SynthLaw, check_table};
 
@@ -472,18 +474,4 @@ fn validate(proposal: &AgentProposal) -> Result<(), ProviderError> {
         }
     }
     Ok(())
-}
-
-fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '(' => out.push_str("\\("),
-            ')' => out.push_str("\\)"),
-            ',' => out.push_str("\\,"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }

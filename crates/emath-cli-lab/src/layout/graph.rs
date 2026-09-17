@@ -3,6 +3,7 @@
 use std::fmt::{self, Write as _};
 
 use emath_core::fnv1a64_bytes;
+use emath_term::escape_canonical_token_extended as escape;
 
 /// Schema id; matches the disclosed `emath-schema` registry string.
 pub const LAYOUT_SCHEMA: &str = "emath.math-layout-graph";
@@ -423,21 +424,4 @@ fn content_canonical(content: &LayoutContent) -> String {
         LayoutContent::BigOp(name) => format!("bigop({})", escape(name)),
         LayoutContent::FormulaRegion => "formula-region".to_string(),
     }
-}
-
-fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '(' => out.push_str("\\("),
-            ')' => out.push_str("\\)"),
-            ',' => out.push_str("\\,"),
-            ':' => out.push_str("\\:"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }

@@ -81,7 +81,7 @@ fn term_public_api() {
             match Term::parse_body(source) {
                 Ok(term) => p.eq(name, term, expected.clone()),
                 Err(error) => p.fail(name, format!("{source}: {error:?}")),
-            }
+            };
         }
         match Term::parse_body("if not is_finite(x) then refuse(text:E-POLY-002) else acc") {
             Ok(term) => p.eq(
@@ -90,7 +90,7 @@ fn term_public_api() {
                 "apply(if,apply(not,apply(is_finite,var(x))),apply(refuse,const(text:E-POLY-002)),var(acc))".to_string(),
             ),
             Err(error) => p.fail("if-then", format!("{error:?}")),
-        }
+        };
         match Term::parse_body("let acc = 0 in coeffs[i] + acc * x") {
             Ok(term) => p.eq(
                 "let-index",
@@ -98,7 +98,7 @@ fn term_public_api() {
                 "apply(let,var(acc),const(0),apply(add,apply(index,var(coeffs),var(i)),apply(mul,var(acc),var(x))))".to_string(),
             ),
             Err(error) => p.fail("let-index", format!("{error:?}")),
-        }
+        };
         p.demand(
             "refuse-trailing",
             matches!(Term::parse_body("lhs + rhs leftover"), Err(CanonicalError::Trailing { .. })),
@@ -112,6 +112,18 @@ fn term_public_api() {
         p.demand("conflict", matches!(sig.insert(SymbolId("f".to_string()), 3), Err(TermError::ConflictingArity { .. })), "conflict refuses");
         let wrong = Term::Apply { operator: SymbolId("f".to_string()), arguments: vec![Term::Constant(SymbolId("a".to_string()))] };
         p.demand("validate", matches!(sig.validate(&wrong), Err(TermError::ArityMismatch { .. })), "arity mismatch refuses");
+    });
+    p.case("escape", |p| {
+        p.eq(
+            "token",
+            emath_term::escape_canonical_token("a,b(c)d\\e:f"),
+            "a\\,b\\(c\\)d\\\\e:f".to_string(),
+        );
+        p.eq(
+            "extended",
+            emath_term::escape_canonical_token_extended("a,b(c)d\\e:f\ng\r"),
+            "a\\,b\\(c\\)d\\\\e\\:f\\ng\\r".to_string(),
+        );
     });
     p.finish();
 }

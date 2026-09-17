@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use emath_term::{SymbolId, Term, VariableId};
+use emath_term::{SymbolId, Term, VariableId, escape_canonical_token as escape};
 use emath_world_ir::fnv1a64;
 
 use crate::binder::{BinderBudget, BinderKind, BinderTerm};
@@ -642,18 +642,4 @@ fn sample_json(sample: &AnalogueSample) -> Json {
     object.insert("fx", Json::Str(format!("{:016x}", sample.fx_bits)));
     object.insert("x", Json::Str(format!("{:016x}", sample.x_bits)));
     Json::Object(object)
-}
-
-fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '(' => out.push_str("\\("),
-            ')' => out.push_str("\\)"),
-            ',' => out.push_str("\\,"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }

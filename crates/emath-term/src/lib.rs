@@ -142,13 +142,13 @@ impl Term {
 
     fn write_canonical(&self, output: &mut String) -> fmt::Result {
         match self {
-            Self::Variable(variable) => write!(output, "var({})", escape(&variable.0)),
-            Self::Constant(symbol) => write!(output, "const({})", escape(&symbol.0)),
+            Self::Variable(variable) => write!(output, "var({})", escape_canonical_token(&variable.0)),
+            Self::Constant(symbol) => write!(output, "const({})", escape_canonical_token(&symbol.0)),
             Self::Apply {
                 operator,
                 arguments,
             } => {
-                write!(output, "apply({}", escape(&operator.0))?;
+                write!(output, "apply({}", escape_canonical_token(&operator.0))?;
                 for argument in arguments {
                     output.push(',');
                     argument.write_canonical(output)?;
@@ -348,7 +348,13 @@ impl CanonicalParser<'_> {
     }
 }
 
-fn escape(text: &str) -> String {
+/// Escape a token for a canonical form: `\`, `(`, `)`, and `,` are
+/// backslash-escaped; every other character passes through unchanged.
+/// One helper serves every canonical-form writer (terms, genesis
+/// binders, world codegen) — the escape discipline is part of the
+/// format contract, not a per-crate detail.
+#[must_use]
+pub fn escape_canonical_token(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {
@@ -356,6 +362,26 @@ fn escape(text: &str) -> String {
             '(' => out.push_str("\\("),
             ')' => out.push_str("\\)"),
             ',' => out.push_str("\\,"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// [`escape_canonical_token`] plus `:`, newline, and carriage return —
+/// the extended set layout labels need.
+#[must_use]
+pub fn escape_canonical_token_extended(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '(' => out.push_str("\\("),
+            ')' => out.push_str("\\)"),
+            ',' => out.push_str("\\,"),
+            ':' => out.push_str("\\:"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
             _ => out.push(ch),
         }
     }
