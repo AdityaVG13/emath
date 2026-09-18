@@ -1,6 +1,23 @@
 use super::*;
 use super::prelude::*;
 
+/// Encode-side buffer identity table (bead emath-84sfr, the ENCODE
+/// checkpoint decision): the first occurrence of a distinct buffer
+/// emits its contents under a fresh id; later occurrences emit
+/// `(bufref id)` so aliasing survives the round-trip — decoding two
+/// independent buffers would silently diverge writes.
+#[derive(Default)]
+pub(super) struct EncodeCtx {
+    buffers: BTreeMap<usize, usize>,
+    next_id: usize,
+}
+
+/// Decode-side buffer memo: id -> shared cell, restoring aliasing.
+#[derive(Default)]
+pub(super) struct DecodeCtx {
+    buffers: BTreeMap<usize, std::sync::Arc<std::sync::Mutex<Vec<CValue>>>>,
+}
+
 pub fn is_constructor_checkpoint(text: &str) -> bool {
     text.lines().next() == Some(CHECKPOINT_SCHEMA)
         || text.contains(&format!("\"schema\": \"{CHECKPOINT_SCHEMA}\""))
@@ -8,6 +25,7 @@ pub fn is_constructor_checkpoint(text: &str) -> bool {
 
 impl Checkpoint {
     pub fn encode(&self) -> String {
+        let mut ctx = EncodeCtx::default();
         let mut out = String::new();
         out.push_str(CHECKPOINT_SCHEMA);
         out.push('\n');
@@ -37,11 +55,11 @@ impl Checkpoint {
                 out.push_str("env ");
                 out.push_str(name);
                 out.push(' ');
-                encode_cvalue(value, &mut out);
+                encode_cvalue(value, &mut ctx, &mut out);
                 out.push('\n');
             }
             for kont in &frame.kont {
-                encode_kont(kont, &mut out);
+                encode_kont(kont, &mut ctx, &mut out);
             }
         }
         out.push_str(&format!("input_count={}\n", self.inputs.len()));
@@ -49,7 +67,7 @@ impl Checkpoint {
             out.push_str("input ");
             out.push_str(name);
             out.push(' ');
-            encode_cvalue(value, &mut out);
+            encode_cvalue(value, &mut ctx, &mut out);
             out.push('\n');
         }
         out.push_str(&format!("memo_count={}\n", self.memo.len()));
@@ -57,7 +75,7 @@ impl Checkpoint {
             out.push_str("memo ");
             out.push_str(id);
             out.push(' ');
-            encode_cvalue(value, &mut out);
+            encode_cvalue(value, &mut ctx, &mut out);
             out.push('\n');
         }
         out.push_str(&format!("source_len={}\n", self.source.len()));
@@ -76,6 +94,7 @@ impl Checkpoint {
             ));
         }
         let mut checkpoint = Checkpoint::default();
+        let mut ctx = DecodeCtx::default();
         let mut lines = rest.lines();
         while let Some(line) = lines.next() {
             if let Some(value) = line.strip_prefix("source_id=") {
@@ -159,11 +178,11 @@ impl Checkpoint {
                         let Some((name, encoded)) = rest.split_once(' ') else {
                             return Err(fault("incompatible_checkpoint", "malformed frame env"));
                         };
-                        env.insert(name.to_string(), decode_cvalue(encoded)?);
+                        env.insert(name.to_string(), decode_cvalue(encoded, &mut ctx)?);
                     }
                     let mut kont = Vec::new();
                     for _ in 0..kont_count {
-                        kont.push(Box::new(decode_kont(&mut lines)?));
+                        kont.push(Box::new(decode_kont(&mut lines, &mut ctx)?));
                     }
                     checkpoint.frames.push(ContinuationFrame {
                         function,
@@ -189,7 +208,7 @@ impl Checkpoint {
                     };
                     checkpoint
                         .inputs
-                        .insert(name.to_string(), decode_cvalue(encoded)?);
+                        .insert(name.to_string(), decode_cvalue(encoded, &mut ctx)?);
                 }
             } else if let Some(value) = line.strip_prefix("memo_count=") {
                 let count: usize = value.parse().map_err(|_| {
@@ -208,7 +227,7 @@ impl Checkpoint {
                     if id.is_empty() || id.contains(' ') {
                         return Err(fault("incompatible_checkpoint", "malformed checkpoint memo"));
                     }
-                    checkpoint.memo.insert(id.to_string(), decode_cvalue(encoded)?);
+                    checkpoint.memo.insert(id.to_string(), decode_cvalue(encoded, &mut ctx)?);
                 }
             } else if let Some(value) = line.strip_prefix("source_len=") {
                 let len: usize = value.parse().map_err(|_| {
@@ -358,11 +377,14 @@ pub(super) fn compact_key(value: &CValue, out: &mut String) -> Option<()> {
             out.push_str("Absent");
             Some(())
         }
-        CValue::Closure(_) | CValue::Code(_) | CValue::Receipt(_) => None,
+        // Buffers refuse memo keys: a key over mutable state would
+        // freeze a snapshot while writes continue (bead emath-84sfr),
+        // so calls touching buffers simply do not memoize.
+        CValue::Closure(_) | CValue::Code(_) | CValue::Receipt(_) | CValue::Buffer(_) => None,
     }
 }
 
-pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
+pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
     match kont {
         Kont::BinLeft { op, left, right } => {
             out.push_str("kont BinLeft ");
@@ -380,7 +402,7 @@ pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
             out.push_str(bin_name(*op));
             out.push('\n');
             out.push_str("value ");
-            encode_cvalue(left, out);
+            encode_cvalue(left, ctx, out);
             out.push('\n');
             out.push_str("expr ");
             encode_expr(right, out);
@@ -421,11 +443,11 @@ pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
         } => {
             out.push_str(&format!("kont CallArgs {} {}\n", done.len(), rest.len()));
             out.push_str("value ");
-            encode_cvalue(callee, out);
+            encode_cvalue(callee, ctx, out);
             out.push('\n');
             for value in done {
                 out.push_str("value ");
-                encode_cvalue(value, out);
+                encode_cvalue(value, ctx, out);
                 out.push('\n');
             }
             for expr in rest {
@@ -438,7 +460,7 @@ pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
             out.push_str(&format!("kont FnCall {name} {} {}\n", done.len(), rest.len()));
             for value in done {
                 out.push_str("value ");
-                encode_cvalue(value, out);
+                encode_cvalue(value, ctx, out);
                 out.push('\n');
             }
             for expr in rest {
@@ -460,7 +482,7 @@ pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
             ));
             for value in done {
                 out.push_str("value ");
-                encode_cvalue(value, out);
+                encode_cvalue(value, ctx, out);
                 out.push('\n');
             }
             for expr in rest {
@@ -493,7 +515,7 @@ pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
                 out.push_str(name);
                 out.push('\n');
                 out.push_str("value ");
-                encode_cvalue(value, out);
+                encode_cvalue(value, ctx, out);
                 out.push('\n');
             }
             for (name, expr) in rest {
@@ -508,7 +530,7 @@ pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
         Kont::IndexAfterSeq { seq, index } => {
             out.push_str("kont IndexAfterSeq\n");
             out.push_str("value ");
-            encode_cvalue(seq, out);
+            encode_cvalue(seq, ctx, out);
             out.push('\n');
             out.push_str("expr ");
             encode_expr(index, out);
@@ -534,7 +556,7 @@ pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
         Kont::ConsAfterHead { head, tail } => {
             out.push_str("kont ConsAfterHead\n");
             out.push_str("value ");
-            encode_cvalue(head, out);
+            encode_cvalue(head, ctx, out);
             out.push('\n');
             out.push_str("expr ");
             encode_expr(tail, out);
@@ -615,7 +637,10 @@ pub(super) fn encode_kont(kont: &Kont, out: &mut String) {
     }
 }
 
-pub(super) fn decode_kont<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Result<Kont, ConstructorError> {
+pub(super) fn decode_kont<'a>(
+    lines: &mut impl Iterator<Item = &'a str>,
+    ctx: &mut DecodeCtx,
+) -> Result<Kont, ConstructorError> {
     let header = lines
         .next()
         .ok_or_else(|| fault("incompatible_checkpoint", "missing continuation slot"))?;
@@ -643,7 +668,7 @@ pub(super) fn decode_kont<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Resu
             })?;
             Ok(Kont::BinRight {
                 op,
-                left: decode_value_line(lines)?,
+                left: decode_value_line(lines, ctx)?,
                 right: Box::new(decode_expr_line(lines)?),
             })
         }
@@ -665,10 +690,10 @@ pub(super) fn decode_kont<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Resu
             let rest_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
                 fault("incompatible_checkpoint", "call continuation arity")
             })?;
-            let callee = decode_value_line(lines)?;
+            let callee = decode_value_line(lines, ctx)?;
             let mut done = Vec::new();
             for _ in 0..done_count {
-                done.push(decode_value_line(lines)?);
+                done.push(decode_value_line(lines, ctx)?);
             }
             let mut rest = Vec::new();
             for _ in 0..rest_count {
@@ -693,7 +718,7 @@ pub(super) fn decode_kont<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Resu
             })?;
             let mut done = Vec::new();
             for _ in 0..done_count {
-                done.push(decode_value_line(lines)?);
+                done.push(decode_value_line(lines, ctx)?);
             }
             let mut rest = Vec::new();
             for _ in 0..rest_count {
@@ -711,7 +736,7 @@ pub(super) fn decode_kont<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Resu
             })?;
             let mut done = Vec::new();
             for _ in 0..done_count {
-                done.push(decode_value_line(lines)?);
+                done.push(decode_value_line(lines, ctx)?);
             }
             let mut rest = Vec::new();
             for _ in 0..rest_count {
@@ -742,7 +767,7 @@ pub(super) fn decode_kont<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Resu
             let mut done = BTreeMap::new();
             for _ in 0..done_count {
                 let name = decode_name_line(lines)?;
-                done.insert(name, decode_value_line(lines)?);
+                done.insert(name, decode_value_line(lines, ctx)?);
             }
             let mut rest = Vec::new();
             for _ in 0..rest_count {
@@ -757,7 +782,7 @@ pub(super) fn decode_kont<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Resu
             })
         }
         "IndexAfterSeq" => Ok(Kont::IndexAfterSeq {
-            seq: decode_value_line(lines)?,
+            seq: decode_value_line(lines, ctx)?,
             index: Box::new(decode_expr_line(lines)?),
         }),
         "UnaryAfter" => {
@@ -774,7 +799,7 @@ pub(super) fn decode_kont<'a>(lines: &mut impl Iterator<Item = &'a str>) -> Resu
             tail: Box::new(decode_expr_line(lines)?),
         }),
         "ConsAfterHead" => Ok(Kont::ConsAfterHead {
-            head: decode_value_line(lines)?,
+            head: decode_value_line(lines, ctx)?,
             tail: Box::new(decode_expr_line(lines)?),
         }),
         "MatchWaiting" => {
@@ -850,6 +875,7 @@ pub(super) fn decode_expr_line<'a>(
 
 pub(super) fn decode_value_line<'a>(
     lines: &mut impl Iterator<Item = &'a str>,
+    ctx: &mut DecodeCtx,
 ) -> Result<CValue, ConstructorError> {
     let line = lines
         .next()
@@ -857,10 +883,10 @@ pub(super) fn decode_value_line<'a>(
     let encoded = line
         .strip_prefix("value ")
         .ok_or_else(|| fault("incompatible_checkpoint", "malformed continuation value"))?;
-    decode_cvalue(encoded)
+    decode_cvalue(encoded, ctx)
 }
 
-pub(super) fn encode_cvalue(value: &CValue, out: &mut String) {
+pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut String) {
     match value {
         CValue::Bool(v) => out.push_str(if *v { "B true" } else { "B false" }),
         CValue::Int(n) => {
@@ -879,11 +905,33 @@ pub(super) fn encode_cvalue(value: &CValue, out: &mut String) {
         }
         CValue::Unit => out.push('U'),
         CValue::Absent => out.push('A'),
+        CValue::Buffer(cell) => {
+            // Identity-keyed: the first occurrence carries the contents,
+            // later occurrences reference the id, so two frames binding
+            // the same buffer decode back to one shared cell.
+            let key = std::sync::Arc::as_ptr(cell) as usize;
+            if let Some(&id) = ctx.buffers.get(&key) {
+                out.push_str(&format!("(bufref {id})"));
+            } else {
+                let id = ctx.next_id;
+                ctx.next_id += 1;
+                ctx.buffers.insert(key, id);
+                let items = cell
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                out.push_str(&format!("(buf {id} {}", items.len()));
+                for item in items.iter() {
+                    out.push(' ');
+                    encode_cvalue(item, ctx, out);
+                }
+                out.push(')');
+            }
+        }
         CValue::Sequence(items) => {
             out.push_str("(seq");
             for item in items.iter() {
                 out.push(' ');
-                encode_cvalue(item, out);
+                encode_cvalue(item, ctx, out);
             }
             out.push(')');
         }
@@ -891,7 +939,7 @@ pub(super) fn encode_cvalue(value: &CValue, out: &mut String) {
             out.push_str("(tup");
             for item in items {
                 out.push(' ');
-                encode_cvalue(item, out);
+                encode_cvalue(item, ctx, out);
             }
             out.push(')');
         }
@@ -905,7 +953,7 @@ pub(super) fn encode_cvalue(value: &CValue, out: &mut String) {
                 out.push(' ');
                 encode_quoted(name, out);
                 out.push(' ');
-                encode_cvalue(value, out);
+                encode_cvalue(value, ctx, out);
             }
             out.push_str(") ");
             encode_expr(&clos.body, out);
@@ -923,7 +971,7 @@ pub(super) fn encode_cvalue(value: &CValue, out: &mut String) {
                 out.push(' ');
                 encode_quoted(name, out);
                 out.push(' ');
-                encode_cvalue(value, out);
+                encode_cvalue(value, ctx, out);
             }
             out.push(')');
         }
@@ -938,7 +986,7 @@ pub(super) fn encode_cvalue(value: &CValue, out: &mut String) {
             encode_quoted(tag, out);
             for value in fields {
                 out.push(' ');
-                encode_cvalue(value, out);
+                encode_cvalue(value, ctx, out);
             }
             out.push(')');
         }
@@ -946,7 +994,10 @@ pub(super) fn encode_cvalue(value: &CValue, out: &mut String) {
     }
 }
 
-pub(super) fn decode_cvalue(text: &str) -> Result<CValue, ConstructorError> {
+pub(super) fn decode_cvalue(
+    text: &str,
+    ctx: &mut DecodeCtx,
+) -> Result<CValue, ConstructorError> {
     let text = text.trim();
     if text == "U" {
         return Ok(CValue::Unit);
@@ -987,13 +1038,17 @@ pub(super) fn decode_cvalue(text: &str) -> Result<CValue, ConstructorError> {
         return Ok(CValue::Float64(x));
     }
     if let Some(rest) = text.strip_prefix("S ") {
-        return decode_compound(rest, true);
+        return decode_compound(rest, true, ctx);
     }
     if let Some(rest) = text.strip_prefix("T ") {
-        return decode_compound(rest, false);
+        return decode_compound(rest, false, ctx);
     }
     if text.starts_with('(') {
-        return decode_structured(text);
+        // Structured values decode against the SHARED ctx so buffer
+        // references resolve within this checkpoint (bead emath-84sfr);
+        // `decode_structured` stays for standalone self-contained texts.
+        let mut cur = Cursor::new(text);
+        return decode_cvalue_cur(&mut cur, ctx);
     }
     Err(fault(
         "incompatible_checkpoint",
@@ -1347,12 +1402,10 @@ impl<'a> Cursor<'a> {
     }
 }
 
-pub(super) fn decode_structured(text: &str) -> Result<CValue, ConstructorError> {
-    let mut cur = Cursor::new(text);
-    decode_cvalue_cur(&mut cur)
-}
-
-pub(super) fn decode_cvalue_cur(cur: &mut Cursor<'_>) -> Result<CValue, ConstructorError> {
+pub(super) fn decode_cvalue_cur(
+    cur: &mut Cursor<'_>,
+    ctx: &mut DecodeCtx,
+) -> Result<CValue, ConstructorError> {
     cur.skip_ws();
     if cur.eat_char('(') {
         let tag = cur.ident()?;
@@ -1366,7 +1419,7 @@ pub(super) fn decode_cvalue_cur(cur: &mut Cursor<'_>) -> Result<CValue, Construc
                 let mut env = BTreeMap::new();
                 while !cur.eat_char(')') {
                     let name = cur.string()?;
-                    let value = decode_cvalue_cur(cur)?;
+                    let value = decode_cvalue_cur(cur, ctx)?;
                     env.insert(name, value);
                 }
                 let body = decode_expr_cur(cur)?;
@@ -1396,7 +1449,7 @@ pub(super) fn decode_cvalue_cur(cur: &mut Cursor<'_>) -> Result<CValue, Construc
                 let mut fields = BTreeMap::new();
                 while !cur.eat_char(')') {
                     let name = cur.string()?;
-                    let value = decode_cvalue_cur(cur)?;
+                    let value = decode_cvalue_cur(cur, ctx)?;
                     fields.insert(name, value);
                 }
                 CValue::Record { type_name, fields }
@@ -1406,7 +1459,7 @@ pub(super) fn decode_cvalue_cur(cur: &mut Cursor<'_>) -> Result<CValue, Construc
                 let tag = cur.string()?;
                 let mut fields = Vec::new();
                 while !cur.eat_char(')') {
-                    fields.push(decode_cvalue_cur(cur)?);
+                    fields.push(decode_cvalue_cur(cur, ctx)?);
                 }
                 CValue::Variant {
                     type_name,
@@ -1417,16 +1470,60 @@ pub(super) fn decode_cvalue_cur(cur: &mut Cursor<'_>) -> Result<CValue, Construc
             "seq" => {
                 let mut items = Vec::new();
                 while !cur.eat_char(')') {
-                    items.push(decode_cvalue_cur(cur)?);
+                    items.push(decode_cvalue_cur(cur, ctx)?);
                 }
                 CValue::Sequence(std::sync::Arc::new(items))
             }
             "tup" => {
                 let mut items = Vec::new();
                 while !cur.eat_char(')') {
-                    items.push(decode_cvalue_cur(cur)?);
+                    items.push(decode_cvalue_cur(cur, ctx)?);
                 }
                 CValue::Tuple(items)
+            }
+            "buf" => {
+                let (id_text, used) = take_token(cur.rest())?;
+                cur.pos += used;
+                let id: usize = id_text
+                    .parse()
+                    .map_err(|_| fault("incompatible_checkpoint", "buffer id is not an integer"))?;
+                let (len_text, used) = take_token(cur.rest())?;
+                cur.pos += used;
+                let expected: usize = len_text.parse().map_err(|_| {
+                    fault("incompatible_checkpoint", "buffer length is not an integer")
+                })?;
+                let mut items = Vec::new();
+                while !cur.eat_char(')') {
+                    items.push(decode_cvalue_cur(cur, ctx)?);
+                }
+                if items.len() != expected {
+                    return Err(fault(
+                        "incompatible_checkpoint",
+                        format!(
+                            "buffer declared {expected} items, found {}",
+                            items.len()
+                        ),
+                    ));
+                }
+                let cell = std::sync::Arc::new(std::sync::Mutex::new(items));
+                ctx.buffers.insert(id, cell.clone());
+                CValue::Buffer(cell)
+            }
+            "bufref" => {
+                let (id_text, used) = take_token(cur.rest())?;
+                cur.pos += used;
+                let id: usize = id_text
+                    .parse()
+                    .map_err(|_| fault("incompatible_checkpoint", "buffer id is not an integer"))?;
+                match ctx.buffers.get(&id) {
+                    Some(cell) => CValue::Buffer(cell.clone()),
+                    None => {
+                        return Err(fault(
+                            "incompatible_checkpoint",
+                            "buffer reference without a preceding definition",
+                        ))
+                    }
+                }
             }
             _ => {
                 return Err(fault(
@@ -1668,7 +1765,11 @@ pub(super) fn decode_expr_cur(cur: &mut Cursor<'_>) -> Result<Expr, ConstructorE
     Ok(dummy_expr(kind))
 }
 
-pub(super) fn decode_compound(text: &str, sequence: bool) -> Result<CValue, ConstructorError> {
+pub(super) fn decode_compound(
+    text: &str,
+    sequence: bool,
+    ctx: &mut DecodeCtx,
+) -> Result<CValue, ConstructorError> {
     let mut parts = text.splitn(2, ';');
     let count: usize = parts
         .next()
@@ -1686,7 +1787,7 @@ pub(super) fn decode_compound(text: &str, sequence: bool) -> Result<CValue, Cons
         .next()
         .ok_or_else(|| fault("incompatible_checkpoint", "truncated compound value"))?;
     for encoded in split_encoded(rest, count)? {
-        items.push(decode_cvalue(&encoded)?);
+        items.push(decode_cvalue(&encoded, ctx)?);
     }
     Ok(if sequence {
         CValue::Sequence(std::sync::Arc::new(items))

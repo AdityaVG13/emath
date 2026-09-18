@@ -1,0 +1,25 @@
+# Buffer-carrier sieve pin fixture (bead emath-84sfr): the authored
+# discrete.sieve module behind the run, test, and step lanes. The
+# suspension lane pins the ENCODE checkpoint decision (buffers
+# serialize with aliasing fidelity and resume exactly).
+# Run: emath test tests/fixtures/constructor/buffer_sieve.emath --work 2000000
+
+use discrete.sieve
+
+emath function SieveSum:
+    inputs:
+        limit: Int
+    outputs:
+        result: Int
+    definitions:
+        result = SumPrimesBelow(limit)
+    tests:
+        example <below_ten>:
+            given limit = 10
+            expect result == 17
+        example <below_thirty>:
+            given limit = 30
+            expect result == 129
+        example <below_hundred>:
+            given limit = 100
+            expect result == 1060

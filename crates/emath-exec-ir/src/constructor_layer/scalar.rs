@@ -255,6 +255,17 @@ pub(crate) fn machine_int_basename(name: &str) -> Option<&str> {
     }
 }
 
+/// Machine buffer-carrier ops (bead emath-84sfr, design note 12 B1):
+/// a separate family from the exact-int ops so the emission lane can
+/// fence them independently (they run in the constructor VM only).
+pub(crate) fn machine_buffer_basename(name: &str) -> Option<&str> {
+    let base = name.rsplit('.').next().unwrap_or(name);
+    match base {
+        "buffer" | "buffer_set" => Some(base),
+        _ => None,
+    }
+}
+
 pub(super) fn as_rat(value: CValue) -> Result<(ExactInt, ExactInt), ConstructorError> {
     match value {
         CValue::Int(n) => Ok((n, ExactInt::one())),

@@ -12,7 +12,7 @@ use emath_core::tree::{
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{DomainObligation, EmirOp, EmirProgram, EmirValue};
-use crate::constructor_layer::machine_int_basename;
+use crate::constructor_layer::{machine_buffer_basename, machine_int_basename};
 use crate::exact_int::ExactInt;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -308,6 +308,16 @@ impl Lowerer {
         if called == "length" && args.len() == 1 {
             let value = self.expr(&args[0])?;
             return Ok(self.push(EmirOp::VectorLength(value)));
+        }
+        // Fence (bead emath-84sfr, design note 12 B1): buffer-carrier
+        // ops are constructor-VM machine seams, not emitted math. The
+        // named refusal keeps emission honest instead of emitting a
+        // call the artifact cannot honor.
+        if machine_buffer_basename(&called).is_some() {
+            return Err(
+                "buffer carrier ops run in the constructor VM; they are not emitted in this cut (bead emath-84sfr fence)"
+                    .into(),
+            );
         }
         if let Some(op) = machine_int_basename(&called) {
             let mut inputs = Vec::new();
@@ -905,6 +915,10 @@ pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate:
                 fields: converted,
             })
         }
+        CValue::Buffer(_) => Err(
+            "buffer carrier values are not emitted in this cut (bead emath-84sfr fence); run in the constructor VM"
+                .into(),
+        ),
         other => Err(format!("no EMIR carrier for {other}")),
     }
 }

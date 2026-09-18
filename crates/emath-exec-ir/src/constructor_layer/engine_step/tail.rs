@@ -27,7 +27,9 @@ impl Engine {
             ExprKind::Call { function, args } => {
                 if let ExprKind::Path { segments, .. } = &function.kind {
                     let name = segments.join(".");
-                    if machine_int_basename(&name).is_some() {
+                    if machine_int_basename(&name).is_some()
+                        || machine_buffer_basename(&name).is_some()
+                    {
                         return Ok(EvalTail::Value(self.eval(expr)?));
                     }
                     if self.functions.contains_key(&name) {
@@ -41,6 +43,71 @@ impl Engine {
                 Ok(EvalTail::Value(self.eval(expr)?))
             }
             _ => Ok(EvalTail::Value(self.eval(expr)?)),
+        }
+    }
+
+    /// Machine buffer-carrier ops (bead emath-84sfr, design note 12
+    /// Option B1): `buffer(size, fill)` builds an in-place,
+    /// bounds-checked indexed carrier; `buffer_set(buf, i, v)` writes
+    /// through shared references and evaluates to Unit. Reads are the
+    /// ordinary checked-index surface (`index_seq`) and `.length`
+    /// (`project_field`). The work budget charges per engine step as
+    /// everywhere else, so a sieve-scale write loop suspends and
+    /// resumes at op granularity.
+    pub(in crate::constructor_layer) fn eval_machine_buffer(
+        &mut self,
+        op: &str,
+        args: &[Expr],
+    ) -> Result<CValue, ConstructorError> {
+        match op {
+            "buffer" => {
+                if args.len() != 2 {
+                    return Err(fault("arity", "`buffer` expects a size and a fill value"));
+                }
+                let size = expect_int(self.eval(&args[0])?, op)?;
+                let fill = self.eval(&args[1])?;
+                let Some(len) = size.to_usize() else {
+                    return Err(fault("invalid_index", "buffer size must be non-negative"));
+                };
+                // The carrier's own cell bound (bead emath-84sfr): 4M
+                // cells admits sieve-scale work (Project Euler P10
+                // needs 2M) while bounding a single allocation to
+                // roughly a quarter-gigabyte of carrier cells.
+                if len > 4_000_000 {
+                    return Err(fault("overflow", "buffer exceeds the carrier cell bound"));
+                }
+                Ok(CValue::Buffer(std::sync::Arc::new(std::sync::Mutex::new(
+                    vec![fill; len],
+                ))))
+            }
+            "buffer_set" => {
+                if args.len() != 3 {
+                    return Err(fault(
+                        "arity",
+                        "`buffer_set` expects a buffer, an index, and a value",
+                    ));
+                }
+                let CValue::Buffer(cell) = self.eval(&args[0])? else {
+                    return Err(fault("type", "`buffer_set` expects a buffer"));
+                };
+                let index = expect_int(self.eval(&args[1])?, op)?;
+                let value = self.eval(&args[2])?;
+                let Some(slot) = index.to_usize() else {
+                    return Err(fault("invalid_index", "buffer index out of range"));
+                };
+                let mut items = cell
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let Some(target) = items.get_mut(slot) else {
+                    return Err(fault("invalid_index", "buffer index out of range"));
+                };
+                *target = value;
+                Ok(CValue::Unit)
+            }
+            _ => Err(fault(
+                "implementation_unavailable",
+                format!("unknown buffer op `{op}`"),
+            )),
         }
     }
 

@@ -52,6 +52,9 @@ impl Engine {
         if let Some(op) = machine_int_basename(&name) {
             return self.eval_machine_int(op, args).map(Some);
         }
+        if let Some(op) = machine_buffer_basename(&name) {
+            return self.eval_machine_buffer(op, args).map(Some);
+        }
         if let Some(decl) = self.functions.get(&name).cloned() {
             return self.eval_fn(&name, &decl, args).map(Some);
         }

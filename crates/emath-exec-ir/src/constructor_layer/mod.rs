@@ -7,7 +7,7 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use emath_core::tree::{
     BinaryOp, Declaration, Expr, ExprKind, Item, StmtKind, SyntaxTree, TypeExpr, TypeKind, UnaryOp,
@@ -21,7 +21,7 @@ use crate::exact_int::{
 
 const DEFAULT_WORK: u64 = 1_000_000;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum CValue {
     Bool(bool),
     Int(ExactInt),
@@ -36,6 +36,13 @@ pub enum CValue {
     /// `Rc`) keeps the carrier `Send` for lanes that move values
     /// across threads. Structural `PartialEq` is unchanged by sharing.
     Sequence(Arc<Vec<CValue>>),
+    /// In-place mutable buffer carrier (bead emath-84sfr, design note
+    /// 12 Option B1): `buffer(size, fill)` constructs it, `buffer_set`
+    /// writes through shared references, `xs[i]` reads, `.length`
+    /// projects. `Arc<Mutex<..>>` (not `Rc<RefCell>`) keeps the carrier
+    /// `Send` for lanes that move values across threads. Equality
+    /// refuses: mutable state has no total value equality.
+    Buffer(Arc<Mutex<Vec<CValue>>>),
     Tuple(Vec<CValue>),
     Record {
         type_name: String,
@@ -51,6 +58,63 @@ pub enum CValue {
     Receipt(Box<Receipt>),
     Unit,
     Absent,
+}
+
+/// Structural equality, unchanged by sequence sharing (bead
+/// emath-g9rpo). Buffers compare by cell identity only: mutable state
+/// has no total value equality (bead emath-84sfr) — the language
+/// surface refuses `==`/`!=` on buffers; this identity fallback
+/// exists so internal comparisons stay total, never as a user-facing
+/// value equality.
+impl PartialEq for CValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::Int(a), Self::Int(b)) => a == b,
+            (
+                Self::Rat {
+                    num: an,
+                    den: ad,
+                },
+                Self::Rat {
+                    num: bn,
+                    den: bd,
+                },
+            ) => an == bn && ad == bd,
+            (Self::Float64(a), Self::Float64(b)) => a == b,
+            (Self::Sequence(a), Self::Sequence(b)) => a == b,
+            (Self::Buffer(a), Self::Buffer(b)) => Arc::ptr_eq(a, b),
+            (Self::Tuple(a), Self::Tuple(b)) => a == b,
+            (
+                Self::Record {
+                    type_name: at,
+                    fields: af,
+                },
+                Self::Record {
+                    type_name: bt,
+                    fields: bf,
+                },
+            ) => at == bt && af == bf,
+            (
+                Self::Variant {
+                    type_name: at,
+                    tag: ag,
+                    fields: af,
+                },
+                Self::Variant {
+                    type_name: bt,
+                    tag: bg,
+                    fields: bf,
+                },
+            ) => at == bt && ag == bg && af == bf,
+            (Self::Closure(a), Self::Closure(b)) => a == b,
+            (Self::Code(a), Self::Code(b)) => a == b,
+            (Self::Receipt(a), Self::Receipt(b)) => a == b,
+            (Self::Unit, Self::Unit) => true,
+            (Self::Absent, Self::Absent) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -93,6 +157,12 @@ impl fmt::Display for CValue {
             Self::Int(v) => write!(f, "{v}"),
             Self::Rat { num, den } => write!(f, "{num}/{den}"),
             Self::Float64(v) => write!(f, "{v}"),
+            // Contents are state, not a value: display the shape only,
+            // never a snapshot that invites value-style comparison.
+            Self::Buffer(cell) => {
+                let len = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).len();
+                write!(f, "buffer({len})")
+            }
             Self::Sequence(xs) => {
                 write!(f, "[")?;
                 for (i, x) in xs.iter().enumerate() {

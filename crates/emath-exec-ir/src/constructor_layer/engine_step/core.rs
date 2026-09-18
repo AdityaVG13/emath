@@ -251,8 +251,8 @@ impl Engine {
             }
             ExprKind::Index { value, indices } => {
                 let seq = self.eval(value)?;
-                if !matches!(seq, CValue::Sequence(_)) {
-                    return Err(fault("type", "index requires a sequence"));
+                if !matches!(seq, CValue::Sequence(_) | CValue::Buffer(_)) {
+                    return Err(fault("type", "index requires a sequence or buffer"));
                 }
                 let Some(index_expr) = indices.first() else {
                     return Err(fault("invalid_index", "missing index"));

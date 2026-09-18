@@ -166,7 +166,12 @@ pub(super) fn run_constructor_budgeted(
                     "suspended",
                     "partial",
                     "absent",
-                    &format!("work={}", checkpoint.work),
+                    // Self-describing in both modes: a bare `work=N` on
+                    // the human lane would not say the run suspended.
+                    &format!(
+                        "suspended: work={} (checkpoint written; resume with `emath step <checkpoint> --work N`)",
+                        checkpoint.work
+                    ),
                     None,
                     EXIT_PARTIAL,
                 );

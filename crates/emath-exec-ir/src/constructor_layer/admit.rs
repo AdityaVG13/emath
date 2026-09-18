@@ -104,6 +104,10 @@ pub(super) enum CType {
     Rat,
     Float64,
     Sequence,
+    /// The mutable buffer carrier (bead emath-84sfr): unparameterized
+    /// in this cut — element values are checked at use, statically
+    /// claimed nowhere.
+    Buffer,
     Tuple,
     Record,
     Closure,
@@ -155,6 +159,7 @@ pub(super) fn ctype_from_type(ty: &TypeExpr) -> CType {
             Some("Float64") | Some("F64") => CType::Float64,
             Some("Code") => CType::Code,
             Some("sequence") | Some("Sequence") => CType::Sequence,
+            Some("buffer") => CType::Buffer,
             _ => CType::Unknown,
         },
         _ => CType::Unknown,
@@ -346,6 +351,17 @@ impl Engine {
             ExprKind::Binary { op, left, right } => {
                 let l = self.infer(types, left)?;
                 let r = self.infer(types, right)?;
+                // Mutable state has no total value equality: refuse
+                // `==`/`!=` on buffers by name (bead emath-84sfr);
+                // compare a projection (`buf[i]`, `buf.length`).
+                if matches!(op, BinaryOp::Eq | BinaryOp::Ne)
+                    && (l == CType::Buffer || r == CType::Buffer)
+                {
+                    return Err(fault(
+                        "buffer_equality_refused",
+                        "buffer comparison is refused: a mutable carrier has no total value equality",
+                    ));
+                }
                 Ok(match op {
                     BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt
                     | BinaryOp::Ge | BinaryOp::And | BinaryOp::Or | BinaryOp::Imply
@@ -549,6 +565,9 @@ impl Engine {
             if let Some(op) = machine_int_basename(&name) {
                 return self.infer_machine_int(op, types, args);
             }
+            if let Some(op) = machine_buffer_basename(&name) {
+                return self.infer_machine_buffer(op, types, args);
+            }
             if name.starts_with("quote.") {
                 for arg in args {
                     let _ = self.infer_quote_arg(types, arg)?;
@@ -619,6 +638,53 @@ impl Engine {
                 _ => Err(err),
             },
             Err(err) => Err(err),
+        }
+    }
+
+    /// Buffer-carrier machine ops (bead emath-84sfr, design note 12
+    /// B1): `buffer(size, fill)` -> CType::Buffer (unparameterized;
+    /// elements are checked at use), `buffer_set(buf, i, v)` -> Unit
+    /// (inferred Unknown). Equality on buffers refuses elsewhere.
+    pub(super) fn infer_machine_buffer(
+        &self,
+        op: &str,
+        types: &BTreeMap<String, CType>,
+        args: &[Expr],
+    ) -> Result<CType, ConstructorError> {
+        match op {
+            "buffer" => {
+                if args.len() != 2 {
+                    return Err(fault("arity", "`buffer` expects a size and a fill value"));
+                }
+                let size = self.infer(types, &args[0])?;
+                if !size.conforms(&CType::Int) {
+                    return Err(fault("type", "`buffer` expects an Int size"));
+                }
+                let _ = self.infer(types, &args[1])?;
+                Ok(CType::Buffer)
+            }
+            "buffer_set" => {
+                if args.len() != 3 {
+                    return Err(fault(
+                        "arity",
+                        "`buffer_set` expects a buffer, an index, and a value",
+                    ));
+                }
+                let carrier = self.infer(types, &args[0])?;
+                if !carrier.conforms(&CType::Buffer) {
+                    return Err(fault("type", "`buffer_set` expects a buffer"));
+                }
+                let index = self.infer(types, &args[1])?;
+                if !index.conforms(&CType::Int) {
+                    return Err(fault("type", "`buffer_set` expects an Int index"));
+                }
+                let _ = self.infer(types, &args[2])?;
+                Ok(CType::Unknown)
+            }
+            _ => Err(fault(
+                "implementation_unavailable",
+                format!("unknown buffer op `{op}`"),
+            )),
         }
     }
 
