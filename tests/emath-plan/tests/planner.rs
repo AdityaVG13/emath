@@ -234,14 +234,10 @@ fn planner_artifact_and_capability_matrix() {
         base.kind = GoalKind::Evaluate;
         p.eq("eval", combination_name(&base, "p1"), "evaluate:interpreter:p1".to_string());
         base.kind = GoalKind::Custom(emath_core::SchemaId("fit".into()));
-        base.payload = GoalPayload {
-            method: "levenberg-marquardt".to_string(),
-            ..GoalPayload::default()
-        };
         p.eq(
             "custom",
             combination_name(&base, "p1"),
-            "custom:levenberg-marquardt:p1".to_string(),
+            "custom:interpreter:p1".to_string(),
         );
     });
     p.case("plan-id-binds-semantics", |p| {

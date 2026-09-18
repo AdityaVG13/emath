@@ -9,19 +9,12 @@
 
 pub mod challenge;
 pub mod drift;
-pub mod fit_goal;
 pub mod fitting;
 pub mod partition;
 pub mod versioning;
 
 pub use challenge::{HeldOutChallenge, HeldOutResult, hold_out_challenge};
 pub use drift::{SemanticDrift, drift};
-pub use fit_goal::{
-    AuthorityEscalation, ConfidenceInterval, FitGoal, FitMeasuredError, FitModel, FitOutcome,
-    FitPayloadError, FitRow, Identifiability, IdentifiabilityProvider, NumericRankOracle,
-    OptimizerMethod, ProvenanceHash, ResidualMethod, ResidualWeights, UnresolvedReason, escalate,
-    fit, fnv1a64, jacobian_residuals, materialize_measured, provenance, weighted_residuals,
-};
 pub use fitting::{ExampleRecord, FitFailure, FittedTable, evaluate, fit_table};
 pub use partition::{CalibrationExample, ExampleKind, PartitionedExamples};
 pub use versioning::{VERSION_SEED, WorldVersion};

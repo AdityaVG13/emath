@@ -4,7 +4,7 @@
 use crate::admit::{CheckResult, check_tree_at};
 use emath_core::parse::source_parser;
 use emath_core::tree::{
-    ArgumentValue, CommandArgument, ExprKind, Item, Section, StmtKind, SyntaxTree,
+    CommandArgument, ExprKind, Item, Section, StmtKind, SyntaxTree,
 };
 use emath_core::{Diagnostics, FileId, SourceStore, Span, limits::Limits};
 use emath_ir::{

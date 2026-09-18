@@ -291,14 +291,10 @@ assert_invalid tests/invalid/sequence_recurrence_fence.emath "E-TYPE-010"
 # data (assumption/lemma/check/qed) and completeness is checked;
 # proofs remain additive authority, never admission tickets.
 assert_invalid tests/invalid/proof_outline_incomplete.emath "E-SYN-101"
-# Fit goal (04 §5.3): the generic fit-goal
-# surface admits — `fit <params> to <observable>:` with model,
-# prediction, residual method, method, initial seeds, and explicit
-# weights as plain program data. The runnable fixture is
-# language/examples/science/pk-two-compartment-fit.emath (proven by
-# tests/emath-syntax/tests/fit_goal.rs); without a
-# structural-identifiability provider the goal resolves to an honest
-# typed unresolved disposition in every plan.
+# Fit goals are gone with their Rust lane: `fit <params> to
+# <observable>:` now refuses as an out-of-subset request kind
+# (E-GOAL-043); least-squares fitting is authored `.emath`
+# (numerics.levenberg), not compiler machinery.
 # Compartments thin slice (04 §4.1): a
 # reaction endpoint that is nothing must be the DECLARED sink `∅` — a
 # silently empty side refuses (E-SYN-156 at parse; E-BIO-SINK at

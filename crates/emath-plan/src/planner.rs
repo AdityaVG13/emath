@@ -301,8 +301,7 @@ pub fn plan(goal: &Goal, registry: &ProviderRegistry, config: &PlannerConfig) ->
 /// resolution method the goal binds: the solve goal's
 /// Newton-with-deterministic-bracket-fallback solver, dual forward
 /// mode for derivatives, Newton-on-∇f for optimize, quadrature for
-/// integrate, the fit goal's declared optimizer method when the goal
-/// is a fit payload (custom kind), and the interpreter otherwise;
+/// integrate, and the interpreter otherwise;
 /// the provider part is the retained candidate provider id. The
 /// fixed field order makes the name a deterministic function of
 /// (goal, provider).
@@ -313,7 +312,6 @@ pub fn combination_name(goal: &Goal, provider_id: &str) -> String {
         GoalKind::Differentiate => "dual-forward",
         GoalKind::Optimize => "newton-hessian",
         GoalKind::Integrate => "quadrature",
-        GoalKind::Custom(_) if !goal.payload.method.is_empty() => goal.payload.method.as_str(),
         _ => "interpreter",
     };
     format!("{}:{solver}:{provider_id}", goal.kind.as_str())
@@ -459,8 +457,6 @@ fn goal_semantic_canonical(goal: &Goal) -> String {
     for (tag, names) in [
         ("wrt", &payload.wrt),
         ("measure", &payload.measure),
-        ("parameters", &payload.parameters),
-        ("model", &payload.model),
     ] {
         canonical.push('\u{1}');
         canonical.push_str(tag);
@@ -474,54 +470,12 @@ fn goal_semantic_canonical(goal: &Goal) -> String {
     for (tag, value) in [
         ("order", payload.order.map(|order| order.to_string())),
         ("against", payload.against.clone()),
-        (
-            "prediction",
-            Some(payload.prediction.clone()).filter(|p| !p.is_empty()),
-        ),
-        (
-            "residual",
-            Some(payload.residual.clone()).filter(|p| !p.is_empty()),
-        ),
-        (
-            "method",
-            Some(payload.method.clone()).filter(|p| !p.is_empty()),
-        ),
-        (
-            "require_identifiability",
-            Some(payload.require_identifiability.to_string())
-                .filter(|_| payload.require_identifiability),
-        ),
     ] {
         if let Some(value) = value {
             canonical.push('\u{1}');
             canonical.push_str(tag);
             canonical.push('=');
             canonical.push_str(&value);
-        }
-    }
-    // Pair-valued fit fields, order-preserving (order is semantic).
-    for (tag, pairs) in [("initial", &payload.initial), ("weights", &payload.weights)] {
-        if !pairs.is_empty() {
-            canonical.push('\u{1}');
-            canonical.push_str(tag);
-            canonical.push('=');
-            for (name, literal) in pairs {
-                canonical.push_str(name);
-                canonical.push('=');
-                canonical.push_str(literal);
-                canonical.push(',');
-            }
-        }
-    }
-    if !payload.data.is_empty() {
-        canonical.push_str("\u{1}data=");
-        for (name, values) in &payload.data {
-            canonical.push_str(name);
-            canonical.push('=');
-            for value in values {
-                canonical.push_str(value);
-                canonical.push(',');
-            }
         }
     }
     canonical

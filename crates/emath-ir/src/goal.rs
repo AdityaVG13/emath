@@ -21,11 +21,8 @@ pub struct Goal {
 }
 
 /// Goal-body payload for `differentiate` / `benchmark` (and unused on
-/// `evaluate`). The `fit` goal (04 §5.3)
-/// reuses the payload as its generic fit-program data: model path,
-/// prediction label, residual method, optimizer method, initial seeds,
-/// explicit weights, and the identifiability honesty gate. All fit
-/// vocabulary is plain data — no domain model bound in the IR.
+/// `evaluate`). Plain vocabulary data only — no domain model bound in
+/// the IR.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GoalPayload {
     /// `wrt [a, b, c]` names.
@@ -36,31 +33,6 @@ pub struct GoalPayload {
     pub against: Option<String>,
     /// `measure [a, b]` names.
     pub measure: Vec<String>,
-    /// `fit`: parameter names in declared order (`fit k_el,
-    /// V_central to conc_time` order).
-    pub parameters: Vec<String>,
-    /// `fit`: model path (`model PK_TwoCompartment`).
-    pub model: Vec<String>,
-    /// `fit`: prediction label (`prediction [central]`).
-    pub prediction: String,
-    /// `fit`: residual method (`residual: weighted_least_squares`).
-    pub residual: String,
-    /// `fit`: optimizer method (`method levenberg_marquardt`).
-    pub method: String,
-    /// `fit`: explicit initial seeds (`initial: k = 0.2`) as
-    /// (parameter, literal) pairs — literals stay lossless strings.
-    pub initial: Vec<(String, String)>,
-    /// `fit`: explicit residual weights (`weights: k = 2.0`); never
-    /// silent.
-    pub weights: Vec<(String, String)>,
-    /// `fit`: observed data rows (`data: <entry> = [lit, lit, ...]`) —
-    /// one row names the observable (the `y` values), the other names
-    /// the model's independent coordinate (the `t` values). Literals
-    /// stay lossless strings; pairing and arity are the runtime's
-    /// typed refusal surface.
-    pub data: Vec<(String, Vec<String>)>,
-    /// `fit`: `require identifiability: structural` honesty gate.
-    pub require_identifiability: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -312,23 +284,15 @@ pub const EXCLUDED_PROVIDERS: &[(&str, &str)] = &[
         "optional symbolic provider, not installed",
     ),
     ("phase7.adapter", "adapter not installed until Phase 7"),
-    (
-        "fit.structural-identifiability",
-        "no structural-identifiability provider installed — fit goals resolve to an honest typed unresolved disposition",
-    ),
 ];
 
-/// One elaborated request recovered from the `goals:` section. The
-/// `fit` kind carries its whole generic fit program in `payload`
-/// (model, prediction, residual, method, initial, weights,
-/// identifiability gate).
+/// One elaborated request recovered from the `goals:` section.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestSpec {
     pub kind: String,
     pub target: String,
     pub produce: String,
-    /// Structured body payload (`wrt` / `order` / `against` / `measure`;
-    /// fit vocabulary for `fit`).
+    /// Structured body payload (`wrt` / `order` / `against` / `measure`).
     pub payload: GoalPayload,
     pub source: Span,
 }
@@ -348,9 +312,6 @@ pub fn build_goal(package: &mut SemanticPackage, request: &RequestSpec) -> Goal 
         "benchmark" => GoalKind::Benchmark,
         "transform" => GoalKind::Transform,
         "simplify" => GoalKind::Simplify,
-        // 04 §5.3: the generic fit goal stays Custom — its identity is
-        // the fit vocabulary payload, not a new enumerant.
-        "fit" => GoalKind::Custom(SchemaId("fit".into())),
         other => GoalKind::Custom(SchemaId(other.to_string())),
     };
     let is_evaluate = matches!(kind, GoalKind::Evaluate);

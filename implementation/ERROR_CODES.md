@@ -34,7 +34,7 @@
 | `E-CSV-*` | csv ingest | missing/ambiguous time or value column (001-004), ragged row (005), unclosed quote (006), no data rows (007), non-numeric cell (008), nonincreasing time (009) |
 | `E-EINSUM-*` | einsum kernel | arithmetic/subscript refusal (001), index out of range (002) |
 | `E-EVENT-*` | event actions | malformed payload (001), non-Bool condition (002/006), `else` arm (003), bad action slot/value (004/005), unbound parameter (007), runtime refusal/fault (008/009) |
-| `E-FIT-*` | fit lane | untagged refusal fallback (000), no fit goal (002), payload refused (003), model mismatch (004), non-parameter input (005), no prediction label (006), identifiability escalation (010), unresolved fit (011), evaluation failure (012) |
+| `E-FIT-*` | fit lane | untagged refusal fallback (000); the lane is a single E-KIND-GONE refusal — the fitting math is authored `.emath` (`numerics.levenberg`) |
 | `E-MODEL-*` | simulate model selection | named model has no `emath model` declaration (001) |
 | `E-STD-*` | stdlib store | malformed envelope (001), forged object id (002), id collision (003) |
 | `E-TRANS-*` | transitions | undeclared event (001), bad action target (002/005), non-assignment body (003/004), unbound event parameter (006/007), runtime action fault (008) |
@@ -1092,20 +1092,9 @@ Event actions (`crates/emath-sema/src/admit/declaration/events.rs`,
 Fit lane (`crates/emath-cli-lab/src/fit_cmd.rs`):
 
 - `E-FIT-000`: a fit refusal whose message carries no explicit code
-  (the fallback diagnostic code for the fit lane).
-- `E-FIT-002`: a fit parameter declares no fit goal (`fit <params> to
-  <observable>:`).
-- `E-FIT-003`: the fit payload was refused.
-- `E-FIT-004`: the fit names a model the file does not declare (`emath
-  model <name>` missing).
-- `E-FIT-005`: a model input is neither a fitted parameter nor the
-  data coordinate.
-- `E-FIT-006`: the fit goal must name a prediction label (`prediction
-  <label>`).
-- `E-FIT-010`: an identifiability escalation was refused for the
-  given direction.
-- `E-FIT-011`: the fit did not resolve.
-- `E-FIT-012`: model evaluation failed during the fit.
+  (the fallback diagnostic code for the fit lane). The lane is a
+  single E-KIND-GONE refusal; least-squares fitting is authored
+  `.emath` (`language/modules/numerics/levenberg.emath`).
 
 Simulate model selection (`crates/emath-cli/src/simulate_cmd.rs`):
 
@@ -1287,14 +1276,6 @@ Not yet documented at generation time: **0**.
 | `E-EVID-605` | crates/emath-store/src/pack.rs | `E-EVID-605` |
 | `E-EVID-606` | crates/emath-store/src/pack.rs | `E-EVID-606` |
 | `E-FIT-000` | crates/emath-cli-lab/src/fit_cmd.rs | `E-FIT-000` |
-| `E-FIT-002` | crates/emath-cli-lab/src/fit_cmd.rs | `E-FIT-002: {} declares no fit goal (`fit <params> to <observable>:`)` |
-| `E-FIT-003` | crates/emath-cli-lab/src/fit_cmd.rs | `E-FIT-003: fit payload refused: {error:?}` |
-| `E-FIT-004` | crates/emath-cli-lab/src/fit_cmd.rs | `E-FIT-004: fit names model `{}` but `{}` declares no `emath model {model_name}`` |
-| `E-FIT-005` | crates/emath-cli-lab/src/fit_cmd.rs |  |
-| `E-FIT-006` | crates/emath-cli-lab/src/fit_cmd.rs | `E-FIT-006: the fit goal must name a prediction label (`prediction <label>`)` |
-| `E-FIT-010` | crates/emath-cli-lab/src/fit_cmd.rs | `E-FIT-010: identifiability escalation refused for direction `{}` ({:?})` |
-| `E-FIT-011` | crates/emath-cli-lab/src/fit_cmd.rs | `E-FIT-011: fit unresolved ({reason:?})` |
-| `E-FIT-012` | crates/emath-cli-lab/src/fit_cmd.rs | `E-FIT-012: model evaluation failed: {detail}` |
 | `E-FOO-001` | crates/emath-cli/src/cli_json.rs | `error: ` |
 | `E-GEN-080` | crates/emath-cli-lab/src/eval_cmd/args.rs<br>crates/emath-cli-lab/src/genesis_cmd/analysis.rs | `E-GEN-080: genesis parse refused: {detail}`<br>`E-GEN-080` |
 | `E-GEN-081` | crates/emath-cli-lab/src/genesis_cmd/analysis.rs | `E-GEN-081: genesis body expression is empty` |
