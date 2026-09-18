@@ -12,46 +12,21 @@
 
 mod body;
 
-mod category;
-mod dynamics;
-mod linalg;
-mod pde;
-mod polynomial;
 mod probability;
 
 pub use body::*;
-pub use category::{CategoryError, category_check, diagram_commutative};
-pub use linalg::LinalgError as DenseLinearError;
-pub use polynomial::{PolyError, poly_eval as checked_poly_eval, poly_mul as checked_poly_mul};
 pub use probability::ProbError as DistributionKernelError;
 
-/// Sample a validated distribution selected by its capsule-supplied kernel code.
-pub fn sample_distribution_in_stream(
-    kind: u8,
-    parameters: &[f64],
-    seed: f64,
-    draws: f64,
-    stream_path: &str,
-) -> Result<Vec<f64>, DistributionKernelError> {
-    probability::prob_sample_in_stream(kind, parameters, seed, draws, stream_path)
-}
-
 /// Unit-interval uniforms in [0, 1) from an explicit seed and stream path.
+/// Same seed and path replay bit-identically. This is the remaining native
+/// counter-stream leaf (bead emath-nwmm6); distribution transforms above it
+/// are authored language definitions.
 pub fn unit_interval_stream(
     seed: f64,
     draws: f64,
     stream_path: &str,
 ) -> Result<Vec<f64>, DistributionKernelError> {
     probability::unit_interval_stream(seed, draws, stream_path)
-}
-
-/// Evaluate a validated density selected by its capsule-supplied kernel code.
-pub fn distribution_density(
-    kind: u8,
-    parameters: &[f64],
-    point: f64,
-) -> Result<f64, DistributionKernelError> {
-    probability::prob_density(kind, parameters, point)
 }
 
 /// The verbatim kernel source (`body.rs`), embedded into every generated

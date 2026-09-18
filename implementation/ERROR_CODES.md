@@ -643,13 +643,10 @@ spelling is retired and is not emitted.
 
 ### Runtime kernels (`crates/emath-rt`, surfaced through `crates/emath-exec-ir`)
 
-- `E-POLY-001`: a polynomial coefficient is non-finite; refused.
-- `E-POLY-002`: the evaluation point is non-finite; refused.
-- `E-PROB-001`: a distribution parameter is outside its domain
-  (e.g. p not in [0,1]) or the draw count is non-integer / over budget.
-- `E-PROB-002`: a non-finite parameter or evaluation point; refused.
-- `E-PROB-003`: the parameter vector has the wrong length for the
-  family; refused.
+- `E-PROB-001`: the unit-interval draw count is non-integer / over
+  budget, or the stream path is invalid.
+- `E-PROB-002`: a non-finite seed; refused (never a silently
+  corrupted stream).
 
 ### Exact rationals (`crates/emath-sema`, `crates/emath-exec-ir`)
 
@@ -912,10 +909,7 @@ Meaning lock subsection of the issued-codes list above. The ADR-001
 falsifier still holds: a drifted or tampered lock never silently falls
 back to another world.
 
-- `E-LINALG-001`: a spectral (Jacobi eigen) decomposition received a non-square matrix.
-- `E-LINALG-002`: a spectral decomposition received a non-symmetric matrix (the admitted algorithm is symmetric-only).
-- `E-LINALG-003`
-- `E-LINALG-004`: linear-algebra operand dimensions do not compose (typed refusal, never a silently wrong result).: a conjugate-gradient solve failed to converge (SPD check; never a silently wrong x).
+- `E-LINALG-004`: linear-algebra operand dimensions do not compose (typed refusal, never a silently wrong result).
 
 - `E-PROV-239`: the runnable component profile requires exactly two scalar states and no algebraic outputs (simulation-artifact construction refuses any other shape).
 
@@ -1040,8 +1034,7 @@ Feature capsules (`crates/emath-schema/src/feature_capsule.rs`,
 - `E-CAPSULE-026`: an executable reference body requires
   `reference: authored`.
 
-Category kernels (`crates/emath-rt/src/category.rs`,
-`crates/emath-rt/src/body/control.rs`):
+Category kernels (`crates/emath-rt/src/body/control.rs`):
 
 - `E-CAT-001`: a non-finite entry anywhere in the category carrier.
 - `E-CAT-002`: a shape refusal (dimension mismatch, malformed face
@@ -1165,13 +1158,13 @@ Not yet documented at generation time: **0**.
 | `E-CAPSULE-024` | crates/emath-schema/src/feature_capsule.rs | `reference symbol `{symbol}` declared with conflicting arities`<br>`E-CAPSULE-024` |
 | `E-CAPSULE-025` | crates/emath-schema/src/feature_capsule.rs | `reference term uses variable `{name}` outside `reference_params`` |
 | `E-CAPSULE-026` | crates/emath-schema/src/feature_capsule.rs | `E-CAPSULE-026` |
-| `E-CAT-001` | crates/emath-rt/src/body/control.rs<br>crates/emath-rt/src/category.rs | `E-CAT-001` |
-| `E-CAT-002` | crates/emath-rt/src/body/control.rs<br>crates/emath-rt/src/category.rs | `E-CAT-002` |
-| `E-CAT-003` | crates/emath-rt/src/body/control.rs<br>crates/emath-rt/src/category.rs | `E-CAT-003` |
-| `E-CAT-004` | crates/emath-rt/src/body/control.rs<br>crates/emath-rt/src/category.rs | `E-CAT-004` |
-| `E-CAT-005` | crates/emath-rt/src/body/control.rs<br>crates/emath-rt/src/category.rs | `E-CAT-005` |
-| `E-CAT-006` | crates/emath-rt/src/body/control.rs<br>crates/emath-rt/src/category.rs | `E-CAT-006` |
-| `E-CAT-007` | crates/emath-rt/src/body/control.rs<br>crates/emath-rt/src/category.rs | `E-CAT-007` |
+| `E-CAT-001` | crates/emath-rt/src/body/control.rs | `E-CAT-001` |
+| `E-CAT-002` | crates/emath-rt/src/body/control.rs | `E-CAT-002` |
+| `E-CAT-003` | crates/emath-rt/src/body/control.rs | `E-CAT-003` |
+| `E-CAT-004` | crates/emath-rt/src/body/control.rs | `E-CAT-004` |
+| `E-CAT-005` | crates/emath-rt/src/body/control.rs | `E-CAT-005` |
+| `E-CAT-006` | crates/emath-rt/src/body/control.rs | `E-CAT-006` |
+| `E-CAT-007` | crates/emath-rt/src/body/control.rs | `E-CAT-007` |
 | `E-CELL-001` | crates/emath-ir/src/capability/model.rs<br>crates/emath-sema/src/recognition/capability.rs | `pure`<br>`E-CELL-001` |
 | `E-CELL-002` | crates/emath-ir/src/capability/model.rs<br>crates/emath-sema/src/recognition/capability.rs | `E-CELL-002`<br>`capability cell `{name}` declares no schema version (E-CELL-002)` |
 | `E-CELL-003` | crates/emath-ir/src/capability/model.rs | `E-CELL-003` |
@@ -1341,10 +1334,7 @@ Not yet documented at generation time: **0**.
 | `E-LAW-002` | crates/emath-sema/src/admit/declaration.rs<br>crates/emath-sema/src/admit/sections_meta/provenance.rs | `E-LAW-002`<br>``emath law` requires a `{section_name}:` section` |
 | `E-LAZY-001` | crates/emath-exec-ir/src/lazy.rs | `E-LAZY-001`<br>`{pack}/{page}` |
 | `E-LAZY-002` | crates/emath-exec-ir/src/lazy.rs | `E-LAZY-002` |
-| `E-LINALG-001` | crates/emath-rt/src/linalg.rs | `E-LINALG-001` |
-| `E-LINALG-002` | crates/emath-rt/src/linalg.rs | `E-LINALG-002` |
-| `E-LINALG-003` | crates/emath-rt/src/linalg.rs | `E-LINALG-003` |
-| `E-LINALG-004` | crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-rt/src/linalg.rs<br>crates/emath-rust-backend/src/codegen_render/op_collections.rs | `E-LINALG-004: dense carrier extent overflow`<br>`E-LINALG-004: dense carrier data length does not match its shape` |
+| `E-LINALG-004` | crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-rust-backend/src/codegen_render/op_collections.rs | `E-LINALG-004: dense carrier extent overflow`<br>`E-LINALG-004: dense carrier data length does not match its shape` |
 | `E-LOCK-001` | crates/emath-cli-lab/src/meaning_cmd.rs<br>crates/emath-cli/src/portfolio/meaning_lock/model.rs | `E-LOCK-001`<br>`error: E-LOCK-001: --cap must be an integer >= 1` |
 | `E-LOCK-002` | crates/emath-cli/src/portfolio/meaning_lock/model.rs | `.emath`<br>`E-LOCK-002` |
 | `E-LOCK-003` | crates/emath-cli/src/portfolio/meaning_lock/model.rs | `E-LOCK-003` |
@@ -1392,11 +1382,8 @@ Not yet documented at generation time: **0**.
 | `E-PLG-003` | crates/emath-provider-api/src/plugin_sdk.rs | `plugin `{}` declares no capabilities`<br>`E-PLG-003` |
 | `E-PLG-004` | crates/emath-provider-api/src/plugin_sdk.rs | `E-PLG-004` |
 | `E-PLG-005` | crates/emath-provider-api/src/plugin_sdk.rs | `E-PLG-005` |
-| `E-POLY-001` | crates/emath-rt/src/polynomial.rs | `E-POLY-001` |
-| `E-POLY-002` | crates/emath-rt/src/polynomial.rs | `E-POLY-002` |
 | `E-PROB-001` | crates/emath-rt/src/probability.rs | `E-PROB-001` |
 | `E-PROB-002` | crates/emath-rt/src/probability.rs | `E-PROB-002` |
-| `E-PROB-003` | crates/emath-rt/src/probability.rs | `E-PROB-003` |
 | `E-PROV-001` | crates/emath-adapter-dew/src/seam.rs | `E-PROV-001` |
 | `E-PROV-002` | crates/emath-adapter-dew/src/seam.rs | `E-PROV-002` |
 | `E-PROV-030` | crates/emath-adapter-dew/src/backends.rs<br>crates/emath-adapter-dew/src/dexpr.rs<br>crates/emath-adapter-dew/src/lib.rs<br>crates/emath-adapter-dew/src/mapping.rs | `E-PROV-030: generated Rust fragment fails the syntax sanity gate`<br>`E-PROV-030: integer literal `{text}` is not a finite f64` |

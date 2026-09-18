@@ -26,17 +26,21 @@ Layer: foundation (std-only, no other emath crates).
   still present, but they are migration debt, not an unavoidable substrate.
   Direct interpreter or generated-code callers do not justify retaining a
   mathematical method in Rust. Migrate the method and its callers together.
-- `rat.rs` and `stochastic.rs` are no longer linked: no production adapter uses
-  them. The source files remain present and unreferenced because deletion was not
-  authorized.
+- `rat.rs` and `stochastic.rs` were unlinked and later deleted (no
+  production adapter used them); the same orphan cleanup, user-authorized,
+  removed `category.rs`, `dynamics.rs`, `linalg.rs`, `pde.rs`, and
+  `polynomial.rs` (zero consumers: the only symbols any crate or test
+  calls on `emath_rt` are `body::*` kernels and `unit_interval_stream`).
 - Neutral `KernelId` names do not establish the language/compiler boundary.
-  Inspect the implementation: decomposition, optimization, distribution sampling,
-  and density formulas remain mathematical algorithms regardless of their names.
-- `category`, `control`, `dynamics`, `graph`, `linalg`, `optimization`, `pde`,
-  `polynomial`, `probability`, and `sequence` still contain linked mathematical
-  implementations. Making modules private or renaming exports is not migration.
-  Their methods must move into executable language definitions while preserving
-  current behavior. See the ownership rule in the root `AGENTS.md`.
+  Inspect the implementation: what remains of mathematical method Rust
+  lives in `body` (quadrature, stencils, decomposition, graphs, control)
+  and is migration debt, not an unavoidable substrate.
+- `body`'s mathematical kernels are linked (glob-re-exported and embedded
+  via `SOURCE`). Their methods must move into executable language
+  definitions while preserving current behavior. See the ownership rule in
+  the root `AGENTS.md` and bead `emath-nwmm6`. The probability wrapper
+  keeps only the unit-interval counter-stream leaf; family sampling and
+  densities are authored language definitions.
 - `stencil_1d` / `stencil_2d` take `EdgePolicy` **by value** (moved from a
   borrowed `&EdgePolicy`); `stencil_1d` honors Clamp / Neumann / OneSided
   / Dirichlet; `stencil_2d` refuses `Dirichlet`.
