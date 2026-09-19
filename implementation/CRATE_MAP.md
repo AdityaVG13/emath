@@ -124,7 +124,6 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `tests/emath-wasm` | `tests/emath-wasm` | wasm public-API test suite |
 | `tests/harness` | `tests/harness` | shared test harness library |
 | `tests/emath-world-ir` | `tests/emath-world-ir` | World IR public-API test suite |
-| `examples/demo-host` | `examples/demo-host` | build-time pipeline host + promotion + negative control |
 | `examples/demo-host-independent` | `examples/demo-host-independent` | fingerprint-free behavioral-assert host |
 | `examples/provider-skeleton` | `examples/provider-skeleton` | provider adapter skeleton |
 | `examples/generated/semantic-genesis-worlds` | `examples/generated/semantic-genesis-worlds` | generated parametric worlds crate (golden artifacts) |

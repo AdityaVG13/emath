@@ -17,9 +17,9 @@ below remain the committed record.
 Captured at freeze time via the then-live CLI (`emath genesis`) and the
 xtask demo, both since removed.
 
-**Reference source:** the former `tests/valid/arbitrary-glyphs.emath`
-fixture (removed with the demo cut; the frozen pins below do not depend
-on it).
+**Reference source:** `tests/fixtures/genesis/arbitrary-glyphs.emath`
+(recovered from history; moved out of `tests/valid/`, which is the
+language-parse corpus; the frozen pins below do not depend on it).
 
 **Answer id** (`answer-receipt.json`): `447d467cf93fc4ce`
 
@@ -84,7 +84,7 @@ mixed mode.
 To recapture identities (scratch only; not the freeze verifier):
 
 ```
-cargo run -q -p emath-cli -- genesis tests/valid/arbitrary-glyphs.emath --out <dir>
+cargo run -q -p emath-cli -- genesis tests/fixtures/genesis/arbitrary-glyphs.emath --out <dir>
 ```
 
 ## Rollback

@@ -51,7 +51,6 @@ members = [
   "tests/emath-world-ir",
   "tests/emath-wasm",
   "tests/emath-registry",
-  "examples/demo-host",
   "examples/demo-host-independent",
   "examples/provider-skeleton",
   "examples/generated/semantic-genesis-worlds",

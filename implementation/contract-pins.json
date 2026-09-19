@@ -5,6 +5,10 @@
   "bumps": [
     {
       "date": "2026-09-19",
+      "note": "dead-surface repair: demo-host example removed (unbuildable since the a9b5c3d fixture cut; superseded by demo-host-independent), vestigial per-package locks removed, keep-gate bench inputs restored from history (arbitrary-glyphs.emath) and repointed at live files; orphan N-law/section/K-8 labels cut from syntax comments, the E-SYN-156 message, and code stories"
+    },
+    {
+      "date": "2026-09-19",
       "note": "dead-surface cut: xtask affine-scorer/semantic-genesis demos and the emath-build macro seam removed; E-CODEGEN-011 story and annex row cut; stale crate-path citations repointed (requests/codegen/goals/genesis -> live emitters); dead command citations (build --verify, compile --parametric) dropped from live-code stories; annex regenerated (394 emitted codes); remaining old-path citations repointed (Genesis CLI header, kernel/witness/constitution rows)"
     },
     {
@@ -177,9 +181,9 @@
     "gauntlet pass 10 coordination: CalmPine's category authored-reference migration (uncommitted in tree) removed native_kernels/category.rs from the E-TYPE-012 emitter list; annex re-spliced to the current emission set (449 emitted, 0 newly covered). No new codes."
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "cea87a9c519cc937f212be2be4ccd0bad308833fb37417de5a436548ea8cb6fa",
+    "implementation/ERROR_CODES.md": "61e3a1c9094fb84c83fafa89696da815d4c7b86eea045b2edc0459d342709132",
     "implementation/CLI_REFERENCE.md": "c67574c4d241606bc4d3c75c932ea849e25708296352e186d288b03df67d6949",
-    "implementation/CRATE_MAP.md": "019c5b85b04dc89e31cb5eec2ecd75a936213ba8f1fd0bb074d598217a173ec7",
+    "implementation/CRATE_MAP.md": "117a66fd21a1dd3aa2bb85f55bef9c45c92fedaa86ab0823326486ead048b1b5",
     "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"
   }
 }

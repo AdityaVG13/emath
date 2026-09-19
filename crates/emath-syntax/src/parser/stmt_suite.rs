@@ -105,7 +105,7 @@ impl super::Parser {
             self.error_here(
                 "E-SYN-156",
                 "both sides of the reaction are empty; a sink endpoint must be the declared \
-                 sink `∅` (04 §4.1), never a silently empty side",
+                 sink `∅`, never a silently empty side",
             );
             return None;
         }

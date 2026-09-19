@@ -66,6 +66,8 @@ fn main() {
         }
     } else if args.first().map(String::as_str) == Some("generate-language") {
         generate_language::run(args.get(1).map(String::as_str) == Some("--cargo-target"))
+    } else if args.first().map(String::as_str) == Some("regen-golden") {
+        regen_golden()
     } else if args.first().map(String::as_str) == Some("build-web") {
         build_web()
     } else if args.first().map(String::as_str) == Some("check-wasm") {
@@ -83,12 +85,109 @@ fn main() {
             "usage: cargo xtask demo <holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|meaning-store|portable-emlib|easy-math|cache-policy>"
         );
         eprintln!("       cargo xtask generate-language");
+        eprintln!("       cargo xtask regen-golden");
         eprintln!("       cargo xtask build-web");
         eprintln!("       cargo xtask check-wasm");
         eprintln!("       cargo xtask serve-web [port]");
         2
     };
     std::process::exit(i32::from(code));
+}
+
+/// Regenerates the committed golden crate
+/// `examples/generated/semantic-genesis-worlds` from the genesis
+/// reference fixture through the exact lab codegen path the keep-gate
+/// bench times. The CLI `compile --parametric` lane was removed with the
+/// cutover; this is the sanctioned regeneration entry, and the bench's
+/// `codegen-parametric` cell guards the committed crate against
+/// generator drift byte-exactly.
+fn regen_golden() -> u8 {
+    let glyphs = Path::new("tests/fixtures/genesis/arbitrary-glyphs.emath");
+    let analysis = match emath_cli_lab::genesis_cmd::analyze(glyphs) {
+        Ok(analysis) => analysis,
+        Err(error) => {
+            eprintln!("regen-golden: genesis analyze refused: {error}");
+            return 1;
+        }
+    };
+    let worlds = emath_cli_lab::genesis_cmd::builtin_worlds(&analysis.inference.signature);
+    // The compiled trio only; witness worlds (`one_point`, `csa_seeded`)
+    // have no lowering and refuse with E-GEN-094.
+    let specs: Vec<_> = worlds
+        .iter()
+        .filter_map(|world| {
+            let label = world.name.to_ascii_lowercase();
+            if !matches!(
+                label.as_str(),
+                "free_symbolic" | "boolean_algebra" | "modular_numeric"
+            ) {
+                return None;
+            }
+            let operators = world
+                .operators
+                .iter()
+                .filter_map(|operator| match &operator.semantics {
+                    emath_world_ir::OperatorSemantics::DeclaredExpression(meaning) => {
+                        Some((operator.symbol.0.clone(), meaning.clone()))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            Some(emath_world_ir::world_codegen_rust::WorldSpec { label, operators })
+        })
+        .collect();
+    if specs.len() != 3 {
+        eprintln!(
+            "regen-golden: expected 3 compiled worlds, got {}",
+            specs.len()
+        );
+        return 1;
+    }
+    let generated = match emath_world_ir::world_codegen_rust::generate(
+        &analysis.term,
+        &analysis.inference.signature,
+        &specs,
+    ) {
+        Ok(generated) => generated,
+        Err(refusal) => {
+            eprintln!("regen-golden: {}: {}", refusal.code, refusal.message);
+            return 1;
+        }
+    };
+    let target = Path::new("examples/generated/semantic-genesis-worlds");
+    if let Err(error) = generated.write_to(target) {
+        eprintln!("regen-golden: write failed: {error}");
+        return 1;
+    }
+    // The committed golden is a workspace member, so its manifest carries
+    // the membership stamps on top of the generator's standalone-clean
+    // output; `render_manifest` must stay free of workspace assumptions
+    // for arbitrary out-dirs. Stamps are idempotent.
+    let manifest_path = target.join("Cargo.toml");
+    let Ok(mut manifest) = std::fs::read_to_string(&manifest_path) else {
+        eprintln!("regen-golden: cannot read manifest at {manifest_path:?}");
+        return 1;
+    };
+    if !manifest.contains("publish = false") {
+        manifest = manifest.replacen(
+            "name = \"semantic-genesis-worlds\"\n",
+            "name = \"semantic-genesis-worlds\"\npublish = false\n",
+            1,
+        );
+    }
+    if !manifest.contains("[lints]") {
+        manifest.push_str("\n[lints]\nworkspace = true\n");
+    }
+    if let Err(error) = std::fs::write(&manifest_path, &manifest) {
+        eprintln!("regen-golden: manifest stamp failed: {error}");
+        return 1;
+    }
+    println!(
+        "regen-golden: {} crate files written to {}",
+        generated.files.len(),
+        target.display()
+    );
+    0
 }
 
 fn demo_cache_policy() -> u8 {

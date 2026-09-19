@@ -1,4 +1,8 @@
 //! The generated-crate source template.
+//!
+//! The template embeds the canonical token escape (`emath_term`'s
+//! `escape_canonical_token`) instead of importing it, so generated crates
+//! stay self-contained with an empty `[dependencies]`.
 
 
 pub(super) const LIB_TEMPLATE: &str = r#"#![forbid(unsafe_code)]
@@ -10,8 +14,6 @@ pub(super) const LIB_TEMPLATE: &str = r#"#![forbid(unsafe_code)]
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Write as _;
-
-use emath_term::escape_canonical_token as escape;
 
 /// Version of the world ABI this crate was generated against.
 pub const WORLD_ABI_VERSION: u32 = @@ABI_VERSION@@;
@@ -76,7 +78,21 @@ impl Term {
     }
 }
 
-pub(super) struct CanonicalParser<'a> {
+fn escape(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' => result.push_str("\\\\"),
+            '(' => result.push_str("\\("),
+            ')' => result.push_str("\\)"),
+            ',' => result.push_str("\\,"),
+            _ => result.push(ch),
+        }
+    }
+    result
+}
+
+struct CanonicalParser<'a> {
     bytes: &'a [u8],
     pos: usize,
 }

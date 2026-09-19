@@ -204,7 +204,7 @@ Session (`crates/emath-sema/src/session.rs`):
 - `E-PKG-081`: `check`/`plan` on a file that parses to zero items
   (empty, comment-only, or whitespace-only). Refused instead of a
   vacuous admit: `eval`/`simulate` already refuse empty source, and
-  K-8 treats one-error-one-OK as a hard failure.
+  a one-error-one-OK result is a hard failure.
 
 - `E-SYN-120`: `check`/`plan`/`parse_text` refuse when no source-parser
   backend is installed: a host must wire
@@ -291,7 +291,7 @@ Syntax (`crates/emath-syntax/src/lexer.rs`, `crates/emath-syntax/src/parser.rs`)
   rate entries) AND an equilibrium (`<=>` with a measured constant) must
   satisfy K == kf/kr within combined uncertainty. Refuses when the
   constant is missing or numerically inconsistent with kf/kr.
-- `E-NOTATION-AMBIG`: §3.4 context-scoped brackets:
+- `E-NOTATION-AMBIG`: context-scoped brackets:
   inside a `rate:` entry, `[X]` reads as concentration-of-X only when X is
   a declared species; an undeclared bracket or a bare list literal in a
   rate-law argument has no resolvable reading and refuses instead of
@@ -321,7 +321,7 @@ Syntax (`crates/emath-syntax/src/lexer.rs`, `crates/emath-syntax/src/parser.rs`)
 Notation (`crates/emath-syntax/src/parser.rs`):
 
 - `E-NOTATION-RESERVED`: a notation glyph or alias shadows a core
-  token (N3: `+ - * / ^ == != < <= > >= and or not = := -> => :: . ..
+  token (`+ - * / ^ == != < <= > >= and or not = := -> => :: . ..
   ..= ?`); the core vocabulary cannot be rebound, so the declaration is
   refused instead of silently overloading an operator.
 - `E-NOTATION-GLYPH`: a glyph or alias does not lex as a single
@@ -478,7 +478,7 @@ Names/constructors/units (`crates/emath-sema/src/admit.rs`):
 Dimensional mismatch (e.g. adding `Length` to `Duration`) is `E-UNIT-101`.
 The old `E-UNIT-001` spelling is retired and is not emitted.
 
-Observations (04 §5.2, `crates/emath-sema/src/admit/declaration.rs`,
+Observations (`crates/emath-sema/src/admit/declaration.rs`,
 `crates/emath-cli/src/lib.rs`):
 
 - `E-OBS-WRITE`: a `definitions:` binding targets an observation name:

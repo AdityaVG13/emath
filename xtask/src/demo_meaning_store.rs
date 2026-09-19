@@ -22,7 +22,7 @@ use emath_sema::CompilerSession;
 use emath_store::EvidencePlane;
 use emath_store::evidence_plane::EvidenceReceipt;
 use emath_store::object_graph::{ObjectDraft, ObjectGraph, ObjectKind};
-use emath_store::semantic_diff::{ChangeClass, DiffOutcome, SemanticSnapshot, classify, decide};
+use emath_store::semantic_diff::{ChangeClass, DiffOutcome, classify, decide};
 use emath_syntax::install_source_parser;
 
 const V1_BASE: &str = "emath function square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";

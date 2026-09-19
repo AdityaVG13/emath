@@ -273,7 +273,7 @@ impl super::super::Parser {
                 ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Rational { .. }
             ) {
                 // A registered notation glyph is an operator, not a unit:
-                // leave it for `parse_notation_infix` (N4 precedence-law
+                // leave it for `parse_notation_infix` (a precedence-law
                 // sibling — never resolved by folding it into a literal).
                 let is_notation_glyph = self.notations.contains_key(&unit);
                 if !is_notation_glyph {

@@ -20,7 +20,7 @@ default = []
 # Language generation stays lightweight (emath-schema + emath-exec-ir
 # only); every demo dependency is opt-in so `cargo xtask
 # generate-language` does not compile the demo stack. `cargo xtask demo
-# all` still routes to the main binary with `demos` enabled.
+# <name>` still routes to the main binary with `demos` enabled.
 demos = [
     "dep:emath-core",
     "dep:emath-genesis",

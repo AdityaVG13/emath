@@ -33,8 +33,10 @@ const MAX_SAMPLES: usize = 10;
 const TARGET_ELAPSED: Duration = Duration::from_secs(5);
 /// History dir under the workspace root.
 const HISTORY_REL: &str = ".bench-history";
-/// Reference genesis source used by the codegen cells.
-const GLYPHS_REL: &str = "tests/valid/arbitrary-glyphs.emath";
+/// Reference genesis source used by the codegen cells (genesis syntax;
+/// lives outside `tests/valid`, which the parse/check corpus cells
+/// require to be language-parseable).
+const GLYPHS_REL: &str = "tests/fixtures/genesis/arbitrary-glyphs.emath";
 /// Committed generated golden for the identity comparison.
 const SG_GENERATED_LIB_REL: &str = "examples/generated/semantic-genesis-worlds/src/lib.rs";
 
@@ -345,14 +347,14 @@ fn cell_genesis_replay(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>
 fn cell_cli8p(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String> {
     let bin = emath_bin();
     let files = [
-        "tests/valid/square.emath",
-        "tests/valid/affine_scorer.emath",
-        "tests/fixtures/language/intro/hello-square.emath",
-        "tests/fixtures/language/intro/scratch.emath",
-        "tests/fixtures/language/intro/l1_guided.emath",
+        "tests/valid/conformance_positive.emath",
+        "tests/valid/formatter_square.emath",
+        "tests/valid/formatter_rationals.emath",
         "language/examples/intro/units.emath",
-        "language/examples/intro/autodiff.emath",
-        "tests/fixtures/language/intro/solve.emath",
+        "language/examples/intro/add-exact.emath",
+        "tests/fixtures/constructor/quotient.emath",
+        "tests/fixtures/constructor/edges.emath",
+        "tests/fixtures/constructor/zeno.emath",
     ];
     let cell = move || {
         let start = Instant::now();

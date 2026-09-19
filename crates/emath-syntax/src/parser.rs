@@ -32,7 +32,7 @@ const MAX_EXPR_DEPTH: usize = 128;
 /// unary prefix (parenthesize `-(a ⊕ b)` to apply unary minus last).
 pub(crate) const CUSTOM_OP_MIN_PRECEDENCE: u32 = 11;
 
-/// N3 reserved glyphs: the core syntactic vocabulary cannot be rebound.
+/// Reserved glyphs: the core syntactic vocabulary cannot be rebound.
 const NOTATION_RESERVED_GLYPHS: &[&str] = &[
     "+", "-", "*", "/", "//", "^", "==", "!=", "<", "<=", ">", ">=", "and", "or", "not", "=", ":=",
     "->", "=>", "::", ".", "..", "..=", "?",
@@ -69,7 +69,7 @@ struct Parser {
     tree_items: Vec<Item>,
     /// File-scoped custom operators from `notation` items (including alias
     /// spellings), collected by [`Parser::pre_scan_notations`] before any
-    /// expression parses (N1: scoped to the whole package/file).
+    /// expression parses (scoped to the whole package/file).
     notations: BTreeMap<String, NotOp>,
     /// Notation packs mounted through `use sci::physics::notation::<pack>`
     /// lines (nabla pack), collected by the same pre-scan. Pack
@@ -116,8 +116,8 @@ impl Parser {
 
     /// Collect every well-formed `notation` item into `self.notations`
     /// before the main item pass parses any expression body, so a glyph
-    /// works regardless of where its declaration sits in the file (N1
-    /// package scope). Malformed declarations are skipped here without
+    /// works regardless of where its declaration sits in the file
+    /// (package scope). Malformed declarations are skipped here without
     /// diagnostics; `parse_notation_item` reports their syntax errors
     /// exactly once during the main pass.
     fn pre_scan_notations(&mut self) {
@@ -362,8 +362,9 @@ impl Parser {
         ))
     }
 
-    /// Mount one scanned operator under its glyph spellings, enforcing N3
-    /// (reserved glyphs), N4 (same glyph, different target in one scope),
+    /// Mount one scanned operator under its glyph spellings, enforcing the
+    /// reserved-glyph rule, the one-target-per-glyph rule (same glyph,
+    /// different target in one scope),
     /// the custom-operator precedence floor, and the glyph lexical
     /// rule (a glyph must lex as a single identifier). First declaration
     /// wins on benign duplicates so a scope maps each glyph to exactly one
@@ -433,7 +434,7 @@ impl Parser {
     }
 
     /// Desugar a glyph use to a plain call of the canonical target.
-    /// N5: the semantic IR is notation-agnostic; an operator call admits
+    /// The semantic IR is notation-agnostic; an operator call admits
     /// the same regardless of which glyph invoked it.
     fn notation_call(&self, target: &[String], mut args: Vec<Expr>, source: Span) -> Expr {
         let target = target.to_vec();

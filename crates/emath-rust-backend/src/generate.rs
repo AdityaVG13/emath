@@ -25,7 +25,7 @@ impl BackendInput<'_> {
         // while all math kernels live in exactly one place: emath-rt.
         // Generated expressions call `emath_rt::<kernel>(...)`.
         // The outer `#[allow(dead_code)]` keeps hosts that strip `#![...]`
-        // inner attributes (e.g. the demo-host `include!` driver) warning-
+        // inner attributes (an `include!` driver pattern) warning-
         // free: an outer attribute on the module survives that strip.
         items.push(Item::RawAttribute(format!(
             "#[allow(dead_code)]\npub mod emath_rt {{\n{}\n}}",

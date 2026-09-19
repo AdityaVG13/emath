@@ -359,7 +359,7 @@ impl super::super::Parser {
     /// precedences order custom operators against each other (higher
     /// binds tighter); `infixl`/`infix` are left-associative, `infixr`
     /// right-associative via the classic precedence-climbing cut. Glyph
-    /// uses desugar to plain calls of the canonical target (N5: the
+    /// uses desugar to plain calls of the canonical target (the
     /// semantic IR is notation-agnostic).
     pub(super) fn parse_notation_infix(
         &mut self,

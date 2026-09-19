@@ -14,7 +14,7 @@ Rust backend: universal EMIR and artifact contracts to deterministic Rust via th
 ## Invariants
 
 - Generated crates are std-only, `#![forbid(unsafe_code)]`, `#![allow(dead_code)]`, and byte-deterministic.
-- Generated crates embed `mod emath_rt { ... }` (the verbatim `emath-rt` kernel source) with an outer `#[allow(dead_code)]` so hosts that strip inner attributes (e.g. the demo-host `include!` driver) stay warning-free.
+- Generated crates embed `mod emath_rt { ... }` (the verbatim `emath-rt` kernel source) with an outer `#[allow(dead_code)]` so hosts that strip inner attributes (an `include!` driver pattern) stay warning-free.
 - The emitter is exhaustive over the contracted universal `EmirOp`; active backend modules contain no removed domain-op references. Obsolete domain/dual helper files remain unreferenced only because deletion is forbidden.
 - The emitter never maps a mathematical feature name or legacy domain operation to a runtime function. A semantic operation without an `ApplyCapability` artifact contract fails as `MissingArtifactContract`.
 - `ApplyCapability` dispatches only on generic cell class. Unsupported provider and intrinsic/native bindings fail as `UnsupportedBinding`; other applications without an executable artifact body fail as `MissingArtifactContract`. No identity, interpreter fallback, or compatibility shim is emitted.
