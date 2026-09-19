@@ -1,0 +1,92 @@
+# Module acceptance fixture: checkpoint replay and budget-halt resume
+# through the research loop (X1/X3 discipline).
+# The E5a valley target in archive mode. A straight three-batch run
+# reaches the goal. Re-invoking the loop from any committed
+# intermediate state is deterministic: the same checkpoint continued
+# twice produces identical projections, and the straight run equals
+# the checkpointed run. A budget halt mid-batch commits its
+# partial-but-valid records (the state IS the checkpoint); resuming
+# from the halted state with a full budget still reaches the same goal
+# and winner - the halt costs work (re-derivation is re-charged), it
+# never changes the verdicts' meaning.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/research_loop_replay.emath
+
+use search.archive
+use search.research
+
+emath function SameArch:
+    # Per-record projection equality: key, tier, score, accepted.
+    inputs:
+        arch_a: sequence(ResearchCandidate)
+        arch_b: sequence(ResearchCandidate)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        same_here = if i >= length(arch_a): true else: arch_a[i].key == arch_b[i].key and arch_a[i].tier == arch_b[i].tier and arch_a[i].score == arch_b[i].score and arch_a[i].accepted == arch_b[i].accepted
+        result = if i >= length(arch_a): true else: same_here and SameArch(arch_a, arch_b, i + 1)
+
+emath function SameRun:
+    # Deterministic-projection equality of two loop states: archive
+    # length, incumbent, verdict, charged units, case identity, and
+    # the per-record projection.
+    inputs:
+        a: LoopState
+        b: LoopState
+    outputs:
+        result: Bool
+    definitions:
+        result = length(a.archive) == length(b.archive) and a.incumbent == b.incumbent and a.verdict == b.verdict and a.used == b.used and a.case_set.ids == b.case_set.ids and SameArch(a.archive, b.archive, 0)
+
+emath function ReplayDiscipline:
+    inputs:
+        unused: Int
+    outputs:
+        halt_verdict: Int
+        halt_partial_committed: Bool
+        resumed_winner: Int
+        resumed_verdict: Int
+        checkpoint_replay_identical: Bool
+        straight_equals_checkpointed: Bool
+    definitions:
+        val = function k in Int: function cs in CaseSet: if k == 0: 4 / 1 else: if k == 1: 2 / 1 else: if k == 2: 0 / 1 else: if k == 3: 3 / 1 else: if k == 4: 1 / 1 else: if k == 5: 0 / 1 else: if k == 6: 0 / 1 else: 6 / 1
+        value_of = function k in Int: k / 1
+        admit = function k in Int: k >= 0 and k <= 7
+        moves = function k in Int: if k == 0: [1, 2, 4] else: if k == 1: [0, 3, 5] else: if k == 2: [0, 3, 6] else: if k == 3: [1, 2, 7] else: if k == 4: [0, 5, 6] else: if k == 5: [1, 4, 7] else: if k == 6: [2, 4, 7] else: [3, 5, 6]
+        family_of = function k in Int: 0
+        quota = function f in Int: 9
+        witness_of = function k in Int: function cs in CaseSet: -1
+        hard_ok = function k in Int: true
+        goal_met = function s in Rat: s == 6 / 1
+        better = function a in Rat: function b in Rat: b < a
+        next_cases = function k in Int: function cs in CaseSet: cs
+        s0 = research_seed(0, value_of, CaseSet: {ids: []}, val, witness_of, 1, 0, 1, 1)
+        a1 = research_batch(s0, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        a2 = research_batch(a1, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        a3 = research_batch(a2, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        c1 = research_batch(s0, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        c2a = research_batch(c1, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        c2b = research_batch(c1, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        c3 = research_batch(c2a, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        h1 = research_batch(s0, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 4)
+        r1 = research_batch(h1, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        r2 = research_batch(r1, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        r3 = research_batch(r2, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        halt_verdict = h1.verdict
+        halt_partial_committed = length(h1.archive) == 2 and h1.archive[1].key == 1 and h1.archive[1].retained
+        resumed_winner = r3.archive[r3.incumbent].key
+        resumed_verdict = r3.verdict
+        checkpoint_replay_identical = SameRun(c2a, c2b)
+        straight_equals_checkpointed = SameRun(a3, c3)
+    tests:
+        example <halt_commits_partial_and_resume_reaches_goal>:
+            given unused = 0
+            expect halt_verdict == 4
+            expect halt_partial_committed == true
+            expect resumed_winner == 7
+            expect resumed_verdict == 1
+        example <replay_is_deterministic_from_checkpoints>:
+            given unused = 0
+            expect checkpoint_replay_identical == true
+            expect straight_equals_checkpointed == true

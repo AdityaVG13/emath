@@ -1,0 +1,66 @@
+# Module acceptance fixture: the E5b false-memory control through the
+# research loop.
+# Two rule candidates over the reciprocal x/x -> 1: key 0 is the
+# UNCONDITIONAL rule (claims 1 for every x - it has no guard), key 1
+# carries the explicit x != 0 guard. The initial frozen case set
+# {1, 2} does not separate them (both valid, zero faults), so the
+# unconditional rule is the accepted baseline. The domain-audit
+# curriculum grows the set to {0, 1, 2} (case 0 is the smallest
+# discriminating case): the freshness law re-scores the whole archive,
+# the unconditional rule is refuted at case 0 (one fault - the
+# counterexample is recorded and the promotion withdrawn), and the
+# guarded rule survives and is promoted.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/research_loop_false_memory.emath
+
+use search.experiments
+use search.research
+
+emath function FalseMemory:
+    inputs:
+        unused: Int
+    outputs:
+        running_after_audit_growth: Int
+        quarantined: Bool
+        counterexample: Int
+        winner_key: Int
+        winner_score: Rat
+        verdict: Int
+        guard_preserved: Bool
+        audit_disagreement: Int
+    definitions:
+        faults = function k in Int: function cs in CaseSet: if k == 0: (if seq_has(cs.ids, 0, 0): 1 / 1 else: 0 / 1) else: 0 / 1
+        value_of = function k in Int: k / 1
+        admit = function k in Int: k == 0 or k == 1
+        moves = function k in Int: if k == 0: [1] else: [0]
+        family_of = function k in Int: 0
+        quota = function f in Int: 9
+        witness_of = function k in Int: function cs in CaseSet: if k == 0 and seq_has(cs.ids, 0, 0): 0 else: -1
+        hard_ok = function k in Int: true
+        goal_met = function s in Rat: s == 0 / 1
+        better = function a in Rat: function b in Rat: a < b
+        next_cases = function k in Int: function cs in CaseSet: CaseSet: {ids: cases_union(cs.ids, [0])}
+        s0 = research_seed(0, value_of, CaseSet: {ids: [1, 2]}, faults, witness_of, 2, 0, 1, 1)
+        b1 = research_batch(s0, value_of, admit, moves, family_of, quota, faults, faults, witness_of, hard_ok, goal_met, better, next_cases, 20)
+        b2 = research_batch(b1, value_of, admit, moves, family_of, quota, faults, faults, witness_of, hard_ok, goal_met, better, next_cases, 20)
+        running_after_audit_growth = b1.verdict
+        quarantined = not b2.archive[0].accepted
+        counterexample = b2.archive[0].counterexample
+        winner_key = b2.archive[b2.incumbent].key
+        winner_score = b2.archive[b2.incumbent].score
+        verdict = b2.verdict
+        guard_preserved = b2.archive[1].accepted
+        outcome_r0 = function c in Int: if c == 0: 0 else: 1
+        outcome_r1 = function c in Int: 1
+        audit_disagreement = first_disagreement(outcome_r0, outcome_r1, [0, 1, 2], 0)
+    tests:
+        example <unconditional_quarantined_guard_promoted>:
+            given unused = 0
+            expect running_after_audit_growth == 0
+            expect quarantined == true
+            expect counterexample == 0
+            expect winner_key == 1
+            expect winner_score == 0 / 1
+            expect verdict == 1
+            expect guard_preserved == true
+            expect audit_disagreement == 0

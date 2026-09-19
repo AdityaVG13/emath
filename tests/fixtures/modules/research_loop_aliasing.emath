@@ -1,0 +1,68 @@
+# Module acceptance fixture: the Float64 aliasing rejection (X8)
+# through the research loop.
+# Target value 2^53 + 1. Candidates: 2^53 (key 0), 2^53 + 1 (key 1),
+# and the seed 2^53 + 4 (key 2). At the probe tier (exact arithmetic
+# on the binary64-rounded views) 2^53 + 1 rounds to 2^53, so BOTH
+# candidates probe to residual zero - the alias tie; the seed probes
+# 16. Both are retained and both are verified at the exact tier: the
+# squared residuals are 1 and 0, exact verification rejects 2^53, and
+# the retained alternative recovers the answer. Pruning the tie loser
+# would strand the run on 2^53 with exact error 1 - impossible here by
+# design (both ties are challengers; first-wins applies to the EXACT
+# tier where they differ).
+# The binary64 residuals are pinned inline exactly as in
+# float_alias_recovery.emath.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/research_loop_aliasing.emath
+
+use search.research
+
+emath function FloatAliasLoop:
+    inputs:
+        unused: Int
+    outputs:
+        float_resid_lo: Float64
+        float_resid_hi: Float64
+        winner_key: Int
+        winner_exact: Rat
+        alt_retained: Bool
+        alt_exact: Rat
+        verdict: Int
+    definitions:
+        ft = 9007199254740993.0f64
+        fc_lo = 9007199254740992.0f64
+        fc_hi = 9007199254740993.0f64
+        float_resid_lo = (fc_lo - ft) * (fc_lo - ft)
+        float_resid_hi = (fc_hi - ft) * (fc_hi - ft)
+        rounded = function k in Int: if k == 0: 9007199254740992 else: if k == 1: 9007199254740992 else: 9007199254740996
+        rt = 9007199254740992
+        probe = function k in Int: function cs in CaseSet: ((rounded(k) - rt) * (rounded(k) - rt)) / 1
+        exact_at = function k in Int: if k == 0: 9007199254740992 else: if k == 1: 9007199254740993 else: 9007199254740996
+        verify = function k in Int: function cs in CaseSet: ((exact_at(k) - 9007199254740993) * (exact_at(k) - 9007199254740993)) / 1
+        value_of = function k in Int: exact_at(k) / 1
+        admit = function k in Int: k == 0 or k == 1 or k == 2
+        moves = function k in Int: if k == 2: [0, 1] else: []
+        family_of = function k in Int: 0
+        quota = function f in Int: 9
+        witness_of = function k in Int: function cs in CaseSet: -1
+        hard_ok = function k in Int: true
+        goal_met = function s in Rat: s == 0 / 1
+        better = function a in Rat: function b in Rat: a < b
+        next_cases = function k in Int: function cs in CaseSet: cs
+        s0 = research_seed(2, value_of, CaseSet: {ids: []}, probe, witness_of, 4, 0, 1, 1)
+        b1 = research_batch(s0, value_of, admit, moves, family_of, quota, probe, verify, witness_of, hard_ok, goal_met, better, next_cases, 10)
+        winner_key = b1.archive[b1.incumbent].key
+        winner_exact = b1.archive[b1.incumbent].score
+        alt_retained = b1.archive[1].retained and not b1.archive[1].accepted
+        alt_exact = b1.archive[1].score
+        verdict = b1.verdict
+    tests:
+        example <exact_tier_recovers_the_alias_pair>:
+            given unused = 0
+            expect float_resid_lo == 0.0f64
+            expect float_resid_hi == 0.0f64
+            expect winner_key == 1
+            expect winner_exact == 0 / 1
+            expect alt_retained == true
+            expect alt_exact == 1 / 1
+            expect verdict == 1

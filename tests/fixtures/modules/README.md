@@ -510,3 +510,69 @@ Mutation check: flipping the dyadic upper rounding direction
 (ceil -> floor) is CAUGHT — the bracket pin, the step/unit totals,
 and `every_enclosure_valid` all fail (a downward-rounded upper
 endpoint drops below sqrt(a)); reverted, all five pass.
+
+## Research-loop fixtures (S8 target-agnostic loop modules)
+
+These fixtures drive the real `search.research` loop modules through
+the ordinary module test lane (module imports, one fixture per
+acceptance control plus the engine-generality and replay
+disciplines). Nine authored tests across six files; the targets
+file takes ~25 s — the reference VM deep-clones captured closure
+environments per application, so the two targets are two functions
+(one shared body would nest the fit closure tree inside every reach
+closure clone: minutes, not seconds).
+
+- `research_loop_valley.emath` (2/2) — the E5a archive-valley
+  control: incumbent-only mode plateaus at score 4 then exhausts the
+  domain; archive mode retains the worse candidates as stepping
+  stones, crosses 000 -> 001 -> 011 -> 111, and promotes exactly the
+  baseline plus the winner (score 6).
+- `research_loop_false_memory.emath` (1/1) — the E5b control: the
+  domain-audit curriculum grows the frozen case set {1,2} ->
+  {0,1,2}; freshness re-scores the whole archive, the unconditional
+  x/x -> 1 rule is quarantined at case 0 (promotion withdrawn, the
+  counterexample recorded), the guarded rule survives and is
+  promoted; the batch that grew the set reports running, never
+  goal_attained.
+- `research_loop_forged.emath` (1/1) — the E5c control: a forged
+  record claiming score 0 is re-verified to the exact 2 and never
+  promoted (9 units charged); the honest key 1 wins; the
+  reduced-coverage key 3 is rejected by the hard gate.
+- `research_loop_aliasing.emath` (1/1) — the X8 alias pair through
+  the loop: 2^53 and 2^53 + 1 both probe to residual 0.0 on the
+  rounded views, both are retained, exact verification decides, and
+  the tie loser stays retained at exact residual 1.
+- `research_loop_targets.emath` (2/2) — engine generality: the SAME
+  imported `research_batch` walks the Stage 2 fitting target
+  (0 -> 1/4 -> 1/2 by strict improvement, exact SSE zero,
+  parent-linked archive chain) and the Stage 3 reachability
+  counterexample target (state 0 is witness but not forced;
+  witness_set [0,1,2] vs attractor [2]).
+- `research_loop_replay.emath` (2/2) — the X1/X3 disciplines: a
+  budget halt mid-batch commits its partial-but-valid records
+  (verdict 4); resuming from the halted state reaches the same goal
+  and winner; the same checkpoint continued twice is identical, and
+  the straight run equals the checkpointed run.
+
+Authored-against-the-engine findings (both fixed at root cause): a
+single body holding both targets' definitions exploded in cost
+(closure capture deep-cloning compounds per definition — split into
+two functions); the verdict chain originally checked goal_attained
+before the case-set advance, letting a batch that grew the audit
+declare goal on stale pre-audit scores — the false-memory fixture
+caught it and `set_changed` now precedes `goal_met` in
+`research_batch`.
+
+Mutation checks (each applied to the loop or the fixture target,
+confirmed to kill the named test, then reverted — all six pass
+green after the sweep): pruning the probe-tier tie loser in
+`probe_scan` (a temporary tier-0 tie gate on the append) kills the
+aliasing test — the 2^53 tie loser is never retained at exact
+residual 1; making `source_ords` incumbent-only in both modes kills
+the valley archive arm (score 4, domain exhausted, one promotion —
+the incumbent-only arm still passes, which is exactly the
+discrimination the fixture claims); removing the x != 0 guard from
+the fixture's guarded rule kills the false-memory test (both rules
+quarantine at case 0, the guarded survivor pin dies); trusting the
+stored score in `refresh_scan` (`v = r.score`, units still charged)
+kills the forged test — the forged record wins at its claimed 0.

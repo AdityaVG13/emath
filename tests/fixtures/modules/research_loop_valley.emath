@@ -1,0 +1,76 @@
+# Module acceptance fixture: the E5a archive-valley control through
+# the research loop.
+# Landscape over 3-bit states (maximize): 000 scores 4; its flip-one-
+# bit neighbors 001/010/100 score 2/0/1 (worse - the valley); the far
+# side 011 scores 3 and 111 scores 6 (the goal). Incumbent-only
+# proposal mode plateaus at 4 and then exhausts the domain; archive
+# mode retains the worse candidates as stepping stones, crosses the
+# valley 000 -> 001 -> 011 -> 111, and promotes exactly the baseline
+# plus the winner.
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/modules/research_loop_valley.emath
+
+use search.archive
+use search.research
+
+emath function CountAccepted:
+    inputs:
+        arch: sequence(ResearchCandidate)
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= length(arch): 0 else: (if arch[i].accepted: 1 else: 0) + CountAccepted(arch, i + 1)
+
+emath function ValleyLandscape:
+    inputs:
+        unused: Int
+    outputs:
+        inc_only_score: Rat
+        inc_only_plateau: Int
+        inc_only_exhausted: Int
+        archive_score: Rat
+        archive_winner: Int
+        archive_verdict: Int
+        promoted_count: Int
+        stepping_stones_retained: Bool
+    definitions:
+        val = function k in Int: function cs in CaseSet: if k == 0: 4 / 1 else: if k == 1: 2 / 1 else: if k == 2: 0 / 1 else: if k == 3: 3 / 1 else: if k == 4: 1 / 1 else: if k == 5: 0 / 1 else: if k == 6: 0 / 1 else: 6 / 1
+        value_of = function k in Int: k / 1
+        admit = function k in Int: k >= 0 and k <= 7
+        moves = function k in Int: if k == 0: [1, 2, 4] else: if k == 1: [0, 3, 5] else: if k == 2: [0, 3, 6] else: if k == 3: [1, 2, 7] else: if k == 4: [0, 5, 6] else: if k == 5: [1, 4, 7] else: if k == 6: [2, 4, 7] else: [3, 5, 6]
+        family_of = function k in Int: 0
+        quota = function f in Int: 9
+        witness_of = function k in Int: function cs in CaseSet: -1
+        hard_ok = function k in Int: true
+        goal_met = function s in Rat: s == 6 / 1
+        better = function a in Rat: function b in Rat: b < a
+        next_cases = function k in Int: function cs in CaseSet: cs
+        s0i = research_seed(0, value_of, CaseSet: {ids: []}, val, witness_of, 1, 0, 1, 0)
+        b1i = research_batch(s0i, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 40)
+        b2i = research_batch(b1i, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 40)
+        inc_only_score = b2i.archive[b2i.incumbent].score
+        inc_only_plateau = b1i.verdict
+        inc_only_exhausted = b2i.verdict
+        s0a = research_seed(0, value_of, CaseSet: {ids: []}, val, witness_of, 1, 0, 1, 1)
+        a1 = research_batch(s0a, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        a2 = research_batch(a1, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        a3 = research_batch(a2, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, 60)
+        archive_score = a3.archive[a3.incumbent].score
+        archive_winner = a3.archive[a3.incumbent].key
+        archive_verdict = a3.verdict
+        promoted_count = CountAccepted(a3.archive, 0)
+        stepping_stones_retained = key_in_arch(a3.archive, 1, 0) and key_in_arch(a3.archive, 3, 0)
+    tests:
+        example <incumbent_only_stops_at_four>:
+            given unused = 0
+            expect inc_only_score == 4 / 1
+            expect inc_only_plateau == 3
+            expect inc_only_exhausted == 2
+        example <archive_crosses_to_six_baseline_plus_winner>:
+            given unused = 0
+            expect archive_score == 6 / 1
+            expect archive_winner == 7
+            expect archive_verdict == 1
+            expect promoted_count == 2
+            expect stepping_stones_retained == true
