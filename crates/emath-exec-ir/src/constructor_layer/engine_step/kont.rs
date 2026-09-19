@@ -113,7 +113,7 @@ impl Engine {
             return self.function_result(&decl, &frame.function, last);
         }
         if let Some(kont) = frame.kont.first() {
-            if let Kont::EvalExpr { expr } = kont.as_ref() {
+            if let Kont::EvalExpr { expr } = kont {
                 return self.eval(expr);
             }
         }
@@ -130,7 +130,7 @@ impl Engine {
                 "remaining-work continuation is empty",
             ));
         };
-        let value = match top.as_ref() {
+        let value = match &top {
             Kont::BinLeft { op, left, right } => {
                 let left_value = self.eval(left)?;
                 self.push_kont(Kont::BinRight {
@@ -256,7 +256,7 @@ impl Engine {
         let Some(top) = self.pop_kont() else {
             return self.finish_after_value(incoming);
         };
-        let value = match top.as_ref() {
+        let value = match &top {
             Kont::BinLeft { op, right, .. } => {
                 self.push_kont(Kont::BinRight {
                     op: *op,
@@ -402,7 +402,7 @@ impl Engine {
             }
             return Ok(CValue::Record {
                 type_name: name.to_string(),
-                fields,
+                fields: Arc::new(fields),
             });
         }
         if let Some(output) = &decl.output {

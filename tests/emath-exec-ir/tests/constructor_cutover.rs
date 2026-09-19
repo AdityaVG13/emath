@@ -8,7 +8,8 @@ use std::path::PathBuf;
 
 use emath_exec_ir::constructor_emir::{cvalue_to_emir, lower_constructor_function, values_equal};
 use emath_exec_ir::constructor_layer::{
-    evaluate_function, evaluate_function_budgeted, evaluate_query, evaluate_tree, CValue,
+    evaluate_function, evaluate_function_budgeted, evaluate_query, evaluate_tree,
+    evaluate_tree_at, CValue,
 };
 use emath_exec_ir::interp::{evaluate, Value};
 use emath_exec_ir::language_image::{compile_language_directory, write_language_distribution};
@@ -622,6 +623,10 @@ emath function BoundNames:
         // call the default 8 MiB stack dies near 200 frames. The pin evaluates
         // on a 64 MiB stack exactly like the CLI worker thread, so a mutant
         // that drops the depth guard crashes this pin instead of passing it.
+        // The self-call is deliberately NON-tail (nested inside an addition):
+        // tail-position closure self-calls reuse the frame and are bounded by
+        // WORK instead (see `recur-tail-scales-nontail-caps`), so the depth
+        // cap is pinned on the shape that still nests.
         let depth = r#"
 emath function DepthFault:
     inputs:
@@ -629,7 +634,7 @@ emath function DepthFault:
     outputs:
         result: Int
     definitions:
-        result = (recur f in Int -> Int: function k in Int: if k <= 0: 0 else: f(k + 1))(n)
+        result = (recur f in Int -> Int: function k in Int: if k <= 0: 0 else: f(k + 1) + 0)(n)
 "#;
         let (tree, diagnostics) = parse_str(depth);
         p.demand("depth-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
@@ -664,7 +669,8 @@ emath function DepthFault:
         // K-machine frames between growth points); with the old 64 KiB
         // redline a default 2 MiB thread hit the guard page at ~40 levels
         // and aborted the process. The fault, not the crash, is the
-        // contract.
+        // contract. As above, the self-call is deliberately NON-tail —
+        // tail-position closure self-calls are work-bounded instead.
         let depth = r#"
 emath function DepthFault:
     inputs:
@@ -672,7 +678,7 @@ emath function DepthFault:
     outputs:
         result: Int
     definitions:
-        result = (recur f in Int -> Int: function k in Int: if k <= 0: 0 else: f(k + 1))(n)
+        result = (recur f in Int -> Int: function k in Int: if k <= 0: 0 else: f(k + 1) + 0)(n)
 "#;
         let (tree, diagnostics) = parse_str(depth);
         p.demand("library-depth-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
@@ -967,7 +973,7 @@ emath function sum_tree:
             checkpoint.frames.iter().any(|frame| {
                 frame.kont.iter().any(|kont| {
                     matches!(
-                        kont.as_ref(),
+                        kont,
                         emath_exec_ir::constructor_layer::Kont::BinRight {
                             left: CValue::Int(_),
                             ..
@@ -2593,6 +2599,252 @@ emath function WalkMatchOpen:
             "unbound_code",
         );
         let _ = tree;
+    });
+
+    probe.case("use-seam-directory-relative-sibling", |p| {
+        // The importer and its target sit side by side in the fixture
+        // directory, outside language/modules. `use seam_target` must
+        // resolve against the importing file's own directory.
+        let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/constructor/use_seam_importer.emath");
+        let tree = parse_ok("use_seam_importer.emath");
+        match evaluate_tree_at(&tree, Some(&importer_path)) {
+            Ok(report) => {
+                p.demand(
+                    "sibling-import-admitted",
+                    !report.tests.is_empty()
+                        && report.tests.iter().all(|t| t.passed),
+                    format!("{:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.fail("sibling-import-admitted", err.to_string());
+            }
+        }
+    });
+
+    probe.case("use-seam-unresolvable-still-refuses", |p| {
+        // A path that is neither a stdlib module nor a sibling file must
+        // keep refusing E-USE-ADMISSION; the seam admits nothing new
+        // beyond directory-relative files that exist.
+        let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/constructor/use_seam_importer.emath");
+        let source = "use seam_no_such_file\n\nemath function unused_fn:\n    inputs:\n        unused: Int\n    outputs:\n        result: Int\n    definitions:\n        result = unused\n    tests:\n        example <pin>:\n            given unused = 0\n            expect result == 0\n";
+        let (tree, diagnostics) = parse_str(source);
+        p.demand("refusal-source-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        match evaluate_tree_at(&tree, Some(&importer_path)) {
+            Ok(report) => {
+                p.fail(
+                    "unresolvable-refuses",
+                    format!("admitted anyway: {:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.eq(
+                    "unresolvable-refuses",
+                    err.code.as_str(),
+                    "E-USE-ADMISSION",
+                );
+            }
+        }
+    });
+
+    probe.case("use-import-name-collision-refuses", |p| {
+        // E-NAME-022 (user decision: collision is an error): an
+        // imported declaration may not silently replace a same-named
+        // local one. Historical behavior was the clobber — imports
+        // installed after locals, so the local function ran the
+        // imported body mid-module.
+        let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/constructor/use_import_clobber.emath");
+        let tree = parse_ok("use_import_clobber.emath");
+        match evaluate_tree_at(&tree, Some(&importer_path)) {
+            Ok(report) => {
+                p.fail(
+                    "collision-refuses",
+                    format!("admitted anyway: {:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.eq("collision-refuses", err.code.as_str(), "E-NAME-022");
+            }
+        }
+    });
+
+    probe.case("use-import-same-source-idempotent", |p| {
+        // The transitive diamond: dup_a and dup_b both import
+        // dup_target, and dup_root imports both. The same source file
+        // installs twice under the same bare name — idempotent, NOT a
+        // collision (the `use numerics.experiment` -> bounds/powers
+        // -> exact.integers shape every stdlib import relies on).
+        let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/constructor/dup_root.emath");
+        let tree = parse_ok("dup_root.emath");
+        match evaluate_tree_at(&tree, Some(&importer_path)) {
+            Ok(report) => {
+                p.demand(
+                    "diamond-admits",
+                    !report.tests.is_empty()
+                        && report.tests.iter().all(|t| t.passed),
+                    format!("{:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.fail("diamond-admits", err.to_string());
+            }
+        }
+    });
+
+    probe.case("use-import-live-egcd-repro-refuses", |p| {
+        // The live seam that bit cryptology.modular: `use
+        // exact.integers` exports `egcd` (outputs g, s, t); a local
+        // `egcd` must refuse instead of silently running the imported
+        // one. Pinned against the real stdlib tree.
+        let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/constructor/use_import_clobber.emath");
+        let source = "use exact.integers\n\nemath function egcd:\n    inputs:\n        a: Int\n        b: Int\n    outputs:\n        result: Int\n    definitions:\n        result = quot_int(a, b)\n    tests:\n        example <pin>:\n            given a = 7\n            given b = 2\n            expect result == 3\n";
+        let (tree, diagnostics) = parse_str(source);
+        p.demand(
+            "repro-source-parsed",
+            !diagnostics.has_errors(),
+            format!("{diagnostics:?}"),
+        );
+        match evaluate_tree_at(&tree, Some(&importer_path)) {
+            Ok(report) => {
+                p.fail(
+                    "live-repro-refuses",
+                    format!("admitted anyway: {:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.eq("live-repro-refuses", err.code.as_str(), "E-NAME-022");
+            }
+        }
+    });
+
+    probe.case("named-fn-closure-arg-coerces", |_p| {
+        // A named top-level function in value position coerces to a
+        // closure over its inputs: applying the closure calls the
+        // function. Historical behavior: the bare name yielded an
+        // unapplied closure value (calling it returned the closure
+        // itself). The wide two-input shape refuses `arity` at
+        // application time — never a silently wrong body.
+        // `all_passed` panics with the failing observation on any
+        // regression.
+        all_passed("named_fn_closure_arg.emath");
+        all_passed("named_fn_wide_arg.emath");
+    });
+
+    probe.case("recur-tail-scales-nontail-caps", |p| {
+        // The tail-call seam for CLOSURE applications: a self-call in
+        // tail position reuses the application frame — the call depth
+        // stays at the entry value and WORK is the only bound — so a
+        // tail-recursive closure builder scales past the 256 depth cap
+        // (10_000 steps below; the base value 7 is reachable only by
+        // walking every step). A NON-tail self-call (nested inside an
+        // operation) keeps the configured depth cap. A GROWING tail
+        // loop is bounded by the work budget — a fault, never a crash
+        // or a hang — pinned on a 2 MiB library thread so a mutant
+        // that reintroduces nesting aborts there instead of passing.
+        let source = r#"
+emath function TailWalk:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur go in Int -> Int: function k in Int: if k <= 0: 7 else: go(k - 1))(n)
+
+emath function NonTailWalk:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur go in Int -> Int: function k in Int: if k <= 0: 7 else: 1 + go(k - 1))(n)
+
+emath function GrowTail:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur go in Int -> Int: function k in Int: if k <= 0: 7 else: go(k + 1))(n)
+
+emath function NamedTailWalk:
+    inputs:
+        n: Int
+        acc: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n == 0: acc else: NamedTailWalk(n - 1, acc + 1)
+"#;
+        let (tree, diagnostics) = parse_str(source);
+        p.demand(
+            "seam-parsed",
+            !diagnostics.has_errors(),
+            format!("{diagnostics:?}"),
+        );
+        match evaluate_function(&tree, "TailWalk", &BTreeMap::from([("n".into(), int(10_000))])) {
+            Ok(value) => {
+                p.eq("tail-scales", value, int(7));
+            }
+            Err(err) => {
+                p.fail("tail-scales", err.to_string());
+            }
+        }
+        match evaluate_function(&tree, "NonTailWalk", &BTreeMap::from([("n".into(), int(300))])) {
+            Ok(_) => {
+                p.fail("nontail-caps", "300-level non-tail walk returned a value");
+            }
+            Err(err) => {
+                p.demand(
+                    "nontail-caps",
+                    err.code == "recursion_depth_exceeded",
+                    format!("non-tail walk faulted `{}`", err.code),
+                );
+            }
+        }
+        match evaluate_function(&tree, "NonTailWalk", &BTreeMap::from([("n".into(), int(250))])) {
+            Ok(value) => {
+                p.eq("nontail-under-cap-computes", value, int(257));
+            }
+            Err(err) => {
+                p.fail("nontail-under-cap-computes", err.to_string());
+            }
+        }
+        let grow_tree = tree.clone();
+        let worker = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                evaluate_function(&grow_tree, "GrowTail", &BTreeMap::from([("n".into(), int(1))]))
+            })
+            .expect("spawn grow probe thread");
+        match worker.join().expect("join grow probe thread") {
+            Ok(_) => {
+                p.fail("grow-tail-work-bounded", "growing tail loop returned a value");
+            }
+            Err(err) => {
+                p.demand(
+                    "grow-tail-work-bounded",
+                    err.code == "budget_exhausted",
+                    format!("growing tail loop faulted `{}`", err.code),
+                );
+            }
+        }
+        match evaluate_function(
+            &tree,
+            "NamedTailWalk",
+            &BTreeMap::from([("n".into(), int(10_000)), ("acc".into(), int(0))]),
+        ) {
+            Ok(value) => {
+                p.eq("named-tail-still-scales", value, int(10_000));
+            }
+            Err(err) => {
+                p.fail("named-tail-still-scales", err.to_string());
+            }
+        }
     });
 
     eprintln!("constructor_cutover checks={}", probe.checks());

@@ -182,7 +182,7 @@ impl Checkpoint {
                     }
                     let mut kont = Vec::new();
                     for _ in 0..kont_count {
-                        kont.push(Box::new(decode_kont(&mut lines, &mut ctx)?));
+                        kont.push(decode_kont(&mut lines, &mut ctx)?);
                     }
                     checkpoint.frames.push(ContinuationFrame {
                         function,
@@ -342,7 +342,7 @@ pub(super) fn compact_key(value: &CValue, out: &mut String) -> Option<()> {
         CValue::Record { type_name, fields } => {
             out.push('{');
             compact_ident(type_name, out);
-            for (name, field) in fields {
+            for (name, field) in fields.iter() {
                 out.push(',');
                 compact_ident(name, out);
                 out.push('=');
@@ -697,7 +697,7 @@ pub(super) fn decode_kont<'a>(
             }
             let mut rest = Vec::new();
             for _ in 0..rest_count {
-                rest.push(decode_expr_line(lines)?);
+                rest.push(Rc::new(decode_expr_line(lines)?));
             }
             Ok(Kont::CallArgs {
                 callee,
@@ -722,7 +722,7 @@ pub(super) fn decode_kont<'a>(
             }
             let mut rest = Vec::new();
             for _ in 0..rest_count {
-                rest.push(decode_expr_line(lines)?);
+                rest.push(Rc::new(decode_expr_line(lines)?));
             }
             Ok(Kont::FnCall { name, done, rest })
         }
@@ -740,7 +740,7 @@ pub(super) fn decode_kont<'a>(
             }
             let mut rest = Vec::new();
             for _ in 0..rest_count {
-                rest.push(decode_expr_line(lines)?);
+                rest.push(Rc::new(decode_expr_line(lines)?));
             }
             Ok(Kont::SeqItems {
                 as_tuple,
@@ -841,7 +841,7 @@ pub(super) fn decode_kont<'a>(
             body: Box::new(decode_expr_line(lines)?),
         }),
         "EvalExpr" => Ok(Kont::EvalExpr {
-            expr: Box::new(decode_expr_line(lines)?),
+            expr: Rc::new(decode_expr_line(lines)?),
         }),
         other => Err(fault(
             "incompatible_checkpoint",
@@ -967,7 +967,7 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
         CValue::Record { type_name, fields } => {
             out.push_str("(rec ");
             encode_quoted(type_name, out);
-            for (name, value) in fields {
+            for (name, value) in fields.iter() {
                 out.push(' ');
                 encode_quoted(name, out);
                 out.push(' ');
@@ -984,7 +984,7 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
             encode_quoted(type_name, out);
             out.push(' ');
             encode_quoted(tag, out);
-            for value in fields {
+            for value in fields.iter() {
                 out.push(' ');
                 encode_cvalue(value, ctx, out);
             }
@@ -1227,7 +1227,7 @@ pub(super) fn encode_expr(expr: &Expr, out: &mut String) {
         ExprKind::Record { type_path, fields } => {
             out.push_str("(record ");
             encode_quoted(&type_path.join("."), out);
-            for (name, value) in fields {
+            for (name, value) in fields.iter() {
                 out.push(' ');
                 encode_quoted(name, out);
                 out.push('=');
@@ -1452,7 +1452,7 @@ pub(super) fn decode_cvalue_cur(
                     let value = decode_cvalue_cur(cur, ctx)?;
                     fields.insert(name, value);
                 }
-                CValue::Record { type_name, fields }
+                CValue::Record { type_name, fields: Arc::new(fields) }
             }
             "var" => {
                 let type_name = cur.string()?;

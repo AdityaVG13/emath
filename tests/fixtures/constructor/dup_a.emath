@@ -1,0 +1,15 @@
+# Diamond left arm: imports the shared target and calls it, so the
+# bare name must resolve for this module's own body.
+use dup_target
+
+emath function a_twice:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = dup_shared(x) + 1
+    tests:
+        example <a_pin>:
+            given x = 1
+            expect result == 3

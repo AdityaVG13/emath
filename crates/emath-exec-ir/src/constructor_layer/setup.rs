@@ -27,6 +27,7 @@ pub(super) fn empty_engine() -> Engine {
         functions: BTreeMap::new(),
         queries: BTreeMap::new(),
         objects: BTreeMap::new(),
+        name_sources: BTreeMap::new(),
         work: 0,
         work_limit: DEFAULT_WORK,
         memo: BTreeMap::new(),
@@ -48,7 +49,7 @@ pub(super) fn install_local_items(engine: &mut Engine, tree: &SyntaxTree) -> Res
     admit_constructor_surface(tree)?;
     for item in &tree.items {
         if let Item::Declaration(decl) = item {
-            install_declaration(engine, decl, None)?;
+            install_declaration(engine, decl, None, None)?;
         }
     }
     Ok(())
@@ -58,15 +59,46 @@ pub(super) fn install_declaration(
     engine: &mut Engine,
     decl: &Declaration,
     alias: Option<String>,
+    source: Option<&Path>,
 ) -> Result<(), ConstructorError> {
     let name = alias.unwrap_or_else(|| decl.name.clone());
+    // E-NAME-022: an import may not replace a name a different
+    // origin installed. Origins: the local tree (empty path) and the
+    // resolved import file. A re-install from the SAME origin is
+    // idempotent — the transitive diamond (`use numerics.experiment`
+    // pulls exact.integers via both bounds and powers) installs one
+    // file twice under the same bare name and must keep admitting.
+    let origin = source.map(Path::to_path_buf).unwrap_or_default();
+    if let Some(existing) = engine.name_sources.get(&name) {
+        if *existing != origin {
+            let detail = if existing.as_os_str().is_empty() {
+                format!(
+                    "import of `{}` installs `{}`, but a local declaration `{}` already exists: \
+                     an import may not replace a local name — rename one or import under an alias",
+                    origin.display(),
+                    name,
+                    name
+                )
+            } else {
+                format!(
+                    "import of `{}` installs `{}`, already installed from `{}`: \
+                     import one of them under an alias",
+                    origin.display(),
+                    name,
+                    existing.display()
+                )
+            };
+            return Err(fault("E-NAME-022", detail));
+        }
+    }
+    engine.name_sources.insert(name.clone(), origin);
     match decl.as_kind.as_str() {
         "function" => {
             let outputs = section_fields(decl, "outputs");
             let typed_inputs = section_typed_fields(decl, "inputs");
             engine.functions.insert(
                 name,
-                FnDecl {
+                Rc::new(FnDecl {
                     inputs: typed_inputs.iter().map(|(name, _)| name.clone()).collect(),
                     input_types: typed_inputs.into_iter().map(|(_, ty)| ty).collect(),
                     output: outputs.first().cloned(),
@@ -77,7 +109,7 @@ pub(super) fn install_declaration(
                     outputs,
                     defs: constructor_defs(decl),
                     opaque: function_is_opaque(decl),
-                },
+                }),
             );
         }
         "query" => {
@@ -144,7 +176,27 @@ pub(super) fn resolve_import(
             ));
         }
     }
-    resolve_module_path(path, roots)
+    // Stdlib roots keep priority: an existing `language/modules` module
+    // always wins, so the seam can never shadow the standard library.
+    if let Ok(file) = resolve_module_path(path, roots) {
+        return Ok(file);
+    }
+    // Directory-relative seam: after the stdlib roots miss, resolve the
+    // same package path against the importing file's own directory, so
+    // sibling files import each other without package declarations.
+    // Unresolvable paths still refuse E-USE-ADMISSION below.
+    if let Some(src) = source {
+        let rel = PathBuf::from_iter(path.iter()).with_extension("emath");
+        let dir = src.parent().unwrap_or_else(|| Path::new("."));
+        let candidate = dir.join(rel);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err(fault(
+        "E-USE-ADMISSION",
+        format!("unbound import `{}`", path.join(".")),
+    ))
 }
 
 pub(super) fn load_imports(
@@ -182,7 +234,7 @@ pub(super) fn load_imports(
             ));
         }
         load_imports(engine, &imported, roots, Some(file.as_path()), visiting)?;
-        install_imported(engine, &imported, path, use_tree)?;
+        install_imported(engine, &imported, path, use_tree, file.as_path())?;
         visiting.remove(&file);
     }
     Ok(())
@@ -193,6 +245,7 @@ pub(super) fn install_imported(
     tree: &SyntaxTree,
     path: &[String],
     use_tree: &UseTree,
+    file: &Path,
 ) -> Result<(), ConstructorError> {
     let prefix = path.join(".");
     for item in &tree.items {
@@ -212,20 +265,26 @@ pub(super) fn install_imported(
         };
         if !selected {
             // Still install under the original name so callees in the same
-            // module can resolve private helpers.
-            install_declaration(engine, decl, None)?;
+            // module can resolve private helpers. The bare-name install
+            // runs through the E-NAME-022 collision law like every other.
+            install_declaration(engine, decl, None, Some(file))?;
             continue;
         }
-        install_declaration(engine, decl, None)?;
+        install_declaration(engine, decl, None, Some(file))?;
+        // The namespaced copy (`prefix.name`) cannot collide with a
+        // user identifier (dotted), so it records provenance without
+        // a refusal path.
+        let prefixed = format!("{prefix}.{}", decl.name);
+        engine.name_sources.insert(prefixed.clone(), file.to_path_buf());
         engine.functions.get(&decl.name).cloned().map(|decl_fn| {
-            engine.functions.insert(format!("{prefix}.{}", decl.name), decl_fn);
+            engine.functions.insert(prefixed, decl_fn);
         });
         engine.queries.get(&decl.name).cloned().map(|decl_q| {
             engine.queries.insert(format!("{prefix}.{}", decl.name), decl_q);
         });
         if let UseTree::Named(names) = use_tree {
             if let Some((_, Some(alias))) = names.iter().find(|(name, _)| name == &decl.name) {
-                install_declaration(engine, decl, Some(alias.clone()))?;
+                install_declaration(engine, decl, Some(alias.clone()), Some(file))?;
             }
         }
     }

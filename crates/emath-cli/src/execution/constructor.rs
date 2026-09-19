@@ -30,23 +30,42 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
         Ok(inputs) => inputs,
         Err(exit) => return Some(exit),
     };
-    let report = match emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(&request.path)) {
-        Ok(report) => report,
-        Err(err) => {
-            return Some(diagnostic(
-                request.json,
-                if err.code == "E-KIND-GONE" {
-                    EXIT_ADMISSION
-                } else if err.code == "incompatible_checkpoint" {
-                    crate::EXIT_CHECKPOINT
-                } else if err.code == "budget_exhausted" {
-                    EXIT_PARTIAL
-                } else {
-                    EXIT_FAULT
-                },
-                &err.code,
-                &err.message,
-            ));
+    // `--function` runs one entry; the module's authored tests are not
+    // an input to that evaluation. Gating first would evaluate every
+    // test under DEFAULT_WORK and refuse modules whose suites are
+    // larger than that default, regardless of --work — the budget the
+    // flag exists to raise. The report is only consumed by the
+    // no-function lane below.
+    let report = if request.function.is_some() {
+        None
+    } else {
+        let evaluated = if request.work_set {
+            emath_exec_ir::constructor_layer::evaluate_tree_budgeted_at(
+                &tree,
+                Some(&request.path),
+                request.work as u64,
+            )
+        } else {
+            emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(&request.path))
+        };
+        match evaluated {
+            Ok(report) => Some(report),
+            Err(err) => {
+                return Some(diagnostic(
+                    request.json,
+                    if err.code == "E-KIND-GONE" {
+                        EXIT_ADMISSION
+                    } else if err.code == "incompatible_checkpoint" {
+                        crate::EXIT_CHECKPOINT
+                    } else if err.code == "budget_exhausted" {
+                        EXIT_PARTIAL
+                    } else {
+                        EXIT_FAULT
+                    },
+                    &err.code,
+                    &err.message,
+                ));
+            }
         }
     };
     if let Some(name) = &request.function {
@@ -105,6 +124,9 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
             &format!("no constructor entry `{name}`"),
         ));
     }
+    // Every path above returns; the only way here is the no-function
+    // lane, which always evaluated the tree (report is Some).
+    let report = report.expect("no-function lane evaluated the tree above");
     let failed = report.tests.iter().any(|test| !test.passed);
     let partial = report.tests.iter().any(|test| {
         test.receipt

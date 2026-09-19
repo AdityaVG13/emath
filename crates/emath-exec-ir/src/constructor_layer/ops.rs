@@ -265,7 +265,7 @@ pub(super) fn eq_values(left: &CValue, right: &CValue) -> Result<bool, Construct
             if a != b || fa.len() != fb.len() {
                 return Ok(false);
             }
-            for (name, value) in fa {
+            for (name, value) in fa.iter() {
                 match fb.get(name) {
                     Some(other) if eq_values(value, other)? => {}
                     _ => return Ok(false),

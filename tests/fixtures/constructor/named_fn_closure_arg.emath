@@ -1,0 +1,56 @@
+# A named top-level function passed where a closure-typed input is
+# expected coerces to a closure over its inputs: applying the
+# closure calls the function with the argument. Historical
+# behavior: the bare name yielded an unapplied closure value —
+# calling it returned the closure itself. Pinned by
+# `named-fn-closure-arg-coerces`.
+emath function double:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x * 2 / 1
+
+emath function apply_once:
+    inputs:
+        f: Rat -> Rat
+        v: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = f(v)
+
+emath function compose_twice:
+    # the coerced closure flows through TWO applications
+    inputs:
+        f: Rat -> Rat
+        v: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = f(f(v))
+
+emath function run_direct:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = apply_once(double, 3 / 1)
+    tests:
+        example <coerces_and_applies>:
+            given unused = 0
+            expect result == 6 / 1
+
+emath function run_composed:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = compose_twice(double, 3 / 1)
+    tests:
+        example <applies_through_two_calls>:
+            given unused = 0
+            expect result == 12 / 1

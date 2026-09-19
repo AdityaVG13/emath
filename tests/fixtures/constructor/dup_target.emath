@@ -1,0 +1,15 @@
+# Diamond seam target: imported by BOTH dup_a and dup_b, so the
+# transitive closure of dup_root installs this file twice under the
+# same bare name. Same-source re-install is idempotent, NOT a
+# collision. Pinned by `use-import-same-source-idempotent`.
+emath function dup_shared:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x * 2
+    tests:
+        example <shared_pin>:
+            given x = 3
+            expect result == 6

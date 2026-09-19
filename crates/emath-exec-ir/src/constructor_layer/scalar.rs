@@ -156,7 +156,7 @@ pub fn parse_constructor_scalar(raw: &str) -> CValue {
     }
     CValue::Record {
         type_name: raw.into(),
-        fields: BTreeMap::new(),
+        fields: Arc::new(BTreeMap::new()),
     }
 }
 

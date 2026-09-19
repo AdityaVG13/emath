@@ -151,6 +151,6 @@ pub(super) fn evaluate_function_on(
             }
         })
         .collect();
-    engine.eval_fn(name, &decl, &args)
+    engine.eval_fn(name, decl, &args)
 }
 

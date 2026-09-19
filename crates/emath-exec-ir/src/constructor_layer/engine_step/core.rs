@@ -1,5 +1,5 @@
 use super::super::*;
-use super::prelude::{apply_unary, binary, cons_values, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag, project_field, schema_tag};
+use super::prelude::{apply_unary, binary, cons_values, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag, project_field, schema_tag};
 
 impl Engine {
     pub(in crate::constructor_layer) fn charge(&mut self) -> Result<(), ConstructorError> {
@@ -15,11 +15,13 @@ impl Engine {
 
     pub(in crate::constructor_layer) fn push_kont(&mut self, kont: Kont) {
         if let Some(frame) = self.frames.last_mut() {
-            frame.kont.push(Box::new(kont));
+            // Unboxed: the kont stack churns one node per engine step;
+            // per-node heap boxes were a malloc/free pair each step.
+            frame.kont.push(kont);
         }
     }
 
-    pub(in crate::constructor_layer) fn pop_kont(&mut self) -> Option<Box<Kont>> {
+    pub(in crate::constructor_layer) fn pop_kont(&mut self) -> Option<Kont> {
         self.frames.last_mut()?.kont.pop()
     }
 
@@ -50,6 +52,15 @@ impl Engine {
             }
             ExprKind::Bool(v) => Ok(CValue::Bool(*v)),
             ExprKind::Path { segments, .. } => {
+                // Single-segment paths are the interpreter's hottest
+                // lookup (every variable reference): skip the join's
+                // String allocation. A miss still falls through to the
+                // joined-name logic and its fault paths unchanged.
+                if segments.len() == 1 {
+                    if let Some(value) = self.env.get(segments[0].as_str()).cloned() {
+                        return Ok(value);
+                    }
+                }
                 let name = segments.join(".");
                 if let Some(value) = self.env.get(&name).cloned() {
                     return Ok(value);
@@ -86,19 +97,19 @@ impl Engine {
                         return match segments[1].as_str() {
                             "execution" => Ok(CValue::Record {
                                 type_name: receipt.execution.clone(),
-                                fields: BTreeMap::new(),
+                                fields: Arc::new(BTreeMap::new()),
                             }),
                             "fulfillment" => Ok(CValue::Record {
                                 type_name: receipt.fulfillment.clone(),
-                                fields: BTreeMap::new(),
+                                fields: Arc::new(BTreeMap::new()),
                             }),
                             "representation" => Ok(CValue::Record {
                                 type_name: receipt.representation.clone(),
-                                fields: BTreeMap::new(),
+                                fields: Arc::new(BTreeMap::new()),
                             }),
                             "payload" => Ok(CValue::Record {
                                 type_name: receipt.payload.clone().unwrap_or_default(),
-                                fields: BTreeMap::new(),
+                                fields: Arc::new(BTreeMap::new()),
                             }),
                             "remaining" => Ok(CValue::Sequence(std::sync::Arc::new(
                                 receipt
@@ -106,7 +117,7 @@ impl Engine {
                                     .iter()
                                     .map(|item| CValue::Record {
                                         type_name: item.clone(),
-                                        fields: BTreeMap::new(),
+                                        fields: Arc::new(BTreeMap::new()),
                                     })
                                     .collect(),
                             ))),
@@ -116,7 +127,7 @@ impl Engine {
                                     .iter()
                                     .map(|item| CValue::Record {
                                         type_name: item.clone(),
-                                        fields: BTreeMap::new(),
+                                        fields: Arc::new(BTreeMap::new()),
                                     })
                                     .collect(),
                             ))),
@@ -139,12 +150,32 @@ impl Engine {
                 if is_schema_tag(&name) {
                     return Ok(schema_tag(&name));
                 }
-                if self.functions.contains_key(&name) {
+                if let Some(decl) = self.functions.get(&name) {
+                    // A named function in VALUE position coerces to a
+                    // closure over its inputs: applying the closure
+                    // calls the function with the argument. The param
+                    // reuses the declaration's first input name (the
+                    // call re-binds it identically); a wider function
+                    // refuses `arity` at application time — never a
+                    // silently wrong body. The previous shape (empty
+                    // param, the path itself as the body) bound no
+                    // argument and returned the closure unapplied.
+                    let param = decl.inputs.first().cloned().unwrap_or_default();
+                    let body = dummy_expr(ExprKind::Call {
+                        function: Box::new(dummy_expr(ExprKind::Path {
+                            segments: vec![name.clone()],
+                            generics: None,
+                        })),
+                        args: vec![dummy_expr(ExprKind::Path {
+                            segments: vec![param.clone()],
+                            generics: None,
+                        })],
+                    });
                     return Ok(CValue::Closure(Box::new(Closure {
-                        param: String::new(),
-                        body: expr.clone(),
-                        env: self.env.clone(),
-                        recursive: Some(name),
+                        param,
+                        body,
+                        env: BTreeMap::new(),
+                        recursive: None,
                     })));
                 }
                 if self.expect_atoms.get() && segments.len() == 1 {

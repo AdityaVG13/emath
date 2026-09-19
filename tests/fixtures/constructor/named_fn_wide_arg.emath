@@ -1,0 +1,57 @@
+# The honest boundary of the named-function coercion: a function of
+# TWO inputs cannot coerce to a unary closure — applying it refuses
+# `arity` at application time, never a silently wrong body. Pinned
+# by `named-fn-closure-arg-coerces` (the wide-shape demand).
+emath function add2:
+    inputs:
+        a: Rat
+        b: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = a + b
+
+emath function apply_once:
+    inputs:
+        f: Rat -> Rat
+        v: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = f(v)
+
+emath function run_wide:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = apply_once(add2, 3 / 1)
+    tests:
+        example <wide_fn_refuses_arity>:
+            given unused = 0
+            expect diagnostic.code == arity
+
+emath function two_in:
+    inputs:
+        a: Rat
+        b: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = a + b
+
+emath function tail_wrong_arity:
+    # A NAMED tail call with the wrong arity must also refuse `arity`
+    # — not a zip-truncated binding that faults `unbound` on the
+    # missing input.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = two_in(3 / 1)
+    tests:
+        example <named_tail_wrong_arity_refuses>:
+            given unused = 0
+            expect diagnostic.code == arity

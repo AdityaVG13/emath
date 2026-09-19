@@ -26,27 +26,10 @@ impl Engine {
                 self.call_depth += 1;
                 self.push_frame(&frame_name);
                 let saved = self.env.clone();
-                self.env.extend(clos.env.clone());
-                if let Some(name) = &clos.recursive {
-                    self.env
-                        .insert(name.clone(), CValue::Closure(clos.clone()));
-                }
-                if !clos.param.is_empty() {
-                    self.env.insert(clos.param.clone(), args[0].clone());
-                }
-                self.set_frame_next("body");
-                self.push_kont(Kont::EvalExpr {
-                    expr: Box::new(clos.body.clone()),
-                });
-                self.refresh_frame();
-                let result = stacker::maybe_grow(1024 * 1024, 4 * 1024 * 1024, || {
-                    self.eval(&clos.body)
-                });
-                if result.is_ok() {
-                    self.pop_kont();
-                }
+                let entry = clos.clone();
+                let outcome = self.apply_closure_chain(clos, args.to_vec(), saved.clone());
                 let exhausted = matches!(
-                    &result,
+                    &outcome,
                     Err(err) if err.code == "budget_exhausted"
                 );
                 self.env = saved;
@@ -54,8 +37,8 @@ impl Engine {
                     self.pop_frame();
                     self.call_depth = self.call_depth.saturating_sub(1);
                 }
-                let result = result?;
-                self.remember_closure(&clos, args, result.clone());
+                let result = outcome?;
+                self.remember_closure(&entry, args, result.clone());
                 if args.len() > 1 {
                     self.apply_value(result, &args[1..])
                 } else {
@@ -66,6 +49,119 @@ impl Engine {
                 "type",
                 format!("value is not callable: {other}"),
             )),
+        }
+    }
+
+    /// The tail-call seam for CLOSURE applications: one pushed frame
+    /// per application chain. A body whose tail position is a call to
+    /// another closure value reuses the frame — the call depth stays
+    /// at the entry value, and WORK is the only bound (the closure
+    /// analogue of the named lane's frame-reuse loop). A tail call
+    /// into a NAMED function delegates to that loop in this same
+    /// frame. Non-tail shapes (a call nested inside an operation, a
+    /// match arm, a sequence) never reach this loop: they evaluate
+    /// through the ordinary nested-application path and keep the
+    /// configured depth cap.
+    pub(in crate::constructor_layer) fn apply_closure_chain(
+        &mut self,
+        mut clos: Box<Closure>,
+        mut args: Vec<CValue>,
+        saved: BTreeMap<String, CValue>,
+    ) -> Result<CValue, ConstructorError> {
+        loop {
+            if args.is_empty() {
+                return Ok(CValue::Closure(clos));
+            }
+            if let Some(value) = self.completed_closure(&clos, &args) {
+                return Ok(value);
+            }
+            self.charge()?;
+            let frame_name = clos
+                .recursive
+                .clone()
+                .unwrap_or_else(|| format!("function {}", clos.param));
+            // Frame reuse: this chain owns one frame; every iteration
+            // rebinds it in place instead of pushing another.
+            self.env = saved.clone();
+            self.env.extend(clos.env.clone());
+            if let Some(name) = &clos.recursive {
+                self.env
+                    .insert(name.clone(), CValue::Closure(clos.clone()));
+            }
+            if !clos.param.is_empty() {
+                self.env.insert(clos.param.clone(), args[0].clone());
+            }
+            if let Some(frame) = self.frames.last_mut() {
+                frame.function = frame_name;
+                frame.env = self.env.clone();
+                frame.kont.clear();
+            }
+            self.set_frame_next("body");
+            self.push_kont(Kont::EvalExpr {
+                expr: Rc::new(clos.body.clone()),
+            });
+            self.refresh_frame();
+            let outcome = stacker::maybe_grow(1024 * 1024, 4 * 1024 * 1024, || {
+                self.eval_tail(&clos.body)
+            });
+            match outcome {
+                Ok(EvalTail::Value(value)) => {
+                    self.pop_kont();
+                    self.env = saved;
+                    self.remember_closure(&clos, &args, value.clone());
+                    return Ok(value);
+                }
+                Ok(EvalTail::Apply { callee, args: next_args }) => {
+                    self.pop_kont();
+                    match callee {
+                        CValue::Closure(next) => {
+                            clos = next;
+                            args = next_args;
+                            continue;
+                        }
+                        other => {
+                            // Not a closure value after all: the
+                            // ordinary nested-application path.
+                            let value = self.apply_value(other, &next_args);
+                            self.env = saved;
+                            let value = value?;
+                            self.remember_closure(&clos, &args, value.clone());
+                            return Ok(value);
+                        }
+                    }
+                }
+                Ok(EvalTail::Call { name, args: vals }) => {
+                    self.pop_kont();
+                    let decl = self
+                        .functions
+                        .get(&name)
+                        .cloned()
+                        .ok_or_else(|| fault("unbound", format!("unknown function `{name}`")))?;
+                    // `apply_fn_body` trusts its caller for arity (it
+                    // zip-binds inputs); the guard here keeps a
+                    // wrong-arity tail call an `arity` fault, never a
+                    // truncated binding faulting `unbound`.
+                    let outcome = if decl.inputs.len() != vals.len() {
+                        Err(fault(
+                            "arity",
+                            format!("expected {} arguments", decl.inputs.len()),
+                        ))
+                    } else {
+                        self.apply_fn_body(&name, decl, &vals)
+                    };
+                    self.env = saved;
+                    let value = outcome?;
+                    self.remember_closure(&clos, &args, value.clone());
+                    return Ok(value);
+                }
+                Err(err) => {
+                    // The kont stays on any fault (resume bookkeeping
+                    // matches the pre-seam application path, which
+                    // popped only on success).
+                    self.env = saved;
+                    return Err(err);
+                }
+            }
         }
     }
 
@@ -114,7 +210,7 @@ impl Engine {
     /// different declaration, refuses instead of re-resolving.
     pub(in crate::constructor_layer) fn verify_dependencies(&self, code: &Code) -> Result<(), ConstructorError> {
         for (name, stamp) in &code.deps {
-            let current = self.functions.get(name).map(decl_stamp);
+            let current = self.functions.get(name).map(|decl| decl_stamp(decl));
             if current.as_ref() != Some(stamp) {
                 return Err(fault(
                     "stale_dependency",

@@ -7,6 +7,7 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use emath_core::tree::{
@@ -46,7 +47,13 @@ pub enum CValue {
     Tuple(Vec<CValue>),
     Record {
         type_name: String,
-        fields: BTreeMap<String, CValue>,
+        /// Copy-on-write record fields (the `Sequence` precedent): the
+        /// CPS machine clones argument values at every engine step, so
+        /// a deep `BTreeMap` clone made every record-typed call
+        /// O(fields) allocations per step. Records are immutable after
+        /// construction in the language, so sharing is exact; mutation
+        /// sites (none today) would go through `Arc::make_mut`.
+        fields: Arc<BTreeMap<String, CValue>>,
     },
     Variant {
         type_name: String,
@@ -259,6 +266,7 @@ pub fn constructor_admit_code(code: &str) -> &'static str {
         "E-KIND-011" => "E-KIND-011",
         "E-SEC-101" => "E-SEC-101",
         "E-NAME-020" => "E-NAME-020",
+        "E-NAME-022" => "E-NAME-022",
         "E-PKG-050" => "E-PKG-050",
         "E-USE-ADMISSION" => "E-USE-ADMISSION",
         "E-TYPE-002" => "E-TYPE-002",
@@ -312,6 +320,10 @@ struct QueryDecl {
 enum EvalTail {
     Value(CValue),
     Call { name: String, args: Vec<CValue> },
+    /// A tail call whose callee resolves to a closure VALUE in the
+    /// environment (the recur lane's self-name, or any local
+    /// closure): the application chain consumes it with frame reuse.
+    Apply { callee: CValue, args: Vec<CValue> },
 }
 
 /// Remaining-work continuation slot. A budget stop keeps these with the
@@ -342,17 +354,17 @@ pub enum Kont {
     CallArgs {
         callee: CValue,
         done: Vec<CValue>,
-        rest: Vec<Expr>,
+        rest: Vec<Rc<Expr>>,
     },
     FnCall {
         name: String,
         done: Vec<CValue>,
-        rest: Vec<Expr>,
+        rest: Vec<Rc<Expr>>,
     },
     SeqItems {
         as_tuple: bool,
         done: Vec<CValue>,
-        rest: Vec<Expr>,
+        rest: Vec<Rc<Expr>>,
     },
     RecordFields {
         type_path: Vec<String>,
@@ -395,7 +407,7 @@ pub enum Kont {
         body: Box<Expr>,
     },
     EvalExpr {
-        expr: Box<Expr>,
+        expr: Rc<Expr>,
     },
 }
 
@@ -406,7 +418,7 @@ pub struct ContinuationFrame {
     /// Next unfinished definition or instruction label in this frame.
     pub next: String,
     pub env: BTreeMap<String, CValue>,
-    pub kont: Vec<Box<Kont>>,
+    pub kont: Vec<Kont>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -456,9 +468,19 @@ impl Default for Checkpoint {
 
 struct Engine {
     env: BTreeMap<String, CValue>,
-    functions: BTreeMap<String, FnDecl>,
+    /// Refcounted: `apply_fn_body` runs a tail-call loop that
+    /// re-binds the callee per iteration; deep-cloning the whole
+    /// declaration (body AST included) per call was the interpreter's
+    /// single largest allocation storm.
+    functions: BTreeMap<String, Rc<FnDecl>>,
     queries: BTreeMap<String, QueryDecl>,
     objects: BTreeMap<String, ObjectSchema>,
+    /// Provenance of every installed top-level name: the empty path
+    /// for local declarations, the resolved import file otherwise.
+    /// Collision law: an import may not replace a name a different
+    /// origin installed (E-NAME-022); a same-origin re-install is
+    /// idempotent (the transitive import diamond).
+    name_sources: BTreeMap<String, PathBuf>,
     work: u64,
     work_limit: u64,
     memo: BTreeMap<String, CValue>,

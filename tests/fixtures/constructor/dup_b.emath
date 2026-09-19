@@ -1,0 +1,14 @@
+# Diamond right arm: imports the same shared target as dup_a.
+use dup_target
+
+emath function b_twice:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = dup_shared(x) + 2
+    tests:
+        example <b_pin>:
+            given x = 1
+            expect result == 4

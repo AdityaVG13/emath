@@ -39,6 +39,24 @@ impl Engine {
                         }
                         return Ok(EvalTail::Call { name, args: vals });
                     }
+                    // A single-segment callee resolving to a closure
+                    // VALUE (the recur self-name, or any local
+                    // closure) is a tail application of a closure:
+                    // the application chain reuses the frame, so the
+                    // call depth stays at the entry value and WORK is
+                    // the bound. Multi-segment callees and non-closure
+                    // values keep the ordinary nested path (depth
+                    // capped).
+                    if segments.len() == 1 {
+                        if let Some(CValue::Closure(_)) = self.env.get(&name) {
+                            let callee = self.env.get(&name).cloned().unwrap();
+                            let mut vals = Vec::new();
+                            for arg in args {
+                                vals.push(self.eval(arg)?);
+                            }
+                            return Ok(EvalTail::Apply { callee, args: vals });
+                        }
+                    }
                 }
                 Ok(EvalTail::Value(self.eval(expr)?))
             }
@@ -255,19 +273,25 @@ impl Engine {
         items: &[Expr],
         as_tuple: bool,
     ) -> Result<CValue, ConstructorError> {
-        self.finish_seq_items(as_tuple, Vec::new(), items.to_vec(), None)
+        self.finish_seq_items(
+            as_tuple,
+            Vec::new(),
+            items.iter().map(|expr| Rc::new(expr.clone())).collect(),
+            None,
+        )
     }
 
     pub(in crate::constructor_layer) fn finish_seq_items(
         &mut self,
         as_tuple: bool,
         mut done: Vec<CValue>,
-        mut rest: Vec<Expr>,
+        rest: Vec<Rc<Expr>>,
         incoming: Option<CValue>,
     ) -> Result<CValue, ConstructorError> {
         if let Some(value) = incoming {
             done.push(value);
         }
+        let mut rest = rest;
         while !rest.is_empty() {
             let next = rest.remove(0);
             self.push_kont(Kont::SeqItems {
@@ -275,9 +299,7 @@ impl Engine {
                 done: done.clone(),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr {
-                expr: Box::new(next.clone()),
-            });
+            self.push_kont(Kont::EvalExpr { expr: next.clone() });
             done.push(self.eval(&next)?);
             self.pop_kont();
             self.pop_kont();
@@ -309,7 +331,7 @@ impl Engine {
                 rest: rest.clone(),
             });
             self.push_kont(Kont::EvalExpr {
-                expr: Box::new(value.clone()),
+                expr: Rc::new(value.clone()),
             });
             done.insert(name, self.eval(&value)?);
             self.pop_kont();
@@ -353,7 +375,7 @@ impl Engine {
         }
         Ok(CValue::Record {
             type_name,
-            fields: map,
+            fields: Arc::new(map),
         })
     }
 

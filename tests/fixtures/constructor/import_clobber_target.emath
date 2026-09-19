@@ -1,0 +1,16 @@
+# Collision seam target: exports one ordinary name. The importer
+# declares the SAME name locally, which must refuse E-NAME-022
+# instead of the historical silent clobber (imports install after
+# locals, so the local function used to run the imported body).
+# Pinned by `use-import-name-collision-refuses`.
+emath function clobber_shared:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x + 1
+    tests:
+        example <target_pin>:
+            given x = 1
+            expect result == 2

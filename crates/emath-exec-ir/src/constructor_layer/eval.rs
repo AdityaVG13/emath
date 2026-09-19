@@ -152,16 +152,16 @@ fn evaluate_tree_with(
                     "diagnostic".into(),
                     CValue::Record {
                         type_name: "Diagnostic".into(),
-                        fields: BTreeMap::from([(
+                        fields: Arc::new(BTreeMap::from([(
                             "code".into(),
                             CValue::Record {
                                 type_name: receipt
                                     .diagnostic_code
                                     .clone()
                                     .unwrap_or_default(),
-                                fields: BTreeMap::new(),
+                                fields: Arc::new(BTreeMap::new()),
                             },
-                        )]),
+                        )])),
                     },
                 );
                 let mut passed = true;
@@ -198,7 +198,7 @@ fn evaluate_tree_with(
                 let mut fault_code: Option<String> = None;
                 match engine.eval_fn(
                     &decl.name,
-                    &fndecl,
+                    fndecl.clone(),
                     &fndecl
                         .inputs
                         .iter()
@@ -239,13 +239,13 @@ fn evaluate_tree_with(
                         "diagnostic".into(),
                         CValue::Record {
                             type_name: "Diagnostic".into(),
-                            fields: BTreeMap::from([(
+                            fields: Arc::new(BTreeMap::from([(
                                 "code".into(),
                                 CValue::Record {
                                     type_name: fault_code.clone().unwrap_or_default(),
-                                    fields: BTreeMap::new(),
+                                    fields: Arc::new(BTreeMap::new()),
                                 },
-                            )]),
+                            )])),
                         },
                     );
                 }
@@ -333,6 +333,6 @@ pub fn evaluate_function_at(
             }
         })
         .collect();
-    engine.eval_fn(name, &decl, &args)
+    engine.eval_fn(name, decl, &args)
 }
 

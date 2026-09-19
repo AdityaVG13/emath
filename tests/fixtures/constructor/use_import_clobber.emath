@@ -1,0 +1,17 @@
+# The import-collision seam importer: a local declaration whose
+# name the imported module also declares. Must refuse E-NAME-022 —
+# never the historical behavior where the import silently replaced
+# the local function mid-module.
+use import_clobber_target
+
+emath function clobber_shared:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x + 2
+    tests:
+        example <local_pin>:
+            given x = 1
+            expect result == 3

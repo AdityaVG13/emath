@@ -1,0 +1,13 @@
+# Sibling-import seam target: no package declaration, lives next to the
+# importer. Pinned by the `use-seam-directory-relative-sibling` case.
+emath function seam_helper:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x + 1 / 2
+    tests:
+        example <helper_pin>:
+            given x = 1
+            expect result == 3 / 2

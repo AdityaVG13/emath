@@ -907,7 +907,7 @@ pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate:
         }
         CValue::Record { type_name, fields } => {
             let mut converted = BTreeMap::new();
-            for (name, field) in fields {
+            for (name, field) in fields.iter() {
                 converted.insert(name.clone(), cvalue_to_emir(field)?);
             }
             Ok(Value::Record {

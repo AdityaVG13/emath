@@ -316,7 +316,7 @@ pub(super) fn is_guarded_recur_body(expr: &Expr) -> bool {
 pub(super) fn schema_tag(name: &str) -> CValue {
     CValue::Record {
         type_name: name.into(),
-        fields: BTreeMap::new(),
+        fields: Arc::new(BTreeMap::new()),
     }
 }
 
@@ -382,17 +382,17 @@ pub(super) fn body_record(kind: &str, identity: Option<&str>, signature: Option<
     }
     CValue::Record {
         type_name: kind.into(),
-        fields,
+        fields: Arc::new(fields),
     }
 }
 
 pub(super) fn available_body(expr: Expr) -> CValue {
     CValue::Record {
         type_name: "Available".into(),
-        fields: BTreeMap::from([
+        fields: Arc::new(BTreeMap::from([
             ("kind".into(), schema_tag("Available")),
             ("fragment".into(), CValue::Code(Box::new(Code { expr, deps: BTreeMap::new() }))),
-        ]),
+        ])),
     }
 }
 
@@ -406,21 +406,21 @@ pub(super) fn mint_scope(next_ref: &mut u64, scopes: &mut BTreeSet<u64>, binder:
     scopes.insert(id);
     CValue::Record {
         type_name: "Scope".into(),
-        fields: BTreeMap::from([
+        fields: Arc::new(BTreeMap::from([
             ("id".into(), cint(id as u64)),
             ("binder".into(), schema_tag(binder.unwrap_or("closed"))),
             ("token".into(), schema_tag(&format!("#scope.{id}"))),
-        ]),
+        ])),
     }
 }
 
 pub(super) fn fragment_package(term: Expr, scope: CValue) -> CValue {
     CValue::Record {
         type_name: "Fragment".into(),
-        fields: BTreeMap::from([
+        fields: Arc::new(BTreeMap::from([
             ("term".into(), code_of(term)),
             ("context".into(), scope),
-        ]),
+        ])),
     }
 }
 
@@ -452,13 +452,13 @@ pub(super) fn view_record(tag: &str, fields: BTreeMap<String, CValue>) -> CValue
     fields.insert("kind".into(), schema_tag(tag));
     CValue::Record {
         type_name: tag.into(),
-        fields,
+        fields: Arc::new(fields),
     }
 }
 
 pub(super) fn view_of(
     expr: &Expr,
-    functions: &BTreeMap<String, FnDecl>,
+    functions: &BTreeMap<String, Rc<FnDecl>>,
     next_ref: &mut u64,
     scopes: &mut BTreeSet<u64>,
 ) -> CValue {

@@ -19,7 +19,7 @@ impl Engine {
                 }
                 Ok(CValue::Record {
                     type_name: type_name.into(),
-                    fields: BTreeMap::from([("repr".into(), vals.remove(0))]),
+                    fields: Arc::new(BTreeMap::from([("repr".into(), vals.remove(0))])),
                 })
             }
             "package" => {
@@ -61,7 +61,7 @@ impl Engine {
                 self.env = saved;
                 Ok(CValue::Record {
                     type_name: type_name.into(),
-                    fields: BTreeMap::from([("n".into(), n), ("data".into(), data)]),
+                    fields: Arc::new(BTreeMap::from([("n".into(), n), ("data".into(), data)])),
                 })
             }
             other => Err(fault(
@@ -125,7 +125,7 @@ impl Engine {
         let saved = self.env.clone();
         self.env.insert(param.to_string(), opened);
         self.push_kont(Kont::EvalExpr {
-            expr: Box::new(body.clone()),
+            expr: Rc::new(body.clone()),
         });
         let result = self.eval(body);
         if result.is_ok() {
@@ -144,7 +144,7 @@ impl Engine {
         for (cond, value) in arms {
             if self.pattern_binds(&scrutinee, cond)? {
                 self.push_kont(Kont::EvalExpr {
-                    expr: Box::new(value.clone()),
+                    expr: Rc::new(value.clone()),
                 });
                 let result = self.eval(value)?;
                 self.pop_kont();
@@ -152,7 +152,7 @@ impl Engine {
             }
         }
         self.push_kont(Kont::EvalExpr {
-            expr: Box::new(else_arm.clone()),
+            expr: Rc::new(else_arm.clone()),
         });
         let result = self.eval(else_arm)?;
         self.pop_kont();
@@ -177,7 +177,7 @@ impl Engine {
             self.pop_kont();
             if self.cases_cond_taken(&cond_value)? {
                 self.push_kont(Kont::EvalExpr {
-                    expr: Box::new(value.clone()),
+                    expr: Rc::new(value.clone()),
                 });
                 let result = self.eval(&value)?;
                 self.pop_kont();
@@ -185,7 +185,7 @@ impl Engine {
             }
         }
         self.push_kont(Kont::EvalExpr {
-            expr: Box::new(else_arm.clone()),
+            expr: Rc::new(else_arm.clone()),
         });
         let result = self.eval(else_arm)?;
         self.pop_kont();

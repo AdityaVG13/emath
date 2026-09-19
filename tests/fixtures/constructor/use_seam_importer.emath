@@ -1,0 +1,17 @@
+# Sibling-import seam importer: `use seam_target` names a file in the
+# SAME directory as this source, outside language/modules. Admitted only
+# via the directory-relative seam; unresolvable paths still refuse
+# E-USE-ADMISSION.
+use seam_target
+
+emath function seam_caller:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = seam_helper(x)
+    tests:
+        example <caller_pin>:
+            given x = 1
+            expect result == 3 / 2

@@ -1,0 +1,19 @@
+# Diamond root: imports both arms, each of which transitively
+# imports dup_target — the same source file installs twice under
+# the same bare name `dup_shared`. Must ADMIT and pass (idempotent
+# same-source install), the shape `use numerics.experiment` relies
+# on via bounds and powers both importing exact.integers.
+use dup_a
+use dup_b
+
+emath function root_sum:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = a_twice(x) + b_twice(x)
+    tests:
+        example <root_pin>:
+            given x = 1
+            expect result == 7

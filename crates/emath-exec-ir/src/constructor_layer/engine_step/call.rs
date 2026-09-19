@@ -10,7 +10,7 @@ impl Engine {
         }
         let cal = self.eval(function)?;
         let mut vals = Vec::new();
-        let mut rest: Vec<Expr> = args.to_vec();
+        let mut rest: Vec<Rc<Expr>> = args.iter().map(|expr| Rc::new(expr.clone())).collect();
         while !rest.is_empty() {
             let next = rest.remove(0);
             self.push_kont(Kont::CallArgs {
@@ -18,9 +18,7 @@ impl Engine {
                 done: vals.clone(),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr {
-                expr: Box::new(next.clone()),
-            });
+            self.push_kont(Kont::EvalExpr { expr: next.clone() });
             vals.push(self.eval(&next)?);
             self.pop_kont();
             self.pop_kont();
@@ -56,7 +54,7 @@ impl Engine {
             return self.eval_machine_buffer(op, args).map(Some);
         }
         if let Some(decl) = self.functions.get(&name).cloned() {
-            return self.eval_fn(&name, &decl, args).map(Some);
+            return self.eval_fn(&name, decl, args).map(Some);
         }
         // A name the user bound (env) is the user's; the recipe refusal is
         // for UNBOUND names, so a user closure named like a module method
@@ -190,7 +188,7 @@ impl Engine {
         ))
     }
 
-    pub(in crate::constructor_layer) fn eval_fn(&mut self, name: &str, decl: &FnDecl, args: &[Expr]) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn eval_fn(&mut self, name: &str, decl: Rc<FnDecl>, args: &[Expr]) -> Result<CValue, ConstructorError> {
         if decl.inputs.len() != args.len() {
             return Err(fault(
                 "arity",
@@ -211,7 +209,7 @@ impl Engine {
     pub(in crate::constructor_layer) fn eval_fn_inner(
         &mut self,
         name: &str,
-        decl: &FnDecl,
+        decl: Rc<FnDecl>,
         args: &[Expr],
     ) -> Result<CValue, ConstructorError> {
         if self.call_depth >= MAX_CALL_DEPTH {
@@ -220,7 +218,12 @@ impl Engine {
         self.call_depth += 1;
         self.push_frame(name);
         let saved = self.env.clone();
-        let result = self.eval_fn_args(name, decl, Vec::new(), args.to_vec());
+        let result = self.eval_fn_args(
+            name,
+            decl,
+            Vec::new(),
+            args.iter().map(|expr| Rc::new(expr.clone())).collect(),
+        );
         let exhausted = matches!(
             &result,
             Err(err) if err.code == "budget_exhausted"
@@ -236,10 +239,11 @@ impl Engine {
     pub(in crate::constructor_layer) fn eval_fn_args(
         &mut self,
         name: &str,
-        decl: &FnDecl,
+        decl: Rc<FnDecl>,
         mut done: Vec<CValue>,
-        mut rest: Vec<Expr>,
+        rest: Vec<Rc<Expr>>,
     ) -> Result<CValue, ConstructorError> {
+        let mut rest = rest;
         while !rest.is_empty() {
             let next = rest.remove(0);
             self.push_kont(Kont::FnCall {
@@ -247,9 +251,7 @@ impl Engine {
                 done: done.clone(),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr {
-                expr: Box::new(next.clone()),
-            });
+            self.push_kont(Kont::EvalExpr { expr: next.clone() });
             done.push(self.eval(&next)?);
             self.pop_kont();
             self.pop_kont();
@@ -261,7 +263,7 @@ impl Engine {
         &mut self,
         name: String,
         mut done: Vec<CValue>,
-        rest: Vec<Expr>,
+        rest: Vec<Rc<Expr>>,
         incoming: Option<CValue>,
     ) -> Result<CValue, ConstructorError> {
         if let Some(value) = incoming {
@@ -272,19 +274,20 @@ impl Engine {
             .get(&name)
             .cloned()
             .ok_or_else(|| fault("unbound", format!("unknown function `{name}`")))?;
-        self.eval_fn_args(&name, &decl, done, rest)
+        self.eval_fn_args(&name, decl, done, rest)
     }
 
     pub(in crate::constructor_layer) fn finish_call_args(
         &mut self,
         callee: CValue,
         mut done: Vec<CValue>,
-        mut rest: Vec<Expr>,
+        rest: Vec<Rc<Expr>>,
         incoming: Option<CValue>,
     ) -> Result<CValue, ConstructorError> {
         if let Some(value) = incoming {
             done.push(value);
         }
+        let mut rest = rest;
         while !rest.is_empty() {
             let next = rest.remove(0);
             self.push_kont(Kont::CallArgs {
@@ -292,9 +295,7 @@ impl Engine {
                 done: done.clone(),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr {
-                expr: Box::new(next.clone()),
-            });
+            self.push_kont(Kont::EvalExpr { expr: next.clone() });
             done.push(self.eval(&next)?);
             self.pop_kont();
             self.pop_kont();
@@ -305,15 +306,24 @@ impl Engine {
     pub(in crate::constructor_layer) fn apply_fn_body(
         &mut self,
         name: &str,
-        decl: &FnDecl,
+        decl: Rc<FnDecl>,
         vals: &[CValue],
     ) -> Result<CValue, ConstructorError> {
         let mut name = name.to_string();
-        let mut decl = decl.clone();
+        let mut decl = decl;
         let mut vals = vals.to_vec();
         'tco: loop {
             if let Some(value) = self.completed_call(&name, &vals) {
                 return Ok(value);
+            }
+            // A tail call swapped in with the wrong arity must refuse
+            // `arity` — the input binding below zip-binds, which would
+            // truncate and fault `unbound` on the missing input.
+            if decl.inputs.len() != vals.len() {
+                return Err(fault(
+                    "arity",
+                    format!("expected {} arguments", decl.inputs.len()),
+                ));
             }
             for (ty, value) in decl.input_types.iter().zip(vals.iter()) {
                 admit_input_type(ty, value)?;
@@ -353,13 +363,15 @@ impl Engine {
                         self.remember_call(&name, &vals, last.clone());
                         return Ok(last);
                     }
-                    match self.eval_tail(expr)? {
-                        EvalTail::Value(value) => {
-                            self.env.insert(dname.clone(), value.clone());
-                            last = self.function_result(&decl, &name, value)?;
-                            self.set_frame_next("__done");
-                            self.remember_call(&name, &vals, last.clone());
-                            return Ok(last);
+                    let tail_value = match self.eval_tail(expr)? {
+                        EvalTail::Value(value) => value,
+                        EvalTail::Apply { callee, args } => {
+                            // A named body tail-calling a closure
+                            // value: one nested application (that
+                            // chain then reuses its own frame, bounded
+                            // by work), exactly the pre-seam nesting
+                            // cost of this one call.
+                            self.apply_value(callee, &args)?
                         }
                         EvalTail::Call {
                             name: next_name,
@@ -373,7 +385,12 @@ impl Engine {
                             vals = args;
                             continue 'tco;
                         }
-                    }
+                    };
+                    self.env.insert(dname.clone(), tail_value.clone());
+                    last = self.function_result(&decl, &name, tail_value)?;
+                    self.set_frame_next("__done");
+                    self.remember_call(&name, &vals, last.clone());
+                    return Ok(last);
                 } else {
                     last = self.eval(expr)?;
                     self.env.insert(dname.clone(), last.clone());
