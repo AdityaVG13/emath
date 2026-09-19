@@ -1,4 +1,4 @@
-//! SG-13 finite analogue binders: budgeted numeric stand-ins for the
+//! Finite analogue binders: budgeted numeric stand-ins for the
 //! conventional binder kinds, emitting a deterministic receipt.
 //!
 //! Sum/product fold integer ranges; integral is composite trapezoid;
@@ -141,7 +141,7 @@ impl AnalogueDomain {
 }
 
 /// One finite-analogue request: a binder kind, a numeric domain, a
-/// budget, and a body in the SG-10 [`BinderTerm`] shape.
+/// budget, and a body in the binder [`BinderTerm`] shape.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnalogueRequest {
     /// Binder kind to analogue.

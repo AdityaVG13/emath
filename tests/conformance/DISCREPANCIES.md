@@ -69,7 +69,7 @@ Protocol:
   `crates/emath-ir` (package identity lanes).
 - **Review date:** 2026-08-29.
 
-## DISC-004; Rumoca Phase-1 native stand-in (no upstream engine)
+## DISC-004; Rumoca in-tree native stand-in (no upstream engine)
 
 - **Reference vs our impl:** `crates/emath-adapter-rumoca` consumes no
   upstream Rumoca engine; the Modelica subset scanner, causalizer, and

@@ -3,7 +3,7 @@
 use super::*;
 
 impl super::super::Parser {
-    /// 04 §5.4: optional series-policy suffix
+    /// optional series-policy suffix
     /// on a definition/observation value — `with interpolation: <mode>
     /// [, extrapolation: <mode>]`. The policy is part of the value's
     /// identity; an absent part means the language default (`refuse` for
@@ -107,7 +107,7 @@ impl super::super::Parser {
     /// Shared tail for collected segment runs: `name = value` assignment,
     /// multi-word `head = value` command, or plain command. An ident-led
     /// `≈` claim (`y ≈ rhs within ...`) is an expression statement, not a
-    /// command (04 §6.4).
+    /// command.
     pub(super) fn finish_segments_statement(
         &mut self,
         start: Span,
@@ -127,7 +127,7 @@ impl super::super::Parser {
         }
         if self.eat(&TokenKind::Eq) {
             let opened = self.skip_assignment_layout();
-            // 04 §2.5: the action
+            // the action
             // integral binder on the RHS of a definition
             // (`S = action integral t in t0..t1: L(...)`) — refuse at
             // the grammar naming the design follow-up (previously the
@@ -146,7 +146,7 @@ impl super::super::Parser {
                 }
                 self.error_here(
                     "E-SYN-101",
-                    "`action integral t in t0..t1: L(...)` is outside the Phase 1 subset — the action/variation design follow-up must first settle the design of record: the action is a Functional (admits only variation/evaluation goals, never scalar composition), the `variation <S> wrt q:` goal lowers to core goals via the Euler-Lagrange operator built from the admitted partial/total derivatives, and the boundary condition (`fixed_endpoints`) is part of the goal identity hash; evidence must use admitted surface `derivative(derivative(q) wrt t) wrt t`, never `d²q/dt²` (C14)",
+                    "`action integral t in t0..t1: L(...)` is outside the current subset — the action/variation design follow-up must first settle the design of record: the action is a Functional (admits only variation/evaluation goals, never scalar composition), the `variation <S> wrt q:` goal lowers to core goals via the Euler-Lagrange operator built from the admitted partial/total derivatives, and the boundary condition (`fixed_endpoints`) is part of the goal identity hash; evidence must use admitted surface `derivative(derivative(q) wrt t) wrt t`, never `d²q/dt²`",
                 );
                 return None;
             }
@@ -175,7 +175,7 @@ impl super::super::Parser {
                 },
             ));
         }
-        // Unit-carrying row (`name in unit = value`): outside the Phase 1
+        // Unit-carrying row (`name in unit = value`): outside the current
         // subset. Previously this row parsed as a command and was then
         // dropped by admission without a diagnostic (only a downstream
         // unknown-variable error appeared). Refuse at the grammar, loudly.
@@ -184,7 +184,7 @@ impl super::super::Parser {
         if matches!(self.peek(), TokenKind::Keyword(Keyword::In)) {
             self.error_here(
                 "E-SYN-101",
-                "definition rows do not carry units: `name in unit = value` is outside the Phase 1 subset; put the unit on the quantity (`0.30 [unit 1/day]`) or on the declared input/output row (`k: Float64 in 1/day`); unit-carrying measured rate parameters are the bio dynamics field-pack follow-up",
+                "definition rows do not carry units: `name in unit = value` is outside the current subset; put the unit on the quantity (`0.30 [unit 1/day]`) or on the declared input/output row (`k: Float64 in 1/day`); unit-carrying measured rate parameters are the bio dynamics field-pack follow-up",
             );
             return None;
         }

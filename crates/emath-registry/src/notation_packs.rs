@@ -1,17 +1,17 @@
-//! N6: Standard notation library seeds (04 N6, review fixes C6/C7).
+//! Standard notation library seeds.
 //!
 //! The four `core::notation` packs formalized as catalog data: `logic`,
 //! `sets`, `calculus`, `algebra`. Every entry is a [`SymbolEntry`] at
 //! `Proposed` (quarantine) — the packs are seed data, promoted through the
-//! SSC lifecycle (producer-distinct G4 audit), never grandfathered.
+//! SSC lifecycle (producer-distinct audit), never grandfathered.
 //!
 //! Review fixes encoded structurally:
-//! - **C6**: no `\\`, `\/`, `/\` ASCII aliases — backslash is refused by
+//! - no `\\`, `\/`, `/\` ASCII aliases — backslash is refused by
 //!   the catalog alias gate (`E-SYMBOL-CATALOG-ALIAS-FORBIDDEN`); the packs
 //!   carry no such spellings.
-//! - **C7**: `~` is the distribution tag, never a negation alias; logic
+//! - `~` is the distribution tag, never a negation alias; logic
 //!   negation is the existing prefix `!`.
-//! - **N4.5**: ASCII aliases are identifier spellings only (`and`, `or`,
+//! - ASCII aliases are identifier spellings only (`and`, `or`,
 //!   `compose`), never operator-lookalikes (`o` for composition is not
 //!   carried; `compose(f, g)` + the Unicode glyph `∘` suffice).
 //!
@@ -62,7 +62,7 @@ fn seed_entry(
 }
 
 /// `core::notation::logic`: ∧ ∨ ¬ ==> <==> (ASCII `&&` `||` `!` `==>`
-/// `<==>`). Negation is the existing prefix `!`, never `~` (C7).
+/// `<==>`). Negation is the existing prefix `!`, never `~`.
 #[must_use]
 pub fn logic_pack() -> NotationPack {
     let path = "core::notation::logic";
@@ -79,7 +79,7 @@ pub fn logic_pack() -> NotationPack {
 }
 
 /// `core::notation::sets`: ∈ ∉ ∪ ∩ ∖ ⊆. ASCII aliases are identifier
-/// spellings; no backslash forms (C6).
+/// spellings; no backslash forms.
 #[must_use]
 pub fn sets_pack() -> NotationPack {
     let path = "core::notation::sets";
@@ -111,7 +111,7 @@ pub fn sets_pack() -> NotationPack {
 }
 
 /// `core::notation::calculus`: ∫ ∂ d/dx lim. `d/dx` and `lim` are named
-/// forms; the glyph seeds carry no slash-alias spellings (C6).
+/// forms; the glyph seeds carry no slash-alias spellings.
 #[must_use]
 pub fn calculus_pack() -> NotationPack {
     let path = "core::notation::calculus";
@@ -154,7 +154,7 @@ pub fn calculus_pack() -> NotationPack {
     }
 }
 
-/// `core::notation::algebra`: ∘ ⊗ ⊕. No `o` alias for composition (N4.5);
+/// `core::notation::algebra`: ∘ ⊗ ⊕. No `o` alias for composition (identifier rule);
 /// `compose(f, g)` + the Unicode glyph suffice.
 #[must_use]
 pub fn algebra_pack() -> NotationPack {

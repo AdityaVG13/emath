@@ -475,7 +475,7 @@ fn closed_spec(name: &str) -> Option<ClosedSpec> {
             fields: PARSE_FOREST_FIELDS,
         }),
         "emath.answer-receipt" => Some(ClosedSpec {
-            description: "SG-09 answer receipt (emath-cli genesis_cmd).",
+            description: "Answer receipt (emath-cli genesis_cmd).",
             fields: ANSWER_RECEIPT_FIELDS,
         }),
         "emath.interpretation-portfolio" => Some(ClosedSpec {

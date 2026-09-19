@@ -57,7 +57,7 @@ pub(super) fn index_seq(seq: CValue, i: ExactInt) -> Result<CValue, ConstructorE
                 .ok_or_else(|| fault("invalid_index", "sequence index out of range"))
         }
         // Buffer reads take the same checked-index surface as
-        // sequences (bead emath-84sfr): one lock scope, no copy.
+        // sequences: one lock scope, no copy.
         CValue::Buffer(cell) => {
             let Some(index) = i.to_usize() else {
                 return Err(fault("invalid_index", "buffer index out of range"));
@@ -225,7 +225,7 @@ pub(super) fn eq_values(left: &CValue, right: &CValue) -> Result<bool, Construct
         (CValue::Bool(a), CValue::Bool(b)) => Ok(a == b),
         // Mutable state has no total value equality: refuse by name
         // (admission refuses statically; this is the runtime backstop
-        // for dynamic paths — bead emath-84sfr).
+        // for dynamic paths).
         (CValue::Buffer(_), CValue::Buffer(_)) => Err(fault(
             "buffer_equality_refused",
             "buffer comparison is refused: a mutable carrier has no total value equality",

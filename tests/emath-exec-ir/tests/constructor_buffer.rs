@@ -1,5 +1,5 @@
-//! Mutable buffer carrier (bead emath-84sfr, design note
-//! architecture/12 Option B1): `buffer(size, fill)` constructs an
+//! Mutable buffer carrier:
+//! `buffer(size, fill)` constructs an
 //! in-place, bounds-checked indexed carrier; `buffer_set(buf, i, v)`
 //! writes through shared references; `buf[i]` reads; `buf.length`
 //! projects. Equality on buffers refuses (mutable state has no total

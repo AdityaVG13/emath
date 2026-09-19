@@ -3,7 +3,7 @@
 use super::*;
 
 /// `migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate
-/// --list-rules` (05 §5). Lossless rewrites only, receipt-driven.
+/// --list-rules`. Lossless rewrites only, receipt-driven.
 ///
 /// The canonical-format rule (E-MIG-RULE-001) is the registered rule
 /// wired here: the lossless formatter rewrite, verified by re-lowering

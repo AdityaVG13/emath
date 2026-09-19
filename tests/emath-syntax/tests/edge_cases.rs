@@ -656,7 +656,7 @@ emath function sign(x: Float64) -> Float64:
         let f0 = p.failures().len();
 
         // `9.81 [m]` must NOT parse as indexing the decimal 9.81 by m.
-        // After the C3 fix, `parse_postfix` refuses `[` after numeric
+        // After the fix, `parse_postfix` refuses `[` after numeric
         // literals, so `x` is bound to just `9.81` (a Float), and `[m]`
         // is left as a separate construct (list-literal statement).
         let source = "\
@@ -686,7 +686,7 @@ emath function bad() -> Float64:
         let f0 = p.failures().len();
 
         // `v[0]` on a non-literal primary (path/identifier) must still parse
-        // as indexing.  The C3 fix only refuses `[` after numeric literals.
+        // as indexing. The fix only refuses `[` after numeric literals.
         let source = "\
 emath function idx(v) -> Float64:
     definitions:
@@ -723,7 +723,7 @@ emath function idx(v) -> Float64:
         let f0 = p.failures().len();
 
         // `[[1, 2], [3, 4]][0]` on a list literal must still parse as indexing.
-        // The C3 fix only refuses `[` after numeric scalar literals (Int,
+        // The fix only refuses `[` after numeric scalar literals (Int,
         // Float, Quantity), not after list/tuple primaries.
         let source = "\
 emath function mat():

@@ -1,0 +1,264 @@
+# The outward dyadic-Newton arm: the constructive
+# representation repair. For a positive rational a = p/q, initialize
+# u = max(1,a) and l = a/u. Each step takes the exact Newton upper
+# iterate u' = (u + a/u)/2, rounds it UPWARD to the dyadic grid with
+# denominator 2^20, reconstructs the lower bound from the ROUNDED upper
+# endpoint (l'' = floor_to_grid(a/u'')), and intersects with the previous
+# enclosure. An upper endpoint stays upper after upward rounding and the
+# reciprocal lower reconstruction stays lower, so every step is a valid
+# enclosure; the width target is 2^-16 with a 128-step cap. Declared
+# primitive units: eight per rounded step. Reference totals: 512
+# successes, 0 refusals, 2,306 steps, 18,448 units; sqrt(2) in three
+# steps (24 units) at [1482907/1048576, 1482913/1048576], width
+# 3/524288. All endpoints stay grid-bounded (25 bits or fewer), so this
+# arm reproduces the reference exactly with no bignum seam.
+# Run: emath test tests/fixtures/modules/enclosure_dyadic_newton.emath --work 20000000
+
+emath object Enc:
+    representation:
+        lo: Rat
+        up: Rat
+
+emath object EncOutcome:
+    representation:
+        ok: Bool
+        refused: Int
+        steps: Int
+        units: Int
+        lo: Rat
+        up: Rat
+
+emath object EncTotals:
+    representation:
+        total_cases: Int
+        successes: Int
+        refusals: Int
+        steps: Int
+        units: Int
+        max_bits: Int
+        all_valid: Bool
+
+emath function half_down:
+    # floor(n/2) through the exact Rat seam (Int / is rational)
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        h = n / 2
+        result = if h.denom == 1: h.numer else: ((n - 1) / 2).numer
+
+emath function bits_pos:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 2: 1 else: 1 + bits_pos(half_down(n))
+
+emath function bits_rat:
+    inputs:
+        r: Rat
+    outputs:
+        result: Int
+    definitions:
+        nb = bits_pos(r.numer)
+        db = bits_pos(r.denom)
+        result = if nb < db: db else: nb
+
+emath function ceil_search:
+    # smallest k in [lo, hi] with k * dD >= nD (pre: hi * dD >= nD)
+    inputs:
+        nD: Int
+        dD: Int
+        lo: Int
+        hi: Int
+    outputs:
+        result: Int
+    definitions:
+        mid = half_down(lo + hi)
+        result = if lo >= hi: lo else: if mid * dD >= nD: ceil_search(nD, dD, lo, mid) else: ceil_search(nD, dD, mid + 1, hi)
+
+emath function floor_search:
+    # largest k in [lo, hi] with k * dD <= nD (pre: lo * dD <= nD).
+    # mid sits in [lo+1, hi] so BOTH branches strictly shrink the
+    # interval (mid = half_down(lo + hi) would equal lo at hi = lo+1
+    # and loop forever on the predicate-true branch).
+    inputs:
+        nD: Int
+        dD: Int
+        lo: Int
+        hi: Int
+    outputs:
+        result: Int
+    definitions:
+        mid = half_down(lo + hi) + 1
+        result = if lo >= hi: lo else: if mid * dD <= nD: floor_search(nD, dD, mid, hi) else: floor_search(nD, dD, lo, mid - 1)
+
+emath function init_enc:
+    inputs:
+        a: Rat
+    outputs:
+        result: Enc
+    definitions:
+        u0 = if a >= 1 / 1: a else: 1 / 1
+        result = Enc: {lo: a / u0, up: u0}
+
+emath function dyadic_run:
+    # Entry-guarded loop: the width is checked BEFORE any rounding, and
+    # each performed rounding counts one step (8 units). This is the
+    # reference's accounting: a = 1 admits with zero steps (no rounding
+    # happens), every other case counts the rounding that achieves the
+    # target.
+    inputs:
+        a: Rat
+        lo: Rat
+        up: Rat
+        steps: Int
+    outputs:
+        result: EncOutcome
+    definitions:
+        result = if up - lo <= 1 / 65536: EncOutcome: {ok: true, refused: 0, steps: steps, units: 8 * steps, lo: lo, up: up} else: if steps >= 128: EncOutcome: {ok: false, refused: 2, steps: steps, units: 8 * steps, lo: lo, up: up} else: dyadic_step(a, lo, up, steps)
+
+emath function dyadic_step:
+    inputs:
+        a: Rat
+        lo: Rat
+        up: Rat
+        steps: Int
+    outputs:
+        result: EncOutcome
+    definitions:
+        upx = (up + a / up) / 2
+        upn = upx.numer
+        upd = upx.denom
+        ku = ceil_search(upn * 1048576, upd, 0, 67108864)
+        up2 = ku / 1048576
+        lex = a / up2
+        ln = lex.numer
+        ld = lex.denom
+        kl = floor_search(ln * 1048576, ld, 0, 67108864)
+        lo2 = kl / 1048576
+        loN = if lo > lo2: lo else: lo2
+        upN = if up < up2: up else: up2
+        result = dyadic_run(a, loN, upN, steps + 1)
+
+emath function dyadic_case:
+    inputs:
+        p: Int
+        q: Int
+    outputs:
+        result: EncOutcome
+    definitions:
+        a = p / q
+        e = init_enc(a)
+        result = dyadic_run(a, e.lo, e.up, 0)
+
+emath function case_valid:
+    inputs:
+        a: Rat
+        o: EncOutcome
+    outputs:
+        result: Bool
+    definitions:
+        result = o.lo >= 0 / 1 and o.lo * o.lo <= a and a <= o.up * o.up
+
+emath function dyadic_q:
+    inputs:
+        p: Int
+        q: Int
+        acc: EncTotals
+    outputs:
+        result: EncTotals
+    definitions:
+        o = dyadic_case(p, q)
+        a = p / q
+        blo = bits_rat(o.lo)
+        bup = bits_rat(o.up)
+        br = if blo < bup: bup else: blo
+        ok2 = if o.ok: acc.successes + 1 else: acc.successes
+        rf2 = if o.ok: acc.refusals else: acc.refusals + 1
+        va = if o.ok: acc.all_valid and case_valid(a, o) else: acc.all_valid
+        mb = if br > acc.max_bits: br else: acc.max_bits
+        next = EncTotals: {total_cases: acc.total_cases + 1, successes: ok2, refusals: rf2, steps: acc.steps + o.steps, units: acc.units + o.units, max_bits: mb, all_valid: va}
+        result = if q >= 8: next else: dyadic_q(p, q + 1, next)
+
+emath function dyadic_p:
+    inputs:
+        p: Int
+        acc: EncTotals
+    outputs:
+        result: EncTotals
+    definitions:
+        next = dyadic_q(p, 1, acc)
+        result = if p >= 64: next else: dyadic_p(p + 1, next)
+
+emath function DyadicProbe:
+    inputs:
+        p: Int
+        q: Int
+    outputs:
+        ok: Bool
+        steps: Int
+        units: Int
+        lo: Rat
+        up: Rat
+        width: Rat
+    definitions:
+        o = dyadic_case(p, q)
+        ok = o.ok
+        steps = o.steps
+        units = o.units
+        lo = o.lo
+        up = o.up
+        width = o.up - o.lo
+    tests:
+        example <sqrt2_dyadic_bracket_reference>:
+            given p = 2
+            given q = 1
+            expect ok == true
+            expect lo == 1482907 / 1048576
+            expect up == 1482913 / 1048576
+            expect steps == 3
+            expect units == 24
+            expect width == 3 / 524288
+        example <perfect_square_immediate>:
+            given p = 1
+            given q = 1
+            expect ok == true
+            expect steps == 0
+
+emath function EnclosureDyadicNewton:
+    inputs:
+        unused: Int
+    outputs:
+        total_cases: Int
+        successes: Int
+        refusals: Int
+        steps: Int
+        units: Int
+        max_bits: Int
+        all_valid: Bool
+    definitions:
+        zero = EncTotals: {total_cases: 0, successes: 0, refusals: 0, steps: 0, units: 0, max_bits: 0, all_valid: true}
+        totals = dyadic_p(1, zero)
+        total_cases = totals.total_cases
+        successes = totals.successes
+        refusals = totals.refusals
+        steps = totals.steps
+        units = totals.units
+        max_bits = totals.max_bits
+        all_valid = totals.all_valid
+    tests:
+        example <all_512_cases_succeed>:
+            given unused = 0
+            expect total_cases == 512
+            expect successes == 512
+            expect refusals == 0
+        example <reference_step_and_unit_totals>:
+            given unused = 0
+            expect steps == 2306
+            expect units == 18448
+        example <every_enclosure_valid>:
+            given unused = 0
+            expect all_valid == true

@@ -11,7 +11,7 @@
 //! survives. Units whose names differ by more than zero are two units
 //! (`cal_th`, `cal_IT`).
 //!
-//! Affine units (1.3) with the C13 fix: the offset is ALWAYS pre-scale —
+//! Affine units: the offset is ALWAYS pre-scale —
 //! `SI = (value + offset) * scale`, so `degF` is
 //! `K = (F + 459.67) * 5/9`, never `F * 5/9 + 459.67` (which differs by
 //! 255.37 K). Conformance pinned: `32 degF == 273.15 K`.
@@ -60,7 +60,7 @@ pub struct UnitRuleError {
 /// Dimension vector in SI base exponents (m, kg, s, A, K, mol, cd).
 pub type Dims = [i64; 7];
 
-/// A declared unit. Affine semantics per the C13 fix:
+/// A declared unit. Affine semantics:
 /// `to_si(value) = (value + offset) * scale` (offset pre-scale).
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnitSpec {
@@ -80,7 +80,7 @@ impl UnitSpec {
         }
     }
 
-    /// SI conversion with the C13 order: offset pre-scale.
+    /// SI conversion with the offset pre-scale.
     /// `degF`: `(32 + 459.67) * 5/9 = 273.15 K`. `degC`: `(0 + 273.15) * 1`.
     pub fn to_si(&self, value: f64) -> f64 {
         (value + self.offset) * self.scale

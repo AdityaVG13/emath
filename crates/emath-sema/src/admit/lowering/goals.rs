@@ -264,7 +264,7 @@ impl super::super::Admitter {
         if vars.len() != 1 {
             self.error(
                 E_UNSUPPORTED_TYPE,
-                "solve wrt supports a single variable in Phase 1",
+                "solve wrt supports a single variable today",
                 expr.source,
             );
             return None;
@@ -387,7 +387,7 @@ impl super::super::Admitter {
         if vars.len() != 1 {
             self.error(
                 E_UNSUPPORTED_TYPE,
-                "derivative wrt supports a single variable in Phase 1",
+                "derivative wrt supports a single variable today",
                 expr.source,
             );
             return None;

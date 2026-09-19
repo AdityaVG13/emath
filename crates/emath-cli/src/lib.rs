@@ -58,7 +58,7 @@ use emath_sema::CompilerSession;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// Host process exit code mapping (constitution §6.3):
+/// Host process exit code mapping (the constitution):
 /// - 0: command completed its declared operation
 /// - 2: syntax/type/input admission failure
 /// - 3: executed with an unmet, partial, or suspended answer

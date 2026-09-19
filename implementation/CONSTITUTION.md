@@ -8,7 +8,6 @@ that is stated instead of pointing at a runtime guard.
 
 Verification lanes referenced below:
 
-- `cargo xtask demo semantic-genesis` -- end-to-end pipeline gate.
 - `cargo test -p <crate> --lib` -- targeted unit lanes per anchor.
 
 ## The Thirteen Laws
@@ -42,7 +41,7 @@ The genesis pipeline emits `meaning-problem.json` (what the symbols
 mean) separately from `answer-receipt.json` (what was asked and
 answered); explore/protect/answer are distinct sections of the source
 (`crates/emath-syntax/src/genesis.rs`,
-`crates/emath-cli/src/genesis_cmd.rs`).
+`crates/emath-cli-lab/src/genesis_cmd/`).
 
 ### L5. Provider plurality
 

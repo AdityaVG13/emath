@@ -64,8 +64,8 @@ impl Engine {
         }
     }
 
-    /// Machine buffer-carrier ops (bead emath-84sfr, design note 12
-    /// Option B1): `buffer(size, fill)` builds an in-place,
+    /// Machine buffer-carrier ops:
+    /// `buffer(size, fill)` builds an in-place,
     /// bounds-checked indexed carrier; `buffer_set(buf, i, v)` writes
     /// through shared references and evaluates to Unit. Reads are the
     /// ordinary checked-index surface (`index_seq`) and `.length`
@@ -87,7 +87,7 @@ impl Engine {
                 let Some(len) = size.to_usize() else {
                     return Err(fault("invalid_index", "buffer size must be non-negative"));
                 };
-                // The carrier's own cell bound (bead emath-84sfr): 4M
+                // The carrier's own cell bound: 4M
                 // cells admits sieve-scale work (Project Euler P10
                 // needs 2M) while bounding a single allocation to
                 // roughly a quarter-gigabyte of carrier cells.

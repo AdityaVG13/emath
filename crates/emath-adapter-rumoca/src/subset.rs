@@ -77,7 +77,7 @@ pub fn check(model: &StructuralModel) -> Vec<SubsetIssue> {
             issues.push(SubsetIssue {
                 code: "E-KIND-312",
                 message: format!(
-                    "event `{}` is discrete; Phase 1 subset accepts basic continuous events only",
+                    "event `{}` is discrete; the current subset accepts basic continuous events only",
                     event.name
                 ),
             });

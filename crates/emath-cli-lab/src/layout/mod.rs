@@ -2,8 +2,8 @@
 
 //! Math layout graph plus structured LaTeX and PDF-fixture frontends.
 //!
-//! SG-11 imports a structured LaTeX subset into [`MathLayoutGraph`] and
-//! lowers it to [`emath_genesis::BinderTerm`]. SG-12 extracts the same
+//! The LaTeX frontend imports a structured LaTeX subset into [`MathLayoutGraph`] and
+//! lowers it to [`emath_genesis::BinderTerm`]. The PDF frontend extracts the same
 //! graph from positioned-glyph fixtures, retaining spatial ambiguities
 //! instead of resolving them.
 

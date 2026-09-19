@@ -13,8 +13,8 @@ pub(super) fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset
     };
     match node {
         ExprNode::Literal(_) | ExprNode::Variable(_) => {}
-        // A series data constant carries no expr ids to remap (04 §5.4
-        // slice 1): the pairs are inline f64s and the policy is text.
+        // A series data constant carries no expr ids to remap
+        // the pairs are inline f64s and the policy is text.
         ExprNode::Series { .. } => {}
         ExprNode::Call { arguments, .. } => {
             for id in arguments {

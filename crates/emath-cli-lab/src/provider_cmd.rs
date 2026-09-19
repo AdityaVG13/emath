@@ -149,7 +149,7 @@ pub(crate) fn fork_cmd(request: ForkRequest) -> CliExit {
                     println!("{}", object.finish());
                 }
                 eprintln!(
-                    "error: E-TLT-006: network/source sync is disabled in Phase 1 (offline-first); use --dry-run"
+                    "error: E-TLT-006: network/source sync is disabled (offline-first); use --dry-run"
                 );
                 EXIT_REFUSED
             }

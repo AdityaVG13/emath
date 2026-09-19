@@ -132,20 +132,20 @@ typed refusal (`E-GEN-094`), not a silent drop.
 | Item | Location |
 | --- | --- |
 | `generate(term, signature, worlds) -> Result<GeneratedPackage, CodegenRefusal>` | `crates/emath-world-codegen-rust/src/lib.rs` |
-| `compile_cmd` (`emath compile --parametric <file> --out <dir>`) | `crates/emath-cli/src/genesis_cmd.rs` |
-| CLI dispatch (`compile` + `--parametric`) | `crates/emath-cli/src/lib.rs` |
-| End-to-end demo | `xtask/src/main.rs` (`demo_semantic_genesis` / `run_demo_semantic_genesis`) |
+| `compile_cmd` (parametric codegen) | `crates/emath-cli-lab/src/genesis_cmd/compile.rs` |
+| CLI dispatch (`compile` + `--parametric`) | removed with the CLI cutover (extracted tokens refuse `E-KIND-GONE`) |
+| End-to-end demo | removed with the CLI cutover (record in `SG00_STRICT_BASELINE.md`) |
 
 `compile_cmd` analyzes the source, builds `WorldSpec` values from
-admitted World IR, and calls `generate`. The xtask demo runs
-`emath compile --parametric` on
-`tests/valid/arbitrary-glyphs.emath`, diffs the emitted crate
-against `examples/generated/semantic-genesis-worlds`, runs the
-generated tests, and checks the derived oracles
+admitted World IR, and calls `generate`. The former xtask demo ran
+`emath compile --parametric` on the reference fixture, diffed the
+emitted crate against `examples/generated/semantic-genesis-worlds`,
+ran the generated tests, and checked the derived oracles
 (`free` canonical term, `boolean = false`, `modular-17 = 6`,
-`swapped-modular-17 = 5`).
+`swapped-modular-17 = 5`); the demo and the `compile --parametric`
+command were removed with the CLI cutover.
 
-**Verification.**
+**Verification (recorded; the lane was removed with the CLI cutover).**
 
 ```text
 rch exec -- env CARGO_NET_GIT_FETCH_WITH_CLI=true \

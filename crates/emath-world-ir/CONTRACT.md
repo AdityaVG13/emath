@@ -9,7 +9,7 @@
 ## Public types and semantics
 
 - WORLD_IR_SCHEMA ("emath.world-ir") and WORLD_IR_VERSION (1): schema identity constants; bump the version on any layout or canonical-form change. Provider references are string ids only; provider-native types never appear in the schema.
-- WorldIr struct: version, name, signature, carriers, symbols, operators, constructors, laws, effects, holes, capabilities; identity() and canonical() methods. The seven worlds-contract components are carriers, symbols, signature, meanings (operators), constructors, laws, and effects; effects are declared names (C10: never ambient; empty list means pure).
+- WorldIr struct: version, name, signature, carriers, symbols, operators, constructors, laws, effects, holes, capabilities; identity() and canonical() methods. The seven worlds-contract components are carriers, symbols, signature, meanings (operators), constructors, laws, and effects; effects are declared names (never ambient; empty list means pure).
 - WorldId newtype (wrapping u64): content identity placeholder for an admitted world.
 - CarrierDef: name and canonical type expression.
 - SymbolDef: id, display glyph, fixity, optional precedence, type scheme.
@@ -58,7 +58,7 @@
 ## No-claim boundaries
 
 - Content identity is the bootstrap FNV-1a64, not a release cryptographic identity; production replaces it with the canonical cryptographic identity service.
-- Worlds beyond the documented G0-G3 slice are recorded as typed deferred entries, never silently ignored.
+- Worlds beyond the documented genesis slice are recorded as typed deferred entries, never silently ignored.
 
 ## Absorbed module: `world_codegen_rust` (was `emath-world-codegen-rust`)
 
@@ -67,7 +67,7 @@
 ## Purpose and layer
 
 - Tier 6, semantic genesis substrate (per CRATE_MAP).
-- Deterministic parametric Rust world artifact generation (Semantic Genesis G3).
+- Deterministic parametric Rust world artifact generation.
 - Emits a self-contained, zero-dependency generated crate evaluating a fixed first-order term under free-symbolic, Boolean, and modular-17 worlds, plus a negative-control world whose join/times semantics are swapped.
 - Output is the golden examples/generated/semantic-genesis-worlds.
 
@@ -119,10 +119,10 @@
 ## Rollback and migration
 
 - The ABI surface is versioned by WORLD_ABI_VERSION. Any change to the emitted trait shapes, method naming, or dispatch semantics bumps the constant; consumers that pin a version refuse crates generated against another.
-- Rollback is regeneration: generated crates carry no hand edits (header says do not edit), so rolling back the generator (git revert of this crate) and re-running `emath compile --parametric` reproduces the previous ABI byte-exactly; the committed golden examples/generated/semantic-genesis-worlds is the fixture proving it.
+- Rollback is regeneration: generated crates carry no hand edits (header says do not edit), so rolling back the generator (git revert of this crate) and re-running the parametric generator reproduces the previous ABI byte-exactly; the committed golden examples/generated/semantic-genesis-worlds is the fixture proving it.
 - Migration between ABI versions is re-generation plus consumer recompile; there is no in-place migration of generated source, by design.
 
 ## No-claim boundaries
 
-- Only the label-based G3 subset is generatable; all other worlds are typed refusals, never ignored.
+- Only the label-based world subset is generatable; all other worlds are typed refusals, never ignored.
 - The generated crate name is fixed (semantic-genesis-worlds); arbitrary crate naming is not supported.

@@ -1,4 +1,4 @@
-//! SG-15 agent meaning provider: quarantined proposal admission and a
+//! Agent meaning provider: quarantined proposal admission and a
 //! producer-distinct challenge loop.
 //!
 //! [`admit`] performs well-formedness only, granting no authority.

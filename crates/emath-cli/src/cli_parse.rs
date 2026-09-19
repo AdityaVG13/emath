@@ -661,8 +661,7 @@ pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownEr
 }
 
 /// `migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate --list-rules`
-/// (05 §5, / ). Lossless
-/// rewrites only; the receipt is the canonical stable-JSON artifact.
+/// Lossless rewrites only; the receipt is the canonical stable-JSON artifact.
 pub(super) fn parse_migrate_request(rest: &[String]) -> Result<Command, ParseKnownError> {
     const USAGE: &str = "migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | \
                          migrate --list-rules";

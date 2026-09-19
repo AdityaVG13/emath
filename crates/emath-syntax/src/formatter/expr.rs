@@ -113,7 +113,7 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             interpolation,
             extrapolation,
         } => {
-            // 04 §5.4: byte-exact rendering of
+            // byte-exact rendering of
             // the declared policy suffix; an absent part renders nothing
             // (the language default is not spelled).
             format_expr(out, value, Prec::Root);
@@ -286,7 +286,7 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             out.push(']');
         }
         ExprKind::Table { headers, rows } => {
-            // Round-trip spelling: `|x y| 1, 2 | 3, 4 |` (U9).
+            // Round-trip spelling: `|x y| 1, 2 | 3, 4 |`.
             out.push('|');
             for header in headers {
                 out.push(' ');

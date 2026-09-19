@@ -257,7 +257,7 @@ impl super::super::Parser {
                         } else {
                             None
                         };
-                        // 05 §7.1: the
+                        // the
                         // inline where-refinement row (`p: Float64 where
                         // 0 <= self and self <= 1`) — the refinement
                         // seed's grammar is a design follow-up; refuse at
@@ -266,7 +266,7 @@ impl super::super::Parser {
                         // dangling `where ...` predicate died with a
                         // generic row-shape error that named nothing).
                         // The ADMITTED refinement surface today is the
-                        // domain annotation `Type in [lo, hi]` (U5).
+                        // domain annotation `Type in [lo, hi]`.
                         if matches!(self.peek(), TokenKind::Keyword(Keyword::Where)) {
                             while !matches!(
                                 self.peek(),
@@ -276,7 +276,7 @@ impl super::super::Parser {
                             }
                             self.error_here(
                                 "E-SYN-101",
-                                "`name: Type where <predicate>` refinement rows are outside the Phase 1 subset — the refinement-types design follow-up must first settle: predicates stay in a total, decidable fragment (same discipline as ch8's bounded lowering language; type checking deterministic and budgeted), refinements are recorded in semantic identity (as domain annotations already are), and conflicting constraints are NAMED in diagnostics (ch16 gate 6) so refinements stay usable rather than feared; the admitted refinement surface today is the domain annotation `Type in [lo, hi]`; there is no trust-me cast — the runtime-checked cast downgrades the capability label (Certified to nothing) and is receipt-visible",
+                                "`name: Type where <predicate>` refinement rows are outside the current subset — the refinement-types design follow-up must first settle: predicates stay in a total, decidable fragment (same discipline as ch8's bounded lowering language; type checking deterministic and budgeted), refinements are recorded in semantic identity (as domain annotations already are), and conflicting constraints are NAMED in diagnostics (ch16 gate 6) so refinements stay usable rather than feared; the admitted refinement surface today is the domain annotation `Type in [lo, hi]`; there is no trust-me cast — the runtime-checked cast downgrades the capability label (Certified to nothing) and is receipt-visible",
                             );
                             return None;
                         }

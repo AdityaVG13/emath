@@ -174,7 +174,7 @@ impl ModelBuilder for BuilderModel {
             Some(compile) => {
                 if compile.target != "rust" || compile.profile != "library" {
                     return Err(BuilderError(format!(
-                        "compile spec `{}/{}` outside Phase 1 subset (E-CODEGEN-012)",
+                        "compile spec `{}/{}` outside the current subset (E-CODEGEN-012)",
                         compile.target, compile.profile
                     )));
                 }

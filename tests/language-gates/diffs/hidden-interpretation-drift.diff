@@ -1,0 +1,10 @@
+--- language/grammar/surface.ebnf	2026-08-25 00:39:43
++++ /tmp/drift-surface.ebnf	2026-08-25 05:12:44
+@@ -274,6 +274,7 @@
+                  | "fn" , parameter_list , "->" , type_expr
+                  | type_primary , "where" , expression ;
+ type_operator    = "|" | "&" | "*" | "/" ;
++odd_plus         = "+" , expression ;
+ 
+ (* Generic arguments at use sites accept types, value literals,
+    expressions, bracket-list extents, and named arguments.

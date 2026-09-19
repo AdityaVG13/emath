@@ -1,4 +1,4 @@
-//! SG-13 production path: evaluate every finite-analogue kind, print
+//! Finite-analogue production path: evaluate every finite-analogue kind, print
 //! deterministic receipts, assert byte-identity across two runs, record
 //! a budget refusal, and detect a seeded wrong quadrature by recomputation.
 

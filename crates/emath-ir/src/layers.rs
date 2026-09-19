@@ -17,7 +17,7 @@ pub enum IrLayer {
     Mig,
     /// SIR: semantic IR (`emath-ir` package/declaration arena).
     Sir,
-    /// GIR: goal IR (`emath-ir::goal` + `emath-goal` schema).
+    /// GIR: goal IR (`emath-ir::goal`).
     Gir,
     /// Resolution graph (`emath-ir::ResolutionPlan` + `emath-plan`).
     Resolution,

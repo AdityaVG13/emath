@@ -47,7 +47,7 @@ pub(super) enum Infer {
     Opaque,
     /// Host-deferred field access; numeric use is admitted without fabricating a field type.
     HostDeferred,
-    /// Time-series data constant (04 §5.4):
+    /// Time-series data constant:
     /// `[(t, v), ...] with interpolation: ..., extrapolation: ...`.
     /// A datum, not a scalar; arithmetic on it is not admitted in this
     /// slice (evaluation is the named next one).

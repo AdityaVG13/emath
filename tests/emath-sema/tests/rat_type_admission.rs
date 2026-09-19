@@ -17,11 +17,11 @@ fn rat_type_sites_are_admitted() {
         .map(|diagnostic| diagnostic.to_string())
         .collect();
     p.demand(
-        "no-phase1-subset-refusal",
+        "no-subset-refusal",
         messages.iter().any(|message| {
-            message.contains("E-TYPE-001") || message.contains("outside the Phase 1 subset")
+            message.contains("E-TYPE-001") || message.contains("outside the current")
         }) == false,
-        format!("Rat/Rational must not hit the old Phase-1 refusal, got {messages:?}"),
+        format!("Rat/Rational must not hit the subset refusal, got {messages:?}"),
     );
     p.finish();
 }

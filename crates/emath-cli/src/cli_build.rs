@@ -364,7 +364,7 @@ pub fn planner_cmd(request: PlannerRequest) -> CliExit {
     }
     let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
     // The in-tree static native lane (provider list: `native.rust`
-    // implemented) is the Phase 1 `evaluate.rust.library` producer. An
+    // implemented) is the `evaluate.rust.library` producer. An
     // empty registry would make every goal unplanned and the command a
     // dead refusal; register the real capability so supported goals plan.
     register_native_rust(&mut registry);
@@ -496,7 +496,7 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
     let mut rust = String::from("#![forbid(unsafe_code)]\n\n");
     let mut runnable = true;
     let mut unresolved = Vec::new();
-    // One runnable entry per crate (Phase 1): a second runnable
+    // One runnable entry per crate: a second runnable
     // function would emit a second `pub fn entry` into the same
     // lib.rs — a duplicate symbol the crate could never compile.
     // Not-runnable siblings emit as comments and never count.
@@ -523,7 +523,7 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
                                 EXIT_ADMISSION,
                                 "E-CODEGEN-013",
                                 &format!(
-                                    "`emath build` emits one entry per crate (Phase 1): `{name}` is a second runnable function in this file. Split the file into one `emath function` per file."
+                                    "`emath build` emits one entry per crate: `{name}` is a second runnable function in this file. Split the file into one `emath function` per file."
                                 ),
                             ));
                         }

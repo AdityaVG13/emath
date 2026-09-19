@@ -4,7 +4,7 @@
 # exp(-h)), and bisection refinement with an authored bit budget.
 #
 # Failure-first: authored BEFORE the module exists (first run:
-# E-USE-ADMISSION unbound import). Refusal cases follow the t19
+# E-USE-ADMISSION unbound import). Refusal cases follow the
 # convention: the named code in the failure line IS the expected
 # evidence.
 #

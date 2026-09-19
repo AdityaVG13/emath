@@ -136,7 +136,7 @@ pub fn compile_cmd(request: CompileRequest) -> CliExit {
         &path_to_string(&path),
         &generated.files.keys().cloned().collect::<Vec<_>>(),
     );
-    // Hole manifest (SG-05/G3): in the parametric lane every signature
+    // Hole manifest : in the parametric lane every signature
     // symbol's meaning is an open parameter supplied by a `World`
     // implementation. One deterministic entry per symbol, sorted by id.
     let hole_manifest = {

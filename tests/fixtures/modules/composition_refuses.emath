@@ -1,6 +1,6 @@
 # Composition refusal fixtures:
 #
-# Refusal-fixture convention (t19/events style): each case below
+# Refusal-fixture convention (expect-after-refusal style): each case below
 # REFUSES by name; its "failed <name> -- <message>" line IS the
 # expected signature. The file is authored failure-first — the first
 # run fails at admission (unknown module) before the module exists.

@@ -1,4 +1,4 @@
-//! G1: bounded parse forest and signature inference for genesis bodies.
+//! Bounded parse forest and signature inference for genesis bodies.
 //!
 //! Enumerates structural parses of a body expression under a
 //! deterministic grammar (no precedence), bounded by [`ForestLimits`].

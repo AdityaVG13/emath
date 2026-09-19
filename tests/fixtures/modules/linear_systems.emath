@@ -3,7 +3,7 @@
 # singular-outcome refusal, ill-conditioning policy gate.
 #
 # Failure-first: authored BEFORE the module exists (first run:
-# E-USE-ADMISSION unbound import). Refusal cases follow the t19
+# E-USE-ADMISSION unbound import). Refusal cases follow the
 # convention: the `failed <name> -- mathematical method refused: <code>`
 # line IS the expected signature.
 

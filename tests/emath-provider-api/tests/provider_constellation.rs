@@ -44,7 +44,7 @@ fn fork_constellation() {
     });
     p.case("stable-ir-boundary", |p| {
         let root = workspace_root();
-        for crate_name in ["emath-core", "emath-ir", "emath-goal", "emath-plan", "emath-sema", "emath-runtime", "emath-provider-api", "emath-artifact"] {
+        for crate_name in ["emath-core", "emath-ir", "emath-plan", "emath-sema", "emath-rt", "emath-provider-api", "emath-artifact"] {
             let crate_dir = root.join("crates").join(crate_name);
             scan_rust_sources(p, &crate_dir.join("src"), &crate_dir);
             let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml")).expect("stable crate manifest");

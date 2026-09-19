@@ -1,9 +1,9 @@
 //! Provider API: descriptors, capabilities, providers, adapters, checkers.
 //!
-//! Adapter law (Neutral IR Constitution §7): encode/decode carry a declared
+//! Adapter law (the neutral-IR constitution): encode/decode carry a declared
 //! relation R(E, E'); provider output is untrusted until a `ResultChecker`
-//! admits it (§8). Phase 1 ships no concrete providers; this is the frozen
-//! adapter seam for Phase 2+.
+//! admits it. The native lane ships no concrete providers; this is the frozen
+//! adapter seam for the future runtime.
 
 #![forbid(unsafe_code)]
 

@@ -894,14 +894,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-goal"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-ir",
-]
-
-[[package]]
 name = "emath-hir"
 version = "0.1.0"
 dependencies = [
@@ -967,14 +959,6 @@ dependencies = [
  "emath-test-harness",
  "emath-wasm",
  "emath-world-ir",
-]
-
-[[package]]
-name = "emath-macro"
-version = "0.1.0"
-dependencies = [
- "emath-build",
- "emath-syntax",
 ]
 
 [[package]]

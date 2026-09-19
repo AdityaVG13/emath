@@ -160,7 +160,7 @@ pub fn generate_binding(
 }
 
 /// Fallback binding: host methods refuse with a typed error instead of a
-/// silent stub (Constitution §6).
+/// silent stub (the constitution forbids it).
 #[must_use]
 pub fn fallback_binding(spec: &HostTraitSpec, host_type: &str) -> HostBinding {
     let error_name = format!("{host_type}HostError");
@@ -185,7 +185,7 @@ pub fn fallback_binding(spec: &HostTraitSpec, host_type: &str) -> HostBinding {
                     error: Box::new(Ty::Named(error_name.clone())),
                 },
                 // Typed refusal: the fallback binding never pretends to
-                // implement the method (Constitution §6).
+                // implement the method (the constitution forbids it).
                 body: Stmt::Block(Block {
                     statements: vec![Stmt::Return(Expr::Call {
                         path: vec!["Err".to_string()],

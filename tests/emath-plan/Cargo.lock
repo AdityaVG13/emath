@@ -28,14 +28,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emath-goal"
-version = "0.1.0"
-dependencies = [
- "emath-core",
- "emath-ir",
-]
-
-[[package]]
 name = "emath-ir"
 version = "0.1.0"
 dependencies = [
@@ -46,9 +38,7 @@ dependencies = [
 name = "emath-plan"
 version = "0.1.0"
 dependencies = [
- "emath-artifact",
  "emath-core",
- "emath-goal",
  "emath-ir",
  "emath-provider-api",
 ]

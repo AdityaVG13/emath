@@ -44,13 +44,13 @@ impl super::Parser {
         };
         self.advance();
         // `extern operator semantic_distance<D: Nat>(...)` generics:
-        // OperatorDecl carries no generic parameters and Phase 1 has no
+        // OperatorDecl carries no generic parameters and has no
         // generic-operator semantics. Refuse loudly (E-TYPE-112) instead of
         // parsing and discarding the generic parameter list.
         if matches!(self.peek(), TokenKind::Lt) {
             self.error_here(
                 "E-TYPE-112",
-                "generic extern operator declarations are outside the Phase 1 subset",
+                "generic extern operator declarations are outside the current subset",
             );
             return None;
         }
@@ -135,7 +135,7 @@ impl super::Parser {
         let kind = binder_kind(self.peek());
         self.advance();
         let binders = self.parse_binders()?;
-        // B02: optional `if <condition>` guard clause.
+        // optional `if <condition>` guard clause.
         let guard = self.parse_binder_guard();
         if self.eat(&TokenKind::Colon) {
             let suite = self.parse_suite()?;
@@ -192,7 +192,7 @@ impl super::Parser {
 
     pub(super) fn parse_binders(&mut self) -> Option<Vec<Binder>> {
         let mut binders = Vec::new();
-        // B02: suppress postfix `if` so it's available as a guard clause
+        // suppress postfix `if` so it's available as a guard clause
         // rather than being consumed as a conditioned expression on the
         // binder's domain (e.g. `sum i in 0..n if cond: body`).
         let prev_flag = self.suppress_postfix_if;
@@ -223,7 +223,7 @@ impl super::Parser {
         Some(binders)
     }
 
-    /// B02: parse the optional `if <condition>` guard clause on a binder.
+    /// parse the optional `if <condition>` guard clause on a binder.
     /// Returns `Some(expr)` if `if` is present, `None` otherwise.
     pub(super) fn parse_binder_guard(&mut self) -> Option<Box<Expr>> {
         if self.eat_keyword(Keyword::If) {

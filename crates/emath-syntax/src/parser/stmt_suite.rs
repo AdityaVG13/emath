@@ -9,7 +9,7 @@ impl super::Parser {
 
     /// `example <name>:` with no indented body is a worked example, not
     /// `E-SYN-112`; `inputs:` with no rows is a zero-input constructor
-    /// (bead emath-7zplf: a dummy `unused: Int` row was the old
+    /// (a dummy `unused: Int` row was the old
     /// workaround). Other section heads still require a block. The
     /// section name selects the suite's line grammar: `reactions:`
     /// parses T3 reaction lines instead of expression statements
@@ -79,7 +79,7 @@ impl super::Parser {
     /// One `reactions:` line: `name: 2H2 + O2 -> 2H2O`. Terms are
     /// (coefficient, species) pairs — T3 section grammar, never the
     /// expression grammar, so `2H2` is a term here while juxtaposition
-    /// stays refused in expressions (C15). Arrow spellings: `->`
+    /// stays refused in expressions. Arrow spellings: `->`
     /// (irreversible), `<->` (reversible), `<=>` (equilibrium). Any other
     /// arrow spelling refuses E-SYN-156.
     fn parse_reaction_line_stmt(&mut self) -> Option<Stmt> {
@@ -97,7 +97,7 @@ impl super::Parser {
         let lhs = self.parse_reaction_terms()?;
         let arrow = self.parse_reaction_arrow()?;
         let rhs = self.parse_reaction_terms()?;
-        // 04 §4.1: a side that is nothing
+        // a side that is nothing
         // must be DECLARED nothing — `∅` is the sink spelling. A
         // reaction endpoint that is empty without it is a silent
         // nothing and refuses at admission (E-BIO-SINK).
@@ -134,7 +134,7 @@ impl super::Parser {
 
     /// Terms of one reaction side: `term ('+' term)*`, coefficient
     /// optional (default 1). Stops at the arrow or end of line. The
-    /// declared sink `∅` (04 §4.1) is a legal side BY ITSELF
+    /// declared sink `∅` is a legal side BY ITSELF
     /// (degradation/elimination: `Drug -> ∅`); a side that is neither
     /// terms nor `∅` (a bare empty side) refuses E-SYN-156 here and
     /// E-BIO-SINK at admission — an endpoint that is nothing must be

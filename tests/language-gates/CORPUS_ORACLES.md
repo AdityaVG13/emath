@@ -1,5 +1,11 @@
 # Corpus oracles
 
+> History note (2026-09-19): the numeric shell oracles (spring/heat-plate
+> final rows, the scratch E-GOAL-043 run) were cut from scripts/validate.sh
+> when their fixtures under tests/fixtures/language were removed in the
+> restructure. The in-process contracts below (official_examples_corpus,
+> the Valid/Invalid rules) still govern the corpora.
+
 Hard contract, not a snapshot of today's `emath check`.
 
 `demand_workspace_corpora` is pinned in

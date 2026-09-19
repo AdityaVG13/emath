@@ -14,8 +14,8 @@ pub enum DistributionKind {
     Normal,
     /// Uniform distribution.
     Uniform,
-    /// Log-normal distribution (`~ lognormal` measurement tag, spec 04
-    /// section 1.5; positivity-constrained quantities).
+    /// Log-normal distribution (`~ lognormal` measurement tag
+    /// positivity-constrained quantities).
     Lognormal,
     /// Empirical distribution represented by external observations.
     Empirical,
@@ -43,7 +43,7 @@ pub enum Provenance {
         adjustment: Option<String>,
     },
     /// Instrument output plus the processing description applied to it.
-    /// `sha256` is the declared digest of the raw data file (04 §5.2,
+    /// `sha256` is the declared digest of the raw data file ,
     /// ): `emath check --verify-data` re-hashes
     /// the file and refuses drift as `E-OBS-HASH` — changed data under an
     /// unchanged model is a different artifact identity.

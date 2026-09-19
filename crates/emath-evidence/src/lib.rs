@@ -1,6 +1,6 @@
 //! Evidence IR, assumption ledger, evidence-level policy (E0–E5),
 //! certificate registry, content-addressed store, revalidation, proof
-//! providers, and the certify-the-certifier corpus (Phase 8). Authority
+//! providers, and the certify-the-certifier corpus. Authority
 //! is explicit: claims carry roles/freshness/falsifiers; assumptions
 //! classify M/N/S/E/H; revocation/supersession is append-only.
 //!

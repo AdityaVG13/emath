@@ -1,5 +1,5 @@
 # Module acceptance fixture: a planted non-minimizer is rejected by the
-# exhaustive verification. At E1 full scale (Euler observations, 16
+# exhaustive verification. At full scale (Euler observations, 16
 # steps, h = 1/8, domain k = 0..16), claiming c = 3/8 as the minimizer
 # fails: the scan finds c = 1/2. Removing the verification step would
 # let this planted claim pass silently.

@@ -364,7 +364,7 @@ pub fn scan_reference_boundaries(expr: &DewExpr, variable: &str) -> Vec<Differen
     run_boundary_cases(expr, variable, &ScanProfile::default(), None)
 }
 
-/// Seeded wrong-result control (Phase 3 stand-in for a wrong derivative).
+/// Seeded wrong-result control (stand-in for a wrong derivative).
 ///
 /// Reports when the claimed result disagrees with the reference
 /// evaluator at any boundary case.

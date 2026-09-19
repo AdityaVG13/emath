@@ -1,12 +1,12 @@
 //! Significant figures and unit-preserving formatting (04 sections 1.6 + 1.7).
 //!
-//! §1.6 Sig-figs are a DISPLAY CONTRACT, not uncertainty propagation:
+//! Sig-figs are a DISPLAY CONTRACT, not uncertainty propagation:
 //! `@significant_figures(display)` records the literal's sf count and
 //! `emath fmt` rounds to the minimum input sf; enforce mode turns
 //! under-reporting into a warning receipt. Sig-figs and uncertainty are
 //! different evidence kinds and are never merged.
 //!
-//! §1.7 Unit-preserving formatting: `format: "0.1 %"` and
+//! Unit-preserving formatting: `format: "0.1 %"` and
 //! `format: preferred_unit min` change presentation only — the quantity's
 //! value and identity are untouched, and the format is excluded from the
 //! identity hash. A format unit incompatible with the quantity's dimension

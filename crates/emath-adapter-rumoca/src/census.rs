@@ -1,7 +1,7 @@
 //! Compiler-phase census for the Rumoca provider seam.
 //!
-//! Documents the Modelica compiler phases and what Phase 1 actually
-//! provides for each. Honesty contract: Phase 1 consumes **no upstream
+//! Documents the Modelica compiler phases and what is actually
+//! provides for each. Honesty contract: the adapter consumes **no upstream
 //! Rumoca fork** — every posture describes an in-tree native stand-in
 //! (subset string scanner, validation gate, native causalizer and
 //! forward-Euler simulator), so no phase is marked `Stable` and no phase
@@ -56,7 +56,7 @@ pub struct PhaseRecord {
     pub note: &'static str,
 }
 
-/// Canonical census table (stable order, never sorted at runtime). Phase 1
+/// Canonical census table (stable order, never sorted at runtime). The adapter
 /// uses native stand-ins only, so no phase is `Stable` or `public_contract`.
 pub const PHASES: [PhaseRecord; 9] = [
     PhaseRecord {
@@ -69,7 +69,7 @@ pub const PHASES: [PhaseRecord; 9] = [
         kind: PhaseKind::Resolve,
         stability: Stability::Experimental,
         public_contract: false,
-        note: "no name resolver in Phase 1",
+        note: "no name resolver yet",
     },
     PhaseRecord {
         kind: PhaseKind::TypeCheck,
@@ -81,13 +81,13 @@ pub const PHASES: [PhaseRecord; 9] = [
         kind: PhaseKind::Instantiation,
         stability: Stability::Experimental,
         public_contract: false,
-        note: "no model instantiation in Phase 1",
+        note: "no model instantiation yet",
     },
     PhaseRecord {
         kind: PhaseKind::Flattening,
         stability: Stability::Experimental,
         public_contract: false,
-        note: "no hierarchical flattening in Phase 1",
+        note: "no hierarchical flattening yet",
     },
     PhaseRecord {
         kind: PhaseKind::DaeConversion,
@@ -111,7 +111,7 @@ pub const PHASES: [PhaseRecord; 9] = [
         kind: PhaseKind::Templates,
         stability: Stability::Experimental,
         public_contract: false,
-        note: "no template/modifier expansion in Phase 1",
+        note: "no template/modifier expansion yet",
     },
 ];
 

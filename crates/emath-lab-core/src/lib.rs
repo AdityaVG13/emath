@@ -1,5 +1,5 @@
 //! Laboratory core: manifests, quality gates, measurement, statistics and
-//! promotion policy for the Phase 10 laboratory. Std-only and
+//! promotion policy for the laboratory. Std-only and
 //! deterministic; wall-clock timing enters only as injected samples.
 //!
 //! Key modules: `manifest` (frozen experiment), `gate` (correctness

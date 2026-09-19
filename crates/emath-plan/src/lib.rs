@@ -1,4 +1,4 @@
-//! Deterministic resolution planning (Phase 1 bootstrap + Phase 6 planner
+//! Deterministic resolution planning (bootstrap + planner
 //! machinery).
 //!
 //! Provider-facing planner surface: decomposition, representation planning,

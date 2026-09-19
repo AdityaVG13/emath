@@ -110,7 +110,7 @@ impl super::super::Admitter {
                 );
                 return Some((id, Infer::from_unit(&unit)));
             }
-            // B14: `i` is the imaginary unit (0 + 1i). It is a
+            // `i` is the imaginary unit (0 + 1i). It is a
             // named constant, not a reserved keyword — only
             // recognized when not shadowed by an input/definition.
             if segments[0] == "Hole" {
@@ -268,7 +268,7 @@ impl super::super::Admitter {
         else {
             unreachable!()
         };
-        // 04 §5.4: a series
+        // a series
         // literal is pure data — `[(<time>, <value>), ...]` of
         // quantity literals, SI-scaled — plus its DECLARED
         // interpretation policy. Interpolation has no silent
@@ -358,12 +358,12 @@ impl super::super::Admitter {
         else {
             unreachable!()
         };
-        // Measurement literal (spec 04 section 1.5). Phase 1 lowers
+        // Measurement literal. lowers
         // the central value to strict f64; the uncertainty and the
         // Unstated provenance are recorded loudly, never silently
         // merged into the value (a measured value used as exact is
         // the same lie of omission in reverse). Full Measured<T>
-        // propagation is Phase 2 work.
+        // propagation is work.
         let Some(central) = parse_float_constant(value) else {
             self.error(
                 "E-MEAS-001",
@@ -410,7 +410,7 @@ impl super::super::Admitter {
         self.warning(
             "E-MEAS-003",
             format!(
-                "measurement literal `{value} ± {std_uncertainty:e}` is used as a strict value; the uncertainty is recorded (provenance: Unstated) but not propagated in Phase 1"
+                "measurement literal `{value} ± {std_uncertainty:e}` is used as a strict value; the uncertainty is recorded (provenance: Unstated) but not propagated in the current lane"
             ),
             expr.source,
         );

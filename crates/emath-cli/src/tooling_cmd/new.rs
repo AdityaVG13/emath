@@ -50,21 +50,21 @@ pub const PROVIDERS: [(&str, &str, &str); 10] = [
         "implemented",
     ),
     (
-        "phase2.expression",
+        "future.expression",
         "upstream Dew engine: optimization, JIT, GPU backends",
         "planned",
     ),
     (
-        "phase3.structural",
+        "future.structural",
         "upstream Rumoca engine: full parse, flattening, DAE analysis",
         "planned",
     ),
     (
-        "phase4.symbolic",
+        "future.symbolic",
         "cross-engine differential corpus against a real Dew/Rumoca checkout",
         "planned",
     ),
-    ("phase5.numerics", "solvers and optimization", "planned"),
+    ("future.numerics", "solvers and optimization", "planned"),
 ];
 
 /// `new <name> --out <dir> [--dry-run] [--force] [--json]`: deterministic project scaffold.

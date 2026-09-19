@@ -245,7 +245,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> CliExit {
             .and_then(|candidate| vm_steps.get(&candidate.name).copied())
             .unwrap_or(0)
     };
-    // SG-09 code binding: hash the exact crate `compile --parametric`
+    // Code binding: hash the exact crate `compile --parametric`
     // renders for the default compiled worlds, so the receipt binds the
     // code lane the demo challenges against these VM answers. A codegen
     // refusal binds the explicit no-code value 0 (disclosed, never a
@@ -273,7 +273,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> CliExit {
     let portfolio_hash = fnv1a64(portfolio_json.as_bytes());
     let trace_hash = fnv1a64(admission.as_bytes());
     let authority_label = authority_str(answer_authority);
-    // SG-09 receipt identity (No Naked Answer, ADR-004): FNV-1a64 over the
+    // Receipt identity (the No Naked Answer principle): FNV-1a64 over the
     // documented preimage below, binding source, parse, signature, term,
     // world, valuation, result, code, portfolio, trace, authority, and VM
     // cost. An independent verifier (xtask demo semantic-genesis)
@@ -322,7 +322,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> CliExit {
         object.finish()
     };
 
-    // CSA totality baseline (ADR-003): one reproducible concrete value for
+    // CSA totality baseline: one reproducible concrete value for
     // the admitted term under the canonical seeded algebra, evaluated on
     // the semantic VM and labeled so it can never be read as intended
     // meaning. CSA is total, so a failure here is a defect worth refusing
@@ -354,7 +354,7 @@ pub fn genesis_cmd(path: &Path, out: &PathBuf) -> CliExit {
         object.finish()
     };
 
-    // Sealed source artifact (G0/SG-03): the raw bytes' identity plus the
+    // Sealed source artifact : the raw bytes' identity plus the
     // byte-exact glyph stream of the semantic body, so every downstream
     // id chains back to one sealed document instead of a loose file read.
     let source_artifact = {

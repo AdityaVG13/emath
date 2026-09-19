@@ -16,7 +16,7 @@ fn probe() {
         for r in &PHASES {
             p.eq(format!("{:?}", r.kind), phase(r.kind), Some(r));
         }
-        p.eq("resolve-note", phase(PhaseKind::Resolve).unwrap().note, "no name resolver in Phase 1");
+        p.eq("resolve-note", phase(PhaseKind::Resolve).unwrap().note, "no name resolver yet");
     });
     p.finish();
 }

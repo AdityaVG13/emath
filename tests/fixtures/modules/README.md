@@ -29,7 +29,7 @@ Failure-first and expected-refusal fixtures for the optional
 
 Mixed fixtures (positive cases pass; the refusal cases fail with the
 NAMED refusal codes — nonzero exit is the intended signature, same
-t19 convention as the refusal fixtures below):
+convention as the refusal fixtures below):
 
     emath test tests/fixtures/modules/linear_systems.emath    # singular_matrix, ill_conditioned
     emath test tests/fixtures/modules/implicit_stiff.emath    # verification_budget_exhausted, singular_jacobian, nonconvergence
@@ -66,9 +66,9 @@ stretching to the requested final time (`2`), plus the
 budget stop (mutation check b) makes it run to completion and fail
 those assertions.
 
-## Fitting fixtures (E1 reference reproduction)
+## Fitting fixtures (bounded inverse fit reproduction)
 
-The `fitting_*` fixtures reproduce the E1 bounded inverse fit at full
+The `fitting_*` fixtures reproduce the bounded inverse fit at full
 scale over `search.fitting`: system `x' = v, v' = -x - c*v`, Euler
 observations at truth `c = 1/2`, `h = 1/8`, 16 steps, initial state
 `(1,0)`, domain `c = k/8, k = 0..16`.
@@ -174,7 +174,7 @@ declarations; single-output tail recursion is untouched (the
 evidence: the minimal probe failed pre-fix and passes post-fix;
 `order_contract_demo` went 10/15 to 15/15.
 
-## Receipt vocabulary observed (input to the deferred D-C decision)
+## Receipt vocabulary observed (recorded for a later decision)
 
 What the module's output naturally distinguishes (recorded, not
 frozen as public vocabulary): witness vs forced vs unreachable
@@ -312,7 +312,7 @@ closure-typed field route does).
 ## Composition fixtures (splitting/reversible composition)
 
 - `composition_reversal.emath` — exact reversal contracts and honest boundaries, all values hand-derived from the museum recipe: drift inversion `step(-1/2, step(1/2, (0,2))) == (0,2)`; harmonic Verlet reversal; museum-value equivalence ((7/8, -15/32), two steps (17/32, -105/128)); momentum involution (the museum's free-particle numbers + `R o step(h) o R == step(-h)` on the harmonic); energy NOT exact (Verlet delta pinned -15/2048); damped delta pinned -959/51200, strictly more dissipative.
-- `composition_refuses.emath` — the four named refusal signatures (t19 convention: each `failed <name> -- mathematical method refused: <code>` line IS the expected evidence): `non_separable_acceleration` (p-dependent acceleration caught by the two-momenta probe), `non_separable_carrier` (three-component state), `non_advancing_step` (h = 0), `negative_step_non_reversible` (backward damped step — the museum api.rs law).
+- `composition_refuses.emath` — the four named refusal signatures (the refusal convention: each `failed <name> -- mathematical method refused: <code>` line IS the expected evidence): `non_separable_acceleration` (p-dependent acceleration caught by the two-momenta probe), `non_separable_carrier` (three-component state), `non_advancing_step` (h = 0), `negative_step_non_reversible` (backward damped step — the museum api.rs law).
 
 ## Structural spike fences (three-arm comparison)
 
@@ -320,7 +320,7 @@ closure-typed field route does).
 
 ## L1 closed-code fixtures (quote.evaluate executable)
 
-`t19_l1_closed_code.emath` (constructor fixtures) covers the L1
+`l1_closed_code.emath` (constructor fixtures) covers the L1
 service: guarded `quote.evaluate` (closed code unchanged; open code
 refuses `unbound_code` instead of leaking the ambient environment —
 probes pinned the pre-L1 dynamic-scope leak at 21/81), `quote.identity`
@@ -331,7 +331,7 @@ ordered inputs). Carrier cases: stale_dependency (two-tree capture vs
 evaluate), fuel (budgeted nested evaluation suspends
 budget_exhausted), type_mismatch (receipt diagnostic verbatim).
 Mutation checks: (a) stale-check drop CAUGHT (carrier stale case);
-(c) unbound-guard drop CAUGHT (t19 refusal signatures vanish); (b)
+(c) unbound-guard drop CAUGHT (the named refusal signatures vanish); (b)
 fuel-drop is vacuous by construction — L1 shares the engine work
 budget (charge), so a fuel-drop mutant breaks the whole engine and is
 caught by every case, not by an L1-specific seam. Binder domains are
@@ -423,3 +423,90 @@ follow-up; macOS-local exposure, rch/Linux 8 MiB marginal).
   stay green, so this gate's coverage lives here); (c) bisection
   side-flip CAUGHT at both levels (the module pin [5/4,3/2] and the
   fixture pin both fail — the mutant keeps the wrong half).
+
+## Reference-reproduction fixtures (research-loop calculations)
+
+These fixtures re-execute the research-loop reference calculations as
+ordinary authored `.emath` programs (no module imports — plain
+language over the scalar ABI), pinning the reference values exactly.
+Budget lanes: the four heavy files run under `emath test ...
+--work 20000000`; everything else fits the shared 1M default.
+Fifty-one authored tests across eleven files.
+
+- `replay_countermodel.emath` (3/3) — the training/future split
+  countermodel: both worlds replay identically on training
+  observations and diverge exactly on the future observation.
+- `batch_order_determinism.emath` (7/7) — all 120 orderings of a
+  5-batch workload fold to the same winner under first-wins
+  strict-improvement selection (60/60 split check, zero deviants),
+  reconciled against an independent selection-sort enumeration.
+- `explicit_state_continuation.emath` (3/3, budget lane) — the
+  1024-batch/32-epoch/8-candidates-per-batch workload as an explicit
+  `emath object` state record: field-wise state equality at five
+  resume cuts with reversed completion order, final counters
+  8191/0/8192/8192, archive tail `[8184..8191]` pinned. At the
+  default 1M budget the file refuses `budget_exhausted` — the
+  boundary is the pin, same convention as `work_budget_row`.
+- `cache_budget_verdict.emath` (3/3) — cold cache refuses under
+  ACTUAL-cost charging; warm zero-work returns; the verdict pins the
+  charging identity.
+- `rk_family_flat_objective.emath` (5/5) — five a-values of the
+  three-stage second-order family: all five order conditions exact
+  AND all five nonlinear errors byte-exact against the reference.
+- `enclosure_bisect.emath` (bisection arm, 4/4, budget lane) —
+  512 cases (p = 1..64, q = 1..8): 512/0/9511/28533
+  cases/refusals/steps/units, max_bits within the 25-bit grid bound,
+  sqrt(2) at [92681/65536, 46341/32768] in 16 steps / 48 units.
+- `enclosure_newton.emath` (exact-Newton arm, 7/7, budget lane) —
+  sqrt(2) Newton bracket [816/577, 577/408] in 3 steps / 12 units,
+  width 1/235416; perfect squares admit at entry. HONEST BOUNDARY:
+  the reference accepted endpoints to 128 bits by CONSTRUCTING them
+  under bignum arithmetic and refusing after the fact (56/512
+  refused, max attempted endpoint 208 bits); the engine's checked
+  machine arithmetic cannot construct those endpoints at all, so the
+  native arm refuses BY PREDICTION at a 2^57 endpoint-part guard —
+  the native success/refusal split is STRICTER than the reference
+  456/56 and is reported, deliberately not pinned (only the
+  split-consistency pin `successes + refusals == 512` and
+  `all_valid`). The named refusal is pinned twice: as data
+  (`refused == 1` on a = 64) and as the named refusal signature
+  `representation_budget` through `constructor_refuse`.
+- `enclosure_dyadic_newton.emath` (rounded arm, 5/5, budget lane)
+  — the constructive repair: exact Newton upper iterate rounded
+  UPWARD onto the 2^20 dyadic grid (ceil/floor binary searches), the
+  lower bound reconstructed from the ROUNDED upper endpoint. 512/0/
+  2306/18448 exactly (entry-guarded accounting: each performed
+  rounding counts one step — a rounding-first loop undercounts by
+  one step per case, 1802/14416 native, and the a = 1 diagonal cases
+  must count zero), max_bits 23 within the grid bound, sqrt(2) at
+  [1482907/1048576, 1482913/1048576] width 3/524288.
+- `curriculum_ablation.emath` (6/6) — ordered curriculum
+  135/1495 vs adaptive 64/6848/480 with per-target pins and both
+  bounds checks.
+- `float_alias_recovery.emath` (4/4) — the Float64 2^53 + 1
+  aliasing countermodel: Float64 residuals alias at 0.0 while exact
+  Int/Rat residuals stay 1, and the exact path recovers the wrong
+  first-winner.
+- `reciprocal_domain_audit.emath` (4/4) — the reciprocal domain
+  audit positives; the three undefined cases are RUN-LANE probes
+  (`emath run ... --set lane=0 --set x=-1/1 --set n=2` etc.): the
+  fault line is the observable (`error: division_by_zero: exact
+  division by zero`), the test lane catches faults without printing
+  codes.
+
+Authored-against-the-engine findings (all fixed in the fixtures, no
+engine change needed): `obs` and `cases` are reserved words
+(`E-SYN-110` at the field declarations) — renamed `evals` /
+`total_cases`; a first `floor_search` recurred forever at `hi = lo+1`
+(`mid = half_down(lo + hi)` equals `lo`, so the predicate-true branch
+re-enters the identical range — found by reading the suspension
+checkpoint's frame stack, 10.5 KB of `floor_search` frames at
+`steps=0`); the dyadic loop was initially rounding-first and
+undercounted steps by one per case (native 1802/14416 vs reference
+2306/18448 — the difference is exactly 504 = 512 minus the eight
+a = 1 diagonal cases, one final counted rounding each).
+
+Mutation check: flipping the dyadic upper rounding direction
+(ceil -> floor) is CAUGHT — the bracket pin, the step/unit totals,
+and `every_enclosure_valid` all fail (a downward-rounded upper
+endpoint drops below sqrt(a)); reverted, all five pass.

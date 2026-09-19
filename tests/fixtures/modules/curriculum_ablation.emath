@@ -1,0 +1,250 @@
+# The charged curriculum ablation.
+# Sixteen hidden thresholds theta in {0..15}; the oracle answers
+# h_theta(x) = [theta >= x] for probes x in {1..15}. The ordered policy
+# asks ascending x until one hypothesis remains; the adaptive policy
+# evaluates every unused probe, minimizes the larger resulting hypothesis
+# partition, and breaks ties toward the smallest x (first-wins ascending
+# scan, the same discipline as the loop's proposal reconciliation). All 16
+# targets are identified exactly by both policies. A local unit is one
+# hypothesis/probe Boolean evaluation: the ordered policy spends 135 oracle
+# calls and 1495 filter units with zero planning; the adaptive policy spends
+# 64 oracle calls, 6848 planning units and 480 filter units. Saving 71
+# oracle calls costs 5833 additional local units, so the adaptive policy
+# wins this cost model only above an oracle/local-unit ratio of 5833/71.
+
+emath object PolicyRun:
+    representation:
+        queries: Int
+        planning: Int
+        filtering: Int
+
+emath object CurriculumTotals:
+    representation:
+        ordered_queries: Int
+        ordered_filtering: Int
+        adaptive_queries: Int
+        adaptive_planning: Int
+        adaptive_filtering: Int
+        min_ordered: Int
+        max_ordered: Int
+        min_adaptive: Int
+        max_adaptive: Int
+
+emath function hyps_from:
+    # ascending hypothesis list lo..hi
+    inputs:
+        lo: Int
+        hi: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if lo > hi: [] else: [lo, ..hyps_from(lo + 1, hi)]
+
+emath function falses_from:
+    # a false-valued probe-used mask of length j+1 (indices 0..j)
+    inputs:
+        j: Int
+        acc: sequence(Bool)
+    outputs:
+        result: sequence(Bool)
+    definitions:
+        result = if j < 0: acc else: falses_from(j - 1, [false, ..acc])
+
+emath function count_ge_at:
+    # hypotheses at index i onward with value >= x
+    inputs:
+        hyps: sequence(Int)
+        x: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= length(hyps): 0 else: (if hyps[i] >= x: 1 else: 0) + count_ge_at(hyps, x, i + 1)
+
+emath function keep_if:
+    # hypotheses consistent with the observed answer, order preserved
+    inputs:
+        hyps: sequence(Int)
+        x: Int
+        want: Bool
+        j: Int
+        acc: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if j < 0: acc else: keep_if(hyps, x, want, j - 1, if (hyps[j] >= x) == want: [hyps[j], ..acc] else: acc)
+
+emath function set_used:
+    # rebuild the used mask with probe x marked used
+    inputs:
+        used: sequence(Bool)
+        x: Int
+        j: Int
+        acc: sequence(Bool)
+    outputs:
+        result: sequence(Bool)
+    definitions:
+        result = if j < 0: acc else: set_used(used, x, j - 1, [if j == x: true else: used[j], ..acc])
+
+emath function count_unused:
+    # unused probes among 1..j
+    inputs:
+        used: sequence(Bool)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if j < 1: 0 else: (if used[j]: 0 else: 1) + count_unused(used, j - 1)
+
+emath function ordered_run:
+    # ascending probes until one hypothesis remains; filter units are the
+    # hypothesis/probe evaluations before each query (|H| per query)
+    inputs:
+        theta: Int
+        x: Int
+        hyps: sequence(Int)
+        queries: Int
+        filtering: Int
+    outputs:
+        result: PolicyRun
+    definitions:
+        kept = keep_if(hyps, x, theta >= x, length(hyps) - 1, [])
+        q2 = queries + 1
+        f2 = filtering + length(hyps)
+        result = if length(kept) <= 1: PolicyRun: {queries: q2, planning: 0, filtering: f2} else: ordered_run(theta, x + 1, kept, q2, f2)
+
+emath function best_probe:
+    # unused probe minimizing the larger resulting partition; strict
+    # improvement with an ascending scan gives the smallest x on ties
+    inputs:
+        hyps: sequence(Int)
+        used: sequence(Bool)
+        x: Int
+        best_x: Int
+        best_split: Int
+    outputs:
+        result: Int
+    definitions:
+        cnt = count_ge_at(hyps, x, 0)
+        rest = length(hyps) - cnt
+        split = if cnt < rest: rest else: cnt
+        nb_x = if used[x]: best_x else: if split < best_split: x else: best_x
+        nb_split = if used[x]: best_split else: if split < best_split: split else: best_split
+        result = if x >= 15: nb_x else: best_probe(hyps, used, x + 1, nb_x, nb_split)
+
+emath function adaptive_run:
+    # each round: planning charges (#unused probes) x |H| partition
+    # evaluations, the chosen probe is queried, filtering charges |H|
+    inputs:
+        theta: Int
+        hyps: sequence(Int)
+        used: sequence(Bool)
+        run: PolicyRun
+    outputs:
+        result: PolicyRun
+    definitions:
+        pick = best_probe(hyps, used, 1, 0, 999)
+        kept = keep_if(hyps, pick, theta >= pick, length(hyps) - 1, [])
+        plan2 = run.planning + count_unused(used, 15) * length(hyps)
+        q2 = run.queries + 1
+        f2 = run.filtering + length(hyps)
+        next = PolicyRun: {queries: q2, planning: plan2, filtering: f2}
+        result = if length(kept) <= 1: next else: adaptive_run(theta, kept, set_used(used, pick, 15, []), next)
+
+emath function curriculum_at:
+    # totals and per-target bounds over theta 0..15
+    inputs:
+        theta: Int
+        acc: CurriculumTotals
+    outputs:
+        result: CurriculumTotals
+    definitions:
+        all_hyps = hyps_from(0, 15)
+        o = ordered_run(theta, 1, all_hyps, 0, 0)
+        a = adaptive_run(theta, all_hyps, falses_from(15, []), PolicyRun: {queries: 0, planning: 0, filtering: 0})
+        mn_o = if theta == 0: o.queries else: if o.queries < acc.min_ordered: o.queries else: acc.min_ordered
+        mx_o = if theta == 0: o.queries else: if o.queries > acc.max_ordered: o.queries else: acc.max_ordered
+        mn_a = if theta == 0: a.queries else: if a.queries < acc.min_adaptive: a.queries else: acc.min_adaptive
+        mx_a = if theta == 0: a.queries else: if a.queries > acc.max_adaptive: a.queries else: acc.max_adaptive
+        next = CurriculumTotals: {ordered_queries: acc.ordered_queries + o.queries, ordered_filtering: acc.ordered_filtering + o.filtering, adaptive_queries: acc.adaptive_queries + a.queries, adaptive_planning: acc.adaptive_planning + a.planning, adaptive_filtering: acc.adaptive_filtering + a.filtering, min_ordered: mn_o, max_ordered: mx_o, min_adaptive: mn_a, max_adaptive: mx_a}
+        result = if theta >= 15: next else: curriculum_at(theta + 1, next)
+
+emath function ChargedCurriculumAblation:
+    inputs:
+        unused: Int
+    outputs:
+        ordered_queries: Int
+        ordered_filtering: Int
+        adaptive_queries: Int
+        adaptive_planning: Int
+        adaptive_filtering: Int
+        min_ordered: Int
+        max_ordered: Int
+        min_adaptive: Int
+        max_adaptive: Int
+    definitions:
+        totals = curriculum_at(0, CurriculumTotals: {ordered_queries: 0, ordered_filtering: 0, adaptive_queries: 0, adaptive_planning: 0, adaptive_filtering: 0, min_ordered: 0, max_ordered: 0, min_adaptive: 0, max_adaptive: 0})
+        ordered_queries = totals.ordered_queries
+        ordered_filtering = totals.ordered_filtering
+        adaptive_queries = totals.adaptive_queries
+        adaptive_planning = totals.adaptive_planning
+        adaptive_filtering = totals.adaptive_filtering
+        min_ordered = totals.min_ordered
+        max_ordered = totals.max_ordered
+        min_adaptive = totals.min_adaptive
+        max_adaptive = totals.max_adaptive
+    tests:
+        example <ordered_policy_totals>:
+            given unused = 0
+            expect ordered_queries == 135
+            expect ordered_filtering == 1495
+        example <adaptive_policy_totals>:
+            given unused = 0
+            expect adaptive_queries == 64
+            expect adaptive_planning == 6848
+            expect adaptive_filtering == 480
+        example <per_target_query_bounds>:
+            given unused = 0
+            expect min_ordered == 1
+            expect max_ordered == 15
+            expect min_adaptive == 4
+            expect max_adaptive == 4
+
+emath function OrderedProbe:
+    inputs:
+        theta: Int
+    outputs:
+        queries: Int
+        filtering: Int
+    definitions:
+        r = ordered_run(theta, 1, hyps_from(0, 15), 0, 0)
+        queries = r.queries
+        filtering = r.filtering
+    tests:
+        example <theta_zero_first_probe_pins_it>:
+            given theta = 0
+            expect queries == 1
+            expect filtering == 16
+        example <theta_fifteen_scans_all>:
+            given theta = 15
+            expect queries == 15
+            expect filtering == 135
+
+emath function AdaptiveProbe:
+    inputs:
+        theta: Int
+    outputs:
+        queries: Int
+        planning: Int
+        filtering: Int
+    definitions:
+        r = adaptive_run(theta, hyps_from(0, 15), falses_from(15, []), PolicyRun: {queries: 0, planning: 0, filtering: 0})
+        queries = r.queries
+        planning = r.planning
+        filtering = r.filtering
+    tests:
+        example <theta_zero_four_binary_splits>:
+            given theta = 0
+            expect queries == 4
+            expect planning == 428
+            expect filtering == 30

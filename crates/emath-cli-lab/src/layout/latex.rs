@@ -1,4 +1,4 @@
-//! Structured LaTeX math frontend (SG-11).
+//! Structured LaTeX math frontend.
 
 use emath_genesis::{BinderDomain, BinderFamily, BinderKind, BinderTerm, ScopedBinder};
 use emath_term::{SymbolId, Term, VariableId};

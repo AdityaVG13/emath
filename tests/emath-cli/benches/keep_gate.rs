@@ -613,7 +613,7 @@ fn write_guard(history_dir: &Path) -> Result<(), String> {
     let document = JsonValue::Object(vec![
         ("schema".into(), JsonValue::String(GUARD_SCHEMA.into())),
         ("deterministic_codegen".into(), JsonValue::Bool(true)),
-        ("phase1_std_only".into(), JsonValue::Bool(true)),
+        ("native_std_only".into(), JsonValue::Bool(true)),
         ("git_sha".into(), JsonValue::String(git_sha())),
         ("timestamp_unix".into(), JsonValue::Number(now_unix_f64())),
         ("machine".into(), machine_object()),
@@ -623,7 +623,7 @@ fn write_guard(history_dir: &Path) -> Result<(), String> {
                 (
                     "gate".into(),
                     JsonValue::Array(
-                        ["schema", "deterministic_codegen", "phase1_std_only"]
+                        ["schema", "deterministic_codegen", "native_std_only"]
                             .into_iter()
                             .map(|name| JsonValue::String(name.into()))
                             .collect(),

@@ -1,6 +1,6 @@
 //! Executable Mathematics IR (EMIR): typed, target-independent ops.
 //!
-//! Phase 1 lowers the strict-Float64 subset to a linear op list per output
+//! lowers the strict-Float64 subset to a linear op list per output
 //! definition. Operations record domain obligations; the generator emits
 //! them as assumptions (`assumptions.json`), never silently erasing them.
 

@@ -73,7 +73,7 @@ impl BackendInput<'_> {
                 declaration.kind_label
             )));
             items.push(Item::DocComment(
-                "Generated deterministically by emath Phase 1; do not edit.".to_string(),
+                "Generated deterministically by emath; do not edit.".to_string(),
             ));
             if !emit_free_fn {
                 let mut struct_fields: Vec<(String, Ty)> = declaration
@@ -112,7 +112,7 @@ impl BackendInput<'_> {
             }
             if let Some(constructor) = declaration.constructors.first() {
                 // The receipt records the exact obligation matrix the
-                // emitted constructor discharges (all runtime in Phase 1).
+                // emitted constructor discharges (all runtime today).
                 receipts.push(constructor.receipt(&name));
                 let error_name = self.error_type_name(constructor.error_type).to_string();
                 if !emitted_error_types.contains(&error_name) {
@@ -443,10 +443,10 @@ impl BackendInput<'_> {
                     format!("Evaluate `{target}` (exact i64).")
                 } else if can_fault {
                     format!(
-                        "Evaluate `{target}` (strict-f64, Phase 1). Index/slice out of bounds is `Err`."
+                        "Evaluate `{target}` (strict-f64). Index/slice out of bounds is `Err`."
                     )
                 } else {
-                    format!("Evaluate `{target}` (strict-f64, Phase 1).")
+                    format!("Evaluate `{target}` (strict-f64).")
                 };
                 methods.push(FnDef {
                     name: fn_name,

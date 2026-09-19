@@ -1,4 +1,4 @@
-//! SG-18 production path: joint-tune a protected XOR objective, print
+//! Joint-tuning production path: joint-tune a protected XOR objective, print
 //! the winner, record the protection-beats-cost negative control, a
 //! budget refusal plus resumed continuation, and a deterministic receipt.
 

@@ -1,0 +1,233 @@
+# Proposal order versus worker order.
+# Five proposal scores in authored order are [4, 6, 6, 5, 3]. All 120
+# worker-completion permutations are enumerated. Strict-improvement
+# selection folded in COMPLETION order picks proposal 1 in 60 permutations
+# and proposal 2 in 60 (whichever 6-scored proposal completes first wins).
+# Reconciliation in PROPOSAL order - sorting each completion order back to
+# the authored proposal indices before folding - always picks proposal 1:
+# zero deviants across all 120 permutations, one canonical outcome. The
+# canonical digest of the reference is a host artifact (sha256); the
+# native observable is the zero-deviant scan plus the fixed winner.
+
+emath object BatchTally:
+    representation:
+        total: Int
+        winner_1: Int
+        winner_2: Int
+        deviants: Int
+
+emath function tail_from:
+    # seq[1..]
+    inputs:
+        seq: sequence(Int)
+        j: Int
+        acc: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if j <= 0: acc else: tail_from(seq, j - 1, [seq[j], ..acc])
+
+emath function prefix_upto:
+    # first k elements of seq
+    inputs:
+        seq: sequence(Int)
+        k: Int
+        j: Int
+        acc: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if j < 0: acc else: prefix_upto(seq, k, j - 1, if j < k: [seq[j], ..acc] else: acc)
+
+emath function suffix_from:
+    # seq[k..]
+    inputs:
+        seq: sequence(Int)
+        k: Int
+        j: Int
+        acc: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if j < k: acc else: suffix_from(seq, k, j - 1, [seq[j], ..acc])
+
+emath function append_seq:
+    inputs:
+        a: sequence(Int)
+        b: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if length(a) == 0: b else: [a[0], ..append_seq(tail_from(a, length(a) - 1, []), b)]
+
+emath function inserted_at:
+    # x inserted into seq at position pos
+    inputs:
+        seq: sequence(Int)
+        x: Int
+        pos: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        pre = prefix_upto(seq, pos, length(seq) - 1, [])
+        suf = suffix_from(seq, pos, length(seq) - 1, [])
+        result = append_seq(pre, [x, ..suf])
+
+emath function insert_every:
+    # x inserted at every position 0..length(seq), collected into acc
+    inputs:
+        seq: sequence(Int)
+        x: Int
+        pos: Int
+        acc: sequence(sequence(Int))
+    outputs:
+        result: sequence(sequence(Int))
+    definitions:
+        one = inserted_at(seq, x, pos)
+        result = if pos >= length(seq): [one, ..acc] else: insert_every(seq, x, pos + 1, [one, ..acc])
+
+emath function distribute:
+    # insert head x at every position of every sub-permutation
+    inputs:
+        subs: sequence(sequence(Int))
+        x: Int
+        i: Int
+        acc: sequence(sequence(Int))
+    outputs:
+        result: sequence(sequence(Int))
+    definitions:
+        result = if i >= length(subs): acc else: distribute(subs, x, i + 1, insert_every(subs[i], x, 0, acc))
+
+emath function perms_of:
+    inputs:
+        seq: sequence(Int)
+    outputs:
+        result: sequence(sequence(Int))
+    definitions:
+        result = if length(seq) <= 1: [seq] else: distribute(perms_of(tail_from(seq, length(seq) - 1, [])), seq[0], 0, [])
+
+emath function fold_winner:
+    # strict-improvement selection folded in the GIVEN order; the first
+    # proposal is always admitted (no incumbent), later admissions require
+    # strict improvement over the running best
+    inputs:
+        order: sequence(Int)
+        scores: sequence(Int)
+        i: Int
+        best_score: Int
+        best_idx: Int
+        have: Bool
+    outputs:
+        result: Int
+    definitions:
+        s = scores[order[i]]
+        admit = if have: s > best_score else: true
+        nb = if admit: s else: best_score
+        ni = if admit: order[i] else: best_idx
+        result = if i + 1 >= length(order): ni else: fold_winner(order, scores, i + 1, nb, ni, true)
+
+emath function min_val:
+    inputs:
+        seq: sequence(Int)
+        i: Int
+        cur: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= length(seq): cur else: min_val(seq, i + 1, if seq[i] < cur: seq[i] else: cur)
+
+emath function remove_first:
+    # seq without its first occurrence of v
+    inputs:
+        seq: sequence(Int)
+        v: Int
+        j: Int
+        acc: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if j < 0: acc else: remove_first(seq, v, j - 1, if seq[j] == v and length(acc) == length(seq) - 1 - j: acc else: [seq[j], ..acc])
+
+emath function sort_seq:
+    # selection sort: the reconciliation of a completion order back to
+    # proposal order (ascending proposal indices). The min is computed
+    # inside the nonempty branch only: defs evaluate eagerly, so an
+    # eager seq[0] would fault on the empty base case.
+    inputs:
+        seq: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if length(seq) == 0: [] else: [min_val(seq, 0, seq[0]), ..sort_seq(remove_first(seq, min_val(seq, 0, seq[0]), length(seq) - 1, []))]
+
+emath function tally_perms:
+    inputs:
+        perms: sequence(sequence(Int))
+        scores: sequence(Int)
+        i: Int
+        acc: BatchTally
+    outputs:
+        result: BatchTally
+    definitions:
+        w = fold_winner(perms[i], scores, 0, 0, 0, false)
+        w1 = if w == 1: 1 else: 0
+        w2 = if w == 2: 1 else: 0
+        canon = fold_winner(sort_seq(perms[i]), scores, 0, 0, 0, false)
+        d = if canon == 1: 0 else: 1
+        next = BatchTally: {total: acc.total + 1, winner_1: acc.winner_1 + w1, winner_2: acc.winner_2 + w2, deviants: acc.deviants + d}
+        result = if i + 1 >= length(perms): next else: tally_perms(perms, scores, i + 1, next)
+
+emath function BatchOrderDeterminism:
+    inputs:
+        unused: Int
+    outputs:
+        total_perms: Int
+        count_winner_1: Int
+        count_winner_2: Int
+        fixed_winner: Int
+        canonical_deviant_count: Int
+    definitions:
+        scores = [4, 6, 6, 5, 3]
+        perms = perms_of([0, 1, 2, 3, 4])
+        tally = tally_perms(perms, scores, 0, BatchTally: {total: 0, winner_1: 0, winner_2: 0, deviants: 0})
+        fixed_winner = fold_winner([0, 1, 2, 3, 4], scores, 0, 0, 0, false)
+        total_perms = tally.total
+        count_winner_1 = tally.winner_1
+        count_winner_2 = tally.winner_2
+        canonical_deviant_count = tally.deviants
+    tests:
+        example <all_120_permutations_enumerated>:
+            given unused = 0
+            expect total_perms == 120
+        example <completion_order_splits_sixty_sixty>:
+            # Whichever 6-scored proposal completes first wins the
+            # completion-order fold: exactly 60/60.
+            given unused = 0
+            expect count_winner_1 == 60
+            expect count_winner_2 == 60
+        example <proposal_order_fixed_winner>:
+            given unused = 0
+            expect fixed_winner == 1
+        example <proposal_reconciliation_never_deviates>:
+            # Sorting every completion order back to proposal order before
+            # folding yields the same winner for all 120 permutations.
+            given unused = 0
+            expect canonical_deviant_count == 0
+
+emath function CompletionFoldProbe:
+    inputs:
+        order: sequence(Int)
+    outputs:
+        winner: Int
+    definitions:
+        winner = fold_winner(order, [4, 6, 6, 5, 3], 0, 0, 0, false)
+    tests:
+        example <authored_order_picks_first_six>:
+            given order = [0, 1, 2, 3, 4]
+            expect winner == 1
+        example <completion_two_first_picks_second_six>:
+            given order = [2, 1, 0, 3, 4]
+            expect winner == 2
+        example <late_completion_first_six_still_wins>:
+            given order = [4, 3, 1, 2, 0]
+            expect winner == 1

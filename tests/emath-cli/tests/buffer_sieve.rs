@@ -1,4 +1,4 @@
-//! Buffer-carrier sieve through the real lanes (bead emath-84sfr):
+//! Buffer-carrier sieve through the real lanes:
 //! `emath run --json` answers exactly with work telemetry, a tiny
 //! `--work` budget suspends mid-sieve and writes a checkpoint, and
 //! `emath step` resumes to the same exact answer — proving the ENCODE

@@ -31,7 +31,7 @@ Intent is resolved through a deterministic pipeline (parse → constructor admis
 | Language surface | `emath object`, `emath function`, `emath query`; `recur` and `quote` in expressions; scalar carriers; optional modules behind `use`. `model` / `policy` / `kind` are not core kinds |
 | Pipeline | Parse → admit constructor kinds → typed IR → reference VM (`emath run`) or Rust emission (`emath build`) |
 | Gates | `emath check`, `emath run`, `emath build` |
-| Capstone demos | `cargo xtask demo all` (affine-scorer + semantic-genesis) |
+| Capstone demos | `cargo xtask demo <name>` (holes-synthesis, scoped-binders, math-layout, cache-policy, and module demos) |
 | Web playground | `emath web` (in-page WASM compiler; Stage 1 subset today) |
 | Providers | Std-only; in-tree Dew/Rumoca stand-ins; Wrenfold / Franken* planned behind adapters |
 | Docs of record | [`MANUAL.md`](MANUAL.md), [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md), [`examples/`](examples/README.md) |
@@ -66,7 +66,7 @@ One line emath will not cross: **compiling is not proving.**
 
 ## How Factory / Droid builds it
 
-emath turns mathematical intent into runnable code through a deterministic pipeline: source → typed semantic IR → mathematical goals → a resolution plan → generated Rust → Cargo artifact → verified host integration. Every stage is reproducible: deterministic output, byte-comparable across runs, with `emath check`, `emath build --verify`, and an independent artifact check acting as hard gates. Nothing produced by the toolchain is trusted on assertion alone; it must pass those checks, just as `fmt`, `test`, and `clippy` must stay green for a change to land.
+emath turns mathematical intent into runnable code through a deterministic pipeline: source → typed semantic IR → mathematical goals → a resolution plan → generated Rust → Cargo artifact → verified host integration. Every stage is reproducible: deterministic output, byte-comparable across runs, with `emath check`, `emath build`, and an independent artifact check acting as hard gates. Nothing produced by the toolchain is trusted on assertion alone; it must pass those checks, just as `fmt`, `test`, and `clippy` must stay green for a change to land.
 
 Factory / Droid is the autonomous agent building emath. It works directly in the repository: designing language surface and compiler crates, running demos and the validation suite, and driving changes to completion. The deterministic, gate-checked pipeline is what makes that viable. Reproducible artifacts and hard verification mean the agent can iterate until the evidence says the change is real, rather than trusting assertion alone.
 
@@ -118,17 +118,14 @@ Declare only what you need: `inputs:`, `outputs:`, `definitions:`, and `tests:` 
 
 ```console
 $ git clone <repo-url> && cd emath
-$ cargo xtask demo all
+$ cargo run -q -p emath-cli -- check language/examples/intro/add-exact.emath
 ```
 
 (The `<repo-url>` is filled in when the public repository is reserved; inside a checkout the second line is enough.)
 
-`cargo xtask demo all` runs both capstones; each prints `ok` and exits 0 on success:
+`emath check` admits a teaching file against the Language Image and exits 0 on success. In-process capstone demos remain available as `cargo xtask demo holes-synthesis`, `cargo xtask demo scoped-binders`, `cargo xtask demo math-layout`, `cargo xtask demo cache-policy`, and the module demos; each prints `ok` and exits 0 on success.
 
-- **affine-scorer**: the current vertical slice. Compiles `tests/valid/affine_scorer.emath` into a Cargo artifact with `--verify`, runs the host integration (`examples/demo-host`) proving `score(3.0) == 7`, constructor invariant enforcement (`new(-1.0, 0.5)` refused), and the runtime negative control.
-- **semantic-genesis**: the G0-G3 pipeline. Parses the reference glyph body, runs the analysis twice and proves byte-identical output, regenerates the parametric crate, runs its in-crate fixture tests, and rejects the wrong world (swapped modular yields `5`, not `6`).
-
-Exit criteria: both demos reach their final `ok` lines; the command exits 0. Manual: [`MANUAL.md`](MANUAL.md). Architecture: [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md). Test surface: [`tests/README.md`](tests/README.md). Security: [`SECURITY.md`](SECURITY.md).
+Exit criteria: the check command exits 0 on success; demo commands exit 0. Manual: [`MANUAL.md`](MANUAL.md). Architecture: [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md). Test surface: [`tests/README.md`](tests/README.md). Security: [`SECURITY.md`](SECURITY.md).
 
 ## Example
 
@@ -214,7 +211,7 @@ Adapters, honest status (std-only today; no upstream engine is consumed yet, as 
 ```text
 Dew (in-tree)          scalar strict-f64 mapping + Rust source/token backends
 Rumoca (in-tree)       Modelica subset scan + native structural/DAE/Euler
-Wrenfold               planned (Phase 2+ symbolic oracle adapter)
+Wrenfold               planned (symbolic oracle adapter)
 FrankenJAX             planned (tensors, autodiff, transforms)
 FrankenSciPy           planned (solvers, optimization, integration)
 FrankenSim             planned (operator graphs, kernels, certified numerics)
@@ -222,7 +219,7 @@ FrankenLean            planned (theorem and proof evidence)
 native providers       exact arithmetic, intervals, search, basic numerics
 ```
 
-Upstream engines (Dew JIT/GPU, the full Rumoca compiler, Wrenfold, Franken*) are pinned dependencies behind adapters in Phase 2+, never presented as implemented before then. They do not define emath's public semantics, and no upstream internals appear in emath's stable public IR. See `emath provider list` for the machine-readable status table.
+Upstream engines (Dew JIT/GPU, the full Rumoca compiler, Wrenfold, Franken*) are pinned dependencies behind adapters, never presented as implemented before they are wired in. They do not define emath's public semantics, and no upstream internals appear in emath's stable public IR. See `emath provider list` for the machine-readable status table.
 
 ## Design principles
 

@@ -166,16 +166,16 @@ pub enum TokenKind {
     Imply,
     /// `<==>` — logical biconditional.
     Iff,
-    /// `~~` — asymptotic equivalence (B18).
+    /// `~~` — asymptotic equivalence.
     TildeTilde,
     /// `~` — distribution tag prefix on measurement literals
-    /// (`~ normal`, `~ uniform`, `~ lognormal`; spec 04 section 1.5).
+    /// (`~ normal`, `~ uniform`, `~ lognormal`).
     Tilde,
     /// `±` — measurement-literal uncertainty separator (`1.50 ± 0.02`).
-    /// X6: in core this IS the measurement literal; algebraic plus-minus
+    /// In core this IS the measurement literal; algebraic plus-minus
     /// lives only in the opt-in algebra pack.
     PlusMinus,
-    /// `∅` — the declared sink (04 §4.1): a reaction endpoint that is
+    /// `∅` — the declared sink: a reaction endpoint that is
     /// deliberately nothing (`Drug -> ∅`). Never a magic empty side:
     /// a reaction endpoint with no terms and no `∅` refuses E-BIO-SINK.
     EmptySet,
@@ -215,7 +215,7 @@ pub enum TokenKind {
     Question,
     Amp,
     Pipe,
-    /// `;` — row separator inside list literals (`[1, 2; 3, 4]`, U9).
+    /// `;` — row separator inside list literals (`[1, 2; 3, 4]`).
     /// Nowhere else in the surface: outside a list literal it refuses.
     Semicolon,
     /// Nabla-family glyphs (`∇`, `∇·`, `∇×`, `∇²`, nabla pack),
@@ -224,7 +224,7 @@ pub enum TokenKind {
     /// `core::pde` builtin; unmounted glyphs refuse at parse.
     Nabla(NablaForm),
     /// `≈` (U+2248) or ASCII `~=` — the approximation labeling operator
-    /// (04 §6.4). One token either
+    ///. One token either
     /// spelling; `~=` must be claimed before the bare `~` distribution
     /// tag, and `≈` before the non-ASCII ident path.
     TildeEq,
@@ -234,7 +234,7 @@ pub enum TokenKind {
     LAngle,
     /// `⟩` (U+27E9) — ket/close angle of the braket pack.
     RAngle,
-    /// `-->` — directed graph edge arrow (B23). Glued from three
+    /// `-->` — directed graph edge arrow. Glued from three
     /// bytes so it beats `->` (Minus+Arrow today, a parse error in
     /// this shape); `x--y` without the `>` stays two Minus tokens.
     EdgeArrow,

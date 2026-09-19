@@ -1,0 +1,51 @@
+# The cache-sensitive budget verdict.
+# A calculation requiring 8 logical units under budget 5: a cold evaluation
+# refuses (resource exhausted); a warm zero-work cache returns a value under
+# ACTUAL-cost charging; a deterministic LOGICAL charge refuses in both
+# cases. "Same candidate, inputs, evaluator, limits" is insufficient for
+# replay identity unless cache state or charging semantics is also fixed.
+# This is the analytic accounting counterexample authored as data: warm is
+# the cache state, logical selects the charging semantics. code 1 encodes
+# resource_exhausted, 0 a returned value.
+
+emath function CacheBudgetVerdict:
+    inputs:
+        warm: Bool
+        logical: Bool
+        budget: Int
+        required: Int
+    outputs:
+        admitted: Bool
+        charge: Int
+        code: Int
+    definitions:
+        actual = if warm: 0 else: required
+        charge = if logical: required else: actual
+        admitted = charge <= budget
+        code = if admitted: 0 else: 1
+    tests:
+        example <cold_refuses>:
+            given warm = false
+            given logical = false
+            given budget = 5
+            given required = 8
+            expect admitted == false
+            expect charge == 8
+            expect code == 1
+        example <warm_actual_charge_returns_value>:
+            given warm = true
+            given logical = false
+            given budget = 5
+            given required = 8
+            expect admitted == true
+            expect charge == 0
+            expect code == 0
+        example <warm_logical_charge_still_refuses>:
+            # Deterministic logical charging: exhaustion in both cases.
+            given warm = true
+            given logical = true
+            given budget = 5
+            given required = 8
+            expect admitted == false
+            expect charge == 8
+            expect code == 1

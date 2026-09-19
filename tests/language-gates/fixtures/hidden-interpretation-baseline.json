@@ -1,0 +1,641 @@
+[
+  {
+    "glyph": "(",
+    "roles": [
+      "argument_tuple",
+      "attribute",
+      "braket_pack_mount",
+      "call_suffix",
+      "event_decl_statement",
+      "measurement_literal",
+      "nabla_curl_2d",
+      "nabla_div",
+      "nabla_grad",
+      "nabla_lap",
+      "operator-section",
+      "parameter_list",
+      "pattern",
+      "primary_expr",
+      "quote_expr",
+      "rate_statement",
+      "tuple_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": ")",
+    "roles": [
+      "argument_tuple",
+      "attribute",
+      "braket_pack_mount",
+      "call_suffix",
+      "event_decl_statement",
+      "measurement_literal",
+      "nabla_curl_2d",
+      "nabla_div",
+      "nabla_grad",
+      "nabla_lap",
+      "operator-section",
+      "parameter_list",
+      "pattern",
+      "primary_expr",
+      "quote_expr",
+      "rate_statement",
+      "tuple_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "*",
+    "roles": [
+      "carrier-decl",
+      "genesis-declaration",
+      "type_operator",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "+",
+    "roles": [
+      "additive_expr",
+      "answer-section",
+      "carrier-section",
+      "complex_literal",
+      "construct-meaning-section",
+      "example-section",
+      "exponent",
+      "law-section",
+      "meaning-clause",
+      "prefix_operator",
+      "reaction_side",
+      "symbol-section",
+      "syntax-section",
+      "tuning-section"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": ",",
+    "roles": [
+      "argument_list",
+      "binder_list",
+      "generic_args",
+      "generic_arguments",
+      "generic_suffix",
+      "graph_literal",
+      "index_suffix",
+      "list_expr",
+      "match_expression",
+      "nabla_curl_2d",
+      "nabla_div",
+      "nabla_grad",
+      "nabla_lap",
+      "parameter_list",
+      "parameter_list_of_fields",
+      "pattern",
+      "record_expr",
+      "row_cells",
+      "set_expr",
+      "table_row",
+      "tuple_expr",
+      "type_primary",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": "list, tuple, argument, record-field, match-arm, graph separators — the enclosing production fixes the meaning"
+  },
+  {
+    "glyph": "-",
+    "roles": [
+      "additive_expr",
+      "complex_literal",
+      "edge_operator",
+      "exponent",
+      "numeric_literal",
+      "prefix_operator"
+    ],
+    "resolved_by": "parser-context",
+    "note": "binary minus, prefix negation, complex/exponent signs — resolved by the parser operator table (precedence_battery)"
+  },
+  {
+    "glyph": "->",
+    "roles": [
+      "constructor_decl",
+      "function_decl",
+      "lambda_expr",
+      "operator-section",
+      "operator_decl",
+      "reaction_arrow",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": ".",
+    "roles": [
+      "decimal",
+      "dotted_name",
+      "field_suffix",
+      "hole"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "..",
+    "roles": [
+      "list_expr",
+      "range_expr"
+    ],
+    "resolved_by": "parser-context",
+    "note": "list open-range tail (`[a, ..b]`, surface.ebnf:163) vs range operator (`a..b`, surface.ebnf:255) — after `[expr,` the next token decides: `..` opens the cons tail, anything else continues the list (sequence-cons arm in the literal parser)"
+  },
+  {
+    "glyph": "0",
+    "roles": [
+      "carrier_label",
+      "digit"
+    ],
+    "resolved_by": "parser-context",
+    "note": "qubit carrier label in braket notation vs numeric digit — lexer emits digit, parser carrier_label slot (surface.ebnf:203)"
+  },
+  {
+    "glyph": "1",
+    "roles": [
+      "carrier_label",
+      "digit"
+    ],
+    "resolved_by": "parser-context",
+    "note": "qubit carrier label in braket notation vs numeric digit — lexer emits digit, parser carrier_label slot (surface.ebnf:203)"
+  },
+  {
+    "glyph": ":",
+    "roles": [
+      "answer-section",
+      "body-section",
+      "callable_binder",
+      "carrier-decl",
+      "carrier-section",
+      "conditional_expr",
+      "construct-meaning-section",
+      "constructor-section",
+      "constructor_decl",
+      "emath_item",
+      "example-section",
+      "field_binding",
+      "field_decl",
+      "for_statement",
+      "function_abs",
+      "function_decl",
+      "generic_parameter",
+      "genesis-declaration",
+      "hole",
+      "if_statement",
+      "impl_decl",
+      "law-section",
+      "let_statement",
+      "match_statement",
+      "meaning-clause",
+      "model_field_section",
+      "model_stmt_section",
+      "operator-section",
+      "operator_decl",
+      "parameter",
+      "parameter_list_of_fields",
+      "quote_expr",
+      "reaction_line",
+      "reaction_network_decl",
+      "record_decl",
+      "record_expr",
+      "recur_expr",
+      "section",
+      "symbol-decl",
+      "symbol-section",
+      "syntax-section",
+      "trait_decl",
+      "tuning-section",
+      "variant_decl",
+      "while_statement"
+    ],
+    "resolved_by": "parser-context",
+    "note": "type/binder domain separator, section opener, record field separator, conditional arm separator, declaration clause — position-disambiguated; the binder families share the `var in domain: body` spelling (surface.ebnf:257-265)"
+  },
+  {
+    "glyph": "::",
+    "roles": [
+      "path",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": ";",
+    "roles": [
+      "graph_literal",
+      "matrix_rows_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": "matrix row separator, graph edge-list separator, type tuple separator — distinct productions, position-disambiguated (surface.ebnf:168,240,273)"
+  },
+  {
+    "glyph": "<",
+    "roles": [
+      "declaration_head",
+      "generic_args",
+      "generic_arguments",
+      "genesis-declaration",
+      "section_head"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "=",
+    "roles": [
+      "argument",
+      "assignment_op",
+      "braket_pack_mount",
+      "carrier-decl",
+      "generic_arg",
+      "generic_parameter",
+      "let_statement",
+      "parameter",
+      "rate_statement",
+      "type_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "assignment/declaration binding vs named argument vs carrier default — position-disambiguated by the enclosing rule"
+  },
+  {
+    "glyph": "=>",
+    "roles": [
+      "example-decl",
+      "lambda_expr",
+      "match_arm",
+      "match_statement",
+      "notation_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "lambda arrow, match arm, notation declaration, example binding — arity/context-disambiguated"
+  },
+  {
+    "glyph": ">",
+    "roles": [
+      "declaration_head",
+      "generic_args",
+      "generic_arguments",
+      "generic_suffix",
+      "genesis-declaration",
+      "section_head"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "[",
+    "roles": [
+      "answer-clause",
+      "index_suffix",
+      "list_expr",
+      "matrix_rows_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "]",
+    "roles": [
+      "answer-clause",
+      "index_suffix",
+      "list_expr",
+      "matrix_rows_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "_",
+    "roles": [
+      "integer",
+      "pattern"
+    ],
+    "resolved_by": "parser-context",
+    "note": "integer digit separator vs wildcard pattern — literal vs pattern context"
+  },
+  {
+    "glyph": "as",
+    "roles": [
+      "emath_item",
+      "use_member",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": "declaration kind clause (`emath function F as kind`) vs `use` alias vs import path — clause position"
+  },
+  {
+    "glyph": "constant",
+    "roles": [
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation symbol kind vs syntax-decl kind — admitted kind vocabulary"
+  },
+  {
+    "glyph": "constructor",
+    "roles": [
+      "constructor-section",
+      "constructor_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "constructor section vs declaration keyword — section context"
+  },
+  {
+    "glyph": "else",
+    "roles": [
+      "conditional_expr",
+      "if_statement"
+    ],
+    "resolved_by": "parser-context",
+    "note": ""
+  },
+  {
+    "glyph": "emath",
+    "roles": [
+      "emath_item",
+      "genesis-declaration",
+      "reaction_network_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "stable declaration introducer vs genesis declaration — file/section context"
+  },
+  {
+    "glyph": "extern",
+    "roles": [
+      "extern_decl",
+      "operator_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "extern declaration vs operator declaration — keyword context"
+  },
+  {
+    "glyph": "false",
+    "roles": [
+      "boolean",
+      "match_arm"
+    ],
+    "resolved_by": "parser-context",
+    "note": "boolean literal vs match_arm pattern shorthand (surface.ebnf:226,295) — arm head vs expression position"
+  },
+  {
+    "glyph": "fn",
+    "roles": [
+      "function_decl",
+      "lambda_expr",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": "function declaration and function type parse; expression-position `fn` (the lambda spelling) refuses E-SYN-110 today — statement/declaration vs type position decides"
+  },
+  {
+    "glyph": "for",
+    "roles": [
+      "for_statement",
+      "impl_decl",
+      "list_expr"
+    ],
+    "resolved_by": "parser-context",
+    "note": "loop statement vs list-comprehension generator vs impl walk — enclosing rule"
+  },
+  {
+    "glyph": "function",
+    "roles": [
+      "function_abs",
+      "item_kind"
+    ],
+    "resolved_by": "parser-context",
+    "note": "declaration introducer (`emath function F`) vs the binder expression (`function n in T: body`, surface.ebnf:261) — declaration vs expression position; the binder form is a contextual identifier activating only before identifier + `in` (primary parser lookahead)"
+  },
+  {
+    "glyph": "hole",
+    "roles": [
+      "operator-body",
+      "semantic-hole"
+    ],
+    "resolved_by": "parser-context",
+    "note": "operator-body placeholder vs semantic-hole pattern — section context"
+  },
+  {
+    "glyph": "if",
+    "roles": [
+      "conditional_expr",
+      "if_statement",
+      "list_expr",
+      "match_statement",
+      "set_comprehension"
+    ],
+    "resolved_by": "parser-context",
+    "note": "conditional statement, conditional expression, comprehension and list-comprehension filter, match arm guard — parser context"
+  },
+  {
+    "glyph": "in",
+    "roles": [
+      "binder_list",
+      "callable_binder",
+      "for_statement",
+      "function_abs",
+      "list_expr",
+      "membership_operator",
+      "quote_expr",
+      "recur_expr",
+      "set_comprehension"
+    ],
+    "resolved_by": "parser-context",
+    "note": "binder domain in the four binder families (surface.ebnf:257-268), comprehension generator, for-loop range, membership operator — the enclosing rule fixes the meaning"
+  },
+  {
+    "glyph": "infix",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "infixl",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "infixr",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "match",
+    "roles": [
+      "match_expression",
+      "match_statement"
+    ],
+    "resolved_by": "parser-context",
+    "note": "match expression parses in expression position (surface.ebnf:225); statement-leading `match` refuses E-SYN-101 — the statement spelling is contract-only"
+  },
+  {
+    "glyph": "meaning",
+    "roles": [
+      "construct-meaning-section",
+      "tuning-section"
+    ],
+    "resolved_by": "parser-context",
+    "note": "construct-meaning section vs tuning section — section context"
+  },
+  {
+    "glyph": "operator",
+    "roles": [
+      "operator-section",
+      "operator_decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "operator section vs operator declaration — section context"
+  },
+  {
+    "glyph": "postfix",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "prefix",
+    "roles": [
+      "notation_fixity",
+      "symbol-decl",
+      "syntax-decl"
+    ],
+    "resolved_by": "parser-context",
+    "note": "notation fixity vocabulary shared by symbol-decl and syntax-decl — same meaning in both"
+  },
+  {
+    "glyph": "return",
+    "roles": [
+      "answer-clause",
+      "return_statement"
+    ],
+    "resolved_by": "parser-context",
+    "note": "statement return vs genesis answer clause (routed through the portfolio machinery when inside `answer:`)"
+  },
+  {
+    "glyph": "semantic",
+    "roles": [
+      "operator-body",
+      "semantic-hole"
+    ],
+    "resolved_by": "parser-context",
+    "note": "operator-body vs semantic-hole — section context"
+  },
+  {
+    "glyph": "true",
+    "roles": [
+      "boolean",
+      "match_arm"
+    ],
+    "resolved_by": "parser-context",
+    "note": "boolean literal vs match_arm pattern shorthand (surface.ebnf:226,295) — arm head vs expression position"
+  },
+  {
+    "glyph": "use",
+    "roles": [
+      "braket_pack_mount",
+      "nabla_pack_mount",
+      "use_item"
+    ],
+    "resolved_by": "parser-context",
+    "note": "import item vs notation pack mount (braket/nabla fixed paths, surface.ebnf:182,197) — the following path literal disambiguates"
+  },
+  {
+    "glyph": "where",
+    "roles": [
+      "type_decl",
+      "type_primary"
+    ],
+    "resolved_by": "parser-context",
+    "note": "type-declaration constraints vs type_primary continuation — declaration vs expression position"
+  },
+  {
+    "glyph": "{",
+    "roles": [
+      "graph_literal",
+      "hole",
+      "match_expression",
+      "record_expr",
+      "set_comprehension",
+      "set_expr",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": "graph, hole, match, record, set-comprehension, set, use-tree delimiters — each opened only after its introducer keyword (surface.ebnf:214,225,240,250)"
+  },
+  {
+    "glyph": "|",
+    "roles": [
+      "bra_form",
+      "ket_literal",
+      "sandwich_mid",
+      "table_literal",
+      "type_operator"
+    ],
+    "resolved_by": "parser-context",
+    "note": "ket bar, bra bar, sandwich bar, table cell delimiter, type union — braket/table/type productions position-disambiguated (surface.ebnf:174,199-202)"
+  },
+  {
+    "glyph": "}",
+    "roles": [
+      "graph_literal",
+      "hole",
+      "match_expression",
+      "record_expr",
+      "set_comprehension",
+      "set_expr",
+      "use_tree"
+    ],
+    "resolved_by": "parser-context",
+    "note": "graph, hole, match, record, set-comprehension, set, use-tree delimiters — each closed by the production that opened it"
+  },
+  {
+    "glyph": "⟩",
+    "roles": [
+      "bra_form",
+      "ket_literal",
+      "sandwich_mid"
+    ],
+    "resolved_by": "parser-context",
+    "note": "ket closer, bra-form closer, sandwich closer — opened by ⟨ or the | bar in braket productions (surface.ebnf:199-202)"
+  }
+]

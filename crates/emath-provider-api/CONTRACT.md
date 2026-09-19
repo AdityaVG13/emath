@@ -42,7 +42,7 @@ registry, filter, descriptor and constellation surfaces.
   operation (the oracle stays in `emath-ir`). `ProviderBinding{capability,
   reduction_axis}` + `check_axis`: a wrong reduction axis FAILS typed
   (`E-PROVIDER-002`), never silently reinterpreted. IR purity gate
-  (Neutral IR Constitution §7, same rule as ):
+  (the neutral-IR constitution; the same rule applies on decode):
   `ir_type_gate`/`gate_signature` are an ALLOWLIST (`IR_OWNED_TYPES`:
   scalar/matrix/vector/tensor<f64>, bool); provider-native types
   (torch/jax/ndarray, …) in the public IR-facing signature refuse typed
@@ -65,7 +65,7 @@ registry, filter, descriptor and constellation surfaces.
   never silently approximate.
 - Stable IR references providers only by neutral ids. Provider-native Rust
   types and crate dependencies are confined to adapter crates.
-- Phase 1 ships no concrete providers; this API is the frozen adapter seam.
+- The native lane ships no concrete providers; this API is the frozen adapter seam.
 
 ## Error model
 
@@ -106,7 +106,7 @@ package: `tests/filter.rs` covers goal-filtering verdicts, including
 locks, and the stable-IR no-leak boundary.
 ## No-claim boundaries
 
-Phase 1 ships no concrete providers, so no provider semantics are executed
+No concrete providers ship today, so no provider semantics are executed
 by this crate. Whether a provider's output is correct is out of scope for
 the trait seam and must be established by the provider's `ResultChecker`.
 
@@ -200,7 +200,7 @@ network, no component host. Depends on `emath-core` (FNV-1a64 content id).
 - `execute` re-enforces positive fuel under every trust class before
   `E-PLG-001`, so `Trust::Local` can never admit an unmetered plugin onto an
   execution path.
-- Phase 1 has no component runtime; `execute` is always a typed refusal
+- There is no component runtime yet; `execute` is always a typed refusal
   (`E-PLG-001`).
 - `canonical_json` is byte-stable; `content_id` is the shared FNV-1a64
   convention.
@@ -215,7 +215,7 @@ mismatch), `E-PLG-005` (empty or ASCII-control-bearing plugin id).
 ## Determinism class
 
 Admission/refusal decisions, `canonical_json`, and `content_id` are
-deterministic; `execute` deterministically refuses every Phase 1 call.
+deterministic; `execute` deterministically refuses every call today.
 
 ## Cancellation behavior
 
@@ -236,9 +236,9 @@ module in `src/lib.rs`.
 
 ## No-claim boundaries
 
-Plugin execution is not implemented in Phase 1 (component runtime absent);
+Plugin execution is not implemented (component runtime absent);
 the `execute` call shape (`descriptor, input -> output`) is the stable
-surface the Phase 2+ runtime must fill. A declared permission is only as
+surface a future component runtime must fill. A declared permission is only as
 good as the gate that enforces it; no runtime verifies a plugin actually
 holds the resources it declares.
 

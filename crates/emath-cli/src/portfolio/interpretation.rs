@@ -1,4 +1,4 @@
-//! G7 interpretation portfolios: integer ranking, Pareto archive, an explicit
+//! Interpretation portfolios: integer ranking, Pareto archive, an explicit
 //! collapse gate, disqualification ledger, and byte-identical receipt replay.
 //!
 //! Authority never escalates: ranking/selection copy
@@ -84,7 +84,7 @@ impl CollapsePolicy {
     }
 }
 
-/// G7 selection policy.
+/// Interpretation selection policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InterpretationPolicy {
     /// Keep every non-dominated candidate. Never collapses.
@@ -246,7 +246,7 @@ impl PortfolioReceipt {
     }
 }
 
-/// Typed G7 refusals. Authority never escalates through a successful receipt.
+/// Typed interpretation refusals. Authority never escalates through a successful receipt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PortfolioError {
     /// `single-best` with more than one non-dominated world and no collapse.

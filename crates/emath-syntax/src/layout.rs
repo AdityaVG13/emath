@@ -11,7 +11,7 @@
 //! parses as one flow. A bare hanging infix (`y = x +` then newline) is not
 //! a continuation: `:` at the end of a binder line is not an incomplete
 //! infix, and the body's first line is complete, so NEWLINE fires and the
-//! parse splits (C4). Rewrite with brackets; the grammar does not consume a
+//! parse splits. Rewrite with brackets; the grammar does not consume a
 //! continuation after a binder `:` today.
 
 #![forbid(unsafe_code)]

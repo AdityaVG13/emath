@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Registers the Phase 1 in-tree static `native.rust` capability
+/// Registers the in-tree static `native.rust` capability
 /// (`evaluate.rust.library` → f64, exact, deterministic, E2 ceiling) so
 /// the generic planner serves the same goals the native pipeline plans.
 /// This mirrors the `provider list` status table, never a new capability.

@@ -11,7 +11,7 @@
 //! generation fails with `E-COV-UNEVIDENCED-LEVEL`. Links below
 //! `reference-impl` are provenance, not evidence; they never satisfy the gate.
 //!
-//! The seed dataset imports the Phase 3a MSC matrix (02 B01-B46) through the
+//! The seed dataset imports the MSC matrix through the
 //! rating vocabulary mapping: FULL -> reference-impl, SYNTAX-ONLY -> contract,
 //! MISSING -> none, PARTIAL -> per-facet split (the seed stores the split
 //! directly as facet ratings, never a wholesale PARTIAL). An unknown rating
@@ -64,7 +64,7 @@ pub const E_PACKAGE_UNCLAIMED: &str = "E-COV-PACKAGE-UNCLAIMED";
 /// E-COV code for a seed-claimed package absent from PACKAGE_CATALOG.
 pub const E_PACKAGE_UNKNOWN: &str = "E-COV-PACKAGE-UNKNOWN";
 
-/// Map one Phase 3a matrix rating to its support level. PARTIAL has no
+/// Map one matrix rating to its support level. PARTIAL has no
 /// wholesale mapping; the seed splits it per facet before this runs.
 #[must_use]
 pub fn rating_to_level(rating: &str) -> Option<usize> {
@@ -234,7 +234,7 @@ pub fn ledger_json() -> Result<String, String> {
     root.string("support_levels", &SUPPORT_LEVELS.join("<"));
     root.string(
         "seed_provenance",
-        "Phase 3a MSC matrix (02 B01-B46) rollup: 5 FULL, 16 PARTIAL, 14 SYNTAX-ONLY, 22 MISSING across 57 sub-areas; imported at super-domain granularity",
+        "MSC matrix rollup: 5 FULL, 16 PARTIAL, 14 SYNTAX-ONLY, 22 MISSING across 57 sub-areas; imported at super-domain granularity",
     );
     root.int("domains", total_domains);
     root.int("facets_total", total_facets);

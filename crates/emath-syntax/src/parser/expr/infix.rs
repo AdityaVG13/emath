@@ -3,7 +3,7 @@
 use super::*;
 
 impl super::super::Parser {
-    // ---- B12: logic connectives ==> and <==>) -------------------------
+    // ---- logic connectives ==> and <==>) -------------------------
 
     /// `<==>` — biconditional (lowest precedence, left-associative).
     pub(super) fn parse_iff(&mut self, depth: usize) -> Option<Expr> {
@@ -143,7 +143,7 @@ impl super::super::Parser {
                 }
             }
         }
-        // B18: `f ~~ g` — asymptotic equivalence at comparison precedence.
+        // `f ~~ g` — asymptotic equivalence at comparison precedence.
         // Lowers to a limit claim in sema.
         let left = self.parse_additive(depth)?;
         if matches!(self.peek(), TokenKind::TildeTilde) {
@@ -159,7 +159,7 @@ impl super::super::Parser {
                 source: span,
             });
         }
-        // 04 §6.4: `a ≈ b` /
+        // `a ≈ b` /
         // `a ~= b` builds the Approx expr; the optional
         // `within rtol=…, atol=…` clause (either key, either order, at
         // least one) is the DECLARED tolerance and is recorded — never

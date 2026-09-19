@@ -29,7 +29,7 @@ pub(super) const WORLD_IR_WORLD_NAMES: [&str; 8] = [
 /// Default evaluation world when `--world` / `:world` is omitted.
 pub(super) const DEFAULT_WORLD: &str = "free_symbolic";
 
-/// One VM evaluation with ADR-004 provenance on every print.
+/// One VM evaluation with receipt provenance on every print.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct EvalReceipt {
     pub(super) answer: String,

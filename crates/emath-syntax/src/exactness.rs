@@ -254,7 +254,7 @@ fn ledger_from_expansion(
         ExactnessDimension::Numeric,
         ExactnessStatus::Inferred,
         "strict-f64",
-        "numeric policy inferred from the Phase 1 host; freeze must not raise evidence",
+        "numeric policy inferred from the host; freeze must not raise evidence",
     );
     push(
         &mut entries,

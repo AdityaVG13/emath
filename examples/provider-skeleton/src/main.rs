@@ -1,6 +1,6 @@
-//! Provider skeleton: a Phase 2+ adapter seam, wired today as a typed
-//! refusal. Phase 1 has no providers; this example demonstrates the
-//! capability contract without faking support (Constitution §6: never
+//! Provider skeleton: an adapter seam, wired today as a typed
+//! refusal. no providers exist yet; this example demonstrates the
+//! capability contract without faking support (Constitution: never
 //! silently accept what you do not implement).
 
 use emath_core::{ContentId, SchemaId, bootstrap_content_id};
@@ -46,12 +46,12 @@ impl Provider for NativePlaceholderSkeleton {
     fn supports(&self, _goal: &Goal) -> CapabilityReport {
         CapabilityReport {
             // The skeleton advertises the *capability shape* but refuses
-            // execution: Phase 1 substitutes no provider work.
+            // execution: no provider work is substituted today.
             supported: false,
             reasons: vec![CapabilityReason {
                 code: "PHASE1-NO-PROVIDERS".to_string(),
                 detail: format!(
-                    "Phase 1 ships the native path only; `{PROVIDER_ID}` is a typed-refusal skeleton, not a provider"
+                    "The native path is the only shipped path; `{PROVIDER_ID}` is a typed-refusal skeleton, not a provider"
                 ),
             }],
             estimated_cost: Some(CostEstimate {
@@ -122,5 +122,5 @@ fn main() {
         &NeverCancel,
     );
     assert!(matches!(outcome, Outcome::Unresolved { .. }));
-    println!("{PROVIDER_ID} refuses with a typed capability report (Phase 2 seam)");
+    println!("{PROVIDER_ID} refuses with a typed capability report (future provider seam)");
 }

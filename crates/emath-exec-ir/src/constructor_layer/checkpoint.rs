@@ -1,7 +1,7 @@
 use super::*;
 use super::prelude::*;
 
-/// Encode-side buffer identity table (bead emath-84sfr, the ENCODE
+/// Encode-side buffer identity table (the ENCODE
 /// checkpoint decision): the first occurrence of a distinct buffer
 /// emits its contents under a fresh id; later occurrences emit
 /// `(bufref id)` so aliasing survives the round-trip — decoding two
@@ -378,7 +378,7 @@ pub(super) fn compact_key(value: &CValue, out: &mut String) -> Option<()> {
             Some(())
         }
         // Buffers refuse memo keys: a key over mutable state would
-        // freeze a snapshot while writes continue (bead emath-84sfr),
+        // freeze a snapshot while writes continue,
         // so calls touching buffers simply do not memoize.
         CValue::Closure(_) | CValue::Code(_) | CValue::Receipt(_) | CValue::Buffer(_) => None,
     }
@@ -1045,7 +1045,7 @@ pub(super) fn decode_cvalue(
     }
     if text.starts_with('(') {
         // Structured values decode against the SHARED ctx so buffer
-        // references resolve within this checkpoint (bead emath-84sfr);
+        // references resolve within this checkpoint;
         // `decode_structured` stays for standalone self-contained texts.
         let mut cur = Cursor::new(text);
         return decode_cvalue_cur(&mut cur, ctx);

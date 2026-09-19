@@ -1,6 +1,6 @@
 //! Seed dataset for the coverage ledger: one row per MSC super-domain.
 //!
-//! Imported from the Phase 3a MSC matrix (02 B01-B46) through the rating
+//! Imported from the MSC matrix through the rating
 //! vocabulary: FULL -> reference-impl, SYNTAX-ONLY -> contract, MISSING ->
 //! none, PARTIAL -> per-facet split (expressed here as the per-facet rating
 //! words themselves; a wholesale PARTIAL is never stored).

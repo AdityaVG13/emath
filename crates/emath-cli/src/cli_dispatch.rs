@@ -496,7 +496,7 @@ pub enum FileJsonRequest {
     Ready {
         path: PathBuf,
         json: bool,
-        /// `check --verify-data` (04 §5.2): re-hash declared sha256
+        /// `check --verify-data`: re-hash declared sha256
         /// provenance files and refuse drift as `E-OBS-HASH`.
         verify_data: bool,
     },
@@ -506,7 +506,7 @@ pub fn parse_file_json_request(args: &[String]) -> Option<FileJsonRequest> {
     parse_file_request_inner(args, false)
 }
 
-/// `check` additionally admits `--verify-data` (04 §5.2); plan/expand/
+/// `check` additionally admits `--verify-data`; plan/expand/
 /// assumptions reject it through the catalog flag whitelist.
 pub fn parse_check_request(args: &[String]) -> Option<FileJsonRequest> {
     parse_file_request_inner(args, true)

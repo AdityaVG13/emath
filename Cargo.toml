@@ -4,7 +4,6 @@ members = [
   "crates/emath-core",
   "crates/emath-syntax",
   "crates/emath-ir",
-  "crates/emath-goal",
   "crates/emath-plan",
   "crates/emath-sema",
   "crates/emath-exec-ir",
@@ -15,7 +14,6 @@ members = [
   "crates/emath-artifact",
   "crates/emath-provider-api",
   "crates/emath-build",
-  "crates/emath-macro",
   "crates/emath-lab-core",
   "crates/emath-evidence",
   "crates/emath-schema",
@@ -75,7 +73,6 @@ emath-test-harness = { path = "tests/harness" }
 emath-core = { path = "crates/emath-core" }
 emath-syntax = { path = "crates/emath-syntax" }
 emath-ir = { path = "crates/emath-ir" }
-emath-goal = { path = "crates/emath-goal" }
 emath-plan = { path = "crates/emath-plan" }
 emath-sema = { path = "crates/emath-sema" }
 emath-exec-ir = { path = "crates/emath-exec-ir" }
@@ -84,7 +81,6 @@ emath-rt = { path = "crates/emath-rt" }
 emath-artifact = { path = "crates/emath-artifact" }
 emath-provider-api = { path = "crates/emath-provider-api" }
 emath-build = { path = "crates/emath-build" }
-emath-macro = { path = "crates/emath-macro" }
 emath-lab-core = { path = "crates/emath-lab-core" }
 emath-evidence = { path = "crates/emath-evidence" }
 emath-hir = { path = "crates/emath-hir" }
@@ -98,23 +94,22 @@ emath-genesis = { path = "crates/emath-genesis" }
 emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
 emath-wasm = { path = "crates/emath-wasm" }
 emath-registry = { path = "crates/emath-registry" }
-# FrankenStack base infrastructure (CUTOVER_PLAN.md §1/§9): asupersync
-# replaces tokio. Optional + feature-gated: Phase 1 ships std-only with zero
+# FrankenStack base infrastructure: asupersync
+# replaces tokio. Optional + feature-gated: ships std-only with zero
 # mandatory third-party deps. Exact-commit pin mirrors UPSTREAM_LOCK.json
 # row 11; never move to a floating version.
 # Optionality is decided per consumer (emath-cli lsp gate: async-runtime feature),
 # so this entry must not be marked optional (Cargo rejects that at workspace
 # level).
 asupersync = { git = "https://github.com/Dicklesworthstone/asupersync.git", rev = "9eb0600e6ef4d17633dff3dc43ad99c64e72adbe", default-features = false }
-# frankensqlite evidence-state engine (CUTOVER_PLAN.md §5.2/§9.10, pass 1):
+# frankensqlite evidence-state engine:
 # fsqlite facade (frankensqlite workspace) at exact-commit pin
 # 8281cf285433b1746d9c29a598152e58cc205bd8 (v0.3.11 release). Optional for the
 # workspace; the consumer (emath-store sqlite-store feature) decides
 # optionality, so this entry must not be marked optional (Cargo rejects that at
 # workspace level).
 fsqlite = { git = "https://github.com/Dicklesworthstone/frankensqlite.git", rev = "8281cf285433b1746d9c29a598152e58cc205bd8", default-features = false }
-# frankensearch artifact-corpus search engine (CUTOVER_PLAN.md §5.4/§9.12,
-# pass 3): facade `frankensearch` v0.3.2 from repository release v1.7.0 at
+# frankensearch artifact-corpus search engine: facade `frankensearch` v0.3.2 from repository release v1.7.0 at
 # exact-commit pin 22859f74056c31fd3a713bacecd4a1f22f0cf82d.
 # Unlike frankensqlite/frankengraphdb, frankensearch declares asupersync
 # internally as a crates.io VERSION RANGE (>=0.4.4, <0.5), NOT an internal

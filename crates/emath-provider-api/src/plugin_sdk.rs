@@ -5,7 +5,7 @@
 //!
 //! [`admit`] is the sandbox/fuel/permission gate with typed refusals
 //! (`E-PLG-002`, `E-PLG-003`, `E-PLG-005`); [`execute`] is a typed refusal
-//! (`E-PLG-001`) until the Phase 2 component runtime lands, re-enforcing
+//! (`E-PLG-001`) until the component runtime lands, re-enforcing
 //! positive fuel under every trust class. No network, no component host,
 //! std-only.
 
@@ -213,7 +213,7 @@ pub fn admit(descriptor: &PluginDescriptor, trust: Trust) -> Result<(), PluginEr
     Ok(())
 }
 
-/// The harness entry point (deterministic contract): Phase 1 has no
+/// The harness entry point (deterministic contract): has no
 /// component runtime, so execution is a typed refusal (`E-PLG-001`), and
 /// the fuel gate applies under every trust class (`E-PLG-002`).
 pub fn execute(
@@ -237,7 +237,7 @@ pub fn execute(
     Err(PluginError::new(
         "E-PLG-001",
         format!(
-            "plugin `{}` cannot execute: component runtime absent in the Phase 1 subset",
+            "plugin `{}` cannot execute: component runtime absent",
             descriptor.id
         ),
     ))

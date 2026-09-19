@@ -2,18 +2,18 @@
 
 ## Purpose and layer
 
-Tier 3 (goals and providers) Modelica-subset import adapter. Phase 1
+Tier 3 (goals and providers) Modelica-subset import adapter. The native lane
 implements the structural lane with in-tree native stand-ins: structural/
 equation IR, compiler-phase census, dynamic-model subset contract,
 emath-to-DAE lowering, DAE-plan and simulation providers, semantic mapping
 table, subset import, MSL conformance ladder, versioned provider seam, and
-diagnostic mapping. No upstream Rumoca engine is consumed in Phase 1.
+diagnostic mapping. No upstream Rumoca engine is consumed.
 
 No-claim fence (DISC-004, `tests/conformance/DISCREPANCIES.md`): the
 stand-in's intended upstream revision is the locked row
 `forks/UPSTREAM_LOCK.json` → `id: "rumoca"` → commit
 `5bafcd90f3410654f258fded7783ca493c3f4a77` (recorded here because the
-Phase-1 `ProviderVersion` carries only adapter semver, no upstream
+current `ProviderVersion` carries only adapter semver, no upstream
 string). Conformance claims against that revision are future work;
 `scripts/check_upstream_lock.py` pins this binding textually.
 
@@ -89,7 +89,7 @@ hostile-budget refusal) and `tests/census.rs` (phase and stability).
 
 ## No-claim boundaries
 
-Phase 1 consumes no upstream Rumoca engine; the structural lane is a native
+The native lane consumes no upstream Rumoca engine; the structural lane is a native
 stand-in. Import covers only the documented Modelica subset
 (`E-KIND-310..312`); the MSL conformance ladder assesses the subset, not
 full MSL conformance.

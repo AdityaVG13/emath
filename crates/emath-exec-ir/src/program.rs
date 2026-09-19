@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Domain obligations recorded during lowering. Phase 1 semantics: the
+/// Domain obligations recorded during lowering. semantics: the
 /// obligation is emitted as an assumption (strict-f64 IEEE behavior); no
 /// silent erasure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

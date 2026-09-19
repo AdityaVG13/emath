@@ -19,7 +19,7 @@ pub use probability::ProbError as DistributionKernelError;
 
 /// Unit-interval uniforms in [0, 1) from an explicit seed and stream path.
 /// Same seed and path replay bit-identically. This is the remaining native
-/// counter-stream leaf (bead emath-nwmm6); distribution transforms above it
+/// counter-stream leaf; distribution transforms above it
 /// are authored language definitions.
 pub fn unit_interval_stream(
     seed: f64,

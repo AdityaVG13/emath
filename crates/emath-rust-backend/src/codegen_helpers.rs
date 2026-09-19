@@ -177,7 +177,7 @@ pub(crate) fn collect_var_names(package: &SemanticPackage, id: ExprId, out: &mut
             out.extend(free);
         }
         // A series data constant carries no free variables: the pairs
-        // are literals and the policy is declared (04 §5.4 slice 1).
+        // are literals and the policy is declared.
         ExprNode::Series { .. } => {}
     }
 }

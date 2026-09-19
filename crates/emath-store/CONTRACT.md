@@ -5,7 +5,7 @@
 Evidence/artifact *state* store: per-artifact evidence rows backed by the
 frankensqlite engine (fsqlite crate) instead of the single hashed
 emath/artifact-manifest.json file. Layer: storage adapter external to the
-protected set (CUTOVER_PLAN.md section 5.2 / section 9.10); it may import
+protected set; it may import
 frankensqlite; emath-core / emath-ir / emath-artifact stay Frank-free.
 
 The manifest JSON wire contract is untouched: emath-evidence, ERROR_CODES.md

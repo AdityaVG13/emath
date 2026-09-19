@@ -110,13 +110,13 @@ impl super::Parser {
                 };
                 self.advance();
                 if self.eat(&TokenKind::Eq) {
-                    // `type Alias = RHS`: Phase 1 defines no alias semantics,
+                    // `type Alias = RHS`: defines no alias semantics,
                     // and the tree would record only Command["type", alias]
                     // with `argument: None`, silently dropping the RHS.
                     // Refuse loudly (E-TYPE-111) per the no-silent-accept rule.
                     self.error_here(
                         "E-TYPE-111",
-                        "type aliases (type X = T) are outside the Phase 1 subset",
+                        "type aliases (type X = T) are outside the current subset",
                     );
                     None
                 } else if self.eat(&TokenKind::Colon) {
@@ -158,7 +158,7 @@ impl super::Parser {
                     },
                 ))
             }
-            // 04 §2.5: the action
+            // the action
             // integral binder `S = action integral t in t0..t1:
             // L(q(t), der(q(t)), t)`. The action is a FUNCTIONAL (a
             // map from trajectories to Real) — it admits only
@@ -183,7 +183,7 @@ impl super::Parser {
                 );
                 None
             }
-            // 04 §2.5: the variation
+            // the variation
             // goal `variation <S> wrt q:` — a custom goal verb that
             // lowers to core goals (ch9 contract): the Euler-Lagrange
             // residual built from admitted derivatives, simplified by
@@ -212,7 +212,7 @@ impl super::Parser {
                 let expr = self.parse_expr()?;
                 Some(self.stmt(start, StmtKind::Expect(expr)))
             }
-            // 04 §5.2: `obs <name>[: <type>]
+            // `obs <name>[: <type>]
             // = <data>` inside an `observations:` section — a measured
             // datum, never a definition. The row is losslessly a
             // `FieldDecl` with its value as the default; admission owns
@@ -274,7 +274,7 @@ impl super::Parser {
                     },
                 ))
             }
-            // B04/B06: contextual keywords `limit`, `sample_limit`, `series`
+            // contextual keywords `limit`, `sample_limit`, `series`
             // in statement position. When followed by the right tokens,
             // parse as an expression statement, not a command.
             "limit" | "sample_limit"
@@ -291,7 +291,7 @@ impl super::Parser {
                 let expr = self.parse_expr()?;
                 Some(self.stmt(start, StmtKind::Expr(expr)))
             }
-            // U1: `cases [subject]: | ...` in statement position.
+            // `cases [subject]: | ...` in statement position.
             "cases"
                 if matches!(self.peek_at(1), TokenKind::Colon)
                     || (matches!(self.peek_at(1), TokenKind::Ident(_))

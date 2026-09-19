@@ -77,7 +77,7 @@ pub struct KindSchema {
 }
 
 impl KindSchema {
-    /// Frozen core object schema (constitution §3.2).
+    /// Frozen core object schema (the constitution).
     #[must_use]
     pub fn core_object() -> Self {
         Self {
@@ -137,7 +137,7 @@ impl KindSchema {
         }
     }
 
-    /// Frozen core query schema (constitution §3.6).
+    /// Frozen core query schema (the constitution).
     #[must_use]
     pub fn core_query() -> Self {
         Self {
@@ -230,7 +230,7 @@ impl KindSchema {
                 (
                     "inputs".into(),
                     SectionSchema {
-                        // Constitution §3.1: required, and may be empty.
+                        // Constitution required, and may be empty.
                         repeat: RepeatPolicy::ExactlyOne,
                         payload: PayloadPolicy::Fields,
                         has_default: false,
@@ -239,7 +239,7 @@ impl KindSchema {
                 (
                     "outputs".into(),
                     SectionSchema {
-                        // Constitution §3.1: required named typed results.
+                        // Constitution required named typed results.
                         repeat: RepeatPolicy::ExactlyOne,
                         payload: PayloadPolicy::Fields,
                         has_default: false,

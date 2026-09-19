@@ -1,4 +1,4 @@
-//! SG-16 production path: verify a homomorphism, reject a seeded wrong
+//! World-morphism production path: verify a homomorphism, reject a seeded wrong
 //! map, dedupe an isomorphic pair, quotient a mergeable table, and mine
 //! shared invariants across a three-world portfolio.
 

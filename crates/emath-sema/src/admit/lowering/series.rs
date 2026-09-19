@@ -20,7 +20,7 @@ impl super::super::Admitter {
             .any(|d| d.code == "E-NAME-023" && d.message == expected)
     }
 
-    /// 04 §5.4: resolve one series pair element to its SI scalar. Only
+    /// resolve one series pair element to its SI scalar. Only
     /// data literals admit: a quantity (`2.5 mg/L`) scales to SI; a bare
     /// numeric is dimensionless. Anything else (variables, calls,
     /// expressions) is not a datum — the series is not executable in
@@ -203,7 +203,7 @@ impl super::super::Admitter {
                 arms,
                 else_arm,
             } => {
-                // U1: Lower `cases: | c1 => e1 | c2 => e2 | else => e3`
+                // Lower `cases: | c1 => e1 | c2 => e2 | else => e3`
                 // to nested `If { c1, e1, If { c2, e2, e3 } }`.
                 // The subject is for readability only (arm conditions
                 // are full expressions, not pattern matches).
@@ -348,7 +348,7 @@ impl super::super::Admitter {
                 self.error(
                     E_UNSUPPORTED_TYPE,
                     format!(
-                        "`{query}` is a compile-time query: it parses, but Phase 1 does not evaluate it"
+                        "`{query}` is a compile-time query: it parses, but the current lane does not evaluate it"
                     ),
                     expr.source,
                 );
@@ -358,7 +358,7 @@ impl super::super::Admitter {
                 self.error(
                     E_UNSUPPORTED_TYPE,
                     format!(
-                        "expression form `{}` is outside the Phase 1 strict-f64 subset",
+                        "expression form `{}` is outside the current strict-f64 subset",
                         expr_form_name(other)
                     ),
                     expr.source,

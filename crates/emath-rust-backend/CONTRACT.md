@@ -2,7 +2,7 @@
 
 ## Purpose and layer
 
-Rust backend: universal EMIR and artifact contracts to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (per CRATE_MAP.md). The backend emits structural operations and universal control/data operations; mathematical meaning is not selected by feature names or domain-specific emitter branches. Semantic operations must arrive through `ApplyCapability` plus a materializable artifact contract. Phase 1 generates one crate per admission: a struct plus constructor for stateful declarations, a free function (not a method on an empty struct) when there is no state and no constructors, an evaluation item per `evaluate <target>` goal, explicit step methods for `model` declarations, and `#[test]` functions for the `tests:` section. Every generated crate embeds the `emath-rt` kernel module verbatim (`mod emath_rt { ... }` from `emath_rt::SOURCE`) and remains std-only, `#![forbid(unsafe_code)]`, and byte-deterministic.
+Rust backend: universal EMIR and artifact contracts to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (per CRATE_MAP.md). The backend emits structural operations and universal control/data operations; mathematical meaning is not selected by feature names or domain-specific emitter branches. Semantic operations must arrive through `ApplyCapability` plus a materializable artifact contract. The backend generates one crate per admission: a struct plus constructor for stateful declarations, a free function (not a method on an empty struct) when there is no state and no constructors, an evaluation item per `evaluate <target>` goal, explicit step methods for `model` declarations, and `#[test]` functions for the `tests:` section. Every generated crate embeds the `emath-rt` kernel module verbatim (`mod emath_rt { ... }` from `emath_rt::SOURCE`) and remains std-only, `#![forbid(unsafe_code)]`, and byte-deterministic.
 
 ## Public types and semantics
 
@@ -26,7 +26,7 @@ Rust backend: universal EMIR and artifact contracts to deterministic Rust via th
 - Program literals retain typed captures. Literal frames bind their own inputs and state. Nested frames and programs disable outer register inlining, so outer substitutions cannot change inner bindings.
 - Text formatting uses positional operands and preserves literal braces. Statistical estimates use the authored `Estimate` record layout.
 - `SameVector`, `SameMatrix`, and `SameTensor` result signatures retain their dense carrier kind. Authored guards retain shape validation.
-- Phase 1 subset: one constructor and one evaluate goal per declaration.
+- Current subset: one constructor and one evaluate goal per declaration.
   `Float64` is `f64`; `Int`/`Nat` are exact `i64` (`ConstI64` is not
   widened through f64). Mixed Int/Float64 arithmetic widens to `f64`.
   Rank-3+ values are `emath_rt::Tensor`. Index/slice emit checked
@@ -76,7 +76,7 @@ Legacy domain-render assertions are not part of this contract. They must be migr
 
 ## No-claim boundaries
 
-- Only the Phase 1 subset is generated: a declaration needs exactly one evaluate goal and supports one constructor. Admitted types: `Float64`, `Bool`, `Int`, `Nat`, vectors/matrices/tensors, authored records, host opaques. Other types yield `UnsupportedType`.
+- Only the current subset is generated: a declaration needs exactly one evaluate goal and supports one constructor. Admitted types: `Float64`, `Bool`, `Int`, `Nat`, vectors/matrices/tensors, authored records, host opaques. Other types yield `UnsupportedType`.
 - Capability generation reads the verified installed distribution. With no native binding, an installed reference program supplies the body. Argument count must match. Separate cell guards and result guards still refuse rather than disappear. Unsupported instructions retain their existing refusals. Native bindings still require a matching artifact contract; the backend does not recover legacy domain dispatch.
 - No certification power; generated crates carry invariants but the backend itself performs no evidence checks.
 

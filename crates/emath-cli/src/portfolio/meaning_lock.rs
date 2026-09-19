@@ -3,7 +3,7 @@
 //!
 //! Locks are local-side (per-user, per-project). They are not baked into
 //! shared source. The locked identity is the same world fingerprint used
-//! by G7 [`crate::portfolio::WorldCandidate::world_fingerprint`] (`WorldIr::identity`).
+//! by the interpretation [`crate::portfolio::WorldCandidate::world_fingerprint`] (`WorldIr::identity`).
 
 use std::collections::BTreeMap;
 use std::fmt;

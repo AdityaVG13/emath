@@ -4,6 +4,38 @@
   "label": "contract docs",
   "bumps": [
     {
+      "date": "2026-09-19",
+      "note": "dead-surface cut: xtask affine-scorer/semantic-genesis demos and the emath-build macro seam removed; E-CODEGEN-011 story and annex row cut; stale crate-path citations repointed (requests/codegen/goals/genesis -> live emitters); dead command citations (build --verify, compile --parametric) dropped from live-code stories; annex regenerated (394 emitted codes); remaining old-path citations repointed (Genesis CLI header, kernel/witness/constitution rows)"
+    },
+    {
+      "date": "2026-09-19",
+      "note": "issued list reconciled with the emitted set: 42 dead-code stories cut (emitters removed by the constructor cutover and dead-lane cuts), E-CODEGEN-013 story added (one runnable entry per crate); annex re-spliced"
+    },
+    {
+      "date": "2026-09-19",
+      "note": "annex spliced from the renamed emitted messages via dump_error_codes.py (395 emitted codes; E-CODEGEN-013 newly covered); head stories unchanged"
+    },
+    {
+      "date": "2026-09-19",
+      "note": "annex regenerated from the renamed emitted messages (current-subset wording); stale tests/emath-core row cut from CRATE_MAP (consolidated test surface)"
+    },
+    {
+      "date": "2026-09-19",
+      "note": "final code-label cut: X12/N4 story labels, Phase-4 golden row label removed; text-only, no error-code semantics changed"
+    },
+    {
+      "date": "2026-09-19",
+      "note": "observable-vocabulary rename: Phase-1-subset refusal stories and quoted messages updated to current-subset wording; E-TLT-004/E-CODEGEN-012 quotes matched to the new emitted messages; no error-code semantics changed"
+    },
+    {
+      "date": "2026-09-19",
+      "note": "B5 dead-crate disposal: emath-goal and emath-macro removed from the workspace and the map; their rows and the emath-macros rename note cut"
+    },
+    {
+      "date": "2026-09-12",
+      "note": "de-coding pass: internal code labels and stage vocabulary cut from ERROR_CODES and CLI_REFERENCE prose; text-only, no error-code semantics changed"
+    },
+    {
       "date": "2026-09-10",
       "note": "gauntlet passes 4-5: E-SEC-133 emitter list gains the rust-backend goal loop (the multi-goal codegen comment cites the default-evaluate law); annex re-spliced (449 emitted, 0 newly covered). No new codes."
     },
@@ -145,9 +177,9 @@
     "gauntlet pass 10 coordination: CalmPine's category authored-reference migration (uncommitted in tree) removed native_kernels/category.rs from the E-TYPE-012 emitter list; annex re-spliced to the current emission set (449 emitted, 0 newly covered). No new codes."
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "920171f3f17f48643c91e0c29ed1d0b815ed41767f37c0500a096e4021a62a4a",
-    "implementation/CLI_REFERENCE.md": "6895b32720661822a283abddeecc1f7524184c0780e1239559e1ee87075d71df",
-    "implementation/CRATE_MAP.md": "c6a18e0143d669b1b457abf6e36d96f097ea957acf97d00b117543cff06e5695",
+    "implementation/ERROR_CODES.md": "cea87a9c519cc937f212be2be4ccd0bad308833fb37417de5a436548ea8cb6fa",
+    "implementation/CLI_REFERENCE.md": "c67574c4d241606bc4d3c75c932ea849e25708296352e186d288b03df67d6949",
+    "implementation/CRATE_MAP.md": "019c5b85b04dc89e31cb5eec2ecd75a936213ba8f1fd0bb074d598217a173ec7",
     "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"
   }
 }

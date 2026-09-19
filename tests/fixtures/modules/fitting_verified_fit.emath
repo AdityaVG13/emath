@@ -1,4 +1,4 @@
-# Module acceptance fixture: the verified-unique fit request at E1 full
+# Module acceptance fixture: the verified-unique fit request at full
 # scale. Lexicographic acceptance: the hillclimb rests on the global
 # optimum, the exhaustive scan confirms uniqueness, and the returned
 # candidate record is accepted with scope 1, exact-zero score and a

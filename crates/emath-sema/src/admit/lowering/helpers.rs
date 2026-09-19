@@ -226,7 +226,7 @@ impl super::super::Admitter {
                 return None;
             }
         };
-        // B02: if a guard is present, wrap the body in a conditional:
+        // if a guard is present, wrap the body in a conditional:
         // if guard then body else identity.
         let body_id = if let Some(guard_expr) = guard {
             let (guard_id, guard_infer) = match self.lower_expr(guard_expr) {
@@ -434,7 +434,7 @@ impl super::super::Admitter {
         ))
     }
 
-    /// Table literal (U9): headers live only in the receipt; cells lower
+    /// Table literal: headers live only in the receipt; cells lower
     /// through the matrix element path (numeric gate, uniform extents).
     pub(super) fn lower_table_literal(
         &mut self,
@@ -627,7 +627,7 @@ impl super::super::Admitter {
         };
         if indices.len() != axes.len() {
             // A single index on a vector-of-vectors asks for the row as a
-            // VALUE; the Phase 1 runtime has no row value (rows exist only
+            // VALUE; the runtime has no row value (rows exist only
             // inside the matrix store), so require the full index chain.
             // Depth of the Vector-element chain (2 = Vector<Vector<..>>).
             let mut nest_depth = 0usize;
@@ -654,13 +654,13 @@ impl super::super::Admitter {
             if nest_depth >= 3 {
                 self.error(
                     "E-TYPE-012",
-                    "nested vectors deeper than two levels have no Phase 1 runtime value; use Tensor<Float64> with one index per axis",
+                    "nested vectors deeper than two levels have no runtime value yet; use Tensor<Float64> with one index per axis",
                     expr.source,
                 );
             } else if nest_depth == 2 {
                 self.error(
                     "E-SHAPE-006",
-                    "indexing a nested vector needs every level at once (`m[i, j]`); row extraction is not a Phase 1 value",
+                    "indexing a nested vector needs every level at once (`m[i, j]`); row extraction is not a value today",
                     expr.source,
                 );
             } else {

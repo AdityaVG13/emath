@@ -74,7 +74,7 @@ pub fn locked_build_script(
         });
     }
     // Locked mode: refuse dependency plans that require network access.
-    // The generated crate is std-only in the native runtime (Phase 1), so
+    // The generated crate is std-only in the native runtime, so
     // this is a guard for future profiles rather than a silent pass.
     if !lock.allow_network
         && plan_dependencies(&[], &DepPolicy::strict_local())

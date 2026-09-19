@@ -419,7 +419,7 @@ pub struct Event {
     pub name: String,
     /// Dimensionless trigger condition.
     pub condition: EqExpr,
-    /// Continuous-time event (Phase 1 subset: must be true).
+    /// Continuous-time event (current subset: must be true).
     pub continuous: bool,
 }
 

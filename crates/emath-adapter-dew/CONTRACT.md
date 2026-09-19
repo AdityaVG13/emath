@@ -26,7 +26,7 @@ versioned seam without consuming an upstream engine.
   (`run_boundary_cases`, `scan_reference_boundaries`, `detect_drift`,
   `evaluate_scalar`, `detect_seeded_wrong_result`). `evaluate_scalar` is the Dew-adapter
   evaluation path (bit-exact IEEE-754 binary64 for arithmetic, same
-  class as native exec-ir). `detect_seeded_wrong_result` is a Phase 3
+  class as native exec-ir). `detect_seeded_wrong_result` is a
   planted-value control, not a differentiate producer.
 - `AdapterSeam`, `PatchLedger`, `PatchOutcome`, `ProviderVersion`, `SeamError`:
   versioned adapter-facing API with a patch ledger.
@@ -72,15 +72,15 @@ None (`Cargo.toml` has no `[features]`).
 
 No `tests/` directory on disk in this crate. Integration coverage lives in
 `tests/emath-adapter-dew`: capability inventory, backend recusals,
-oracle boundary/drift, `native_and_dew_agree_on_scalar_corpus` (Phase 2
+oracle boundary/drift, `native_and_dew_agree_on_scalar_corpus` (
 native exec-ir ↔ Dew `evaluate_scalar` bit-exact agreement over the
 `tests/valid` scalar corpus plus adapter fixtures), and
-`seeded_wrong_derivative_result_is_refused` (Phase 3 planted-value
+`seeded_wrong_derivative_result_is_refused` (planted-value
 control via `detect_seeded_wrong_result`).
 
 ## No-claim boundaries
 
-Phase 1 consumes no upstream Dew engine. The Phase 2 differential lane
+The native lane consumes no upstream Dew engine. The later differential lane
 compares the in-tree native exec-ir interpreter against the Dew adapter
 evaluator, not an upstream Dew runtime. The accelerator inventory is a
 capability classification, not a runtime; JIT selection is advisory

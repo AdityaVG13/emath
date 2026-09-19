@@ -122,7 +122,7 @@ pub struct SourceMap {
     pub entries: Vec<SourceMapEntry>,
 }
 
-/// `emath.resolution-plan` (provider-free Phase 1 mirror of GIR plan).
+/// `emath.resolution-plan` (provider-free mirror of GIR plan).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlanRecord {
     pub schema: SchemaId,

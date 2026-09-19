@@ -5,7 +5,7 @@ impl super::Parser {
     // ---- types ---------------------------------------------------------
 
     /// Parse a generic argument inside `<...>` or `[...]` at a type use site.
-    /// C10: accepts types, value literals, expressions, and named args.
+    /// accepts types, value literals, expressions, and named args.
     pub(super) fn parse_generic_arg(&mut self) -> Option<GenericArg> {
         // Named argument: `identifier = expression`
         if let TokenKind::Ident(name) = self.peek().clone() {
@@ -38,7 +38,7 @@ impl super::Parser {
         let start = self.current_span();
         let mut base = self.parse_type_product()?;
         if self.eat_keyword(Keyword::In) {
-            // U5: Domain annotation `Float64 in [lo, hi]` - when `in`
+            // Domain annotation `Float64 in [lo, hi]` - when `in`
             // is followed by `[`, parse bounds as expressions.
             if matches!(self.peek(), TokenKind::LBracket) {
                 self.advance(); // consume `[`
@@ -193,13 +193,13 @@ impl super::Parser {
                         self.advance();
                     }
                     _ => {
-                        // `fn` type: function types are outside the Phase 1
+                        // `fn` type: function types are outside the current
                         // strict subset. Refuse loudly (E-TYPE-110) instead of
                         // recording a lossy Path(["fn"]) with the inner
                         // signature discarded.
                         self.error_here(
                             "E-TYPE-110",
-                            "function types (fn(params) -> T) are outside the Phase 1 subset",
+                            "function types (fn(params) -> T) are outside the current subset",
                         );
                         return None;
                     }

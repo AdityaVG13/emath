@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-//! Negative parser witnesses: constructs the Phase 1 strict subset does not
+//! Negative parser witnesses: constructs the strict subset does not
 //! implement must be refused with a stable diagnostic instead of being
 //! parsed into lossy trees (fn types as Path(["fn"]), type aliases with
 //! the RHS dropped, generic extern operator parameters discarded, broken
@@ -19,7 +19,7 @@ fn error_codes(text: &str) -> Vec<String> {
 #[test]
 fn probe() {
     let mut p = Probe::new(
-        "Phase 1 refuses fn types, type aliases, generic extern operators, and broken args; the baseline parses clean",
+        "The strict subset refuses fn types, type aliases, generic extern operators, and broken args; the baseline parses clean",
     );
     for (name, source, code) in [
         (

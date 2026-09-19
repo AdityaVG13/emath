@@ -1,7 +1,7 @@
-# Sequence-passage cost fixture (bead emath-g9rpo): the heavy row
+# Sequence-passage cost fixture: the heavy row
 # passes a 1000-element sequence through ~13k recursive calls; with a
-# deep-copy carrier every engine step cloned the whole sequence (PE P8
-# shape: 17.4s wall for ~13k indexed reads). All-7 digits make every
+# deep-copy carrier every engine step cloned the whole sequence (the
+# pre-repair shape: 17.4s wall for ~13k indexed reads). All-7 digits make every
 # k-window product 7^k, so the expected answers are hand-derivable
 # (7^3 = 343, 7^13 = 96889010407). Pinned by elapsed wall band in
 # tests/emath-cli/tests/sequence_passage_wall.rs.

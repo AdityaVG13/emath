@@ -118,7 +118,7 @@ pub fn architecture(json: bool) -> CliExit {
 /// `bench <file>`: typed refusal until the keep-gate comparison ruleset lands.
 pub fn bench_cmd(file: &Path) -> CliExit {
     eprintln!(
-        "error: E-TLT-004: benchmarking `{}` is not a Phase 1 CLI comparison; measure via `cargo bench --profile release-perf --bench comprehensive_bench` (keep-gate history in .bench-history/)",
+        "error: E-TLT-004: benchmarking `{}` is not a CLI comparison; measure via `cargo bench --profile release-perf --bench comprehensive_bench` (keep-gate history in .bench-history/)",
         file.display()
     );
     EXIT_REFUSED

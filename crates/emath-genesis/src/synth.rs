@@ -1,4 +1,4 @@
-//! SG-14 finite-world synthesis: budgeted search over binary operation
+//! Finite-world synthesis: budgeted search over binary operation
 //! tables on a finite carrier.
 //!
 //! Enumerates the `n^(n²)` tables in fixed row-major mixed-radix order,

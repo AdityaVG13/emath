@@ -12,7 +12,7 @@
 //! `tested`), Catalog (SSC/core-prelude namespace, cap `certified`).
 //!
 //! Lifecycle: Proposed (quarantine: usable only via explicit
-//! `use notation <pack>::<glyph>`) -> Checked (producer-distinct G4 audit;
+//! `use notation <pack>::<glyph>`) -> Checked (producer-distinct audit;
 //! promotion caps at `structural-checked`) -> Admitted (full ELP; part of an
 //! edition's default notation set) -> Frozen (hidden from new editions per
 //! the deprecation ladder, replayable forever).
@@ -47,8 +47,8 @@ pub const E_SYMBOL_AMBIGUOUS: &str = "E-SYMBOL-CATALOG-AMBIGUOUS";
 pub const E_SYMBOL_SELF_CERTIFIED: &str = "E-SYMBOL-CATALOG-SELF-CERTIFIED";
 /// Typed refusal: entry missing a required field or malformed glyph.
 pub const E_SYMBOL_MALFORMED: &str = "E-SYMBOL-CATALOG-MALFORMED";
-/// Typed refusal: an alias spelling violates the N2/N4.5 clause set
-/// (C6 backslash, C7 tilde, non-identifier ASCII).
+/// Typed refusal: an alias spelling violates the alias clause set
+/// (backslash, tilde, non-identifier ASCII).
 pub const E_SYMBOL_ALIAS_FORBIDDEN: &str = "E-SYMBOL-CATALOG-ALIAS-FORBIDDEN";
 
 /// Lifecycle of a catalog entry.
@@ -56,7 +56,7 @@ pub const E_SYMBOL_ALIAS_FORBIDDEN: &str = "E-SYMBOL-CATALOG-ALIAS-FORBIDDEN";
 pub enum SymbolStatus {
     /// Quarantine: explicit import only, authority `none`.
     Proposed,
-    /// Producer-distinct G4 audit passed; cap `structural-checked`.
+    /// Producer-distinct audit passed; cap `structural-checked`.
     Checked,
     /// Full ELP; part of an edition's default notation set.
     Admitted,
@@ -186,26 +186,26 @@ impl SymbolEntry {
         Ok(())
     }
 
-    /// N2/N4.5 alias-clause gates (C6/C7 fixes, N6):
+    /// Alias-clause gates:
     /// - ASCII aliases containing a backslash are refused (C6: `\\`, `\/`,
     ///   `/\` are not alias spellings; use Unicode or named functions);
-    /// - ASCII aliases must be valid identifier spellings (N4.5 XID rule:
+    /// - ASCII aliases must be valid identifier spellings (XID rule:
     ///   `o` as an alias for composition is refused; use `compose(f, g)` or
     ///   the Unicode glyph);
-    /// - `~` is never a negation alias (C7: `~` is the distribution tag;
+    /// - `~` is never a negation alias (`~` is the distribution tag;
     ///   negation is the existing prefix `!`).
     fn validate_alias_clauses(&self) -> Result<(), String> {
         for alias in &self.aliases {
             if alias.contains('\\') {
                 return Err(format!(
-                    "{E_SYMBOL_ALIAS_FORBIDDEN}: alias `{alias}` for glyph {} contains a backslash (C6); \
+                    "{E_SYMBOL_ALIAS_FORBIDDEN}: alias `{alias}` for glyph {} contains a backslash; \
                      use the Unicode glyph or a named function",
                     self.glyph
                 ));
             }
             if alias == "~" {
                 return Err(format!(
-                    "{E_SYMBOL_ALIAS_FORBIDDEN}: `~` is not an alias spelling (C7 distribution tag); \
+                    "{E_SYMBOL_ALIAS_FORBIDDEN}: `~` is not an alias spelling (the distribution tag); \
                      negation uses the existing prefix `!`",
                 ));
             }
@@ -218,7 +218,7 @@ impl SymbolEntry {
             if !identifier_ok {
                 return Err(format!(
                     "{E_SYMBOL_ALIAS_FORBIDDEN}: alias `{alias}` for glyph {} is not a valid \
-                     identifier spelling (N4.5 XID); use the Unicode glyph or a named function",
+                     identifier spelling (XID rule); use the Unicode glyph or a named function",
                     self.glyph
                 ));
             }

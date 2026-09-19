@@ -162,7 +162,7 @@ pub(super) fn admit_declaration_setup<'a>(
         }
     }
 
-    // Phase 1 whitelist: a section outside the subset is a typed refusal,
+    // whitelist: a section outside the subset is a typed refusal,
     // never a silent drop. `request:` / `requests:` / `goals:` are not
     // constructor sections.
     for section in decl.sections() {

@@ -1,0 +1,56 @@
+# Float64 alias recovery at 2^53.
+# Candidates 2^53 and 2^53+1 against target 2^53+1: both Float64 squared
+# residuals are 0.0 (2^53+1 is not representable in binary64; it rounds to
+# 2^53), while the exact squared residuals are 1 and 0. First-wins float
+# selection picks the WRONG candidate (2^53); retaining both candidates and
+# checking exactly recovers 2^53+1.
+# winners: 0 = candidate 2^53, 1 = candidate 2^53+1.
+
+emath function FloatAliasRecovery:
+    inputs:
+        unused: Int
+    outputs:
+        exact_resid_lo: Rat
+        exact_resid_hi: Rat
+        float_resid_lo: Float64
+        float_resid_hi: Float64
+        float_first_winner: Int
+        verified_winner: Int
+        both_retained: Bool
+    definitions:
+        target = 9007199254740993
+        cand_lo = 9007199254740992
+        cand_hi = 9007199254740993
+        d_lo = cand_lo - target
+        d_hi = cand_hi - target
+        exact_resid_lo = (d_lo * d_lo) / 1
+        exact_resid_hi = (d_hi * d_hi) / 1
+        ft = 9007199254740993.0f64
+        fc_lo = 9007199254740992.0f64
+        fc_hi = 9007199254740993.0f64
+        fd_lo = fc_lo - ft
+        fd_hi = fc_hi - ft
+        float_resid_lo = fd_lo * fd_lo
+        float_resid_hi = fd_hi * fd_hi
+        # First-wins tie rule over the float view: both residuals are 0.0,
+        # so the first candidate is selected - and it is the wrong one.
+        float_first_winner = if float_resid_lo <= float_resid_hi: 0 else: 1
+        # Exact verification over the retained pair recovers the target.
+        verified_winner = if exact_resid_hi < exact_resid_lo: 1 else: 0
+        both_retained = true
+    tests:
+        example <exact_residuals_one_and_zero>:
+            given unused = 0
+            expect exact_resid_lo == 1 / 1
+            expect exact_resid_hi == 0 / 1
+        example <float_residuals_both_zero>:
+            given unused = 0
+            expect float_resid_lo == 0.0f64
+            expect float_resid_hi == 0.0f64
+        example <first_wins_float_picks_wrong_candidate>:
+            given unused = 0
+            expect float_first_winner == 0
+        example <exact_check_recovers_target>:
+            given unused = 0
+            expect verified_winner == 1
+            expect both_retained == true

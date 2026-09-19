@@ -1,0 +1,74 @@
+# Unfamiliar quotient. This file installed no topic identity.
+emath function rotate3:
+    inputs:
+        w: Int
+    outputs:
+        r: Int
+    definitions:
+        r = if w == 1: 2 else: if w == 2: 4 else: if w == 4: 1 else: if w == 3: 6 else: if w == 6: 5 else: if w == 5: 3 else: w
+
+emath function first_bit:
+    inputs:
+        w: Int
+    outputs:
+        b: Int
+    definitions:
+        b = if w >= 4: 1 else: 0
+
+emath function orbit_min:
+    inputs:
+        w: Int
+    outputs:
+        m: Int
+    definitions:
+        r1 = rotate3(w)
+        r2 = rotate3(r1)
+        m1 = if w < r1: w else: r1
+        m = if m1 < r2: m1 else: r2
+
+emath function class_count:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        c0 = if 0 == orbit_min(0): 1 else: 0
+        c1 = if 1 == orbit_min(1): 1 else: 0
+        c2 = if 2 == orbit_min(2): 1 else: 0
+        c3 = if 3 == orbit_min(3): 1 else: 0
+        c4 = if 4 == orbit_min(4): 1 else: 0
+        c5 = if 5 == orbit_min(5): 1 else: 0
+        c6 = if 6 == orbit_min(6): 1 else: 0
+        c7 = if 7 == orbit_min(7): 1 else: 0
+        result = c0 + c1 + c2 + c3 + c4 + c5 + c6 + c7
+
+emath function descent_fails:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        same_class = orbit_min(1) == orbit_min(4)
+        different_obs = first_bit(1) != first_bit(4)
+        result = same_class and different_obs
+
+emath query ClassCount:
+    inputs:
+        unused: Int
+    definitions:
+        result = class_count(unused)
+    question:
+        target = result
+        scope = unused
+        assumptions = []
+    using:
+        method = class_count
+    answer:
+        form = value
+        value_type = Int
+        accept = unchecked
+    tests:
+        example <four_classes>:
+            given unused = 0
+            expect result == 4
+            expect receipt.fulfillment == partial

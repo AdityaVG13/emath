@@ -216,7 +216,7 @@ impl Lexer<'_> {
             }
             _ if byte.is_ascii_alphabetic() || byte == b'_' || byte >= 0x80 => {
                 // `±` (U+00B1, UTF-8 C2 B1) is the measurement-literal
-                // separator (spec 04 section 1.5 / X6), not an identifier
+                // separator (the measurement literal), not an identifier
                 // glyph — it must be claimed before the non-ASCII ident
                 // path sees it.
                 if byte == 0xc2 && self.peek2() == Some(0xb1) {
@@ -227,7 +227,7 @@ impl Lexer<'_> {
                     && self.bytes.get(self.pos + 2) == Some(&0x88)
                 {
                     // `≈` (U+2248, UTF-8 E2 89 88) — approximation
-                    // labeling operator (04 §6.4). Claimed before the
+                    // labeling operator. Claimed before the
                     // non-ASCII ident path so the glyph never glues into
                     // one unknown name.
                     self.pos += 3;
@@ -279,7 +279,7 @@ impl Lexer<'_> {
                     && self.bytes.get(self.pos + 2) == Some(&0x85)
                 {
                     // `∅` (U+2205, UTF-8 E2 88 85) — the declared sink
-                    // (04 §4.1): a
+                    //: a
                     // reaction endpoint that is deliberately nothing
                     // (degradation/elimination), never a magic empty
                     // side. Claimed before the non-ASCII ident path so
@@ -294,7 +294,7 @@ impl Lexer<'_> {
                 self.pos += 1;
                 if self.peek() == Some(b'=') {
                     self.pos += 1;
-                    // `==>` — logical implication (B12)
+                    // `==>` — logical implication
                     if self.peek() == Some(b'>') {
                         self.pos += 1;
                         self.push(TokenKind::Imply, start);
@@ -321,7 +321,7 @@ impl Lexer<'_> {
                 self.pos += 1;
                 if self.peek() == Some(b'=') {
                     self.pos += 1;
-                    // `<==>` — logical biconditional (B12)
+                    // `<==>` — logical biconditional
                     if self.peek() == Some(b'=') && self.peek2() == Some(b'>') {
                         self.pos += 2;
                         self.push(TokenKind::Iff, start);
@@ -351,10 +351,10 @@ impl Lexer<'_> {
                     self.pos += 1;
                     self.push(TokenKind::Arrow, start);
                 } else if self.peek() == Some(b'-') && self.peek2() == Some(b'>') {
-                    // `-->` — directed graph edge arrow (B23).
+                    // `-->` — directed graph edge arrow.
                     // Glued so it beats `->`; `x--y` (no `>`) stays two
                     // Minus tokens, so outside-graph arithmetic is
-                    // untouched (G4).
+                    // untouched.
                     self.pos += 2;
                     self.push(TokenKind::EdgeArrow, start);
                 } else {
@@ -380,12 +380,12 @@ impl Lexer<'_> {
                     self.push(TokenKind::TildeTilde, start);
                 } else if self.peek() == Some(b'=') {
                     // `~=` — ASCII spelling of the approximation
-                    // labeling operator (04 §6.4); one token, same as `≈`.
+                    // labeling operator; one token, same as `≈`.
                     self.pos += 1;
                     self.push(TokenKind::TildeEq, start);
                 } else {
                     // `~ name` distribution tag on measurement literals
-                    // (spec 04 section 1.5); the parser refuses a bare
+                    // The parser refuses a bare
                     // `~` where no tag can appear.
                     self.push(TokenKind::Tilde, start);
                 }
@@ -479,7 +479,7 @@ impl Lexer<'_> {
                 self.push(TokenKind::Pipe, start);
             }
             b';' => {
-                // U9: row separator inside list literals only; the parser
+                // row separator inside list literals only; the parser
                 // refuses it anywhere else, so lexing stays additive.
                 self.pos += 1;
                 self.push(TokenKind::Semicolon, start);
@@ -596,7 +596,7 @@ impl Lexer<'_> {
                 }
             }
         }
-        // B14: Complex literal suffix `Ni` (e.g., `2i`, `3.5i`).
+        // Complex literal suffix `Ni` (e.g., `2i`, `3.5i`).
         // Only when `i` is not followed by a letter-ident continue
         // (`2image` stays Int("2") + Ident("image"); `2i⊕3` is still
         // complex `2i` then the math-symbol token `⊕`).
@@ -609,7 +609,7 @@ impl Lexer<'_> {
             is_float = true; // complex literals use the Float channel
         }
         let text = &self.source[start..self.pos];
-        // Attached parenthetical uncertainty (spec 04 section 1.5 /
+        // Attached parenthetical uncertainty (
         // CODATA): `0.5012(3)` = 0.5012 ± 0.0003. Attachment is lexical:
         // immediately after the number (no space), digits only. A space
         // before `(` or a non-digit inside leaves ordinary tokenization —

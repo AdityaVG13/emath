@@ -3,7 +3,7 @@
 use super::*;
 
 /// `check <file> [--verify-data] [--json]`: parse + admit, no codegen.
-/// `--verify-data` (04 §5.2) re-hashes every
+/// `--verify-data` re-hashes every
 /// `sha256` declared in InstrumentRun provenance against the file on
 /// disk, relative to the source file; drift refuses `E-OBS-HASH`.
 pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
@@ -27,7 +27,7 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
     };
     print_diagnostics(&diagnostics);
     if !json && !units_profiles.is_empty() {
-        // §6.5 pack-table: the effective honesty declaration, printed
+        // pack-table: the effective honesty declaration, printed
         // deterministically in source order (admission order).
         for (declaration, profile) in &units_profiles {
             println!("honesty: units_profile {declaration}={profile}");
@@ -95,7 +95,7 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
     };
     print_diagnostics(&diagnostics);
     if !json && !units_profiles.is_empty() {
-        // §6.5 pack-table, same contract as file mode.
+        // pack-table, same contract as file mode.
         for (declaration, profile) in &units_profiles {
             println!("honesty: units_profile {declaration}={profile}");
         }
@@ -115,7 +115,7 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
     exit_from_diagnostics(diagnostics.has_errors())
 }
 
-/// Declared raw-data digests (04 §5.2): InstrumentRun provenance rows
+/// Declared raw-data digests: InstrumentRun provenance rows
 /// carrying a `sha256`, as (binding, file, declared digest).
 pub(super) fn declared_data_digests(path: &Path) -> Vec<(String, String, String)> {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());

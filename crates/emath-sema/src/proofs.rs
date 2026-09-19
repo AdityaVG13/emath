@@ -1,4 +1,4 @@
-//! Proof obligations as machine records (05 §7.2).
+//! Proof obligations as machine records.
 //!
 //! Each verified-complete outline lowers to `emath.proof-obligation
 //! v1` records — the stable, provider-agnostic machine target. A

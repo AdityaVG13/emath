@@ -351,7 +351,7 @@ impl super::Parser {
                     self.advance();
                 }
                 // `Float64(round = nearest, overflow = error)` is mapping
-                // evidence, not a Phase 1 call; skip the parenthetical.
+                // evidence, not a runtime call; skip the parenthetical.
                 if matches!(self.peek(), TokenKind::LParen) {
                     let mut depth = 0_i32;
                     while !matches!(self.peek(), TokenKind::Eof) && !self.at_line_end() {

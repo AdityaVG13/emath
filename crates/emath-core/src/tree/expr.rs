@@ -17,7 +17,7 @@ pub struct ApproxTolerance {
     pub atol: Option<Expr>,
 }
 
-/// Compound unit expression for bracket-notation units (F7/U4).
+/// Compound unit expression for bracket-notation units.
 /// `m/s^2` = Div(Base("m"), Pow(Base("s"), 2)); `9.81 m` uses `Base("m")`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UnitExpr {
@@ -116,7 +116,7 @@ impl UnitExpr {
     }
 }
 
-/// `[(0.0 s, 0.0 V), ...] with interpolation: <mode>` (04 §5.4): how the
+/// `[(0.0 s, 0.0 V), ...] with interpolation: <mode>`: how the
 /// series produces values between sample points. Declared, hashes into
 /// identity; there is no silent default spelling.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,7 +134,7 @@ pub enum SeriesInterpolation {
 }
 
 impl SeriesInterpolation {
-    /// Canonical spelling (04 §5.4).
+    /// Canonical spelling.
     #[must_use]
     pub fn spelling(&self) -> &'static str {
         match self {
@@ -147,7 +147,7 @@ impl SeriesInterpolation {
     }
 }
 
-/// `extrapolation: <mode>` (04 §5.4): what happens outside the sampled
+/// `extrapolation: <mode>`: what happens outside the sampled
 /// support. The default is `refuse` — silent extrapolation is a quiet
 /// killer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,7 +161,7 @@ pub enum SeriesExtrapolation {
 }
 
 impl SeriesExtrapolation {
-    /// Canonical spelling (04 §5.4).
+    /// Canonical spelling.
     #[must_use]
     pub fn spelling(&self) -> &'static str {
         match self {
@@ -189,7 +189,7 @@ pub enum ExprKind {
         value: Box<Expr>,
         unit: UnitExpr,
     },
-    /// Measurement literal (spec 04 section 1.5 / ).
+    /// Measurement literal.
     /// Two spellings: explicit `value ± uncertainty` (`uncertainty_digits`
     /// empty) and attached CODATA parenthetical `value(digits)` (digits stay
     /// raw; scaling `d × 10^(exp−frac)` is admission's job). The optional
@@ -227,7 +227,7 @@ pub enum ExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    /// `a ≈ b` (ASCII `a ~= b`) — approximation labeling operator (04 §6.4). A first-class relation that
+    /// `a ≈ b` (ASCII `a ~= b`) — approximation labeling operator. A first-class relation that
     /// stamps authority: computing through an `≈` edge is
     /// authority-degraded, never silently exact. The optional
     /// `within rtol=…, atol=…` clause is the DECLARED tolerance; a bare
@@ -244,7 +244,7 @@ pub enum ExprKind {
         else_value: Box<Expr>,
     },
     List(Vec<Expr>),
-    /// `|x y| 1, 2 | 3, 4 |` — table literal (U9). Named columns plus
+    /// `|x y| 1, 2 | 3, 4 |` — table literal. Named columns plus
     /// comma-separated rows; ≥2 headers keep the leading `|` unambiguous
     /// with cases arms. Lowers through the Matrix element path (numeric
     /// cells), with headers recorded only in the sema receipt.
@@ -252,12 +252,12 @@ pub enum ExprKind {
         headers: Vec<String>,
         rows: Vec<Vec<Expr>>,
     },
-    /// `{2, 3, 5}` — set literal (B01). Finite-set carrier; elements are
+    /// `{2, 3, 5}` — set literal. Finite-set carrier; elements are
     /// deduplicated and order-canonicalized at evaluation. Bare `{name:
     /// value}` (record spelling without a path prefix) is ambiguous and
     /// refuses `E-SYN-154` at parse time, never silently a one-element set.
     Set(Vec<Expr>),
-    /// `{n in 0..100 if is_prime(n)}` — set comprehension (B01). Desugars
+    /// `{n in 0..100 if is_prime(n)}` — set comprehension. Desugars
     /// from brace position where the parsed element expression is a
     /// top-level membership binary (`element in domain`) optionally
     /// followed by an `if` guard; the membership reading inside braces is
@@ -268,7 +268,7 @@ pub enum ExprKind {
         domain: Box<Expr>,
         guard: Option<Box<Expr>>,
     },
-    /// `Point:{x: 1.0, y: 2.0}` — inline record literal (U3). Path-prefixed
+    /// `Point:{x: 1.0, y: 2.0}` — inline record literal. Path-prefixed
     /// braces distinguish records from sets under one ELP ambiguity scan.
     Record {
         type_path: Vec<String>,
@@ -276,7 +276,7 @@ pub enum ExprKind {
     },
     Tuple(Vec<Expr>),
     /// `[(0.0 s, 0.0 V), ...] with interpolation: linear, extrapolation:
-    /// refuse` (04 §5.4): a time-series data
+    /// refuse`: a time-series data
     /// literal with its declared interpretation policy. The policy is
     /// part of the value's identity — it changes every downstream
     /// number. `None` means the language default (`refuse`), spelled in
@@ -302,7 +302,7 @@ pub enum ExprKind {
         kind: UnitQueryKind,
         expr: Box<Expr>,
     },
-    /// `cases x: | c1 => e1 | else => e2` (U1), lowers to nested
+    /// `cases x: | c1 => e1 | else => e2`, lowers to nested
     /// conditionals; subject optional, arms are full expressions.
     Cases {
         subject: Option<Box<Expr>>,
@@ -380,12 +380,12 @@ pub enum BinaryOp {
     Imply,
     /// `<==>` — logical biconditional.
     Iff,
-    /// `~~` — asymptotic equivalence (B18). Lowers to a limit claim.
+    /// `~~` — asymptotic equivalence. Lowers to a limit claim.
     Asymp,
-    /// `v in s` — set membership (B01). ASCII for ∈. In expression
+    /// `v in s` — set membership. ASCII for ∈. In expression
     /// position this is the membership operator; in binder keyword
     /// position (`sum n in 0..10`) `in` is consumed by the binder
-    /// parser, so the two uses are provably disjoint (X13 charter).
+    /// parser, so the two uses are provably disjoint (charter).
     In,
 }
 
@@ -396,11 +396,11 @@ pub enum BinderKind {
     Integral,
     ForAll,
     Exists,
-    /// `series n in 0..inf: a[n]` — series convergence claim (B06).
+    /// `series n in 0..inf: a[n]` — series convergence claim.
     Series,
 }
 
-/// Direction for one-sided limits (B04).
+/// Direction for one-sided limits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LimitDirection {
     /// Two-sided limit: `limit x -> 0: f(x)`

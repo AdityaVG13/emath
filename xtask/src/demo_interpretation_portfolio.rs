@@ -1,4 +1,4 @@
-//! G7 production-path demo: rank, archive, and select mixed-authority
+//! Interpretation-portfolio production-path demo: rank, archive, and select mixed-authority
 //! interpretation worlds under both policies, print a receipt twice, and
 //! show the single-best and authority-escalation refusals.
 

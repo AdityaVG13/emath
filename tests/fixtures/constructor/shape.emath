@@ -1,0 +1,43 @@
+# Changing shape. This file installed no topic identity.
+emath object Cells:
+    representation:
+        kind = "package"
+
+emath object Secret:
+    representation:
+        kind = "abstract"
+
+emath function split_once:
+    inputs:
+        unused: Int
+    outputs:
+        n: Int
+    definitions:
+        start = Cells.pack(1, [1])
+        grown = Cells.pack(2, [1, 1])
+        n = Cells.open p in grown: p.n
+    tests:
+        example <length_two>:
+            given unused = 0
+            expect n == 2
+
+emath function unseal:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        boxed = Secret.pack(4)
+        result = Secret.open r in boxed: r
+    tests:
+        example <opened>:
+            given unused = 0
+            expect result == 4
+
+emath function mismatch:
+    inputs:
+        unused: Int
+    outputs:
+        packed: Cells
+    definitions:
+        packed = Cells.pack(2, [1])

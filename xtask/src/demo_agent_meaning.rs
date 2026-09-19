@@ -1,4 +1,4 @@
-//! SG-15 production path: admit an agent proposal to quarantine, refuse
+//! Agent-meaning production path: admit an agent proposal to quarantine, refuse
 //! self-certification, promote via a distinct capable checker, and reject
 //! a seeded non-associative table with its counterexample.
 

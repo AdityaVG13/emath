@@ -73,10 +73,10 @@ fn evaluate_tree_with(
         // row-form refusal the check lane sees applies here directly.
         super::admit::refuse_unknown_test_rows(decl)?;
         for section in decl.sections().filter(|section| section.name == "tests") {
-            // §3.1: every `example <label>:` block is its own case. Loose
+            // every `example <label>:` block is its own case. Loose
             // givens/expects outside any example form one anonymous case.
             // Never merge examples: later givens must not leak into earlier
-            // expects (constitution §6.3: separately identified cases).
+            // expects (constitution: separately identified cases).
             let rat_inputs: BTreeSet<String> = section_typed_fields(decl, "inputs")
                 .into_iter()
                 .filter(|(_, ty)| ctype_from_type(ty) == CType::Rat)

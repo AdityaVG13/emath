@@ -75,7 +75,7 @@ pub fn elaborate_requests(
                     );
                     continue;
                 }
-                // F3: the flat-goal sugar — a
+                // the flat-goal sugar — a
                 // heading line with no indented payload — is permanently
                 // refused. A goal is never guessed from a heading; write
                 // the command form (`produce rust.library`).
@@ -93,7 +93,7 @@ pub fn elaborate_requests(
                 if produce.is_empty() {
                     diagnostics.error(
                         "E-GOAL-042",
-                        "`evaluate` requires `produce rust.library` in Phase 1",
+                        "`evaluate` requires `produce rust.library` today",
                         request.source,
                     );
                     continue;
@@ -104,7 +104,7 @@ pub fn elaborate_requests(
                     diagnostics.error(
                         "E-GOAL-042",
                         format!(
-                            "produce target `{produce}` is outside the Phase 1 subset (`rust.library` only)"
+                            "produce target `{produce}` is outside the current subset (`rust.library` only)"
                         ),
                         request.source,
                     );
@@ -128,7 +128,7 @@ pub fn elaborate_requests(
                     );
                     continue;
                 }
-                // F3: same flat-goal rule as `evaluate`.
+                // same flat-goal rule as `evaluate`.
                 if request.suite.statements.is_empty() {
                     diagnostics.error(
                         "E-GOAL-044",
@@ -205,7 +205,7 @@ pub fn elaborate_requests(
                 diagnostics.error(
                     "E-GOAL-043",
                     format!(
-                        "request kind `{other}` is outside the Phase 1 subset (supported: evaluate, differentiate, benchmark)"
+                        "request kind `{other}` is outside the current subset (supported: evaluate, differentiate, benchmark)"
                     ),
                     request.source,
                 );

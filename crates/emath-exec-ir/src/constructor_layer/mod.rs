@@ -31,14 +31,14 @@ pub enum CValue {
     /// Dense sequence carrier. Copy-on-write: `Clone` shares the
     /// backing storage (the CPS kont bookkeeping clones argument
     /// values at every engine step, so a deep-copy clone made every
-    /// big-sequence call O(len) per step — bead emath-g9rpo, PE P8:
-    /// 17.4s wall for ~13k indexed reads); mutation goes through
+    /// big-sequence call O(len) per step — 17.4s wall for ~13k indexed
+    /// reads in the pre-repair carrier); mutation goes through
     /// `Arc::make_mut`, which copies only when shared. `Arc` (not
     /// `Rc`) keeps the carrier `Send` for lanes that move values
     /// across threads. Structural `PartialEq` is unchanged by sharing.
     Sequence(Arc<Vec<CValue>>),
-    /// In-place mutable buffer carrier (bead emath-84sfr, design note
-    /// 12 Option B1): `buffer(size, fill)` constructs it, `buffer_set`
+    /// In-place mutable buffer carrier:
+    /// `buffer(size, fill)` constructs it, `buffer_set`
     /// writes through shared references, `xs[i]` reads, `.length`
     /// projects. `Arc<Mutex<..>>` (not `Rc<RefCell>`) keeps the carrier
     /// `Send` for lanes that move values across threads. Equality
@@ -69,7 +69,7 @@ pub enum CValue {
 
 /// Structural equality, unchanged by sequence sharing (bead
 /// emath-g9rpo). Buffers compare by cell identity only: mutable state
-/// has no total value equality (bead emath-84sfr) — the language
+/// has no total value equality — the language
 /// surface refuses `==`/`!=` on buffers; this identity fallback
 /// exists so internal comparisons stay total, never as a user-facing
 /// value equality.

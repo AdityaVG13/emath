@@ -54,7 +54,7 @@ pub(super) fn declared_world(
     }
 }
 
-/// Admitted built-in world labels (G4 gate: at least five world classes
+/// Admitted built-in world labels (gate: at least five world classes
 /// with deterministic identities in the portfolio).
 pub(super) const ADMITTED_WORLDS: [&str; 5] = [
     "free_symbolic",
@@ -90,7 +90,7 @@ pub fn builtin_worlds(signature: &Signature) -> Vec<WorldIr> {
         ],
     ));
     // The degenerate one-point algebra: every symbol means the single
-    // carrier point (ADR-003 totality witness, never intended meaning).
+    // carrier point (totality witness, never intended meaning).
     worlds.push(declared_world(
         "one_point",
         signature,

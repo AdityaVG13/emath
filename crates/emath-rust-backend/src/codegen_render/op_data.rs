@@ -58,7 +58,7 @@ pub(super) fn op_data_exprs(
                         element_tensor_expr(*element, program, &kinds, 4)
                     else {
                         return Err(BackendError::UnsupportedType(
-                            "set of mixed carrier elements has no Phase 1 rendering".into(),
+                            "set of mixed carrier elements has no rendering yet".into(),
                         ));
                     };
                     match guards.get(index).copied().flatten() {

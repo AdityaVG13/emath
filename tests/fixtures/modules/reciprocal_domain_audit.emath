@@ -1,0 +1,58 @@
+# The reciprocal-coordinate domain failure.
+# The recurrence x' = x / (1 + x) (reciprocal coordinate r = 1/x, r' = r + 1)
+# from x0 = -1/2 is defined for exactly one update: x1 = -1. The second
+# update divides by zero at the producer. The closed form
+# x_n = x0 / (1 + n*x0) nevertheless evaluates to 1 at n = 3 - a value that
+# is NOT a legal three-step execution of the original trajectory. The zero
+# start is a valid solution of the direct form but is excluded by the
+# reciprocal coordinate (1/0 is undefined at the producer).
+# lane 0 = direct step, lane 1 = closed form, lane 2 = reciprocal form.
+# The three undefined-update cases are RUN-LANE probes: the engine faults
+# division_by_zero at the producer and the run lane surfaces the code as the
+# observable (the test lane catches the fault without printing its code).
+# Each verified 2026-09-19, exit nonzero, identical fault line:
+#   emath run tests/fixtures/modules/reciprocal_domain_audit.emath \
+#     --function ReciprocalDomainAudit --set lane=0 --set x=-1/1 --set n=2
+#     -> error: division_by_zero: exact division by zero
+#   (... --set lane=1 --set x=-1/2 --set n=2)  -> same fault
+#   (... --set lane=2 --set x=0/1 --set n=0)   -> same fault
+
+emath function ReciprocalDomainAudit:
+    inputs:
+        lane: Int
+        x: Rat
+        n: Int
+    outputs:
+        value: Rat
+    definitions:
+        nr = n / 1
+        # Faultable divisions stay inside if-branches: defs evaluate eagerly,
+        # so an untaken lane must never construct a division by zero.
+        value = if lane == 0: x / (1 + x) else: if lane == 1: x / (1 + nr * x) else: 1 / (1 / x + 1)
+    tests:
+        example <first_update_defined>:
+            given lane = 0
+            given x = (0 - 1) / 2
+            given n = 1
+            expect value == (0 - 1) / 1
+        example <closed_form_at_three_is_one>:
+            # The closed expression at step three gives 1, but it is not a
+            # legal three-step execution of the original trajectory.
+            given lane = 1
+            given x = (0 - 1) / 2
+            given n = 3
+            expect value == 1 / 1
+        example <zero_solution_retained_by_direct_form>:
+            given lane = 0
+            given x = 0 / 1
+            given n = 1
+            expect value == 0 / 1
+        example <zero_solution_retained_by_closed_form>:
+            given lane = 1
+            given x = 0 / 1
+            given n = 5
+            expect value == 0 / 1
+        # The undefined-update cases (second update, closed-form guard at
+        # two, reciprocal excluding zero) are the run-lane probes documented
+        # in the header: the engine fault code is the observable, and the
+        # test lane cannot assert a producer fault positively.

@@ -291,7 +291,7 @@ const BARE_GENERIC_SECTIONS: [&str; 7] = [
 ];
 
 fn format_section_head(out: &mut String, section: &Section) {
-    // 04 §5.3: the generic fit goal renders
+    // the generic fit goal renders
     // `fit <params> to <observable>:` — parameters in args (Expr path
     // arguments), observable in the generic slot — never the
     // angle-bracket generic spelling.
@@ -354,7 +354,7 @@ fn format_suite(out: &mut String, suite: &Suite, level: usize) {
     }
 }
 
-/// `observations:` rows (04 §5.2): every row
+/// `observations:` rows: every row
 /// is an `obs`-prefixed `FieldDecl`; render the prefix and keep the
 /// statement body byte-identical to the plain field spelling.
 fn format_observations_suite(out: &mut String, suite: &Suite, level: usize) {

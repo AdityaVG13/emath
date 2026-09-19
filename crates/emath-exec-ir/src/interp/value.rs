@@ -26,7 +26,7 @@ pub enum Value {
         type_name: String,
         fields: BTreeMap<String, Value>,
     },
-    /// Complex number (real + imaginary parts). B14.
+    /// Complex number (real + imaginary parts)..
     Complex { re: f64, im: f64 },
     /// Exact rational `num/den` . Canonical
     /// form: gcd-reduced with `den > 0`, so equality is componentwise.

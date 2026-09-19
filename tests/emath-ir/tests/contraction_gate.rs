@@ -818,7 +818,7 @@ fn intent() {
 // and the `quote` structural interface — select a declaration form or a
 // specified structural operation, never a subject procedure. Recognizing
 // them must not fail as dispatch. The exemption is exact, so a
-// nucleus-implemented `quote.simplify` (a §3.5 authored-algorithm
+// nucleus-implemented `quote.simplify` (an authored-algorithm
 // responsibility) must still fail.
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

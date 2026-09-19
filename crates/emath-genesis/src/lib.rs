@@ -2,16 +2,16 @@
 
 //! Minimal Semantic Genesis evaluator and built-in example worlds.
 //!
-//! Hosts the G1 world-side stage: [`forest`] builds the bounded parse
-//! forest and infers world signatures; `emath-syntax` keeps the G0
+//! Hosts the world-side stage: [`forest`] builds the bounded parse
+//! forest and infers world signatures; `emath-syntax` keeps the
 //! parser and re-exports this module at its root.
 //!
-//! Facade SPI note (C054): each family module carries its own
+//! Facade SPI note: each family module carries its own
 //! `check_version` (analogue/binder/meaning_provider/morphism/synth/
 //! tuning) with its OWN error type — six deliberate homonyms, not an
 //! incomplete facade. A root export would either collide six times or
 //! need six aliases; the module path IS the family address. Documented
-//! intentional SPI, like `core::tree` (C051).
+//! intentional SPI, like `core::tree`.
 
 pub mod analogue;
 pub mod binder;

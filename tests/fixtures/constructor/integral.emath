@@ -1,0 +1,39 @@
+# Finite certified integral. This file installed no topic identity.
+emath function enclosure:
+    inputs:
+        n: Int
+    outputs:
+        lo: Rat
+        hi: Rat
+        width: Rat
+    definitions:
+        lo = n * (n - 1) * (2 * n - 1) / (6 * n * n * n)
+        hi = n * (n + 1) * (2 * n + 1) / (6 * n * n * n)
+        width = hi - lo
+    tests:
+        example <n100>:
+            given n = 100
+            expect lo == 6567 / 20000
+            expect hi == 6767 / 20000
+            expect width == 1 / 100
+
+emath query CertifiedSquare:
+    inputs:
+        n: Int
+    definitions:
+        lo = n * (n - 1) * (2 * n - 1) / (6 * n * n * n)
+        hi = n * (n + 1) * (2 * n + 1) / (6 * n * n * n)
+        payload = lo
+    question:
+        target = quote(function x in Rat: x * x)
+        scope = n
+        assumptions = []
+    using:
+        method = enclosure
+    answer:
+        form = value
+        accept = unchecked
+    tests:
+        example <width>:
+            given n = 100
+            expect receipt.fulfillment == partial

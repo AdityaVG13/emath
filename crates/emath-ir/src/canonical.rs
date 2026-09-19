@@ -3,7 +3,7 @@
 //! Deterministic text encoding: schema prefix, sorted collections, numeric
 //! spellings preserved from source. Presentation fields (spans, display
 //! names, input order of order-insensitive sets) are excluded or sorted.
-//! This is the Phase 1 bootstrap canonicalization; it will be versioned as
+//! This is the bootstrap canonicalization; it will be versioned as
 //! the durable identity scheme in later phases.
 
 use crate::constructor::{Field, Visibility};
@@ -402,7 +402,7 @@ fn encode_expr(out: &mut String, package: &SemanticPackage, id: crate::ids::Expr
             interpolation,
             extrapolation,
         } => {
-            // 04 §5.4 slice 1: pairs and the DECLARED policy are
+            // pairs and the DECLARED policy are
             // identity — length-framed floats (bit-exact) and the
             // canonical mode spellings.
             use std::fmt::Write;

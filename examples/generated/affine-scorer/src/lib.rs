@@ -2943,7 +2943,7 @@ pub struct EmathRecord_ZetaEtaState {
 }
 
 /// `AffineScorer`: a `policy` declaration generated from `.emath`.
-/// Generated deterministically by emath Phase 1; do not edit.
+/// Generated deterministically by emath; do not edit.
 #[derive(Clone, Debug)]
 pub struct AffineScorer {
     scale: f64,
@@ -3002,7 +3002,7 @@ impl AffineScorer {
             Ok(Self { scale, bias })
         }
     }
-    /// Evaluate `score` (strict-f64, Phase 1).
+    /// Evaluate `score` (strict-f64).
     pub fn score(&self, x: f64) -> f64 {
         {
             {

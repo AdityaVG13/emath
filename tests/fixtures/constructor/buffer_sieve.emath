@@ -1,4 +1,4 @@
-# Buffer-carrier sieve pin fixture (bead emath-84sfr): the authored
+# Buffer-carrier sieve pin fixture: the authored
 # discrete.sieve module behind the run, test, and step lanes. The
 # suspension lane pins the ENCODE checkpoint decision (buffers
 # serialize with aliasing fidelity and resume exactly).

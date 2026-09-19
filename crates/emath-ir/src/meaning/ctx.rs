@@ -311,7 +311,7 @@ impl MeaningContext<'_> {
                 interpolation,
                 extrapolation,
             } => {
-                // 04 §5.4 slice 1: the pairs and the DECLARED policy are
+                // the pairs and the DECLARED policy are
                 // identity — two series differing only in interpolation
                 // mode are different artifacts.
                 out.tag(18);

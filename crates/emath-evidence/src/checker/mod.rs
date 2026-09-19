@@ -1,5 +1,5 @@
 //! Independent artifact checking, translation validation, negative
-//! controls and claim-language linting (Phase 8).
+//! controls and claim-language linting.
 //!
 //! The checker never invokes generator internals: authority is rebuilt
 //! exclusively from the retained artifact and content identity. Failures

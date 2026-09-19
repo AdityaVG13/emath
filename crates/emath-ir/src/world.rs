@@ -193,7 +193,7 @@ pub struct WorldIr {
     pub constructors: Vec<String>,
     /// Canonical laws.
     pub laws: Vec<String>,
-    /// Declared effect names (constitution C10: effects are declared
+    /// Declared effect names (constitution: effects are declared
     /// capabilities, never ambient). An empty list means the world's
     /// operations are pure.
     pub effects: Vec<String>,

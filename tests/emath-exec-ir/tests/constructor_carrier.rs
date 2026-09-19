@@ -45,10 +45,10 @@ fn constructor_carrier() {
 
 #[test]
 fn sequence_clone_is_shallow() {
-    // COW sequence representation (bead emath-g9rpo): the CPS kont
+    // COW sequence representation: the CPS kont
     // bookkeeping clones argument values at every engine step, so a
     // deep-copy clone made every big-sequence call O(len) per step
-    // (PE P8: 17.4s wall for ~13k indexed reads whose unit cost is
+    // (17.4s wall for ~13k indexed reads whose unit cost is
     // sub-second). Cloning a sequence must share the backing storage.
     // Failure-first: with Sequence(Vec<CValue>) there is no shared
     // storage to compare — this test cannot even be expressed.

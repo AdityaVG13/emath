@@ -1,5 +1,5 @@
 # expect: E-SYN-110 match without catch-all is not total
-# Negative control (U6): a match expression
+# Negative control a match expression
 #  with no catch-all arm. Totality is mandatory — the final `_` or
 #  binding arm may not be omitted, so an uncovered subject value is a
 #  parse-time refusal, never a silent fallthrough.

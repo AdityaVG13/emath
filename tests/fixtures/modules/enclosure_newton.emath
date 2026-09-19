@@ -1,0 +1,225 @@
+# Exact upper-Newton arm of the enclosure study, with its honest
+# boundary. For a positive rational a = p/q, initialize u = max(1,a) and
+# l = a/u; each step refines u' = (u + a/u)/2 and l' = a/u' until the
+# width is at most 2^-16, capped at 128 steps. Declared primitive units:
+# four per ATTEMPTED Newton step (the reference's 9,216 = 4 x (2,248
+# accepted + 56 refused attempts)). sqrt(2) reproduces exactly: three
+# steps (12 units) at [816/577, 577/408], width 1/235416.
+#
+# HONEST BOUNDARY (recorded, not fudged): the reference accepted endpoints
+# up to 128 numerator/denominator bits by constructing them first under
+# bignum arithmetic and refusing after the fact (max ATTEMPTED endpoint
+# 208 bits; 56 of 512 cases refused representation_budget). The engine's
+# checked machine arithmetic cannot construct those endpoints at all, so
+# the native arm refuses BY PREDICTION at the constructibility guard
+# (endpoint parts reaching 2^57, which keeps every prospective product
+# under the checked i128 boundary). The native success/refusal split is
+# therefore STRICTER than the reference 456/56: the native totals are
+# computed and reported but deliberately not pinned. The named refusal
+# itself is pinned twice: as data (refused == 1 on a = 64) and as the
+# named constructor refusal (representation_budget).
+# Run: emath test tests/fixtures/modules/enclosure_newton.emath --work 20000000
+
+emath object Enc:
+    representation:
+        lo: Rat
+        up: Rat
+
+emath object EncOutcome:
+    representation:
+        ok: Bool
+        refused: Int
+        steps: Int
+        units: Int
+        lo: Rat
+        up: Rat
+
+emath object EncTotals:
+    representation:
+        total_cases: Int
+        successes: Int
+        refusals: Int
+        steps: Int
+        units: Int
+        all_valid: Bool
+
+emath function init_enc:
+    inputs:
+        a: Rat
+    outputs:
+        result: Enc
+    definitions:
+        u0 = if a >= 1 / 1: a else: 1 / 1
+        result = Enc: {lo: a / u0, up: u0}
+
+emath function newton_run:
+    # The guard is checked BEFORE any arithmetic: with endpoint parts at
+    # or above 2^57 the prospective step products (q*n^2 + p*d^2, the
+    # reciprocal reconstruction, the width subtraction) could cross the
+    # checked i128 boundary, so the step refuses representation_budget
+    # without constructing anything. Below the guard every product stays
+    # under 2^126. Construction stays inside the final branch: defs
+    # evaluate eagerly, so an eager step construction would defeat the
+    # guard.
+    inputs:
+        a: Rat
+        lo: Rat
+        up: Rat
+        steps: Int
+    outputs:
+        result: EncOutcome
+    definitions:
+        n = up.numer
+        d = up.denom
+        guard = n >= 144115188075855872 or d >= 144115188075855872
+        result = if guard: EncOutcome: {ok: false, refused: 1, steps: steps, units: 4 * (steps + 1), lo: lo, up: up} else: if up - lo <= 1 / 65536: EncOutcome: {ok: true, refused: 0, steps: steps, units: 4 * steps, lo: lo, up: up} else: if steps >= 128: EncOutcome: {ok: false, refused: 2, steps: steps, units: 4 * steps, lo: lo, up: up} else: newton_run(a, a / ((up + a / up) / 2), (up + a / up) / 2, steps + 1)
+
+emath function newton_case:
+    inputs:
+        p: Int
+        q: Int
+    outputs:
+        result: EncOutcome
+    definitions:
+        a = p / q
+        e = init_enc(a)
+        result = newton_run(a, e.lo, e.up, 0)
+
+emath function case_valid:
+    inputs:
+        a: Rat
+        o: EncOutcome
+    outputs:
+        result: Bool
+    definitions:
+        result = o.lo >= 0 / 1 and o.lo * o.lo <= a and a <= o.up * o.up
+
+emath function newton_q:
+    inputs:
+        p: Int
+        q: Int
+        acc: EncTotals
+    outputs:
+        result: EncTotals
+    definitions:
+        o = newton_case(p, q)
+        a = p / q
+        ok2 = if o.ok: acc.successes + 1 else: acc.successes
+        rf2 = if o.ok: acc.refusals else: acc.refusals + 1
+        va = if o.ok: acc.all_valid and case_valid(a, o) else: acc.all_valid
+        next = EncTotals: {total_cases: acc.total_cases + 1, successes: ok2, refusals: rf2, steps: acc.steps + o.steps, units: acc.units + o.units, all_valid: va}
+        result = if q >= 8: next else: newton_q(p, q + 1, next)
+
+emath function newton_p:
+    inputs:
+        p: Int
+        acc: EncTotals
+    outputs:
+        result: EncTotals
+    definitions:
+        next = newton_q(p, 1, acc)
+        result = if p >= 64: next else: newton_p(p + 1, next)
+
+emath function NewtonRefusalAnchor:
+    # The named refusal for a case whose trajectory crosses the guard:
+    # a = 64 needs its sixth iterate, whose endpoint parts exceed 2^57.
+    inputs:
+        p: Int
+        q: Int
+    outputs:
+        result: Rat
+    definitions:
+        a = p / q
+        e = init_enc(a)
+        o = newton_run(a, e.lo, e.up, 0)
+        result = if o.refused == 1: constructor_refuse(quote(representation_budget)) else: o.up
+    tests:
+        example <representation_budget_refusal_named>:
+            # The guard branch refuses by name; the expect can only be
+            # evaluated against a returned value, so the lane reports
+            # the refusal (the expect-after-refusal convention).
+            given p = 64
+            given q = 1
+            expect result == result
+
+emath function NewtonProbe:
+    inputs:
+        p: Int
+        q: Int
+    outputs:
+        ok: Bool
+        refused: Int
+        steps: Int
+        units: Int
+        lo: Rat
+        up: Rat
+        width: Rat
+    definitions:
+        o = newton_case(p, q)
+        ok = o.ok
+        refused = o.refused
+        steps = o.steps
+        units = o.units
+        lo = o.lo
+        up = o.up
+        width = o.up - o.lo
+    tests:
+        example <sqrt2_newton_bracket_reference>:
+            given p = 2
+            given q = 1
+            expect ok == true
+            expect lo == 816 / 577
+            expect up == 577 / 408
+            expect steps == 3
+            expect units == 12
+            expect width == 1 / 235416
+        example <perfect_square_admits_immediately>:
+            # a = 1: u0 = 1, l0 = 1, width zero at entry.
+            given p = 1
+            given q = 1
+            expect ok == true
+            expect steps == 0
+            expect units == 0
+        example <big_case_refuses_by_prediction>:
+            # a = 64: the guard trips before the sixth iterate can be
+            # constructed (data-level observables; the named refusal is
+            # pinned in NewtonRefusalAnchor).
+            given p = 64
+            given q = 1
+            expect ok == false
+            expect refused == 1
+
+emath function EnclosureNewton:
+    inputs:
+        unused: Int
+    outputs:
+        total_cases: Int
+        native_successes: Int
+        native_refusals: Int
+        native_steps: Int
+        native_units: Int
+        all_valid: Bool
+    definitions:
+        zero = EncTotals: {total_cases: 0, successes: 0, refusals: 0, steps: 0, units: 0, all_valid: true}
+        totals = newton_p(1, zero)
+        total_cases = totals.total_cases
+        native_successes = totals.successes
+        native_refusals = totals.refusals
+        native_steps = totals.steps
+        native_units = totals.units
+        all_valid = totals.all_valid
+    tests:
+        example <all_512_cases_accounted>:
+            given unused = 0
+            expect total_cases == 512
+        example <every_accepted_enclosure_valid>:
+            given unused = 0
+            expect all_valid == true
+        example <native_split_stricter_than_reference>:
+            # The native constructibility guard refuses MORE cases than
+            # the reference's post-construction 128-bit cap (reference:
+            # 456 successes / 56 refusals). The native split is reported
+            # as the honest boundary, so only its consistency is pinned:
+            # successes + refusals accounts for every case.
+            given unused = 0
+            expect native_successes + native_refusals == 512

@@ -4,7 +4,7 @@
 use super::*;
 
 impl super::super::Parser {
-    /// Table literal (U9): `|x y| 1, 2 | 3, 4 |`. Reached only when a pipe
+    /// Table literal: `|x y| 1, 2 | 3, 4 |`. Reached only when a pipe
     /// starts a primary (arm-leading and infix pipes never land here).
     /// Requires ≥2 header idents so `| cond => …` and `|x|`-shaped pipes
     /// fall through to the cases/or grammar unchanged.
@@ -68,7 +68,7 @@ impl super::super::Parser {
             // After the row-closing `|`: another row starts with an
             // expression token; anything else closes the table. A further
             // `|` closes too — it belongs to the enclosing cases arm, not
-            // to this table (U1 ambiguity scan).
+            // to this table (ambiguity scan).
             let closes = matches!(
                 self.peek(),
                 TokenKind::Eof
@@ -106,7 +106,7 @@ impl super::super::Parser {
 
     /// Nabla-family call parse (pack). Targets and shapes mirror the
     /// Optional distribution tag on a measurement literal (`~ normal`,
-    /// `~ uniform`, `~ lognormal`; spec 04 section 1.5). The name is
+    /// `~ uniform`, `~ lognormal`). The name is
     /// recorded raw; vocabulary validation is admission's job.
     pub(super) fn parse_distribution_tag(&mut self) -> Result<Option<String>, ()> {
         if !matches!(self.peek(), TokenKind::Tilde) {
@@ -123,14 +123,14 @@ impl super::super::Parser {
         self.advance();
         Ok(Some(name))
     }
-    /// U8: validate an interpolated
+    /// validate an interpolated
     /// string template at parse. Purity: a hole carries only a name or
     /// a dotted path — expressions, calls, and indexing refuse, so a
     /// side effect is impossible by grammar, not by discipline. The
     /// format spec is FIXED (`.` digits `f`); `{{`/`}}` escape literal
     /// braces; any other stray brace refuses. The template VALUE stays
     /// raw in the `Str` literal — substitution is the string world's
-    /// job, which is outside the Phase 1 subset (every string value
+    /// job, which is outside the current subset (every string value
     /// refuses at admission today); this validation is the grammar and
     /// its purity fence, the parse-level contract.
     pub(super) fn validate_interpolation(&mut self, value: &str, _start: Span) -> Option<()> {
@@ -169,7 +169,7 @@ impl super::super::Parser {
         Some(())
     }
 
-    /// U8: one interpolation hole — `name`, `dotted.path`, each with an
+    /// one interpolation hole — `name`, `dotted.path`, each with an
     /// optional fixed format spec `.Nf`.
     pub(super) fn validate_hole(&mut self, hole: &str) -> Option<()> {
         let (path, spec) = match hole.split_once(':') {
@@ -257,7 +257,7 @@ impl super::super::Parser {
             }
             TokenKind::Float(text) => {
                 self.advance();
-                // B14: Complex literal suffix `Ni` (e.g., `2i`, `3.5i`).
+                // Complex literal suffix `Ni` (e.g., `2i`, `3.5i`).
                 // The lexer includes `i` in the Float token text. We
                 // desugar to `N * i` where `i` is the imaginary unit
                 // (a named constant resolved by sema).
@@ -281,9 +281,9 @@ impl super::super::Parser {
                         source: start,
                     });
                 }
-                // Measurement literal, explicit form (spec 04 section 1.5):
+                // Measurement literal, explicit form:
                 // `1.50 ± 0.02 [~ dist]` folds into one Measured literal.
-                // X6: `±` in core IS the measurement literal.
+                // In core, `±` IS the measurement literal.
                 if matches!(self.peek(), TokenKind::PlusMinus) {
                     self.advance();
                     let TokenKind::Float(uncertainty) = self.peek().clone() else {
@@ -329,12 +329,12 @@ impl super::super::Parser {
             }
             TokenKind::Str(value) => {
                 self.advance();
-                // U8: the interpolation
+                // the interpolation
                 // grammar is validated at parse — purity (holes carry
                 // only names/paths), the fixed format spec, and brace
                 // escapes. The template value stays raw in the `Str`
                 // literal; runtime substitution belongs to the string
-                // world, which is outside the Phase 1 subset (all
+                // world, which is outside the current subset (all
                 // string values refuse at admission today).
                 self.validate_interpolation(&value, start)?;
                 Some(Expr {

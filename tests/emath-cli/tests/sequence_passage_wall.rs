@@ -1,7 +1,7 @@
-//! Sequence-passage wall band (bead emath-g9rpo): a 1000-element
+//! Sequence-passage wall band: a 1000-element
 //! sequence flowing through ~13k recursive calls must stay an
 //! O(1)-per-step argument cost. Failure-first: with the deep-copy
-//! carrier this exact shape measured 17.4s (PE P8); the band is 6s.
+//! carrier this exact shape measured 17.4s; the band is 6s.
 
 mod common;
 use emath_cli::EXIT_OK;

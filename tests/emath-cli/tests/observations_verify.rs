@@ -1,4 +1,4 @@
-//! `emath check --verify-data` (04 §5.2) on the constructor surface.
+//! `emath check --verify-data` on the constructor surface.
 //!
 //! The observation-evidence fixtures (`science/observations.emath`,
 //! `observations_hash_drift.emath`, `observations_write.emath`) were

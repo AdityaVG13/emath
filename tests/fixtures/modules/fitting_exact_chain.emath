@@ -1,4 +1,4 @@
-# Module acceptance fixture: the E1 bounded inverse fit at full scale.
+# Module acceptance fixture: the bounded inverse fit at full scale.
 # System x' = v, v' = -x - c*v; Euler observations at truth c = 1/2,
 # h = 1/8, 16 steps, initial state (1,0); domain c = k/8, k = 0..16.
 # The strict-improvement hillclimb from c = 0 accepts exactly

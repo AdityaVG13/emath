@@ -1,7 +1,7 @@
 //! Bootstrap and durable content identity.
 //!
 //! FNV-1a 64-bit. This is a bootstrap fingerprint for deterministic
-//! artifact/source identity during Phase 1. Per AGENTS.md it is NOT a release
+//! artifact/source identity today. Per AGENTS.md it is NOT a release
 //! cryptographic identity and must be replaced before stable publication.
 //! Durable identity domains use the std-only SHA-256 implementation below.
 

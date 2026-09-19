@@ -1,5 +1,5 @@
 # Module acceptance fixture: exhaustive 17-candidate verification of the
-# E1 fit. c = 1/2 is the UNIQUE minimizer of the exact SSE over the whole
+# The bounded inverse fit. c = 1/2 is the UNIQUE minimizer of the exact SSE over the whole
 # domain c = k/8, k = 0..16 (Euler observations, 16 steps, h = 1/8).
 # Expected outcome: passes (1 authored test).
 # Run: emath test tests/fixtures/modules/fitting_unique_minimizer.emath

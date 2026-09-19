@@ -463,7 +463,7 @@ pub(super) fn print_constructor_json(
         out.string("fulfillment", fulfillment);
         out.string("representation", representation);
         out.string("payload", payload);
-        // Work telemetry for `--work` tuning (bead emath-7zplf): the
+        // Work telemetry for `--work` tuning: the
         // completed run's measured consumption, present only on the
         // budgeted lanes that know it.
         if let Some(work) = work_consumed {

@@ -1,6 +1,6 @@
 //! Rust backend: EMIR → deterministic Rust via the rust-ir AST.
 //!
-//! Phase 1 generates one crate per admission: a struct plus constructor
+//! generates one crate per admission: a struct plus constructor
 //! for stateful declarations, a free function (not a method on an empty
 //! struct) when there is no state and no constructors, an evaluation
 //! item per `evaluate <target>` goal, and `#[test]` functions for the
@@ -88,7 +88,7 @@ impl std::fmt::Display for BackendError {
             Self::NoEvaluateGoal(name) => {
                 write!(
                     f,
-                    "declaration `{name}` needs an `evaluate` goal in Phase 1"
+                    "declaration `{name}` needs an `evaluate` goal in the current subset"
                 )
             }
             Self::UnknownTarget(name) => write!(f, "evaluate target `{name}` is not a definition"),
@@ -99,10 +99,10 @@ impl std::fmt::Display for BackendError {
                     "test body does not supply constructor parameter `{name}`"
                 )
             }
-            Self::UnsupportedType(detail) => write!(f, "unsupported type in Phase 1: {detail}"),
+            Self::UnsupportedType(detail) => write!(f, "unsupported type in the current subset: {detail}"),
             Self::MultipleConstructors(name) => write!(
                 f,
-                "declaration `{name}` has multiple constructors (Phase 1 supports one)"
+                "declaration `{name}` has multiple constructors (the current subset supports one)"
             ),
             Self::UnsupportedBinding {
                 capability,

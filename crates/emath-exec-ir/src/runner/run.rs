@@ -155,7 +155,7 @@ pub fn run_test(
     if declaration.constructors.len() > 1 {
         run.verdict = TestVerdict::LoweringRefused {
             detail: format!(
-                "declaration `{}` has multiple constructors (Phase 1 supports one)",
+                "declaration `{}` has multiple constructors (the current subset supports one)",
                 declaration.name.leaf()
             ),
         };
@@ -269,7 +269,7 @@ pub fn run_direct(
     if declaration.constructors.len() > 1 {
         run.verdict = TestVerdict::LoweringRefused {
             detail: format!(
-                "declaration `{}` has multiple constructors (Phase 1 supports one)",
+                "declaration `{}` has multiple constructors (the current subset supports one)",
                 declaration.name.leaf()
             ),
         };

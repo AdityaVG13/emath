@@ -1,0 +1,29 @@
+# Approximation is not solution. This file installed no topic identity.
+emath function candidate:
+    inputs:
+        unused: Int
+    outputs:
+        value: Rat
+        residual: Rat
+    definitions:
+        value = 1
+        residual = 1 / 100
+
+emath query ApproxNotSolution:
+    inputs:
+        unused: Int
+    definitions:
+        payload = candidate(unused)
+    question:
+        target = payload
+        scope = unused
+        assumptions = []
+    using:
+        method = candidate
+    answer:
+        form = value
+        accept = unchecked
+    tests:
+        example <partial>:
+            given unused = 0
+            expect receipt.fulfillment == partial

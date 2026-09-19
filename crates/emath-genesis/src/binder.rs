@@ -1,4 +1,4 @@
-//! SG-10 scoped binders: capture-safe binding forms over the first-order
+//! Scoped binders: capture-safe binding forms over the first-order
 //! term IR.
 //!
 //! Families: `Structural` expands to its finite range; `FiniteAnalogue`

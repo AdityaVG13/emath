@@ -3,10 +3,10 @@
 ## Purpose and layer
 
 - Tier 2 (semantics) per `implementation/CRATE_MAP.md`.
-- Deterministic resolution planning (Phase 1 bootstrap plus Phase 6 planner machinery).
+- Deterministic resolution planning (native bootstrap plus later planner machinery).
 - Hosts the provider-facing planner surface: the resolution algebra, decomposition rules, representation planning, fallback graphs, provider lifting, total dispositions, inspection, and plan identity/cache.
 - The canonical native plan constructor (`native_plan`) lives in `emath-ir`, which owns `ResolutionPlan` and plan-node types.
-- Depends on `emath-artifact`, `emath-core`, `emath-goal`, `emath-ir`, `emath-provider-api`, `emath-runtime`.
+- Depends on `emath-core`, `emath-ir`, `emath-provider-api`.
 
 ## Public types and semantics
 
@@ -56,5 +56,5 @@
 
 ## No-claim boundaries
 
-- No external providers are installed in Phase 1; planning covers native dispositions only.
+- No external providers are installed; planning covers native dispositions only.
 - Does not own or construct the canonical `ResolutionPlan`; that resides in `emath-ir`.

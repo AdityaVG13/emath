@@ -1,4 +1,4 @@
-//! PDF positioned-glyph fixture frontend (SG-12).
+//! PDF positioned-glyph fixture frontend.
 
 use std::fmt::Write as _;
 

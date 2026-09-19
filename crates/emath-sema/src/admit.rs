@@ -1,4 +1,4 @@
-//! The Phase 1 admission pass: syntax → typed neutral SIR with stable
+//! The admission pass: syntax → typed neutral SIR with stable
 //! diagnostics and a source-to-SIR trace.
 
 use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
@@ -114,7 +114,7 @@ pub struct CheckResult {
     pub package: emath_ir::SemanticPackage,
     pub diagnostics: Diagnostics,
     pub trace: SemanticTrace,
-    /// Effective per-declaration units-profile table (04 §6.1), in
+    /// Effective per-declaration units-profile table, in
     /// source order; empty when no `@units_profile` attribute exists.
     pub units_profiles: Vec<(String, String)>,
 }

@@ -1,0 +1,251 @@
+# Explicit-state continuation.
+# A finite target maximizes -(x-8191)^2 for integer x in [0, 8191]. The
+# enumerator admits eight candidates per batch (the sliding window
+# cursor..cursor+7), folds them with first-wins strict improvement, and
+# retains at most the eight most recent candidates as the archive. There
+# are 1,024 batches grouped into 32 epochs. The full explicit state is the
+# LoopState record itself (cursors, counters, archive, incumbent, ordered
+# observation chain tail) - serialization is the record, never a VM frame.
+# After batches 1, 17, 255, 511 and 1,023 the run is cut and continues
+# with REVERSED worker completion; the batch transition reconstructs the
+# proposal order from the cursor, so every resumed run reaches the
+# identical final state: winner 8,191, score 0, 8,192 evaluations,
+# 8,192 acceptances, archive [8184..8191].
+# The reference state digest is a host artifact (sha256); the native
+# observable is field-wise state equality plus the pinned reference final.
+# Run: emath test tests/fixtures/modules/explicit_state_continuation.emath --work 20000000
+# (six full 1024-batch traversals exceed the default 1M work budget; the
+# budget lane follows tests/fixtures/constructor/work_budget_row.emath)
+
+emath object LoopState:
+    representation:
+        cursor: Int
+        batch_no: Int
+        in_epoch: Int
+        epoch: Int
+        obs_count: Int
+        accepted_count: Int
+        incumbent_x: Int
+        incumbent_score: Int
+        chain_last: Int
+        archive: sequence(Int)
+
+emath object BatchAcc:
+    representation:
+        evals: Int
+        accepted: Int
+        inc_x: Int
+        inc_score: Int
+        chain_last: Int
+
+emath function initial_state:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        # Incumbent sentinel: one below the minimum possible score
+        # -(0-8191)^2 = -67092481, so the first candidate is always
+        # admitted (no incumbent at batch one).
+        result = LoopState: {cursor: 0, batch_no: 0, in_epoch: 0, epoch: 0, obs_count: 0, accepted_count: 0, incumbent_x: 0 - 1, incumbent_score: 0 - 67092482, chain_last: 0 - 1, archive: []}
+
+emath function score_of:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 0 - (x - 8191) * (x - 8191)
+
+emath function batch_candidates:
+    # ascending [lo..hi]
+    inputs:
+        lo: Int
+        hi: Int
+        j: Int
+        acc: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if j < lo: acc else: batch_candidates(lo, hi, j - 1, [j, ..acc])
+
+emath function reverse_seq:
+    inputs:
+        seq: sequence(Int)
+        j: Int
+        acc: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if j < 0: acc else: reverse_seq(seq, j - 1, [seq[j], ..acc])
+
+emath function fold_candidates:
+    # strict-improvement fold in the GIVEN (proposal) order; the first
+    # candidate is always admitted against the sentinel incumbent, later
+    # admissions require strict improvement
+    inputs:
+        cands: sequence(Int)
+        i: Int
+        evals: Int
+        accepted: Int
+        inc_x: Int
+        inc_score: Int
+        chain_last: Int
+    outputs:
+        result: BatchAcc
+    definitions:
+        x = cands[i]
+        s = score_of(x)
+        admit = s > inc_score
+        o2 = evals + 1
+        a2 = if admit: accepted + 1 else: accepted
+        x2 = if admit: x else: inc_x
+        s2 = if admit: s else: inc_score
+        c2 = if admit: x else: chain_last
+        result = if i + 1 >= length(cands): BatchAcc: {evals: o2, accepted: a2, inc_x: x2, inc_score: s2, chain_last: c2} else: fold_candidates(cands, i + 1, o2, a2, x2, s2, c2)
+
+emath function batch_step:
+    # one batch: the eight proposals cursor..cursor+7 may ARRIVE in
+    # reversed completion order, but the fold runs in proposal order
+    # reconstructed from the cursor - the arrival order never touches the
+    # reconciled fold, and the archive is the batch's eight candidates
+    # (the at-most-eight most recent retained)
+    inputs:
+        state: LoopState
+        reverse: Bool
+    outputs:
+        result: LoopState
+    definitions:
+        props = batch_candidates(state.cursor, state.cursor + 7, state.cursor + 7, [])
+        arrivals = if reverse: reverse_seq(props, 7, []) else: props
+        acc = fold_candidates(props, 0, state.obs_count, state.accepted_count, state.incumbent_x, state.incumbent_score, state.chain_last)
+        in_ep2 = if state.in_epoch >= 31: 0 else: state.in_epoch + 1
+        ep2 = if state.in_epoch >= 31: state.epoch + 1 else: state.epoch
+        result = LoopState: {cursor: state.cursor + 8, batch_no: state.batch_no + 1, in_epoch: in_ep2, epoch: ep2, obs_count: acc.evals, accepted_count: acc.accepted, incumbent_x: acc.inc_x, incumbent_score: acc.inc_score, chain_last: acc.chain_last, archive: props}
+
+emath function run_batches:
+    inputs:
+        state: LoopState
+        target: Int
+        reverse: Bool
+    outputs:
+        result: LoopState
+    definitions:
+        result = if state.batch_no >= target: state else: run_batches(batch_step(state, reverse), target, reverse)
+
+emath function seq_eq:
+    inputs:
+        a: sequence(Int)
+        b: sequence(Int)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if length(a) != length(b): false else: if i >= length(a): true else: if a[i] != b[i]: false else: seq_eq(a, b, i + 1)
+
+emath function states_equal:
+    inputs:
+        a: LoopState
+        b: LoopState
+    outputs:
+        result: Bool
+    definitions:
+        c1 = a.cursor == b.cursor
+        c2 = a.batch_no == b.batch_no
+        c3 = a.in_epoch == b.in_epoch
+        c4 = a.epoch == b.epoch
+        c5 = a.obs_count == b.obs_count
+        c6 = a.accepted_count == b.accepted_count
+        c7 = a.incumbent_x == b.incumbent_x
+        c8 = a.incumbent_score == b.incumbent_score
+        c9 = a.chain_last == b.chain_last
+        c10 = seq_eq(a.archive, b.archive, 0)
+        r1 = c1 and c2 and c3 and c4 and c5
+        r2 = c6 and c7 and c8 and c9 and c10
+        result = r1 and r2
+
+emath function ExplicitStateContinuation:
+    inputs:
+        unused: Int
+    outputs:
+        final_x: Int
+        final_score: Int
+        final_obs: Int
+        final_accepted: Int
+        final_batches: Int
+        final_epoch: Int
+        archive_len: Int
+        archive_last: Int
+        cut1_match: Bool
+        cut17_match: Bool
+        cut255_match: Bool
+        cut511_match: Bool
+        cut1023_match: Bool
+    definitions:
+        fin = run_batches(initial_state(0), 1024, false)
+        c1 = run_batches(run_batches(initial_state(0), 1, false), 1024, true)
+        c17 = run_batches(run_batches(initial_state(0), 17, false), 1024, true)
+        c255 = run_batches(run_batches(initial_state(0), 255, false), 1024, true)
+        c511 = run_batches(run_batches(initial_state(0), 511, false), 1024, true)
+        c1023 = run_batches(run_batches(initial_state(0), 1023, false), 1024, true)
+        final_x = fin.incumbent_x
+        final_score = fin.incumbent_score
+        final_obs = fin.obs_count
+        final_accepted = fin.accepted_count
+        final_batches = fin.batch_no
+        final_epoch = fin.epoch
+        archive_len = length(fin.archive)
+        archive_last = fin.archive[7]
+        cut1_match = states_equal(c1, fin)
+        cut17_match = states_equal(c17, fin)
+        cut255_match = states_equal(c255, fin)
+        cut511_match = states_equal(c511, fin)
+        cut1023_match = states_equal(c1023, fin)
+    tests:
+        example <uninterrupted_reference_final>:
+            given unused = 0
+            expect final_x == 8191
+            expect final_score == 0
+            expect final_obs == 8192
+            expect final_accepted == 8192
+            expect final_batches == 1024
+            expect final_epoch == 32
+            expect archive_len == 8
+            expect archive_last == 8191
+        example <every_resume_cut_replays_identically>:
+            # After batches 1, 17, 255, 511 and 1023 the full explicit
+            # state is the record itself; continuing with REVERSED worker
+            # completion from each cut reaches the identical final state.
+            given unused = 0
+            expect cut1_match == true
+            expect cut17_match == true
+            expect cut255_match == true
+            expect cut511_match == true
+            expect cut1023_match == true
+
+emath function BatchOneProbe:
+    inputs:
+        unused: Int
+    outputs:
+        evals: Int
+        accepted: Int
+        inc_x: Int
+        inc_score: Int
+        archive_len: Int
+    definitions:
+        s1 = batch_step(initial_state(0), false)
+        evals = s1.obs_count
+        accepted = s1.accepted_count
+        inc_x = s1.incumbent_x
+        inc_score = s1.incumbent_score
+        archive_len = length(s1.archive)
+    tests:
+        example <first_batch_admits_all_eight>:
+            # Scores strictly increase with x on [0, 8191), so every
+            # candidate of the first batch is a strict improvement.
+            given unused = 0
+            expect evals == 8
+            expect accepted == 8
+            expect inc_x == 7
+            expect inc_score == 0 - 66977856
+            expect archive_len == 8

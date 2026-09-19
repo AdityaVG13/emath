@@ -1,4 +1,4 @@
-# Module acceptance fixture: held-out generalization of the E1 fit. The
+# Module acceptance fixture: held-out generalization of the fit. The
 # coefficient c = 1/2 recovered from the (1,0) trajectory reproduces the
 # held-out initial state (2,1) over 8 steps with exactly zero error.
 # Expected outcome: passes (1 authored test).

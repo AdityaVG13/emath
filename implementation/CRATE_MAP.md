@@ -36,7 +36,6 @@ intent, not an implemented surface.
 | `emath-ir` | `crates/emath-ir` | neutral SIR/GIR/plan/EMIR/evidence structures | core/schema/term |
 | `emath-sema` | `crates/emath-sema` | orchestration and constructor/invariant admission (`CompilerSession`) | core/ir/syntax/goal |
 | `emath-exec-ir` | `crates/emath-exec-ir` | executable target-independent regions | ir |
-| `emath-goal` | `crates/emath-goal` | request elaboration and goal schemas | ir |
 | `emath-plan` | `crates/emath-plan` | compatibility, decomposition, ranking, fallback | ir |
 
 ### Tier 3: goals and providers
@@ -61,7 +60,6 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-build` | `crates/emath-build` | build-step backend and artifact emission (`GeneratedCrate` host) | sema/artifact |
-| `emath-macro` | `crates/emath-macro` | procedural macro convenience (corrected name; formerly `emath-macros`) |: |
 | `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity (corrected name; formerly `emath-lab`) | core |
 | `emath-registry` | `crates/emath-registry` | package/provider registry slice | provider-api |
 | `emath-cli` | `crates/emath-cli` | production compiler CLI (`emath`) | sema/build/lab-core |
@@ -119,7 +117,6 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `tests/emath-rust-backend` | `tests/emath-rust-backend` | Rust backend public-API test suite |
 | `tests/emath-rt` | `tests/emath-rt` | runtime-kernel public-API test suite |
 | `tests/emath-sema` | `tests/emath-sema` | session/admission public-API test suite |
-| `tests/emath-core` | `tests/emath-core` | core std-layer test suite (units, measure, statistics, geometry, signal, integral, stochastic, linprog, numtheory) |
 | `tests/emath-store` | `tests/emath-store` | store public-API test suite |
 | `tests/emath-syntax` | `tests/emath-syntax` | syntax public-API test suite |
 | `tests/emath-term` | `tests/emath-term` | term-parse back test suite |
@@ -130,7 +127,7 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `examples/demo-host` | `examples/demo-host` | build-time pipeline host + promotion + negative control |
 | `examples/demo-host-independent` | `examples/demo-host-independent` | fingerprint-free behavioral-assert host |
 | `examples/provider-skeleton` | `examples/provider-skeleton` | provider adapter skeleton |
-| `examples/generated/semantic-genesis-worlds` | `examples/generated/semantic-genesis-worlds` | generated parametric worlds crate (Phase 4 golden) |
+| `examples/generated/semantic-genesis-worlds` | `examples/generated/semantic-genesis-worlds` | generated parametric worlds crate (golden artifacts) |
 | `xtask` | `xtask` | demo/tooling carrier (`cargo xtask demo ...`) |
 
 ## Planned crates (not yet in `crates/`, never certifying)
@@ -164,7 +161,6 @@ crates never depend on providers.
 
 ## Name corrections (SURF-0003)
 
-- `emath-macros` → `emath-macro` (Tier 5).
 - `emath-lab` → `emath-lab-core` (Tier 5).
 
 No alias rows are used in this map: every implemented row names the

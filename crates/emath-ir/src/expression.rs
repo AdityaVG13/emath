@@ -1,5 +1,5 @@
 //! Provider-free semantic expressions (SIR expressions) with typed numeric
-//! operations. Phase 1 lowers to strict Float64; the operation vocabulary is
+//! operations. lowers to strict Float64; the operation vocabulary is
 //! the canonical set for exact/wrapping/checked/fast semantics.
 
 use crate::ids::{CapabilityId, ExprId, TypeId};
@@ -12,7 +12,7 @@ pub enum Literal {
     Integer(String),
     Rational(String),
     FloatBits(u64),
-    /// Complex constant stored as IEEE-754 bit patterns. B14.
+    /// Complex constant stored as IEEE-754 bit patterns..
     Complex {
         re_bits: u64,
         im_bits: u64,
@@ -89,7 +89,7 @@ pub enum ExprNode {
         body: ExprId,
         inputs: Vec<String>,
     },
-    /// Time-series data constant (04 §5.4,
+    /// Time-series data constant ,
     /// slice 1): SI-scaled `(time, value)` pairs plus the DECLARED
     /// interpretation policy. The policy is identity-bearing — it
     /// changes every downstream number — so it encodes into meaning.
@@ -160,7 +160,7 @@ impl UnaryOp {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
-    /// Exact integer arithmetic (not lowered in Phase 1).
+    /// Exact integer arithmetic (not lowered today).
     ExactAdd,
     ExactSub,
     ExactMul,
@@ -249,7 +249,7 @@ pub enum BinderKind {
     Integral,
     ForAll,
     Exists,
-    /// `series n in 0..inf: a[n]` — series convergence claim (B06).
+    /// `series n in 0..inf: a[n]` — series convergence claim.
     Series,
 }
 

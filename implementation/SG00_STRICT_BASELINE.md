@@ -7,16 +7,19 @@ source bytes → glyphs → parse forest → signature → Term IR → free worl
 (ADR-003) → parametric Rust crate.
 
 Artifacts are std-only and bit-identical across repeated runs of the same
-source. The production path is `emath genesis` / `emath compile --parametric`;
-the freeze verifier is `cargo xtask demo semantic-genesis`.
+source. The former production path (`emath genesis` / `emath compile
+--parametric`) and the freeze verifier (`cargo xtask demo
+semantic-genesis`) were removed with the CLI cutover; the frozen pins
+below remain the committed record.
 
 ## Frozen evidence
 
-Captured against HEAD via the real CLI (`emath genesis`) and
-`cargo xtask demo semantic-genesis`.
+Captured at freeze time via the then-live CLI (`emath genesis`) and the
+xtask demo, both since removed.
 
-**Reference source:** `tests/valid/arbitrary-glyphs.emath`
-(`REFERENCE_SOURCE` in `xtask/src/main.rs`).
+**Reference source:** the former `tests/valid/arbitrary-glyphs.emath`
+fixture (removed with the demo cut; the frozen pins below do not depend
+on it).
 
 **Answer id** (`answer-receipt.json`): `447d467cf93fc4ce`
 
@@ -56,19 +59,14 @@ documented preimage, recomputed independently by the demo verifier).
 
 ## Verification
 
-```
-cargo xtask demo semantic-genesis
-```
-
-Re-runs genesis twice (byte-identical artifacts), parametric codegen, the
-committed generated-crate fidelity check, generated-crate tests, and the
-four oracle pins above. It then verifies the SG-09 receipt closure: the
-answer receipt must self-verify (`receipt_id` recomputes from the bound
-fields), a tampered result must fail recomputation (negative control), a
-zero `artifact_hash` is refused, and the generated Rust answers must equal
-the semantic VM's own portfolio answers for `free_symbolic`,
-`Boolean_algebra`, and `modular_numeric` (VM/Rust differential). Pass is
-`semantic-genesis demo: ok`.
+The `cargo xtask demo semantic-genesis` verifier was removed with the
+CLI cutover (the `genesis` and `compile --parametric` commands it drove
+no longer exist). The checks it performed — byte-identical reruns,
+generated-crate fidelity and tests, the four oracle pins above, SG-09
+receipt closure with the tamper negative control, and the VM/Rust
+differential — are recorded as the frozen baseline; the committed
+generated crate (`examples/generated/semantic-genesis-worlds`) remains
+as evidence.
 
 ## Receipt rollback and migration (SG-09)
 
@@ -77,7 +75,7 @@ term, the code, nor the portfolio and carried no `receipt_id`. Schema v2
 adds `schema_version`, `receipt_id`, `term_id`, `artifact_hash`,
 `portfolio_hash`, and hex-string hash encodings. Consumers must key on
 `schema_version`: absent means v1 (no self-verification available), `2`
-means the documented preimage in `crates/emath-cli/src/genesis_cmd.rs`
+means the documented preimage in `crates/emath-cli-lab/src/genesis_cmd/`
 applies. Rollback is reverting the emitter and the xtask verifier together
 (the preimage comment in `genesis_cmd.rs` and the recomputation in
 `xtask/src/main.rs` must always change in the same commit); there is no

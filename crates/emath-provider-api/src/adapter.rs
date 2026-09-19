@@ -9,7 +9,7 @@
 //! operation: the local oracle stays in `emath-ir`; the adapter carries
 //! only the comparison contract.
 //!
-//! IR purity gate (Neutral IR Constitution §7): the IR-facing signature
+//! IR purity gate (the neutral-IR constitution): the IR-facing signature
 //! is an ALLOWLIST of
 //! IR-owned type tokens. Provider-native types (torch/jax/ndarray, …)
 //! refuse typed (`E-PROVIDER-001`) — they cannot leak into the public

@@ -150,7 +150,7 @@ fn lock_error(message: &str) -> UpstreamLockError {
     }
 }
 
-/// Provider maturity level (Phase 7 ladder).
+/// Provider maturity level (ladder).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MaturityLevel {
     /// Descriptor only.
@@ -520,7 +520,7 @@ pub fn default_constellation() -> MaturityRegistry {
     for (wave, id, summary, boundary, maturity, owner) in [
         (
             'A',
-            "phase4.symbolic",
+            "future.symbolic",
             "symbolic: conversion subset, simplification/CSE, derivatives/Jacobians",
             vec![
                 "no proof checking",
@@ -532,7 +532,7 @@ pub fn default_constellation() -> MaturityRegistry {
         ),
         (
             'B',
-            "phase2.expression",
+            "future.expression",
             "expression: rust source/tokens, optional JIT/accelerator targets (not yet implemented)",
             vec!["no tensor derivatives", "no ODE solvers"],
             MaturityLevel::P0,
@@ -540,7 +540,7 @@ pub fn default_constellation() -> MaturityRegistry {
         ),
         (
             'C',
-            "phase3.structural",
+            "future.structural",
             "structural: neutral DAE subset instantiation/flattening, DAE/structural analysis",
             vec!["no symbolic integration", "no proof transport"],
             MaturityLevel::P1,
@@ -548,7 +548,7 @@ pub fn default_constellation() -> MaturityRegistry {
         ),
         (
             'D',
-            "phase4.tensor.jax",
+            "future.tensor.jax",
             "tensor: dtype/shape representations, tracing, JVP/VJP/Jacobian/Hessian",
             vec!["no certified numerics", "no FEEC meshes"],
             MaturityLevel::P0,
@@ -556,7 +556,7 @@ pub fn default_constellation() -> MaturityRegistry {
         ),
         (
             'D',
-            "phase4.tensor.ndarray",
+            "future.tensor.ndarray",
             "tensor: ndarray ops, broadcasting, dtype promotion",
             vec!["no autodiff transforms", "no sparse solvers"],
             MaturityLevel::P0,
@@ -564,7 +564,7 @@ pub fn default_constellation() -> MaturityRegistry {
         ),
         (
             'E',
-            "phase5.numerics",
+            "future.numerics",
             "numerical: root solving, quadrature, ODE/BVP, linear/sparse solvers, optimization, special functions",
             vec!["no symbolic manipulation", "no proof checking"],
             MaturityLevel::P0,
@@ -572,7 +572,7 @@ pub fn default_constellation() -> MaturityRegistry {
         ),
         (
             'F',
-            "phase6.simulation",
+            "future.simulation",
             "simulation: typed operators, FEEC/mesh/physics models, interval/certified numerics",
             vec!["no general autodiff", "no remote execution"],
             MaturityLevel::P0,
@@ -580,7 +580,7 @@ pub fn default_constellation() -> MaturityRegistry {
         ),
         (
             'G',
-            "phase7.proof",
+            "future.proof",
             "proof: statement/proof transport, kernel checking, theorem/certificate evidence",
             vec!["no numerical execution", "no tensor ops"],
             MaturityLevel::P0,
@@ -588,7 +588,7 @@ pub fn default_constellation() -> MaturityRegistry {
         ),
         (
             'H',
-            "phase7.runtime",
+            "future.runtime",
             "runtime evidence: deterministic replay, signed evidence, guarded execution/promotion",
             vec!["no math semantics", "no codegen"],
             MaturityLevel::P0,

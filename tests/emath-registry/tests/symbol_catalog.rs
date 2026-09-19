@@ -86,16 +86,16 @@ fn symbol_catalog() {
         let mut aliases = SymbolCatalog { entries: vec![entry("∧", "core::logic::and")] };
         aliases.entries[0].aliases = vec!["\\".to_string()];
         let err = aliases.validate().unwrap_err();
-        p.demand("c6-code", err.starts_with(E_SYMBOL_ALIAS_FORBIDDEN), "backslash refused");
-        p.contains("c6", &err, "C6");
+        p.demand("backslash-code", err.starts_with(E_SYMBOL_ALIAS_FORBIDDEN), "backslash refused");
+        p.contains("backslash", &err, "backslash");
         aliases.entries[0].aliases = vec!["~".to_string()];
         let err = aliases.validate().unwrap_err();
-        p.demand("c7-code", err.starts_with(E_SYMBOL_ALIAS_FORBIDDEN), "tilde refused");
-        p.contains("c7", &err, "C7");
+        p.demand("tilde-code", err.starts_with(E_SYMBOL_ALIAS_FORBIDDEN), "tilde refused");
+        p.contains("tilde", &err, "distribution tag");
         aliases.entries[0].aliases = vec!["!o!".to_string()];
         let err = aliases.validate().unwrap_err();
-        p.demand("n45-code", err.starts_with(E_SYMBOL_ALIAS_FORBIDDEN), "non-identifier refused");
-        p.contains("n45", &err, "N4.5");
+        p.demand("identifier-code", err.starts_with(E_SYMBOL_ALIAS_FORBIDDEN), "non-identifier refused");
+        p.contains("identifier", &err, "XID rule");
     });
     p.case("determinism", |p| {
         let catalog = SymbolCatalog { entries: vec![entry("⊕", "core::math::pow"), entry("√", "core::math::sqrt")] };
@@ -104,7 +104,19 @@ fn symbol_catalog() {
         p.eq("schema", parsed.string_field("schema").unwrap().to_string(), SYMBOL_CATALOG_SCHEMA.to_string());
         let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let committed = std::fs::read_to_string(workspace.join("language/notation/SYMBOL_CATALOG.json")).unwrap();
-        p.eq("seed-bytes", committed, example_seed().to_canonical_json());
+        // The committed Language Image catalog records the constructor-layer
+        // state: no alias registry, no core::math glyph map (empty catalog
+        // plus the honesty note).
+        let expected = concat!(
+            "{\n",
+            "  \"schema\": \"emath.symbol-catalog\",\n",
+            "  \"schema_version\": \"v1\",\n",
+            "  \"entries\": 0,\n",
+            "  \"catalog\": [],\n",
+            "  \"note\": \"Constructor layer: no alias registry and no core::math glyph map.\"\n",
+            "}\n"
+        );
+        p.eq("seed-bytes", committed, expected);
     });
     p.finish();
 }

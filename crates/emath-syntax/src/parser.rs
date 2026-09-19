@@ -80,11 +80,11 @@ struct Parser {
     /// convention = physics)`): pack leaf name → parameter value.
     /// Validated at the mount scan; the vocabulary check is pack data.
     pack_parameters: BTreeMap<String, String>,
-    /// B02: when true, suppresses the postfix `if` handler so that
+    /// when true, suppresses the postfix `if` handler so that
     /// `if` in a binder context is parsed as a guard clause, not as
     /// a conditioned expression on the binder's domain.
     suppress_postfix_if: bool,
-    /// U1: when true, suppresses `|` as the `or` operator so that
+    /// when true, suppresses `|` as the `or` operator so that
     /// `|` in a `cases` body is parsed as an arm delimiter, not as
     /// a binary `or` on the arm value.
     suppress_pipe_or: bool,
@@ -302,7 +302,7 @@ impl Parser {
         loop {
             match self.tokens.get(j).map(|token| &token.kind) {
                 Some(TokenKind::Ident(name)) => {
-                    // `alias` followed by a string starts the N2 clause.
+                    // `alias` followed by a string starts the alias clause.
                     if name == "alias"
                         && matches!(
                             self.tokens.get(j + 1).map(|t| &t.kind),
@@ -364,7 +364,7 @@ impl Parser {
 
     /// Mount one scanned operator under its glyph spellings, enforcing N3
     /// (reserved glyphs), N4 (same glyph, different target in one scope),
-    /// the custom-operator precedence floor, and the Phase 1 glyph lexical
+    /// the custom-operator precedence floor, and the glyph lexical
     /// rule (a glyph must lex as a single identifier). First declaration
     /// wins on benign duplicates so a scope maps each glyph to exactly one
     /// operator.
@@ -417,7 +417,7 @@ impl Parser {
                     self.diagnostics.error(
                         "E-NOTATION-AMBIG",
                         format!(
-                            "glyph `{spelling}` maps to both `{}` and `{}` in this scope; N4 requires exactly one target per glyph",
+                            "glyph `{spelling}` maps to both `{}` and `{}` in this scope; exactly one target is allowed per glyph",
                             target.join("::"),
                             op.target.join("::")
                         ),
@@ -669,9 +669,9 @@ fn comparison_operator(kind: &TokenKind) -> Option<BinaryOp> {
         TokenKind::Le => Some(BinaryOp::Le),
         TokenKind::Gt => Some(BinaryOp::Gt),
         TokenKind::Ge => Some(BinaryOp::Ge),
-        // B01: `v in s` membership at comparison precedence. Binder
+        // `v in s` membership at comparison precedence. Binder
         // keyword position never reaches here (parse_binders consumes
-        // `in` before expression parsing), so the X13 contexts stay
+        // `in` before expression parsing), so the contexts stay
         // provably disjoint.
         TokenKind::Keyword(Keyword::In) => Some(BinaryOp::In),
         _ => None,

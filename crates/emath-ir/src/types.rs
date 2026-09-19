@@ -68,7 +68,7 @@ pub enum TypeNode {
         family: UnitFamily,
     },
     Other(QualifiedName),
-    /// Time-series value type (04 §5.4):
+    /// Time-series value type:
     /// `Series<Real in s, Real in V>` — the sampled time axis and the
     /// value axis, each carrying their declared unit dimensions. The
     /// interpretation policy rides the VALUE (identity-bearing there),

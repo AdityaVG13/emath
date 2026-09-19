@@ -54,7 +54,7 @@ fn probe() {
             schema: SchemaId("emath.resolution-plan".into()), plan_id: content_id_of_str("schema-lanes-plan"),
             goal: 0, policy: "native-deterministic".into(), artifact_class: "native".into(),
             operations: vec![OperationRecord { node: 0, operation: "package".into(), dependencies: vec![], fallback: None }],
-            excluded_candidates: vec![("phase2.expression".into(), "not installed".into())],
+            excluded_candidates: vec![("future.expression".into(), "not installed".into())],
         };
         let doc = write_resolution_plan(&plan);
         p.contains("schema", &doc, "\"schema\": \"emath.resolution-plan\"");

@@ -54,7 +54,7 @@ pub(super) fn format_stmt_kind_inner(out: &mut String, kind: &StmtKind, level: u
             format_section_head(out, section);
             out.push('\n');
             if section.name == "observations" {
-                // 04 §5.2: rows are
+                // rows are
                 // `obs <name>[: <type>] = <data>`; the tree stores them
                 // as `FieldDecl` and the `obs` prefix is section-implied,
                 // so it is restored here on output.

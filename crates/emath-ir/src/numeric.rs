@@ -229,10 +229,10 @@ pub fn tower_rows() -> String {
 
 /// Computation model selected by `numeric:` / `representation`.
 /// These are computation descriptors, never claims about real-number
-/// semantics; `Real` is not silently `f64` (Phase 1 default: `strict-f64`).
+/// semantics; `Real` is not silently `f64` (default: `strict-f64`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NumericProfile {
-    /// IEEE-754 binary64, round-ties-to-even, overflow is error. Phase 1 default.
+    /// IEEE-754 binary64, round-ties-to-even, overflow is error. default.
     StrictF64,
     /// Interval enclosure over binary64 endpoints. Explicit only; never a default.
     IntervalF64,
@@ -248,7 +248,7 @@ impl NumericProfile {
         }
     }
 
-    /// Phase 1 default when `numeric:` is omitted.
+    /// default when `numeric:` is omitted.
     #[must_use]
     pub const fn default_phase1() -> Self {
         Self::StrictF64
@@ -282,7 +282,7 @@ pub const STRICT_F64_PRECISION_BITS: u16 = 53;
 /// Binary64 machine epsilon (`2^-52`).
 pub const STRICT_F64_MACHINE_EPS: f64 = 2.220_446_049_250_313e-16;
 
-/// Parses a numeric-model name. The empty string is the Phase 1 default
+/// Parses a numeric-model name. The empty string is the default
 /// (`strict-f64`). Unknown names are typed refusals (`E-NUM-001`).
 pub fn parse_numeric_profile(name: &str) -> Result<NumericProfile, NumericError> {
     match name {

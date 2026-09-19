@@ -1,0 +1,190 @@
+# Bisection arm of the enclosure study: certified enclosure
+# refinement. For a positive rational a = p/q, initialize u = max(1,a) and
+# l = a/u, then bisect (keep the half where l^2 <= a <= u^2) until the
+# width is at most 2^-16, capped at 128 steps. The ordered test set is
+# a = p/q for p = 1..64, q = 1..8: 512 cases, 331 distinct inputs,
+# duplicates retained and disclosed. Declared primitive units: three per
+# bisection step. Reference totals: 512 successes, 0 refusals, 9,511
+# steps, 28,533 units; sqrt(2) in 16 steps (48 units) at
+# [92681/65536, 46341/32768] with width exactly 1/65536.
+# Run: emath test tests/fixtures/modules/enclosure_bisect.emath --work 20000000
+
+emath object Enc:
+    representation:
+        lo: Rat
+        up: Rat
+
+emath object EncOutcome:
+    representation:
+        ok: Bool
+        refused: Int
+        steps: Int
+        units: Int
+        lo: Rat
+        up: Rat
+
+emath object EncTotals:
+    representation:
+        total_cases: Int
+        successes: Int
+        refusals: Int
+        steps: Int
+        units: Int
+        max_bits: Int
+        all_valid: Bool
+
+emath function half_down:
+    # floor(n/2) through the exact Rat seam (Int / is rational)
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        h = n / 2
+        result = if h.denom == 1: h.numer else: ((n - 1) / 2).numer
+
+emath function bits_pos:
+    # binary digit count of a positive Int
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 2: 1 else: 1 + bits_pos(half_down(n))
+
+emath function bits_rat:
+    # max(numerator bits, denominator bits) of the reduced endpoint
+    inputs:
+        r: Rat
+    outputs:
+        result: Int
+    definitions:
+        nb = bits_pos(r.numer)
+        db = bits_pos(r.denom)
+        result = if nb < db: db else: nb
+
+emath function init_enc:
+    inputs:
+        a: Rat
+    outputs:
+        result: Enc
+    definitions:
+        u0 = if a >= 1 / 1: a else: 1 / 1
+        result = Enc: {lo: a / u0, up: u0}
+
+emath function bisect_run:
+    inputs:
+        a: Rat
+        lo: Rat
+        up: Rat
+        steps: Int
+    outputs:
+        result: EncOutcome
+    definitions:
+        mid = (lo + up) / 2
+        keep_low = mid * mid <= a
+        result = if up - lo <= 1 / 65536: EncOutcome: {ok: true, refused: 0, steps: steps, units: 3 * steps, lo: lo, up: up} else: if steps >= 128: EncOutcome: {ok: false, refused: 2, steps: steps, units: 3 * steps, lo: lo, up: up} else: bisect_run(a, if keep_low: mid else: lo, if keep_low: up else: mid, steps + 1)
+
+emath function bisect_case:
+    inputs:
+        p: Int
+        q: Int
+    outputs:
+        result: EncOutcome
+    definitions:
+        a = p / q
+        e = init_enc(a)
+        result = bisect_run(a, e.lo, e.up, 0)
+
+emath function case_valid:
+    # certified enclosure: 0 <= lo, lo*lo <= a, a <= up*up
+    inputs:
+        a: Rat
+        o: EncOutcome
+    outputs:
+        result: Bool
+    definitions:
+        result = o.lo >= 0 / 1 and o.lo * o.lo <= a and a <= o.up * o.up
+
+emath function bisect_q:
+    inputs:
+        p: Int
+        q: Int
+        acc: EncTotals
+    outputs:
+        result: EncTotals
+    definitions:
+        o = bisect_case(p, q)
+        a = p / q
+        blo = bits_rat(o.lo)
+        bup = bits_rat(o.up)
+        br = if blo < bup: bup else: blo
+        ok2 = if o.ok: acc.successes + 1 else: acc.successes
+        rf2 = if o.ok: acc.refusals else: acc.refusals + 1
+        va = if o.ok: acc.all_valid and case_valid(a, o) else: acc.all_valid
+        mb = if br > acc.max_bits: br else: acc.max_bits
+        next = EncTotals: {total_cases: acc.total_cases + 1, successes: ok2, refusals: rf2, steps: acc.steps + o.steps, units: acc.units + o.units, max_bits: mb, all_valid: va}
+        result = if q >= 8: next else: bisect_q(p, q + 1, next)
+
+emath function bisect_p:
+    inputs:
+        p: Int
+        acc: EncTotals
+    outputs:
+        result: EncTotals
+    definitions:
+        next = bisect_q(p, 1, acc)
+        result = if p >= 64: next else: bisect_p(p + 1, next)
+
+emath function EnclosureBisect:
+    inputs:
+        unused: Int
+    outputs:
+        total_cases: Int
+        successes: Int
+        refusals: Int
+        steps: Int
+        units: Int
+        max_bits: Int
+        all_valid: Bool
+        sqrt2_lo: Rat
+        sqrt2_up: Rat
+        sqrt2_steps: Int
+        sqrt2_units: Int
+        sqrt2_width: Rat
+    definitions:
+        zero = EncTotals: {total_cases: 0, successes: 0, refusals: 0, steps: 0, units: 0, max_bits: 0, all_valid: true}
+        totals = bisect_p(1, zero)
+        s2 = bisect_case(2, 1)
+        total_cases = totals.total_cases
+        successes = totals.successes
+        refusals = totals.refusals
+        steps = totals.steps
+        units = totals.units
+        max_bits = totals.max_bits
+        all_valid = totals.all_valid
+        sqrt2_lo = s2.lo
+        sqrt2_up = s2.up
+        sqrt2_steps = s2.steps
+        sqrt2_units = s2.units
+        sqrt2_width = s2.up - s2.lo
+    tests:
+        example <sqrt2_bracket_reference>:
+            given unused = 0
+            expect sqrt2_lo == 92681 / 65536
+            expect sqrt2_up == 46341 / 32768
+            expect sqrt2_steps == 16
+            expect sqrt2_units == 48
+            expect sqrt2_width == 1 / 65536
+        example <all_512_cases_succeed>:
+            given unused = 0
+            expect total_cases == 512
+            expect successes == 512
+            expect refusals == 0
+        example <reference_step_and_unit_totals>:
+            given unused = 0
+            expect steps == 9511
+            expect units == 28533
+        example <every_enclosure_valid>:
+            given unused = 0
+            expect all_valid == true

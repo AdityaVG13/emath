@@ -47,7 +47,7 @@ pub struct TestCase {
     pub source: Span,
 }
 
-/// How a construction obligation is discharged: Phase 1 checks every
+/// How a construction obligation is discharged: checks every
 /// textual `require`/`ensure`/`invariant` at runtime; the rest of the
 /// taxonomy (V6 doc 04) awaits discharge engines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -119,7 +119,7 @@ pub struct ConstructionObligation {
 
 impl Constructor {
     /// The obligation matrix: every precondition/postcondition with its
-    /// discharge class. Phase 1 classifies all textual obligations as
+    /// discharge class. classifies all textual obligations as
     /// `Runtime` because the generated constructor checks each one.
     #[must_use]
     pub fn obligation_matrix(&self) -> Vec<ConstructionObligation> {

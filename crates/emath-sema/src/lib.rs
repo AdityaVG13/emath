@@ -1,8 +1,8 @@
-//! Semantic admission (Phase 1): syntax tree → typed neutral SIR.
+//! Semantic admission: syntax tree → typed neutral SIR.
 //!
 //! Orchestrates field checks, constructor/invariant admission, definition
 //! typing, goal elaboration and plan construction, mirroring the public
-//! `CompilerSession` surface. Everything outside the Phase 1 subset
+//! `CompilerSession` surface. Everything outside the current subset
 //! receives a typed capability refusal; nothing is silently dropped.
 
 #![forbid(unsafe_code)]

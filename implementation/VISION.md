@@ -65,7 +65,7 @@ in embryo):
 | --- | --- |
 | **Interpreter** (strict-f64 VM) | Live. `eval` and the browser playground path; verified correct on functions and derivatives. |
 | **Symbolic** (expressions as values) | Partial. Term IR and rewrite machinery exist; not yet the universal fallback. |
-| **Numeric compiled** (Rust) | Partial. Phase-1 subset only; known gaps (multi-goal, `Field`/`Text`, capability applications, data series) and known bugs (incorrect values from autodiff codegen, stale embedded runtime). |
+| **Numeric compiled** (Rust) | Partial. Current subset only; known gaps (multi-goal, `Field`/`Text`, capability applications, data series) and known bugs (incorrect values from autodiff codegen, stale embedded runtime). |
 | **Exact** (`Rat`, `GF(p)`, intervals) | Partial. VM-side cells live; per-operation coverage remains. |
 | **Verify** (proof obligations; future Lean adapters) | Planned. Rigor as an opt-in world. |
 
@@ -157,17 +157,16 @@ requires.
 `emath-plan` is a deterministic planner with total dispositions; no
 external providers are installed. The lowering path runs
 `emath-exec-ir` through `emath-rust-backend` to `emath-artifact` and
-`emath-build`. The host CLI (`emath-cli`) provides `check`, `plan`,
-`build`, `run`, `test`, `eval`, `simulate`, `explain`, `web`, and the
-genesis family. The playground is `emath-wasm` (C-ABI engine) plus
-`emath web`; `emath-exec-ir` carries the interpreter, so `run` works
-in the browser without cargo, labeled `interpreted-strict-f64`. The
-compiled Rust tier remains the evidence pipeline's native lane, and
-tier agreement is a differential gate. The genesis substrate is
-`emath-genesis` (worlds, VM) with `emath-world-ir` (the codegen half
-folded in). Working demos: affine-scorer and semantic-genesis.
+`emath-build`. The host CLI (`emath-cli`) provides the command surface
+recorded in `implementation/CLI_REFERENCE.md`. The playground is
+`emath-wasm` (C-ABI engine) plus `emath web`; `emath-exec-ir` carries
+the interpreter, so `run` works in the browser without cargo, labeled
+`interpreted-strict-f64`. The compiled Rust tier remains the evidence
+pipeline's native lane, and tier agreement is a differential gate. The
+genesis substrate is `emath-genesis` (worlds, VM) with `emath-world-ir`
+(the codegen half folded in).
 
-**Known gaps (compiler path).** Phase-1 codegen covers one `evaluate`
+**Known gaps (compiler path).** The current codegen covers one `evaluate`
 goal per declaration and a narrow type set. Generated programs embed a
 runtime snapshot that lags `crates/emath-rt` (the graph and
 probability modules). The Rust codegen for derivatives currently

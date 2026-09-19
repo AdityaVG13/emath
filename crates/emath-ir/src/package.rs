@@ -19,7 +19,7 @@ pub struct PackageIdentity {
     pub content: ContentId,
 }
 
-/// One admitted declaration (Phase 1 subset).
+/// One admitted declaration (subset).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Declaration {
     pub id: DeclarationId,
@@ -164,7 +164,7 @@ pub struct HostMethod {
     pub params: Vec<(String, String)>,
     /// Return type display, when present.
     pub ret: Option<String>,
-    /// Retained body commands (not executed by Phase 1 native codegen).
+    /// Retained body commands (not executed by native codegen).
     pub body: Vec<String>,
 }
 

@@ -247,7 +247,7 @@ static NATIVE_KERNELS: &[NativeKernel] = &[
 ];
 
 fn kernels() -> impl Iterator<Item = &'static NativeKernel> {
-    // Constitution §8 step 7: mathematical kernels stay on disk but are
+    // the constitution step 7: mathematical kernels stay on disk but are
     // not dispatched. Only checked scalar-carrier operations remain.
     NATIVE_KERNELS
         .iter()

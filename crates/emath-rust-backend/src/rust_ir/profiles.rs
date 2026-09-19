@@ -117,7 +117,7 @@ fn unsafe_item(item: &Item) -> Option<String> {
         }
         Item::RawAttribute(attribute) => {
             // `#![forbid(unsafe_code)]` is the profile's own safety seal
-            // (the backend emits it first in every Phase 1 crate): it
+            // (the backend emits it first in every crate): it
             // declares the absence of unsafe rather than using it.
             if attribute.contains("unsafe") && !attribute.contains("forbid(unsafe_code)") {
                 Some(attribute.clone())

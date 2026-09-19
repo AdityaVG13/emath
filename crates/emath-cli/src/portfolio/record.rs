@@ -190,7 +190,7 @@ impl CandidateRecord {
         )
     }
 
-    /// Projects this genesis-era record onto the G7 [`WorldCandidate`].
+    /// Projects this genesis-era record onto the interpretation [`WorldCandidate`].
     ///
     /// Floats become milli-unit integers ([`milli_units`]); `world_id` is the
     /// fingerprint, `identity` the artifact hash, first disqualification a guard failure.
@@ -231,7 +231,7 @@ pub struct GuardFailure {
     pub detail: String,
 }
 
-/// G7 interpretation candidate record: world fingerprint, provider, evidence
+/// Interpretation candidate record: world fingerprint, provider, evidence
 /// authority, integer metrics, artifact hash.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldCandidate {
@@ -272,7 +272,7 @@ impl WorldCandidate {
         }
     }
 
-    /// G7 view of a `keep: pareto N` bag member: uniform `cost=1` so
+    /// Interpretation view of a `keep: pareto N` bag member: uniform `cost=1` so
     /// domination cannot drop a kept world. Ranking of the genesis bag
     /// stays on [`crate::portfolio::InterpretationPortfolio::new`].
     #[must_use]
@@ -343,7 +343,7 @@ impl WorldCandidate {
 }
 
 /// Converts a finite `f64` to milli-units. NaN maps to `i64::MIN`; infinities
-/// saturate. Used only when projecting [`ScoreVector`] into G7 integer metrics.
+/// saturate. Used only when projecting [`ScoreVector`] into interpretation integer metrics.
 #[must_use]
 #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
 pub fn milli_units(value: f64) -> i64 {

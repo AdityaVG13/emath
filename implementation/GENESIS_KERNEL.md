@@ -20,7 +20,7 @@ outcome, never a silent strict fallback.
 
 ## Outputs
 
-`genesis_cmd` (`crates/emath-cli/src/genesis_cmd.rs`) writes this set:
+`genesis_cmd` (`crates/emath-cli-lab/src/genesis_cmd/`) writes this set:
 
 | File | Schema |
 | --- | --- |
@@ -38,7 +38,7 @@ outcome, never a silent strict fallback.
 
 The ten files are the `files` array in `genesis_cmd`;
 `world-candidates/` is written beside them. Parametric Rust codegen
-is downstream (`compile --parametric`), not inside the kernel.
+is downstream (parametric codegen via the lab crate), not inside the kernel.
 
 ## Trusted scope
 
@@ -61,10 +61,11 @@ Not trusted:
 
 ## Determinism / replay
 
-`run_demo_semantic_genesis` in `xtask/src/main.rs` runs `emath genesis`
-twice on `tests/valid/arbitrary-glyphs.emath` into dirs `a`
-and `b`, then `diff_dirs(&a, &b, "genesis determinism")`. Pass requires
-byte-identical artifacts.
+The former `run_demo_semantic_genesis` xtask demo ran `emath genesis`
+twice on the reference fixture into dirs `a` and `b`, then diffed the
+artifact trees. Pass required byte-identical artifacts. The demo (and
+the `genesis` command) were removed with the CLI cutover; the frozen
+rerun record is in `SG00_STRICT_BASELINE.md`.
 
 Pinned by `implementation/SG00_STRICT_BASELINE.md`:
 
@@ -74,7 +75,7 @@ Pinned by `implementation/SG00_STRICT_BASELINE.md`:
   `one_point` `909a6be3f247e488`, `csa_seeded` `98dc2aff1691f4d4`
 - CSA: seed `3836149761`, value `118f84421f20b522`, vm_steps `9`
 
-Verified via `cargo xtask demo semantic-genesis`:
+Verified at freeze time via the xtask demo (since removed):
 
 ```
 semantic-genesis demo: ok

@@ -125,7 +125,7 @@ impl super::super::Admitter {
         let ExprKind::Path { segments, .. } = &function.kind else {
             self.error(
                 E_UNSUPPORTED_TYPE,
-                "callable must be a plain path in the Phase 1 subset",
+                "callable must be a plain path in the current subset",
                 function.source,
             );
             return None;

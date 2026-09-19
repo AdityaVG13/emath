@@ -3,7 +3,7 @@
 # named refusal paths.
 #
 # Failure-first: authored BEFORE the modules exist (first run:
-# E-USE-ADMISSION unbound import). Refusal cases follow the t19
+# E-USE-ADMISSION unbound import). Refusal cases follow the
 # convention.
 #
 # Environment honesty: the reference environment's 1,734-bit /

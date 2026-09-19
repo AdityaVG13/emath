@@ -8,7 +8,7 @@ repository.
 
 | Script | Purpose |
 | --- | --- |
-| `validate.sh` | Full repository gate: doc-drift lanes, ELP/G4 lanes, negative controls, capstones. Every lane appends a JSONL record to `validate.jsonl`; failures retain the workdir for inspection (never silently cleaned). |
+| `validate.sh` | Full repository gate: doc-drift lanes, ELP/grammar lanes, negative controls, capstones. Every lane appends a JSONL record to `validate.jsonl`; failures retain the workdir for inspection (never silently cleaned). |
 | `check_doc_gates.py` | Pins `implementation/CRATE_MAP.md` against the workspace manifest + `crates/` layout and `implementation/PUBLIC_API_INVENTORY.md` against `emath-sema` signatures. Fails on drift from HEAD. |
 | `check_doc_pins.py` | Loads the hashed-doc contract set named in `implementation/contract-pins.json`; a pinned doc that changed without its pin being bumped fails the gate (drift must be a named bump). |
 | `check_spec_pin.py` | Language spec pin register: `language/reference/*.md` + `language/grammar/*.ebnf` are SHA-256-pinned under an edition id in `implementation/SPEC_PIN.json`; drift without a named edition bump fails the gate. Regenerate a bump with `--regenerate --note "..."`. |
@@ -16,9 +16,9 @@ repository.
 | `dump_error_codes.py` | Regenerates the error-code completeness annex inside `implementation/ERROR_CODES.md`; `crates/emath-hir/tests/registry_complete.rs` independently re-derives the emitted set and asserts it is a subset of the named codes. |
 | `check_elp.py` | ELP document-shape gate: `elps/ELP-NNNN-<slug>.md` files must carry the seven canonical sections, a matching title, no placeholders, and a four-artifact plan (see `elps/README.md`). |
 | `check_four_artifact.py` | Four-artifact rule over a git range or a supplied file list: a grammar change must also touch reference + examples + tests; reference-only changes need the `Reference-Only: true` trailer. |
-| `g4_ambiguity.py` | G4 ambiguity scan over the shipped EBNF (first-set overlap, identical/prefix alternatives, nullable siblings). Runs against a pinned baseline so only NEW conflict signatures fail; `--delta` audits a unified diff. |
-| `g4_confusable.py` | G4 confusable-glyph scan (NFC + the sema `confusable_fold` table) over every grammar literal; `--delta` flags newly added glyphs colliding with the existing surface. |
-| `g4_precedence.py` | G4 precedence battery: flags operator glyphs without an explicit `notation_decl`, and regenerates/checks the pinned boundary corpus (`tests/language-gates/fixtures/g4-precedence-boundary.corpus`). |
+| `ambiguity_scan.py` | Ambiguity scan over the shipped EBNF (first-set overlap, identical/prefix alternatives, nullable siblings). Runs against a pinned baseline so only NEW conflict signatures fail; `--delta` audits a unified diff. |
+| `confusable_scan.py` | Confusable-glyph scan (NFC + the sema `confusable_fold` table) over every grammar literal; `--delta` flags newly added glyphs colliding with the existing surface. |
+| `precedence_battery.py` | Precedence battery: flags operator glyphs without an explicit `notation_decl`, and regenerates/checks the pinned boundary corpus (`tests/language-gates/fixtures/precedence-boundary.corpus`). |
 
 ## Usage
 
@@ -29,7 +29,7 @@ python3 scripts/check_doc_pins.py     # pin check, defaults to repo root
 python3 scripts/dump_error_codes.py   # refresh the ERROR_CODES.md annex
 python3 scripts/check_elp.py          # ELP shape gate (defaults to elps/)
 python3 scripts/check_four_artifact.py --files-from - < files.txt
-python3 scripts/g4_ambiguity.py --baseline tests/language-gates/fixtures/g4-ambiguity-baseline.json language/grammar/*.ebnf
-python3 scripts/g4_confusable.py language/grammar/*.ebnf
-python3 scripts/g4_precedence.py --check --out tests/language-gates/fixtures/g4-precedence-boundary.corpus language/grammar/*.ebnf
+python3 scripts/ambiguity_scan.py --baseline tests/language-gates/fixtures/ambiguity-baseline.json language/grammar/*.ebnf
+python3 scripts/confusable_scan.py language/grammar/*.ebnf
+python3 scripts/precedence_battery.py --check --out tests/language-gates/fixtures/precedence-boundary.corpus language/grammar/*.ebnf
 ```

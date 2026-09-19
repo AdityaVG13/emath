@@ -194,13 +194,13 @@ fn demand_emission_unresolved(
 }
 
 #[test]
-fn t1_through_t18_and_seams() {
+fn fixtures_and_seams() {
     let mut probe = Probe::new(
         "constructor layer: T1–T18 compute constitution observations; no topic FeatureIDs",
     );
-    probe.case("t1-four-classes-and-failed-descent", |p| {
-        all_passed("t1_quotient.emath");
-        let tree = parse_ok("t1_quotient.emath");
+    probe.case("quotient-four-classes-and-failed-descent", |p| {
+        all_passed("quotient.emath");
+        let tree = parse_ok("quotient.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "class-count",
@@ -216,9 +216,9 @@ fn t1_through_t18_and_seams() {
         p.eq("partial", receipt.fulfillment.as_str(), "partial");
     });
 
-    probe.case("t2-posterior-six-sevenths", |p| {
-        all_passed("t2_conditioning.emath");
-        let tree = parse_ok("t2_conditioning.emath");
+    probe.case("conditioning-posterior-six-sevenths", |p| {
+        all_passed("conditioning.emath");
+        let tree = parse_ok("conditioning.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "posterior",
@@ -233,9 +233,9 @@ fn t1_through_t18_and_seams() {
         );
     });
 
-    probe.case("t3-shared-versus-independent", |p| {
-        all_passed("t3_random_function.emath");
-        let tree = parse_ok("t3_random_function.emath");
+    probe.case("random-function-shared-versus-independent", |p| {
+        all_passed("random_function.emath");
+        let tree = parse_ok("random_function.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "shared",
@@ -249,9 +249,9 @@ fn t1_through_t18_and_seams() {
         );
     });
 
-    probe.case("t4-enclosure-contains-third", |p| {
-        all_passed("t4_integral.emath");
-        let tree = parse_ok("t4_integral.emath");
+    probe.case("integral-enclosure-contains-third", |p| {
+        all_passed("integral.emath");
+        let tree = parse_ok("integral.emath");
         let n = BTreeMap::from([("n".into(), int(100))]);
         let enclosure = evaluate_function(&tree, "enclosure", &n).unwrap();
         p.eq("lo", rec_field(enclosure.clone(), "lo"), rat(6567, 20000));
@@ -261,9 +261,9 @@ fn t1_through_t18_and_seams() {
         p.eq("certified-partial", receipt.fulfillment.as_str(), "partial");
     });
 
-    probe.case("t5-ordinary-refused-pv-partial", |p| {
-        all_passed("t5_singular.emath");
-        let tree = parse_ok("t5_singular.emath");
+    probe.case("singular-ordinary-refused-pv-partial", |p| {
+        all_passed("singular.emath");
+        let tree = parse_ok("singular.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "ordinary",
@@ -283,9 +283,9 @@ fn t1_through_t18_and_seams() {
         );
     });
 
-    probe.case("t6-equality-undecided", |p| {
-        all_passed("t6_represented_real.emath");
-        let tree = parse_ok("t6_represented_real.emath");
+    probe.case("represented-real-equality-undecided", |p| {
+        all_passed("represented_real.emath");
+        let tree = parse_ok("represented_real.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "unmet",
@@ -297,9 +297,9 @@ fn t1_through_t18_and_seams() {
         );
     });
 
-    probe.case("t7-two-witnesses-refute-uniqueness", |p| {
-        all_passed("t7_conjecture.emath");
-        let tree = parse_ok("t7_conjecture.emath");
+    probe.case("conjecture-two-witnesses-refute-uniqueness", |p| {
+        all_passed("conjecture.emath");
+        let tree = parse_ok("conjecture.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "witness-count",
@@ -318,9 +318,9 @@ fn t1_through_t18_and_seams() {
         );
     });
 
-    probe.case("t8-changing-length", |p| {
-        all_passed("t8_shape.emath");
-        let tree = parse_ok("t8_shape.emath");
+    probe.case("shape-changing-length", |p| {
+        all_passed("shape.emath");
+        let tree = parse_ok("shape.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "n",
@@ -342,9 +342,9 @@ fn t1_through_t18_and_seams() {
         );
     });
 
-    probe.case("t9-boundary-squared-zero", |p| {
-        all_passed("t9_boundary.emath");
-        let tree = parse_ok("t9_boundary.emath");
+    probe.case("boundary-squared-zero", |p| {
+        all_passed("boundary.emath");
+        let tree = parse_ok("boundary.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "square",
@@ -358,9 +358,9 @@ fn t1_through_t18_and_seams() {
         );
     });
 
-    probe.case("t10-jacobian-at-point", |p| {
-        all_passed("t10_jacobian.emath");
-        let tree = parse_ok("t10_jacobian.emath");
+    probe.case("jacobian-at-point", |p| {
+        all_passed("jacobian.emath");
+        let tree = parse_ok("jacobian.emath");
         let xy = BTreeMap::from([("x".into(), int(2)), ("y".into(), int(3))]);
         let fmap = evaluate_function(&tree, "fmap", &xy).unwrap();
         p.eq("f-u", rec_field(fmap.clone(), "u"), int(6));
@@ -372,9 +372,9 @@ fn t1_through_t18_and_seams() {
         p.eq("j11", rec_field(jac, "j11"), int(6));
     });
 
-    probe.case("t11-opaque-keeps-code", |p| {
-        all_passed("t11_opaque.emath");
-        let tree = parse_ok("t11_opaque.emath");
+    probe.case("opaque-keeps-code", |p| {
+        all_passed("opaque.emath");
+        let tree = parse_ok("opaque.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         let receipt = evaluate_query(&tree, "OpaqueTransform", &unused).unwrap();
         p.eq("code", receipt.representation.as_str(), "code");
@@ -389,9 +389,9 @@ fn t1_through_t18_and_seams() {
         );
     });
 
-    probe.case("t12-transport-states", |p| {
-        all_passed("t12_transport.emath");
-        let tree = parse_ok("t12_transport.emath");
+    probe.case("transport-states", |p| {
+        all_passed("transport.emath");
+        let tree = parse_ok("transport.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         let transport = evaluate_function(&tree, "two_steps", &unused).unwrap();
         p.eq("first-after-one", rec_field(transport.clone(), "a1"), rat(3, 4));
@@ -401,9 +401,9 @@ fn t1_through_t18_and_seams() {
         p.eq("mass", rec_field(transport, "total"), int(1));
     });
 
-    probe.case("t13-queue-completions", |p| {
-        all_passed("t13_queue.emath");
-        let tree = parse_ok("t13_queue.emath");
+    probe.case("queue-completions", |p| {
+        all_passed("queue.emath");
+        let tree = parse_ok("queue.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         let queue = evaluate_function(&tree, "completions", &unused).unwrap();
         p.eq("first-job", rec_field(queue.clone(), "c0"), int(2));
@@ -411,9 +411,9 @@ fn t1_through_t18_and_seams() {
         p.eq("throughput", rec_field(queue, "throughput"), rat(2, 3));
     });
 
-    probe.case("t14-empty-and-order", |p| {
-        all_passed("t14_edges.emath");
-        let tree = parse_ok("t14_edges.emath");
+    probe.case("edges-empty-and-order", |p| {
+        all_passed("edges.emath");
+        let tree = parse_ok("edges.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "forall",
@@ -709,9 +709,9 @@ emath function DepthFault:
         }
     });
 
-    probe.case("t15-fair-finds-sequential-unmet", |p| {
-        all_passed("t15_search.emath");
-        let tree = parse_ok("t15_search.emath");
+    probe.case("search-fair-finds-sequential-unmet", |p| {
+        all_passed("search.emath");
+        let tree = parse_ok("search.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "fair",
@@ -728,9 +728,9 @@ emath function DepthFault:
         );
     });
 
-    probe.case("t16-zeno-unfinished", |p| {
-        all_passed("t16_zeno.emath");
-        let tree = parse_ok("t16_zeno.emath");
+    probe.case("zeno-unfinished", |p| {
+        all_passed("zeno.emath");
+        let tree = parse_ok("zeno.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "zeno",
@@ -750,9 +750,9 @@ emath function DepthFault:
         );
     });
 
-    probe.case("t17-candidate-is-partial", |p| {
-        all_passed("t17_approx.emath");
-        let tree = parse_ok("t17_approx.emath");
+    probe.case("approx-candidate-is-partial", |p| {
+        all_passed("approx.emath");
+        let tree = parse_ok("approx.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         let receipt = evaluate_query(&tree, "ApproxNotSolution", &unused).unwrap();
         p.eq("partial", receipt.fulfillment.as_str(), "partial");
@@ -766,9 +766,9 @@ emath function DepthFault:
         );
     });
 
-    probe.case("t18-code-versus-value", |p| {
-        all_passed("t18_code.emath");
-        let tree = parse_ok("t18_code.emath");
+    probe.case("code-versus-value", |p| {
+        all_passed("code.emath");
+        let tree = parse_ok("code.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
         p.eq(
             "code",
@@ -1293,61 +1293,61 @@ emath function Fib:
         }
     });
 
-    probe.case("t1-t18-emission-parity", |p| {
+    probe.case("fixtures-emission-parity", |p| {
         let unused = unused_inputs();
-        let t1 = parse_ok("t1_quotient.emath");
-        demand_emission_parity(p, &t1, "class_count", &unused);
-        demand_emission_parity(p, &t1, "descent_fails", &unused);
+        let quotient_tree = parse_ok("quotient.emath");
+        demand_emission_parity(p, &quotient_tree, "class_count", &unused);
+        demand_emission_parity(p, &quotient_tree, "descent_fails", &unused);
 
-        let t2 = parse_ok("t2_conditioning.emath");
-        demand_emission_parity(p, &t2, "posterior_second", &unused);
+        let conditioning_tree = parse_ok("conditioning.emath");
+        demand_emission_parity(p, &conditioning_tree, "posterior_second", &unused);
 
-        let t3 = parse_ok("t3_random_function.emath");
-        demand_emission_parity(p, &t3, "shared_agree", &unused);
-        demand_emission_parity(p, &t3, "independent_agree", &unused);
+        let random_function_tree = parse_ok("random_function.emath");
+        demand_emission_parity(p, &random_function_tree, "shared_agree", &unused);
+        demand_emission_parity(p, &random_function_tree, "independent_agree", &unused);
 
-        let t4 = parse_ok("t4_integral.emath");
+        let integral_tree = parse_ok("integral.emath");
         let n = BTreeMap::from([("n".into(), int(100))]);
-        demand_emission_parity(p, &t4, "enclosure", &n);
+        demand_emission_parity(p, &integral_tree, "enclosure", &n);
 
-        let t7 = parse_ok("t7_conjecture.emath");
-        demand_emission_parity(p, &t7, "witnesses", &unused);
-        demand_emission_parity(p, &t7, "start0", &unused);
+        let conjecture_tree = parse_ok("conjecture.emath");
+        demand_emission_parity(p, &conjecture_tree, "witnesses", &unused);
+        demand_emission_parity(p, &conjecture_tree, "start0", &unused);
 
-        let t8 = parse_ok("t8_shape.emath");
-        demand_emission_parity(p, &t8, "split_once", &unused);
-        demand_emission_parity(p, &t8, "unseal", &unused);
-        demand_emission_unresolved(p, &t8, "mismatch");
+        let shape_tree = parse_ok("shape.emath");
+        demand_emission_parity(p, &shape_tree, "split_once", &unused);
+        demand_emission_parity(p, &shape_tree, "unseal", &unused);
+        demand_emission_unresolved(p, &shape_tree, "mismatch");
 
-        let t9 = parse_ok("t9_boundary.emath");
-        demand_emission_parity(p, &t9, "boundary_square", &unused);
-        demand_emission_parity(p, &t9, "broken_boundary", &unused);
+        let boundary_tree = parse_ok("boundary.emath");
+        demand_emission_parity(p, &boundary_tree, "boundary_square", &unused);
+        demand_emission_parity(p, &boundary_tree, "broken_boundary", &unused);
 
-        let t10 = parse_ok("t10_jacobian.emath");
+        let jacobian_tree = parse_ok("jacobian.emath");
         let xy = BTreeMap::from([("x".into(), int(2)), ("y".into(), int(3))]);
-        demand_emission_parity(p, &t10, "fmap", &xy);
-        demand_emission_parity(p, &t10, "linearization", &xy);
-        demand_emission_parity(p, &t10, "at_point", &unused);
+        demand_emission_parity(p, &jacobian_tree, "fmap", &xy);
+        demand_emission_parity(p, &jacobian_tree, "linearization", &xy);
+        demand_emission_parity(p, &jacobian_tree, "at_point", &unused);
 
-        let t11 = parse_ok("t11_opaque.emath");
-        demand_emission_unresolved(p, &t11, "try_diff");
+        let opaque_tree = parse_ok("opaque.emath");
+        demand_emission_unresolved(p, &opaque_tree, "try_diff");
 
-        let t12 = parse_ok("t12_transport.emath");
-        demand_emission_parity(p, &t12, "two_steps", &unused);
+        let transport_tree = parse_ok("transport.emath");
+        demand_emission_parity(p, &transport_tree, "two_steps", &unused);
 
-        let t13 = parse_ok("t13_queue.emath");
-        demand_emission_parity(p, &t13, "completions", &unused);
+        let queue_tree = parse_ok("queue.emath");
+        demand_emission_parity(p, &queue_tree, "completions", &unused);
 
-        let t14 = parse_ok("t14_edges.emath");
-        demand_emission_parity(p, &t14, "empty_forall", &unused);
-        demand_emission_parity(p, &t14, "empty_exists", &unused);
-        demand_emission_parity(p, &t14, "left_sub", &unused);
+        let edges_tree = parse_ok("edges.emath");
+        demand_emission_parity(p, &edges_tree, "empty_forall", &unused);
+        demand_emission_parity(p, &edges_tree, "empty_exists", &unused);
+        demand_emission_parity(p, &edges_tree, "left_sub", &unused);
 
-        let t15 = parse_ok("t15_search.emath");
-        demand_emission_parity(p, &t15, "fair_finds", &unused);
+        let search_tree = parse_ok("search.emath");
+        demand_emission_parity(p, &search_tree, "fair_finds", &unused);
 
-        let t17 = parse_ok("t17_approx.emath");
-        demand_emission_parity(p, &t17, "candidate", &unused);
+        let approx_tree = parse_ok("approx.emath");
+        demand_emission_parity(p, &approx_tree, "candidate", &unused);
     });
 
     probe.case("constructor-check-unbound", |p| {
@@ -1378,24 +1378,24 @@ emath function Fib:
 
     probe.case("constructor-fixtures-admit", |p| {
         for name in [
-            "t1_quotient.emath",
-            "t2_conditioning.emath",
-            "t3_random_function.emath",
-            "t4_integral.emath",
-            "t5_singular.emath",
-            "t6_represented_real.emath",
-            "t7_conjecture.emath",
-            "t8_shape.emath",
-            "t9_boundary.emath",
-            "t10_jacobian.emath",
-            "t11_opaque.emath",
-            "t12_transport.emath",
-            "t13_queue.emath",
-            "t14_edges.emath",
-            "t15_search.emath",
-            "t16_zeno.emath",
-            "t17_approx.emath",
-            "t18_code.emath",
+            "quotient.emath",
+            "conditioning.emath",
+            "random_function.emath",
+            "integral.emath",
+            "singular.emath",
+            "represented_real.emath",
+            "conjecture.emath",
+            "shape.emath",
+            "boundary.emath",
+            "jacobian.emath",
+            "opaque.emath",
+            "transport.emath",
+            "queue.emath",
+            "edges.emath",
+            "search.emath",
+            "zeno.emath",
+            "approx.emath",
+            "code.emath",
             "use_sum.emath",
         ] {
             let tree = parse_ok(name);
@@ -2243,7 +2243,7 @@ emath function ViewBranchClosed:
 emath function ViewBranchOpen:
     # `unused` is a free name in the ambient environment: the guarded
     # L1 evaluator refuses instead of leaking the ambient binding
-    # (t19_l1_closed_code pins the same contract with fault demands).
+    # (l1_closed_code pins the same contract with fault demands).
     inputs:
         unused: Int
     outputs:

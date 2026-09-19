@@ -13,8 +13,8 @@ silent drift between grammar, reference, examples, and tests.
    (`ELP-TEMPLATE.md`); the next free serial is one past the highest
    `ELP-` prefix on `main`.
 2. **Gate**; `scripts/check_elp.py` validates the document shape; the
-   G4 audit battery (`scripts/g4_ambiguity.py`, `scripts/g4_confusable.py`,
-   `scripts/g4_precedence.py`) runs against the proposed grammar delta;
+   Grammar audit battery (`scripts/ambiguity_scan.py`, `scripts/confusable_scan.py`,
+   `scripts/precedence_battery.py`) runs against the proposed grammar delta;
    the four-artifact rule (`scripts/check_four_artifact.py`) is enforced
    by CI on the commit.
 3. **Adopt**; accepted proposals land either as stable surface
@@ -45,20 +45,20 @@ sections (validated by `scripts/check_elp.py`):
 7. **Refusals**; new typed diagnostics with stable codes and negative
    controls.
 
-## The G4 audit ("one glyph, many meanings")
+## The grammar audit ("one glyph, many meanings")
 
 Four mechanical sub-tests, run by the scripts under `scripts/` (each is
 proved by a negative-control lane in `scripts/validate.sh`):
 
 | Sub-test | Script | Fatal on |
 | --- | --- | --- |
-| Ambiguity scan | `g4_ambiguity.py` | duplicate production definitions and overlapping first-sets (an alternative that can start the same way as a sibling), including under a unified diff |
-| Confusable scan | `g4_confusable.py` | a new glyph whose NFC/confusable fold collides with an existing grammar glyph |
-| Precedence surprise | `g4_precedence.py` | operators without an explicit `notation_decl` precedence; regenerates the pinned boundary corpus |
-| Hidden interpretation | `g4_hidden_interpretation.py` | a glyph gaining a second role (production); an unregistered "many meanings" form; or a registered glyph's role set drifting from its registry entry. Every multi-role glyph must declare how its meaning is pinned: `parser-context` (operator table / lexical position), `worlds-machinery` (routing through a notation pack, declared world, or portfolio artifact), or `typed-refusal` (a documented E-code) |
+| Ambiguity scan | `ambiguity_scan.py` | duplicate production definitions and overlapping first-sets (an alternative that can start the same way as a sibling), including under a unified diff |
+| Confusable scan | `confusable_scan.py` | a new glyph whose NFC/confusable fold collides with an existing grammar glyph |
+| Precedence surprise | `precedence_battery.py` | operators without an explicit `notation_decl` precedence; regenerates the pinned boundary corpus |
+| Hidden interpretation | `hidden_interpretation_scan.py` | a glyph gaining a second role (production); an unregistered "many meanings" form; or a registered glyph's role set drifting from its registry entry. Every multi-role glyph must declare how its meaning is pinned: `parser-context` (operator table / lexical position), `worlds-machinery` (routing through a notation pack, declared world, or portfolio artifact), or `typed-refusal` (a documented E-code) |
 
 The ambiguity, confusable, and hidden-interpretation scans are first-pass
-mechanical detectors of the C2–C15 class (redefinitions, lookalike
+mechanical detectors of the governance-bug class (redefinitions, lookalike
 glyphs, precedence surprises, silent meaning picks); they are not a
 proof of unambiguity; the boundary corpus plus human review of the
 meaning-preservation section covers the residual.
@@ -98,7 +98,7 @@ RULE 0.3: what computes, what is refused, what is still design):
 | Typed refusals for the capability matrix | Implemented (E-SYN-117/118, E-PKG-064/065) |
 | Nightly-vs-stable channel enforcement | Deferred; lands with the version-stack deck |
 | `edition: experimental` provenance marking on artifacts | Deferred; lands with the version-stack deck |
-| SG-15-style structural quarantine of experimental artifacts | Not implemented; today the mechanism is the capability gate plus quarantine-by-review |
+| Producer-distinct structural quarantine of experimental artifacts | Not implemented; today the mechanism is the capability gate plus quarantine-by-review |
 | Two-release-cycle retirement without promotion | Procedure stated in Lifecycle step 4; not yet mechanically enforced (no clock/tracking) |
 
 The reference vocabulary for the deferred rows is normative in
@@ -119,12 +119,12 @@ compiles silently today.
 
 - `scripts/check_elp.py`; document-shape gate (seven sections, serial,
   slug, four-artifact commitments).
-- `scripts/g4_ambiguity.py`; grammar/delta ambiguity scan.
-- `scripts/g4_confusable.py`; glyph confusability scan (NFC + fold).
-- `scripts/g4_hidden_interpretation.py`; multi-role glyph registry scan
+- `scripts/ambiguity_scan.py`; grammar/delta ambiguity scan.
+- `scripts/confusable_scan.py`; glyph confusability scan (NFC + fold).
+- `scripts/hidden_interpretation_scan.py`; multi-role glyph registry scan
   (the "one glyph, many meanings" gate, pinning each shared glyph's
   interpretation policy).
-- `scripts/g4_precedence.py`; precedence boundary corpus generator.
+- `scripts/precedence_battery.py`; precedence boundary corpus generator.
 - `scripts/check_four_artifact.py`; commit-range four-artifact gate.
-- `scripts/validate.sh`; `elp`, `g4-*`, and `four-artifact` lanes with
+- `scripts/validate.sh`; `elp`, grammar-audit, and `four-artifact` lanes with
   negative controls.

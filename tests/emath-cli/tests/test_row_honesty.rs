@@ -1,6 +1,6 @@
 //! `tests:` row honesty: unknown row forms refuse instead of silently
 //! vanishing, and a zero-input constructor no longer needs a dummy
-//! input (bead emath-7zplf). Failure-first: before the fix an invented
+//! input. Failure-first: before the fix an invented
 //! `fault <label>:` row admitted on both lanes and ran as
 //! "0 authored tests passed", and an empty `inputs:` section refused
 //! E-SYN-112 until a dummy `unused: Int` row was added.

@@ -15,7 +15,7 @@ move. Name the `language/CAPABILITY.md` rows this ELP changes.
 Unified diff against `language/grammar/surface.ebnf` (and
 `genesis.ebnf` when the genesis surface is affected). Every new token or
 literal lists its Unicode confusable class (NFC form + fold, per
-`scripts/g4_confusable.py`).
+`scripts/confusable_scan.py`).
 
 ## 3. Lowering and world interactions
 
@@ -56,5 +56,5 @@ Map the proposal to the gates it touches (1 grammar/parser determinism,
 boundedness, 6 conflict-naming diagnostics, 7 definitions vs
 goals/plans, 9 identity mutation matrix, 10 migration goldens,
 11 no undocumented parser exceptions, 12 producer/consumer/negative/
-artifact). Record G4 battery results and the E1 replay / E2 coverage-ledger
+artifact). Record grammar-audit battery results and the replay / coverage-ledger
 checks when applicable.

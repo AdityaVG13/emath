@@ -88,7 +88,7 @@ impl super::super::Parser {
         loop {
             match self.peek() {
                 TokenKind::LParen => {
-                    // C3-analog (spec 04 section 1.5): a parenthetical after a
+                    // A parenthetical after a
                     // numeric literal is never a call. Attachment is lexical
                     // (`0.5012(3)` lexes as one FloatUncertainty token), so a
                     // spaced `1.50 (2)` is a syntax error at the leftover `(`,
@@ -114,10 +114,10 @@ impl super::super::Parser {
                     };
                 }
                 TokenKind::LBracket => {
-                    // C3: refuse indexing on numeric literals.  Indexing a
+                    // refuse indexing on numeric literals. Indexing a
                     // number (e.g. `9.81 [m/s^2]`) is always a type error,
                     // and the bracket form collides with future unit-bracket
-                    // syntax.  List/tuple/path primaries still accept `[]`.
+                    // syntax. List/tuple/path primaries still accept `[]`.
                     if matches!(
                         &value.kind,
                         ExprKind::Int(_)
@@ -277,7 +277,7 @@ impl super::super::Parser {
                 // sibling — never resolved by folding it into a literal).
                 let is_notation_glyph = self.notations.contains_key(&unit);
                 if !is_notation_glyph {
-                    // Anti-proposal bonus (C15): no juxtaposition
+                    // Anti-proposal bonus: no juxtaposition
                     // multiplication. `2x` is not `2 * x`; the cost of `*`
                     // is one character. Grammar requires whitespace between
                     // the numeric literal and the unit; adjacent spans
@@ -305,8 +305,8 @@ impl super::super::Parser {
                 }
             }
         }
-        // Compound-unit bracket: `9.81 [unit m/s^2]` (F7/U4).
-        // The C3 fix already broke out of the postfix loop when `[`
+        // Compound-unit bracket: `9.81 [unit m/s^2]`.
+        // The fix already broke out of the postfix loop when `[`
         // follows a numeric literal, so we handle it here.
         if matches!(
             &value.kind,
@@ -391,7 +391,7 @@ impl super::super::Parser {
                     self.error_here(
                         "E-SYN-121",
                         format!(
-                            "named call argument `{name} = ...` is outside the Phase 1 subset \
+                            "named call argument `{name} = ...` is outside the current subset \
                              (calls are positional-only)"
                         ),
                     );
@@ -413,7 +413,7 @@ impl super::super::Parser {
         if !self.eat(&TokenKind::LBracket) {
             return None;
         }
-        // U9: `;` splits rows (`[1, 2; 3, 4]` = 2x2 matrix spelling). A
+        // `;` splits rows (`[1, 2; 3, 4]` = 2x2 matrix spelling). A
         // comma-only list stays flat (additive — nothing reparses); rows
         // fold to nested `List` so admission's existing matrix path runs.
         let mut rows: Vec<Vec<Expr>> = vec![Vec::new()];

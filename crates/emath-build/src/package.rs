@@ -143,7 +143,7 @@ pub(super) fn compose_artifact(
         },
         |goal| goal.requirements.target.clone(),
     );
-    // Goal requirement vs what this native Phase-1 path actually delivers.
+    // Goal requirement vs what this native path actually delivers.
     // Admission is E1 (sema/admit); cargo-test verification is E3. A
     // not-run verification claim must not advertise E3 (overclaim across
     // build→checker→evidence). Manifest `evidence_level` records delivered
@@ -264,7 +264,7 @@ pub(super) fn compose_artifact(
             compiler: content_id_of_str(COMPILER_DESCRIPTOR),
             target,
             numeric_profile: "strict-f64".to_string(),
-            providers: Vec::new(), // Phase 1: provider-free
+            providers: Vec::new(), // provider-free
             evidence_level,
             public_exports,
             assumptions: output.assumptions.clone(),

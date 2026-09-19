@@ -64,7 +64,7 @@ impl super::super::Parser {
                     }
                     return self.braket_operand_expr(&BraketOperand::Label(label), start);
                 }
-                // U9: a pipe that STARTS a primary can only be a table
+                // a pipe that STARTS a primary can only be a table
                 // literal (`|x y| 1, 2 | 3, 4 |`); cases arms and infix
                 // `or` consume their pipes before reaching this position.
                 self.parse_table_literal()
@@ -91,10 +91,10 @@ impl super::super::Parser {
                 None
             }
             TokenKind::LBrace => {
-                // B01+U3: `{a, b, c}` set literal, `{n in d if g}`
+                // `{a, b, c}` set literal, `{n in d if g}`
                 // comprehension, `{}` empty set. Bare `{name: value}`
                 // (record spelling without a path prefix) is ambiguous
-                // between records and sets — refuse E-SYN-154 (X12: one
+                // between records and sets — refuse E-SYN-154 (one
                 // ELP scan covers both `{}` forms).
                 self.advance(); // `{`
                 if self.eat(&TokenKind::RBrace) {
@@ -142,7 +142,7 @@ impl super::super::Parser {
                     }
                     // Comprehension: `{element in domain if guard}` — the
                     // element parse consumed `in` as a membership binary
-                    // (X12 single ambiguity scan); brace position re-reads
+                    // (single ambiguity scan); brace position re-reads
                     // it as the comprehension binding. A non-membership
                     // first element followed by `if`/`}` is a parse error.
                     _ => {
@@ -168,7 +168,7 @@ impl super::super::Parser {
                         let ExprKind::Path { segments, .. } = &element.kind else {
                             self.error_here(
                                 "E-SYN-101",
-                                "comprehension element must be the bound name in Phase 1",
+                                "comprehension element must be the bound name in the current subset",
                             );
                             return None;
                         };
@@ -278,9 +278,9 @@ impl super::super::Parser {
                 })
             }
             TokenKind::Keyword(Keyword::Match) => {
-                // U6: `match subject { pattern
+                // `match subject { pattern
                 // => value, ... }` is expression-position sugar for
-                // `cases` (U1). Literal patterns become `subject ==
+                // `cases`. Literal patterns become `subject ==
                 // pattern` conditions; the mandatory FINAL catch-all
                 // (`_`, or a binding name) becomes the else arm, so
                 // totality is a parse-time guarantee. The subject is a
@@ -299,7 +299,7 @@ impl super::super::Parser {
                 self.parse_match_body(start, Box::new(subject), depth)
             }
             TokenKind::Ident(_) | TokenKind::Keyword(Keyword::SelfKw) => {
-                // B04: `limit x -> 0: f(x)` — contextual keyword for limit
+                // `limit x -> 0: f(x)` — contextual keyword for limit
                 // claim. Activates only when `limit` is followed by an
                 // identifier and then `->`. Otherwise `limit` is a regular
                 // user identifier.
@@ -407,7 +407,7 @@ impl super::super::Parser {
                             });
                         }
                     }
-                    // B06: `series n in 0..inf: a[n]` — contextual keyword
+                    // `series n in 0..inf: a[n]` — contextual keyword
                     // for series binder. Activates only when `series` is
                     // followed by an identifier and then `in`.
                     if name == "series"
@@ -457,7 +457,7 @@ impl super::super::Parser {
                             source: start.cover(self.last_span()),
                         });
                     }
-                    // B23: `graph { nodes; edges }`
+                    // `graph { nodes; edges }`
                     // — contextual only before a brace; `graph` elsewhere
                     // is a regular identifier. Desugars to the plain List
                     // shape the graph world consumes (no tree variant):
@@ -481,7 +481,7 @@ impl super::super::Parser {
                         );
                         return None;
                     }
-                    // U1: `cases x: | c1 => e1 | else => e2` - contextual
+                    // `cases x: | c1 => e1 | else => e2` - contextual
                     // keyword for cases expression. Activates when `cases`
                     // is followed by `:` (no subject) or by an identifier
                     // and then `:` (subject is a simple name).
@@ -554,9 +554,9 @@ impl super::super::Parser {
                         self.pos = save;
                     }
                 }
-                // U3: `Point:{x: 1.0, y: 2.0}` — path-prefixed braces are an
+                // `Point:{x: 1.0, y: 2.0}` — path-prefixed braces are an
                 // inline record literal. The path prefix is what makes the
-                // brace unambiguous under the X12 one-ELP scan; the bare
+                // brace unambiguous under the one-ELP scan; the bare
                 // form refuses E-SYN-154 in the LBrace arm above.
                 if matches!(self.peek(), TokenKind::Colon)
                     && matches!(self.peek_at(1), TokenKind::LBrace)
@@ -608,7 +608,7 @@ impl super::super::Parser {
                     self.error_keyword_as_ident(keyword);
                     return None;
                 }
-                // F2: a NEWLINE after a binary
+                // a NEWLINE after a binary
                 // operator is a hanging infix, not a statement boundary;
                 // teach the bracket idiom instead of a bare type error.
                 if matches!(other, TokenKind::Newline) {

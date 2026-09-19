@@ -27,7 +27,7 @@ use super::{E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE};
 use crate::recognition::expr_text;
 
 /// Typed refusal: a tolerance-less `≈` edge. An approximation without a
-/// declared tolerance is never admitted as if it were exact (04 §6.4).
+/// declared tolerance is never admitted as if it were exact.
 const E_APPROX_TOL: &str = "E-APPROX-TOL";
 
 fn interpolation_paths(template: &str) -> Vec<&str> {
@@ -132,7 +132,7 @@ impl super::Admitter {
     /// `E-UNIT-101` (or `E-UNIT-104` for an unresolvable spelling), never
     /// a silently-true claim. A bare `unit of E` outside a comparison is
     /// unchanged: still a named refuse (`E-TYPE-010`) — a unit is not a
-    /// Phase-1 value.
+    /// value in the current subset.
     fn lower_unit_query_comparison(
         &mut self,
         op: SynBinOp,

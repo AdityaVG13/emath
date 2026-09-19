@@ -237,7 +237,7 @@ pub(super) fn parse_float_constant(text: &str) -> Option<f64> {
 }
 
 /// Magnitude of a quantity literal: integer, decimal, or exact rational
-/// (`3//2`) under the selected numeric profile (Phase 1: strict f64).
+/// (`3//2`) under the selected numeric profile (strict f64).
 pub(super) fn parse_quantity_magnitude(value: &Expr) -> Option<f64> {
     match &value.kind {
         ExprKind::Int(text) | ExprKind::Float(text) => parse_float_constant(text),
@@ -258,7 +258,7 @@ pub(super) fn parse_quantity_magnitude(value: &Expr) -> Option<f64> {
     }
 }
 
-/// Scale attached parenthetical uncertainty digits (spec 04 section 1.5):
+/// Scale attached parenthetical uncertainty digits:
 /// digits `d` of a literal whose mantissa has `frac` fractional digits and
 /// exponent `exp` carry uncertainty `d × 10^(exp − frac)`.
 /// `6.67430(15)e-11` → 15 × 10^(−11 − 5) = 1.5e-15; `0.5012(3)` → 3e-4.

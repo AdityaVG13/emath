@@ -1,0 +1,63 @@
+# Supported-replay countermodel.
+# Recorded history: score 4 at A, 5 at B, 10 at A's child A1. The unseen
+# child B1 of B can score 20 (positive world) or -20 (negative world) with
+# the SAME recorded history - no replay of the shared record can determine
+# which world applies. A policy that chooses B then B1 finishes with
+# best-so-far 20 (positive) or 5 (negative); the baseline A then A1
+# finishes at 10. Reporting the unsupported transition as unsupported is
+# sound; inventing an estimated exact score is not.
+# Separately, a two-policy table has training scores A=10/B=12 and future
+# scores A=10/B=0: selecting B improves the frozen training criterion
+# while regressing on the future one - incumbent inclusion alone does not
+# imply out-of-sample non-regression.
+# world = 0: B1 scores 20; world = 1: B1 scores -20.
+
+emath function ReplayCountermodel:
+    inputs:
+        world: Int
+    outputs:
+        recorded_a: Rat
+        recorded_b: Rat
+        recorded_a1: Rat
+        baseline_final: Rat
+        policy_final: Rat
+        train_pick_b: Bool
+        future_pick_b: Bool
+    definitions:
+        recorded_a = 4 / 1
+        recorded_b = 5 / 1
+        recorded_a1 = 10 / 1
+        # B1 is absent from the recorded archive in BOTH worlds; its score
+        # is unsupported by the shared record.
+        b1 = if world == 0: 20 / 1 else: (0 - 20) / 1
+        baseline_final = if recorded_a < recorded_a1: recorded_a1 else: recorded_a
+        policy_final = if recorded_b < b1: b1 else: recorded_b
+        train_a = 10 / 1
+        train_b = 12 / 1
+        future_a = 10 / 1
+        future_b = 0 / 1
+        train_pick_b = train_a < train_b
+        future_pick_b = future_b < future_a
+    tests:
+        example <positive_world_policy_final>:
+            given world = 0
+            expect recorded_a == 4 / 1
+            expect recorded_b == 5 / 1
+            expect recorded_a1 == 10 / 1
+            expect baseline_final == 10 / 1
+            expect policy_final == 20 / 1
+        example <negative_world_policy_final>:
+            # The recorded archive is IDENTICAL to the positive world; only
+            # the unrecorded B1 branch differs - replay cannot distinguish.
+            given world = 1
+            expect recorded_a == 4 / 1
+            expect recorded_b == 5 / 1
+            expect recorded_a1 == 10 / 1
+            expect baseline_final == 10 / 1
+            expect policy_final == 5 / 1
+        example <training_future_split>:
+            # B improves the frozen training criterion AND regresses on the
+            # future one.
+            given world = 0
+            expect train_pick_b == true
+            expect future_pick_b == true

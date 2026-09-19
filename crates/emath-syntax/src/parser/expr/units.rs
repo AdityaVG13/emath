@@ -3,7 +3,7 @@
 use super::*;
 
 impl super::super::Parser {
-    /// Parse a compound-unit bracket `[unit m/s^2]` (F7/U4); the `unit`
+    /// Parse a compound-unit bracket `[unit m/s^2]`; the `unit`
     /// keyword disambiguates from indexing. `None` when not a unit bracket.
     pub(super) fn parse_unit_bracket(&mut self, depth: usize) -> Option<UnitExpr> {
         // Only enter if the next token is `[`.
@@ -29,7 +29,7 @@ impl super::super::Parser {
     }
 
     /// Parse a unit expression: `m/s^2`, `kg*m^2/s^2`, `m/(s*s)`.
-    /// Left-associative for `*` and `/` (C2 trap: `m/s*s` = length, not acceleration).
+    /// Left-associative for `*` and `/` (`m/s*s` = length, not acceleration).
     pub(super) fn parse_unit_expr(&mut self, depth: usize) -> Option<UnitExpr> {
         let _ = depth;
         let mut left = self.parse_unit_atom()?;

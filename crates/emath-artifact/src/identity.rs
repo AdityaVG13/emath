@@ -12,7 +12,7 @@ pub(super) const METADATA_PATHS: [&str; 4] = [
     "emath/evidence-bundle.json",
 ];
 
-/// Paths required for a Phase 1 artifact; per-class inventories live on
+/// Paths required for a artifact; per-class inventories live on
 /// [`required_paths_for_class`].
 #[must_use]
 pub fn required_artifact_paths() -> &'static [&'static str] {

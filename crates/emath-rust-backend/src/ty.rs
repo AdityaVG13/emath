@@ -45,7 +45,7 @@ impl BackendInput<'_> {
                     Ok(Ty::Named("(f64, f64)".into()))
                 }
                 other => Err(BackendError::UnsupportedType(format!(
-                    "`Complex<{}>` has no Phase 1 runtime value (only `Complex<Float64>` computes)",
+                    "`Complex<{}>` has no runtime value yet (only `Complex<Float64>` computes)",
                     other.display_name()
                 ))),
             },
@@ -71,12 +71,12 @@ impl BackendInput<'_> {
             TypeNode::Vector { element, .. } => match element.as_ref() {
                 // Nested vectors map onto the row-major matrix runtime
                 // representation (Vector<Vector<Float64>> values ARE
-                // Vec<Vec<f64>>); deeper nesting has no Phase 1 runtime
+                // Vec<Vec<f64>>); deeper nesting has no runtime
                 // value and refuses with guidance toward Tensor.
                 TypeNode::Vector { element: inner, .. } => {
                     if matches!(**inner, TypeNode::Vector { .. }) {
                         Err(BackendError::UnsupportedType(
-                            "nested vectors deeper than two levels have no Phase 1 runtime value; use Tensor<T>".to_string(),
+                            "nested vectors deeper than two levels have no runtime value yet; use Tensor<T>".to_string(),
                         ))
                     } else {
                         Ok(Ty::Named("Vec<Vec<f64>>".to_string()))

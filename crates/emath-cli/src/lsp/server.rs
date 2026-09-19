@@ -326,7 +326,7 @@ impl Default for ServerState {
     }
 }
 
-/// Completion items for the Phase 1 grammar keywords.
+/// Completion items for the grammar keywords.
 fn completion_result() -> JsonValue {
     let items = KEYWORDS
         .iter()
@@ -371,7 +371,7 @@ fn range_offsets(range: &JsonValue, text: &str) -> Option<(usize, usize)> {
 
 /// Byte offset for a `{line, character}` position given precomputed line starts.
 ///
-/// `character` is a UTF-8 byte offset within the line (Phase 1); offsets past
+/// `character` is a UTF-8 byte offset within the line; offsets past
 /// the line end or mid-codepoint are refused.
 fn line_character_offset(position: &JsonValue, text: &str, line_starts: &[usize]) -> Option<usize> {
     let line = usize::try_from(position.get_int("line")?).ok()?;
@@ -396,7 +396,7 @@ fn clamp_byte_offset(text: &str, offset: u32) -> usize {
     offset
 }
 
-/// Byte offset to `{line, character}` (UTF-8 byte `character`, Phase 1).
+/// Byte offset to `{line, character}` (UTF-8 byte `character`).
 fn offset_to_position(text: &str, offset: usize) -> Position {
     let starts = line_starts(text);
     let line = starts

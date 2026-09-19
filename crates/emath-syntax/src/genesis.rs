@@ -1,4 +1,4 @@
-//! G0: custom-world genesis grammar.
+//! Custom-world genesis grammar.
 //!
 //! UTF-8 byte-exact: glyphs are preserved verbatim into
 //! [`GenesisFile::body_text`] for the forest stage. Malformed sections are

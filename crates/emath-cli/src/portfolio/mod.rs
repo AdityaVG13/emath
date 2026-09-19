@@ -67,7 +67,7 @@ pub struct InterpretationCandidate {
 }
 
 impl InterpretationCandidate {
-    /// Projects this bag member onto G7 with uniform cost so `evaluate`
+    /// Projects this bag member onto the interpretation view with uniform cost so `evaluate`
     /// cannot silently drop a `keep: pareto N` world.
     #[must_use]
     pub fn world_candidate(&self) -> WorldCandidate {

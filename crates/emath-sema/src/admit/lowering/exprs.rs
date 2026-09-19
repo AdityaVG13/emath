@@ -209,8 +209,8 @@ impl super::super::Admitter {
         let ExprKind::Binary { op, left, right } = &expr.kind else {
             unreachable!()
         };
-        // Unit queries compute (
-        // 04 §1.4): `unit of E == spelling`, `unit of a == unit of b`
+        // Unit queries compute:
+        // `unit of E == spelling`, `unit of a == unit of b`
         // and the `!=` forms are compile-time comparisons over the
         // static unit layer — evaluated at admission, never pushed
         // as runtime arithmetic.

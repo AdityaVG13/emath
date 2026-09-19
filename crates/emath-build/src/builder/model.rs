@@ -34,27 +34,6 @@ impl std::fmt::Display for BuilderError {
     }
 }
 
-/// Convenience: builds an artifact from a programmatic model through the
-/// exact `emath-build` artifact path.
-pub fn build_from_model(
-    model: BuilderModel,
-    name: &str,
-    target_dir: impl AsRef<std::path::Path>,
-) -> Result<crate::BuildReport, BuilderError> {
-    let mut package = model.build()?;
-    package.seal();
-    let diagnostics = emath_core::Diagnostics::new();
-    crate::build_package(
-        &package,
-        name,
-        &diagnostics,
-        &[],
-        target_dir.as_ref(),
-        crate::BuildOptions::default(),
-    )
-    .map_err(|error| BuilderError(error.to_string()))
-}
-
 impl std::error::Error for BuilderError {}
 
 /// A builder model: everything the trait collects before lowering.
@@ -155,7 +134,7 @@ pub enum CmpOp {
 
 #[derive(Clone, Debug)]
 pub struct GoalModel {
-    pub kind: String, // Phase 1: "evaluate"
+    pub kind: String, // currently "evaluate"
     pub target: String,
     pub produce: String,
 }

@@ -10,7 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-# frankensqlite evidence-state lane (CUTOVER_PLAN.md §5.2 / §9.10). Optional by
+# frankensqlite evidence-state lane. Optional by
 # design, mirroring the asupersync doctrine: consumers decide whether to pull
 # the pinned fsqlite git revision and the asupersync runtime that drives it.
 # The default build stays std-only + first-party-only (emath-core / emath-ir /

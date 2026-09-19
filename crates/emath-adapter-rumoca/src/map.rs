@@ -105,7 +105,7 @@ pub const TABLE: [ConstructMapping; 16] = [
     ConstructMapping {
         construct: "sample",
         class: MappingClass::Unsupported,
-        reason: "time-sampled dynamics outside Phase 1 subset",
+        reason: "time-sampled dynamics outside the current subset",
     },
     ConstructMapping {
         construct: "when",

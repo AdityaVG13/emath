@@ -104,7 +104,7 @@ pub(super) enum CType {
     Rat,
     Float64,
     Sequence,
-    /// The mutable buffer carrier (bead emath-84sfr): unparameterized
+    /// The mutable buffer carrier: unparameterized
     /// in this cut — element values are checked at use, statically
     /// claimed nowhere.
     Buffer,
@@ -221,7 +221,7 @@ pub(super) fn admit_query(engine: &Engine, decl: &Declaration) -> Result<(), Con
 }
 
 /// Refuse unrecognized `tests:` row forms instead of silently skipping
-/// them (bead emath-7zplf). The collectors admit exactly `example
+/// them. The collectors admit exactly `example
 /// <label>:` blocks (with `given`/`expect` rows inside), loose `given`
 /// and `expect` rows, and the legacy `given`-headed assignment inside
 /// an example. Anything else — an invented `fault <label>:` section, an
@@ -352,7 +352,7 @@ impl Engine {
                 let l = self.infer(types, left)?;
                 let r = self.infer(types, right)?;
                 // Mutable state has no total value equality: refuse
-                // `==`/`!=` on buffers by name (bead emath-84sfr);
+                // `==`/`!=` on buffers by name;
                 // compare a projection (`buf[i]`, `buf.length`).
                 if matches!(op, BinaryOp::Eq | BinaryOp::Ne)
                     && (l == CType::Buffer || r == CType::Buffer)
@@ -641,8 +641,8 @@ impl Engine {
         }
     }
 
-    /// Buffer-carrier machine ops (bead emath-84sfr, design note 12
-    /// B1): `buffer(size, fill)` -> CType::Buffer (unparameterized;
+    /// Buffer-carrier machine ops:
+    /// `buffer(size, fill)` -> CType::Buffer (unparameterized;
     /// elements are checked at use), `buffer_set(buf, i, v)` -> Unit
     /// (inferred Unknown). Equality on buffers refuses elsewhere.
     pub(super) fn infer_machine_buffer(

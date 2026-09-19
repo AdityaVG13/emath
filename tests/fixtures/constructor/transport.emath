@@ -1,0 +1,41 @@
+# Scientific transport. This file installed no topic identity.
+emath function step:
+    inputs:
+        q1: Rat
+        q2: Rat
+    outputs:
+        n1: Rat
+        n2: Rat
+    definitions:
+        dt = 1 / 4
+        flux = q1 * dt
+        n1 = q1 - flux
+        n2 = q2 + flux
+
+emath function two_steps:
+    inputs:
+        unused: Int
+    outputs:
+        a1: Rat
+        a2: Rat
+        b1: Rat
+        b2: Rat
+        total: Rat
+    definitions:
+        s1 = step(1, 0)
+        s2 = step(s1.n1, s1.n2)
+        a1 = s1.n1
+        a2 = s1.n2
+        b1 = s2.n1
+        b2 = s2.n2
+        total = b1 + b2
+    tests:
+        example <mass>:
+            given unused = 0
+            expect a1 == 3 / 4
+            expect a2 == 1 / 4
+            expect b1 == 9 / 16
+            expect b2 == 7 / 16
+            expect total == 1
+            expect s1.n1 == 3 / 4
+            expect s2.n1 == 9 / 16

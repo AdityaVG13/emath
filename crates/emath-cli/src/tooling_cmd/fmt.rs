@@ -5,12 +5,12 @@ use super::*;
 /// `fmt <file>`: canonical-form check via the lossless formatter;
 /// canonical only on byte-for-byte round-trip, else refusal + diff.
 /// `emath fmt --value <literal>`: sig-fig rounding + unit-preserving
-/// display (04 §1.6+1.7).
+/// display.
 ///
 /// Deterministic; units resolve from the std seed table; bare value
 /// output rounds to the input literal's own significant-figure count
 /// ("rounds output to minimum input sf"). Unit-preserving display
-/// (§1.7) changes presentation only: the converted value is re-reported
+/// changes presentation only: the converted value is re-reported
 /// as-is (`90 s` → `1.5 min`), and sf rounding applies only with an
 /// explicit `--sf`. Incompatible format unit is refused (`E-UNIT-FMT`);
 /// `--from` without `--format` is refused (`E-UNIT-104` path for unknown

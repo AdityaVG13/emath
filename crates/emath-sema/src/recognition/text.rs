@@ -93,7 +93,7 @@ pub fn expr_text(expr: &Expr) -> String {
             "[{}]",
             items.iter().map(expr_text).collect::<Vec<_>>().join(", ")
         ),
-        // U9: same round-trip spelling the formatter prints.
+        // same round-trip spelling the formatter prints.
         ExprKind::Table { headers, rows } => {
             let mut out = String::from("|");
             for header in headers {

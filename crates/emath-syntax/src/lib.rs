@@ -23,7 +23,7 @@ pub mod tree;
 
 pub use edition::{GrammarProfile, admitted_by_default, grammar_profile_for};
 pub use layout::{E_SYN_HANGING_INFIX, classify_line_break};
-// Facade fence (C053): the formatter entry point callers consume
+// Facade fence: the formatter entry point callers consume
 // deep (`formatter::format`) is root-exported; the module stays public
 // for format_type and friends.
 pub use exactness::{

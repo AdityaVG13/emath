@@ -1,4 +1,4 @@
-//! SG-14 production path: synthesize a size-2 commutative monoid, print
+//! Finite-world production path: synthesize a size-2 commutative monoid, print
 //! deterministic rows, record an impossible-law refusal, a budget refusal
 //! plus resumed continuation, and detect a planted non-associative table.
 

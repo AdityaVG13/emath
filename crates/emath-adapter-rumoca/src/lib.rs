@@ -1,6 +1,6 @@
 //! Rumoca structural-model adapter: provider seam and neutral IR.
 //!
-//! Phase 1 implements the structural lane with in-tree native stand-ins;
+//! The structural lane is implemented with in-tree native stand-ins;
 //! no upstream Rumoca engine is consumed and no upstream type appears
 //! here (Rumoca is referenced only by provider identity string).
 

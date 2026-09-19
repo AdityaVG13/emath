@@ -263,7 +263,7 @@ pub struct ExcludedCandidate {
     pub reason: String,
 }
 
-/// Required `produce` string for the Phase 1 native export surface.
+/// Required `produce` string for the native export surface.
 pub const PRODUCE_RUST_LIBRARY: &str = "rust.library";
 
 /// Policy name for the deterministic native plan.
@@ -274,16 +274,16 @@ pub const POLICY: &str = "native-deterministic";
 /// plan identity preimage: identity hashes a `plan:` payload ([`plan_identity`]).
 pub const PLAN_SCHEMA: &str = "emath.resolution-plan";
 
-/// Provider identities known to the constellation but not installed in
-/// Phase 1; they are excluded with reasons in every plan.
+/// Provider identities known to the constellation but not installed;
+/// They are excluded with reasons in every plan.
 pub const EXCLUDED_PROVIDERS: &[(&str, &str)] = &[
-    ("phase2.expression", "adapter not installed until Phase 2"),
-    ("phase3.structural", "adapter not installed until Phase 3"),
+    ("future.expression", "adapter not installed yet"),
+    ("future.structural", "adapter not installed yet"),
     (
-        "phase4.symbolic",
+        "future.symbolic",
         "optional symbolic provider, not installed",
     ),
-    ("phase7.adapter", "adapter not installed until Phase 7"),
+    ("future.adapter", "adapter not installed yet"),
 ];
 
 /// One elaborated request recovered from the `goals:` section.

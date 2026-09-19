@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Deterministic parametric Rust world artifact generation (Semantic Genesis G3).
+//! Deterministic parametric Rust world artifact generation.
 //!
 //! Emits a self-contained, zero-dependency generated crate evaluating a fixed
 //! first-order term under free-symbolic, Boolean, and modular-17 worlds, plus

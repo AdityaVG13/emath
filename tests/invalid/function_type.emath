@@ -1,4 +1,4 @@
-# expect: E-TYPE-110 function types are outside the Phase 1 subset
+# expect: E-TYPE-110 function types are outside the current subset
 emath function FnType:
     inputs:
         f: fn(Float64) -> Float64

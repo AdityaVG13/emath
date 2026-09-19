@@ -421,7 +421,7 @@ impl super::Parser {
             return None;
         }
         let suite = self.parse_suite()?;
-        // Phase 1 elaboration (admission, goal extraction, codegen) runs off
+        // elaboration (admission, goal extraction, codegen) runs off
         // the `custom` compat lane keyed by `as_kind`, so every kind spelled
         // in the unified surface is canonicalized to that representation;
         // `emath custom Name:` keeps an empty `as_kind`.
@@ -459,14 +459,14 @@ impl super::Parser {
             if param.by_ref {
                 self.diagnostics.error(
                     "E-SYN-101",
-                    "by-ref declaration head arguments are outside the Phase 1 subset",
+                    "by-ref declaration head arguments are outside the current subset",
                     param.source,
                 );
             }
             if param.default.is_some() {
                 self.diagnostics.error(
                     "E-SYN-101",
-                    "default values on declaration head arguments are outside the Phase 1 subset",
+                    "default values on declaration head arguments are outside the current subset",
                     param.source,
                 );
             }
@@ -556,13 +556,13 @@ impl super::Parser {
         }
 
         // Target path: ident (:: ident)*
-        // Stop if we see `alias` followed by a string (N2 alias clause).
+        // Stop if we see `alias` followed by a string (alias clause).
         let mut target = Vec::new();
         loop {
             match self.peek() {
                 TokenKind::Ident(name) => {
                     // Don't consume `alias` as a path segment — it starts
-                    // the optional N2 alias clause.
+                    // the optional alias clause.
                     if name == "alias" && matches!(self.peek_at(1), TokenKind::Str(_)) {
                         break;
                     }
@@ -587,7 +587,7 @@ impl super::Parser {
             return None;
         }
 
-        // N2: Optional alias clause: `alias "*"`
+        // Optional alias clause: `alias "*"`
         let alias = if self.peek() == &TokenKind::Ident("alias".to_string()) {
             self.advance();
             match self.peek() {

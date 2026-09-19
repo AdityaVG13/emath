@@ -50,7 +50,7 @@ pub struct NotationDecl {
     pub precedence: u32,
     pub glyph: String,
     pub target: Vec<String>,
-    /// N2 alias clause: `alias "*"` — alternative spelling for the same
+    /// Alias clause: `alias "*"` — alternative spelling for the same
     /// operator, resolving to one canonical path.
     pub alias: Option<String>,
     pub source: Span,
@@ -190,7 +190,7 @@ pub enum StmtKind {
         kind: BinderKind,
         binders: Vec<Binder>,
         suite: Suite,
-        /// B02: optional `if <condition>` guard clause.
+        /// optional `if <condition>` guard clause.
         guard: Option<Box<Expr>>,
     },
     SelfBlock {
@@ -211,7 +211,7 @@ pub enum StmtKind {
     /// One `reactions:` line (`r1: 2H2 + O2 -> 2H2O`, 04 section 3.1):
     /// a labeled stoichiometric multiset transformation. Reaction lines
     /// are T3 SECTION grammar — coefficients attach to species here even
-    /// though expression juxtaposition stays refused (C15).
+    /// though expression juxtaposition stays refused.
     Reaction {
         name: String,
         lhs: Vec<ReactionTerm>,
@@ -275,7 +275,7 @@ pub struct TypeExpr {
 }
 
 /// A generic argument at a use site (`Vector<Float64>`, `Mod<7>`,
-/// `GF<2, 3, modulus = ...>`): type or value-level arguments (C10).
+/// `GF<2, 3, modulus = ...>`): type or value-level arguments.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GenericArg {
     /// A type argument: `Float64`, `Real`, `NonNegative`
@@ -298,7 +298,7 @@ pub enum TypeKind {
     Ref(Box<TypeExpr>),
     /// Left-associative `*` / `/` in a type (`m/s`, `m*m`).
     /// Operators are recorded so `m*m` is area, not a quotient, and
-    /// `m/s*s` is length (C2), not acceleration.
+    /// `m/s*s` is length, not acceleration.
     Product {
         left: Box<TypeExpr>,
         op: TypeProductOp,
@@ -315,7 +315,7 @@ pub enum TypeKind {
         unit: Box<TypeExpr>,
     },
     /// `Float64 in [0, 1]` / `Float64 in [a, b]`: a numeric type with
-    /// a bounded domain (U5). Values outside [lo, hi] are a type error.
+    /// a bounded domain. Values outside [lo, hi] are a type error.
     Domain {
         base: Box<TypeExpr>,
         lo: Box<Expr>,

@@ -3,7 +3,7 @@
 use super::*;
 
 impl super::super::Parser {
-    /// B04: Parse the body of a `limit x -> T[+|-]: body` expression; the
+    /// Parse the body of a `limit x -> T[+|-]: body` expression; the
     /// target parses at multiplicative level so `+`/`-` before `:` is a
     /// direction suffix (complex targets need parens).
     #[allow(dead_code)]
@@ -22,7 +22,7 @@ impl super::super::Parser {
         None
     }
 
-    /// U1: Parse a `cases [subject]: | c1 => e1 | else => eN` body; arms use
+    /// Parse a `cases [subject]: | c1 => e1 | else => eN` body; arms use
     /// `|`/`=>` and a mandatory `else` arm enforces totality.
     pub(super) fn parse_cases_body(
         &mut self,
@@ -121,7 +121,7 @@ impl super::super::Parser {
         })
     }
 
-    /// U6: Parse the brace body of a match expression and desugar to
+    /// Parse the brace body of a match expression and desugar to
     /// `ExprKind::Cases`. Literal patterns become `subject == pattern`
     /// conditions; the mandatory final catch-all arm (`_` or a binding
     /// name) becomes the else arm. A binding pattern substitutes the
@@ -213,7 +213,7 @@ impl super::super::Parser {
         })
     }
 
-    /// One U6 match pattern: a literal (Int/Float/Str/Bool, with an
+    /// One match pattern: a literal (Int/Float/Str/Bool, with an
     /// optional leading `-` for numeric literals), the `_` wildcard, or
     /// a binding name. Patterns are deliberately not full expressions:
     /// in value position a bare name means "bind the subject", so a
@@ -312,7 +312,7 @@ impl super::super::Parser {
 
 }
 
-/// One U6 match pattern (see [`Parser::parse_match_pattern`]).
+/// One match pattern (see [`Parser::parse_match_pattern`]).
 pub(super) enum MatchPattern {
     /// A literal pattern; becomes a `subject == literal` arm condition.
     Literal(Expr),
@@ -325,7 +325,7 @@ pub(super) enum MatchPattern {
 /// One braket operand: an integer basis label (`|0⟩`, `⟨1|`) or an
 
 /// Substitute the match subject for a binding-pattern name in an arm
-/// value (U6). Lexical scoping is honored: a binder, comprehension
+/// value. Lexical scoping is honored: a binder, comprehension
 /// variable, or limit variable of the same name shadows the binding, so
 /// its body/guard is left untouched while its domain/target (evaluated
 /// outside the binder) is still substituted. The declared tolerance

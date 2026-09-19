@@ -5,7 +5,7 @@
 //! - **Seed is identity.** The seed is an explicit part of run/campaign
 //!   identity. [`Seed`] has no `Default` and there is no ambient
 //!   constructor anywhere in core: a seed exists only when a run
-//!   declares one. Entropy access is a declared capability (C10), never
+//!   declares one. Entropy access is a declared capability, never
 //!   an ambient side effect — [`E_STOCH_ENTROPY`] is the typed refusal
 //!   code for undeclared entropy access.
 //! - **Named algorithm.** The generator of record is a counter-based

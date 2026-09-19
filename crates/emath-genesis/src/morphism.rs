@@ -1,4 +1,4 @@
-//! SG-16 world morphisms: homomorphisms, observational quotients,
+//! World morphisms: homomorphisms, observational quotients,
 //! isomorphism search, portfolio invariant mining, and deduplication.
 //!
 //! Homomorphism law checked on every pair (no probabilistic shortcuts).

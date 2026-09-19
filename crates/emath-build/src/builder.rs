@@ -2,7 +2,7 @@
 //! (SIR package + GIR goals) that `.emath` text admission produces, without
 //! a source file. Hosts and the lab use this to compose models in Rust.
 //!
-//! Phase 1 supports the strict-f64 subset with one declaration. The
+//! supports the strict-f64 subset with one declaration. The
 //! constructor surface admits overloads, factories,
 //! delegation, defaults, derived fields, postconditions and typed
 //! errors without bypassing schema or constructor admission
@@ -22,11 +22,9 @@ use emath_ir::{
 use std::collections::BTreeSet;
 
 mod build;
-mod macros;
 mod model;
 mod policy;
 
 pub use build::*;
-pub use macros::*;
 pub use model::*;
 pub use policy::*;

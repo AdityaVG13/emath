@@ -11,7 +11,7 @@ Frequently re-exported types (not exhaustive):
 - `ArtifactManifest`, `ArtifactClass` (`emath.artifact`, manifest v1 via `ARTIFACT_MANIFEST_VERSION`): the manifest with files, providers, target, evidence level and linked document ids. `ArtifactClass` is the seven-class total-artifact protocol (native, portfolio, hybrid, parametric, exploration, continuation, diagnostic; `ArtifactClass::ALL`), with stable string tokens that round-trip.
 - `required_paths_for_class`: package contents per class; code-bearing classes ship a Cargo crate plus the four metadata documents; exploration and diagnostic artifacts are metadata-only. `required_artifact_paths` stays the native-class alias.
 - `SourceMap`, `SourceMapEntry` (`emath.source-map`): byte-range + `source_package` shape.
-- `PlanRecord`, `OperationRecord` (`emath.resolution-plan`): provider-free Phase 1 mirror of the GIR plan.
+- `PlanRecord`, `OperationRecord` (`emath.resolution-plan`): provider-free native mirror of the GIR plan.
 - `EvidenceBundleRecord` (`emath.evidence-bundle`): claims, artifact paths, reproduction steps.
 - `StagedFile`, `Staging`: staging with per-file bootstrap content ids and derived artifact id (`stage`).
 - `JsonWriter`/`JsonObject`, `JsonValue`, `parse_json_document`, `manifest_files_declared`: the single std-only deterministic JSON writer and its parse-back reader.

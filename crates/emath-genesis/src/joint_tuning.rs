@@ -1,4 +1,4 @@
-//! SG-18 host joint tuning: budgeted search over meanings and host
+//! Host joint tuning: budgeted search over meanings and host
 //! evaluation strategies under a protected real-program objective.
 //!
 //! Enumerates the joint space (semantic table × [`ImplVariant`]) in
