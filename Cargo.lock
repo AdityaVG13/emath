@@ -1188,6 +1188,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "emath-tui"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-exec-ir",
+ "emath-sema",
+ "emath-syntax",
+]
+
+[[package]]
+name = "emath-tui-tests"
+version = "0.1.0"
+dependencies = [
+ "emath-core",
+ "emath-exec-ir",
+ "emath-syntax",
+ "emath-test-harness",
+ "emath-tui",
+]
+
+[[package]]
 name = "emath-wasm"
 version = "0.1.0"
 dependencies = [

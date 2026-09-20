@@ -1,0 +1,17 @@
+[package]
+name = "emath-tui-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+emath-test-harness = { workspace = true }
+emath-core = { workspace = true }
+emath-syntax = { workspace = true }
+emath-exec-ir = { workspace = true }
+emath-tui = { path = "../../crates/emath-tui" }
+
+# Dual seal (ra96/U010): inherit the workspace lint set, including
+# forbid(unsafe_code), over the test package.
+[lints]
+workspace = true

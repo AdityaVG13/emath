@@ -1,0 +1,294 @@
+# Session-surface lift of the two targets-module loop targets (bead
+# emath-kz3ll): the closures SameEngineFittingTarget and
+# SameEngineReachTarget define inline are lifted to module level as
+# ordinary functions, each with a Seed and a one-batch Step entry point
+# a loop host drives. The engine and the target mathematics are
+# unchanged from research_loop_targets.emath - only the surface is
+# lifted, so the host sessions reproduce that fixture's authored
+# outcomes batch by batch.
+# The two Step surfaces stay two declaration sets for the same reason
+# the targets fixture keeps two functions: the reference VM deep-clones
+# captured closure environments per application, so one body nesting
+# the fit closure tree inside every reach clone would spend minutes
+# cloning.
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/constructor/research_step_targets.emath
+
+use analysis.evolution.one_step
+use analysis.evolution.trajectories
+use discrete.reachability
+use search.experiments
+use search.fitting
+use search.research
+
+emath function MakeFitFamily:
+    # The damped-oscillator family over c (truth c = 1/2).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> SimState -> SimState
+    definitions:
+        result = function c in Rat: function t in Rat: function s in SimState: SimState: {t: t, y: [s.y[1], 0 / 1 - s.y[0] - c * s.y[1]]}
+
+emath function MakeFitScore:
+    # The fitting score: SSE of the c-family against the truth rollout
+    # (forward Euler, h = 1/4, 2 steps, initial (1, 0)), evaluated at
+    # c = k/4.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        fam = MakeFitFamily(0)
+        s0 = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        data_rows = rollout_trace(fam(1 / 2), euler_tableau(0), 1, 1 / 4, 2, s0)
+        result = function k in Int: function cs in CaseSet: sse_eval(fam, 0, k / 4, data_rows, s0, 1 / 4, 2)
+
+emath function MakeFitValue:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 4
+
+emath function MakeFitAdmit:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 4
+
+emath function MakeFitMoves:
+    # The c-domain neighbors: 0 -> 1, 4 -> 3, otherwise both sides.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: if k == 0: [1] else: if k == 4: [3] else: [k - 1, k + 1]
+
+emath function MakeFitWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: -1
+
+emath function MakeFitHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeFitGoal:
+    # Exact SSE zero closes the run.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: s == 0 / 1
+
+emath function MakeFitBetter:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeKeepCases:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: cs
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 9
+
+emath function SeedFitting:
+    # Incumbent-only mode (mode 0): the strict-improvement hillclimb at
+    # c-index 0.
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        fit_value = MakeFitValue(0)
+        fit_score = MakeFitScore(0)
+        witness_of = MakeFitWitness(0)
+        result = research_seed(0, fit_value, CaseSet: {ids: []}, fit_score, witness_of, 5, 0, 1, 0)
+    tests:
+        example <fitting_seed_state>:
+            given unused = 0
+            expect result.incumbent == 0
+            expect result.batch == 0
+            expect result.mode == 0
+            expect result.archive[0].key == 0
+            expect result.archive[0].value == 0 / 1
+
+emath function StepFitting:
+    # One batch of the fitting target over explicit state.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        fit_value = MakeFitValue(0)
+        fit_admit = MakeFitAdmit(0)
+        fit_moves = MakeFitMoves(0)
+        fam_of = MakeFamilyOf(0)
+        quota = MakeQuota(0)
+        fit_score = MakeFitScore(0)
+        witness_of = MakeFitWitness(0)
+        hard_ok = MakeFitHardOk(0)
+        goal_zero = MakeFitGoal(0)
+        better_min = MakeFitBetter(0)
+        keep_set = MakeKeepCases(0)
+        result = research_batch(state, fit_value, fit_admit, fit_moves, fam_of, quota, fit_score, fit_score, witness_of, hard_ok, goal_zero, better_min, keep_set, budget)
+
+emath function RunFitting:
+    # The two-batch straight run: reproduces the targets fixture's
+    # authored fitting outcome - the walk 0 -> 1/4 -> 1/2 to exact SSE
+    # zero with a parent-linked chain.
+    inputs:
+        unused: Int
+    outputs:
+        winner_value: Rat
+        verdict: Int
+        chain_len: Int
+        lineage: Bool
+    definitions:
+        s0 = SeedFitting(0)
+        s1 = StepFitting(s0, 60)
+        s2 = StepFitting(s1, 60)
+        winner_value = s2.archive[s2.incumbent].value
+        verdict = s2.verdict
+        chain_len = length(s2.archive)
+        lineage = s2.archive[1].parent == 0 and s2.archive[2].parent == 1
+    tests:
+        example <fitting_walks_to_half>:
+            given unused = 0
+            expect winner_value == 2 / 4
+            expect verdict == 1
+            expect chain_len == 3
+            expect lineage == true
+
+emath function MakeReachScore:
+    # The counterexample score: 0 exactly on the WITNESS-but-not-FORCED
+    # states of the declared 4-state game graph.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        g = GameGraph: {succs: [[1, 3], [2, 0], [], []], controllers: [0, 3], goals: [2]}
+        ws = witness_set(g)
+        att = attractor_set(g)
+        result = function k in Int: function cs in CaseSet: if seq_has(ws, k, 0) and not seq_has(att, k, 0): 0 / 1 else: 1 / 1
+
+emath function MakeReachValue:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeReachAdmit:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 3
+
+emath function MakeReachMoves:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [0, 1, 2]
+
+emath function SeedReach:
+    # Archive mode (mode 1): the whole-domain proposal scan seeded at
+    # the controller dead end 3.
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        reach_value = MakeReachValue(0)
+        reach_score = MakeReachScore(0)
+        witness_of = MakeFitWitness(0)
+        result = research_seed(3, reach_value, CaseSet: {ids: []}, reach_score, witness_of, 6, 0, 1, 1)
+    tests:
+        example <reach_seed_state>:
+            given unused = 0
+            expect result.incumbent == 0
+            expect result.batch == 0
+            expect result.mode == 1
+            expect result.archive[0].key == 3
+
+emath function StepReach:
+    # One batch of the reachability target over explicit state.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        reach_value = MakeReachValue(0)
+        reach_admit = MakeReachAdmit(0)
+        reach_moves = MakeReachMoves(0)
+        fam_of = MakeFamilyOf(0)
+        quota = MakeQuota(0)
+        reach_score = MakeReachScore(0)
+        witness_of = MakeFitWitness(0)
+        hard_ok = MakeFitHardOk(0)
+        goal_zero = MakeFitGoal(0)
+        better_min = MakeFitBetter(0)
+        keep_set = MakeKeepCases(0)
+        result = research_batch(state, reach_value, reach_admit, reach_moves, fam_of, quota, reach_score, reach_score, witness_of, hard_ok, goal_zero, better_min, keep_set, budget)
+
+emath function RunReach:
+    # The one-batch straight run: reproduces the targets fixture's
+    # authored reachability outcome - state 0 verified as the
+    # witness-not-forced counterexample.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+    definitions:
+        s0 = SeedReach(0)
+        s1 = StepReach(s0, 15)
+        winner = s1.archive[s1.incumbent].key
+        verdict = s1.verdict
+    tests:
+        example <reach_finds_counterexample>:
+            given unused = 0
+            expect winner == 0
+            expect verdict == 1
