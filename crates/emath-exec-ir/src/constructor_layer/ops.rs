@@ -116,6 +116,15 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
     }
     match op {
         BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
+            // Integer operands keep the integer carrier (`2 + 3` is
+            // Int 5, never Rat 5/1). Rational operands keep the
+            // rational carrier even when the canonical result is
+            // integer-valued (`1/4 - 1/4` is Rat 0/1): the authored
+            // type declares Rat, and the emitted ExactRatio arithmetic
+            // (the artifact ABI) never collapses, so cross-lane
+            // scratch parity requires the same rule here.
+            let integer_operands =
+                matches!(left, CValue::Int(_)) && matches!(right, CValue::Int(_));
             let (ln, ld) = as_rat(left)?;
             let (rn, rd) = as_rat(right)?;
             let (num, den) = match op {
@@ -151,7 +160,10 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
             }
             let value = CValue::Rat { num, den }.canon()?;
             if let CValue::Rat { num, den } = &value {
-                if den.is_one() && matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul) {
+                if den.is_one()
+                    && integer_operands
+                    && matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul)
+                {
                     return Ok(CValue::Int(num.clone()));
                 }
             }

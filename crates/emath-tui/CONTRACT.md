@@ -149,10 +149,12 @@ acceptance: the export emits and builds both crates, the native
 checkpoint is byte-identical to the VM lane's for the same schedule
 (cross-lane parity), the native lane is deterministic, a different
 schedule diverges, the transcript mirrors the REPL's lines with a
-measured timing line, argument faults are typed, and a module edited
-after the session opened refuses the export. Mutation probe:
-swapping the rational's num/den in the generated renderer fails
-`cross-lane-parity/scratch-bytes-equal`.
+measured timing line, argument faults are typed, a module edited
+after the session opened refuses the export, and the SECOND real
+surface (the fitting target, whose applied local closure is the
+session-surface lift's closure-valued-def pattern) exports with the
+same byte parity. Mutation probe: swapping the rational's num/den in
+the generated renderer fails `cross-lane-parity/scratch-bytes-equal`.
 
 ## No-claim boundaries
 
@@ -160,7 +162,7 @@ The host does not interpret case semantics, choose budgets, or
 evaluate targets. The dashboard (B4) is implemented strictly from the
 user's design spec; this crate does not design UI. Native-lane parity
 is claimed exactly as tested: same module, surface, and budget
-schedule produce byte-identical checkpoints on the valley surface;
-other surfaces carry the same contract but their parity is proven
-when their fixtures drive the export test. The epoch host's timing
-line is a measurement, not a performance claim.
+schedule produce byte-identical checkpoints on the valley and fitting
+surfaces; other surfaces carry the same contract but their parity is
+proven when their fixtures drive the export test. The epoch host's
+timing line is a measurement, not a performance claim.

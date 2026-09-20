@@ -110,7 +110,14 @@ contract.
 The value interchange is verbatim, not normalizing: exact integers render
 as decimal (arbitrary magnitude), rationals as `[num, den]` (zero
 denominator refused), floats as bit-exact hex, records/variants/tuples/
-sequences with ordered fields. Closures, code, receipts, and buffers
+sequences with ordered fields. Scalar arithmetic follows the
+operand-carrier rule: integer operands keep the integer carrier
+(`2 + 3` is Int 5), and rational or mixed operands keep the rational
+carrier even when the canonical result is integer-valued
+(`1/4 - 1/4` is Rat 0/1). The emitted ExactRatio arithmetic (the
+artifact ABI) implements the same rule, so a Rat-typed field renders
+identically in the VM and native lanes (cross-lane scratch parity).
+Closures, code, receipts, and buffers
 refuse `scratch_unserializable`: closures are re-instantiated by the host
 from authored declarations; the others are engine artifacts or mutable
 state, not checkpoint cargo. Ledger projections are machine-scale

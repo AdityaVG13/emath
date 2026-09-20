@@ -398,7 +398,11 @@ fn fixtures_and_seams() {
         p.eq("second-after-one", rec_field(transport.clone(), "a2"), rat(1, 4));
         p.eq("first-after-two", rec_field(transport.clone(), "b1"), rat(9, 16));
         p.eq("second-after-two", rec_field(transport.clone(), "b2"), rat(7, 16));
-        p.eq("mass", rec_field(transport, "total"), int(1));
+        // Rational operands keep the rational carrier even when the
+        // sum is integer-valued (9/16 + 7/16 = Rat 1/1, the declared
+        // output type; the operand-carrier rule matches the emitted
+        // ExactRatio arithmetic).
+        p.eq("mass", rec_field(transport, "total"), rat(1, 1));
     });
 
     probe.case("queue-completions", |p| {
@@ -597,10 +601,11 @@ emath function BoundNames:
         let x_two = BTreeMap::from([("x".into(), rat(2, 1))]);
         match evaluate_function(&tree, "BoundNames", &x_two) {
             Ok(vm) => {
-                // Integral Rat x Int arithmetic canonicalizes to Int (the
-                // machine's exact join); the point here is NAME ownership.
-                p.eq("partial-is-users", rec_field(vm.clone(), "a"), int(4));
-                p.eq("derivative-is-users", rec_field(vm.clone(), "b"), int(3));
+                // Rat-Int arithmetic keeps the rational carrier (the
+                // declared outputs are Rat; the operand-carrier rule);
+                // the point here is NAME ownership.
+                p.eq("partial-is-users", rec_field(vm.clone(), "a"), rat(4, 1));
+                p.eq("derivative-is-users", rec_field(vm.clone(), "b"), rat(3, 1));
                 p.eq("sin-is-users", rec_field(vm.clone(), "c"), rat(2, 1));
             }
             Err(err) => {

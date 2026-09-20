@@ -758,9 +758,10 @@ impl LoopSession {
 }
 
 /// Read a field as an exact rational: `Rat` as-is, `Int` as `n/1`
-/// (authored targets may return exact zero as an Int - the fitting
-/// score at truth is the live example - and an exact integer is an
-/// exact rational).
+/// (an authored score closure may be Int-typed, and an exact integer
+/// is an exact rational). Rational arithmetic itself keeps the
+/// rational carrier even on integer-valued results (the
+/// operand-carrier rule), so a Rat-declared score arrives as a Rat.
 pub fn value_rational(value: &CValue, name: &str) -> Result<(i128, i128), HostFault> {
     let field = record_fields(value)?.get(name).ok_or_else(|| {
         HostFault::fault(

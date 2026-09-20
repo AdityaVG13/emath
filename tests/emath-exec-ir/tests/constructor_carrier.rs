@@ -166,12 +166,15 @@ emath function dep:
         let CValue::Code(code) = code else {
             panic!("make_quote returned non-code");
         };
-        // On the capture tree the dependency matches: 1/1 + 1/1 (the
-        // exact value canonicalizes to the Int display 2).
+        // On the capture tree the dependency matches: 1/1 + 1/1. Rational
+        // operands keep the rational carrier even when the result is
+        // integer-valued (the operand-carrier rule; the emitted
+        // ExactRatio arithmetic and cross-lane scratch parity require
+        // it), so the sum displays as the Rat 2/1.
         let same = evaluate_code_at(&capture_tree, &code, &BTreeMap::new(), &[], None);
         p.demand(
             "1",
-            same.as_ref().map(|v| v.to_string()).as_deref() == Ok("2"),
+            same.as_ref().map(|v| v.to_string()).as_deref() == Ok("2/1"),
             format!("same-tree evaluation: {same:?}"),
         );
         // On the changed tree the stamp differs: stale_dependency.

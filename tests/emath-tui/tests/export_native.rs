@@ -220,5 +220,33 @@ fn export_native_sessions() {
         );
     });
 
+    // 8. The native lane carries the second real surface: the fitting
+    //    target (a local closure bound by a call to an arrow-output
+    //    function and applied inside call arguments). Its artifact
+    //    must compile and its checkpoint must match the VM lane's.
+    probe.case("targets-surface-exports", |p| {
+        let host = LoopHost::open(
+            &fixture_path("research_step_targets.emath"),
+            Some("StepFitting"),
+        )
+        .expect("open fitting");
+        let report = export_native(&host, &temp_path("targets")).expect("export fitting");
+        let native_path = temp_path("targets_native.json");
+        let (code, stdout, stderr, native) = native_lane_run(&report, 2, 60, &native_path);
+        p.demand(
+            "native-run-ok",
+            code == Some(0) && stdout.contains("end batches 2 verdict goal_attained"),
+            format!("exit {code:?}\n{stdout}\n{stderr}"),
+        );
+        let vm_path = temp_path("targets_vm.json");
+        vm_lane_scratch(&host, 2, 60, &vm_path);
+        let vm = std::fs::read_to_string(&vm_path).expect("vm scratch");
+        p.demand(
+            "scratch-bytes-equal",
+            native == vm,
+            format!("--- native ---\n{native}\n--- vm ---\n{vm}"),
+        );
+    });
+
     probe.finish();
 }

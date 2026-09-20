@@ -33,6 +33,31 @@ pub fn lower_constructor_function(
     lower_named(tree, name, &mut cache, &mut visiting)
 }
 
+/// A def whose RHS is a call to a declared function with exactly one
+/// arrow output binds a closure value (`fam = MakeFamily(0)`, the
+/// session-surface lift pattern): the callee's declaration is the
+/// type authority, the same source the input carriers use.
+fn call_binds_closure(tree: &SyntaxTree, function: &Expr) -> bool {
+    let ExprKind::Path { segments, .. } = &function.kind else {
+        return false;
+    };
+    if segments.len() != 1 {
+        return false;
+    }
+    tree.items.iter().any(|item| match item {
+        Item::Declaration(decl)
+            if decl.as_kind == "function" && decl.name == segments[0] =>
+        {
+            let outputs = section_typed_fields(decl, "outputs");
+            outputs.len() == 1
+                && outputs
+                    .iter()
+                    .all(|(_, ty)| matches!(ty.kind, TypeKind::Fn { .. }))
+        }
+        _ => false,
+    })
+}
+
 fn lower_named(
     tree: &SyntaxTree,
     name: &str,
@@ -163,10 +188,22 @@ fn lower_named(
         match lowerer.expr(expr) {
             Ok(value) => {
                 lowerer.locals.insert(def_name.clone(), value);
-                // A def bound to a function literal is closure-valued:
+                // A def bound to a closure value is closure-valued:
                 // later one-argument calls on this name are closure
-                // calls, not field access.
-                if matches!(expr.kind, ExprKind::FunctionAbs { .. }) {
+                // calls, not field access. Three sources: a function
+                // literal, a path naming a known arrow name, and a
+                // call to a declared function with a single arrow
+                // output (`fam = MakeFamily(0)` then `fam(1/2)` is
+                // the lift pattern's applied-local shape).
+                let closure_valued = match &expr.kind {
+                    ExprKind::FunctionAbs { .. } => true,
+                    ExprKind::Path { segments, .. } => {
+                        segments.len() == 1 && lowerer.arrow_names.contains(&segments[0])
+                    }
+                    ExprKind::Call { function, .. } => call_binds_closure(tree, function),
+                    _ => false,
+                };
+                if closure_valued {
                     lowerer.arrow_names.insert(def_name.clone());
                 }
             }
