@@ -575,7 +575,13 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             }
         }
     }
-    let mut rust = String::from("#![forbid(unsafe_code)]\n\n");
+    // Generated-artifact lint policy: entry names follow authored
+    // spellings (PascalCase), the flattener parenthesizes substituted
+    // expressions defensively, and authored-but-unused parameters stay
+    // in signatures - all style-only in machine-generated code.
+    let mut rust = String::from(
+        "#![forbid(unsafe_code)]\n#![allow(nonstandard_style, unused_parens, unused_braces, unused_mut, unused_variables)]\n\n",
+    );
     let mut runnable = true;
     let mut unresolved = Vec::new();
     match emath_rust_backend::emit_record_definitions(&records) {

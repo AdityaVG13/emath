@@ -155,7 +155,7 @@ fn probe() {
         std::fs::write(&src, ONE_RUNNABLE_ONE_CLOSURE).expect("write source");
         let (text, code) = build(&src, &["--out", &out.to_string_lossy()]);
         p.eq("exit", code, EXIT_OK as i32);
-        p.contains("closure sibling runnable", &text, "runnable");
+        p.contains("closure sibling runnable", &text, "(runnable)");
         let lib = std::fs::read_to_string(out.join("src/lib.rs")).expect("emitted lib");
         p.contains(
             "closure entry typed",

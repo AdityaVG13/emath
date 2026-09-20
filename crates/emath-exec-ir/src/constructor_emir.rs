@@ -1585,6 +1585,10 @@ fn programs_equal(left: &EmirProgram, right: &EmirProgram) -> bool {
 }
 
 fn ops_equal(left: &EmirOp, right: &EmirOp) -> bool {
+    // Nested-body ops reach `programs_equal` so a `ProgramLiteral`
+    // inside a body stays signature-blind across lanes; every
+    // non-nested field still compares directly - two folds over the
+    // same body with different `init` are different folds.
     match (left, right) {
         (
             EmirOp::ProgramLiteral { body: left_body, captures: left_captures, vector_input: left_vector, .. },
@@ -1594,20 +1598,64 @@ fn ops_equal(left: &EmirOp, right: &EmirOp) -> bool {
                 && left_captures == right_captures
                 && programs_equal(left_body, right_body)
         }
-        (EmirOp::CallFrame { body: left_body, .. }, EmirOp::CallFrame { body: right_body, .. })
-        | (EmirOp::Fold { body: left_body, .. }, EmirOp::Fold { body: right_body, .. })
-        | (EmirOp::Collect { body: left_body, .. }, EmirOp::Collect { body: right_body, .. }) => {
-            programs_equal(left_body, right_body)
+        (
+            EmirOp::CallFrame { body: left_body, inputs: left_inputs, state: left_state, .. },
+            EmirOp::CallFrame { body: right_body, inputs: right_inputs, state: right_state, .. },
+        ) => {
+            left_inputs == right_inputs
+                && left_state == right_state
+                && programs_equal(left_body, right_body)
         }
         (
-            EmirOp::Branch { then_body: left_then, else_body: left_else, .. },
-            EmirOp::Branch { then_body: right_then, else_body: right_else, .. },
-        ) => programs_equal(left_then, right_then) && programs_equal(left_else, right_else),
-        (
-            EmirOp::Iterate { body: left_body, stop: left_stop, .. },
-            EmirOp::Iterate { body: right_body, stop: right_stop, .. },
+            EmirOp::Fold {
+                body: left_body,
+                start: left_start,
+                end: left_end,
+                init: left_init,
+                combine: left_combine,
+                loop_var_index: left_loop_var_index,
+            },
+            EmirOp::Fold {
+                body: right_body,
+                start: right_start,
+                end: right_end,
+                init: right_init,
+                combine: right_combine,
+                loop_var_index: right_loop_var_index,
+            },
         ) => {
-            programs_equal(left_body, right_body)
+            left_start == right_start
+                && left_end == right_end
+                && left_init == right_init
+                && left_combine == right_combine
+                && left_loop_var_index == right_loop_var_index
+                && programs_equal(left_body, right_body)
+        }
+        (
+            EmirOp::Collect { count: left_count, args: left_args, body: left_body },
+            EmirOp::Collect { count: right_count, args: right_args, body: right_body },
+        ) => {
+            left_count == right_count
+                && left_args == right_args
+                && programs_equal(left_body, right_body)
+        }
+        (
+            EmirOp::Branch { condition: left_condition, args: left_args, then_body: left_then, else_body: left_else },
+            EmirOp::Branch { condition: right_condition, args: right_args, then_body: right_then, else_body: right_else },
+        ) => {
+            left_condition == right_condition
+                && left_args == right_args
+                && programs_equal(left_then, right_then)
+                && programs_equal(left_else, right_else)
+        }
+        (
+            EmirOp::Iterate { body: left_body, stop: left_stop, count: left_count, init: left_init, args: left_args },
+            EmirOp::Iterate { body: right_body, stop: right_stop, count: right_count, init: right_init, args: right_args },
+        ) => {
+            left_count == right_count
+                && left_init == right_init
+                && left_args == right_args
+                && programs_equal(left_body, right_body)
                 && match (left_stop, right_stop) {
                     (None, None) => true,
                     (Some(left_stop), Some(right_stop)) => programs_equal(left_stop, right_stop),
