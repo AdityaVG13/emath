@@ -1,0 +1,335 @@
+# Dream target 2 (bead emath-gav6o): the open-ended research loop
+# over a quadratic world. The world is the 5-case table i^2; the
+# candidate family is the quadratics a*i^2 + b*i + c over keys
+# k = 25a + 5b + c (125 keys, a, b, c in 0..4). The world's law
+# (k = 25: a = 1, b = 0, c = 0) is in-family and unique (five points
+# determine one quadratic).
+#
+# The lineage law: every promoted record carries its parent archive
+# ordinal, and the chain from the winner roots at the seed record
+# (parent -1). The lineage walk is the audit trail: the dream's
+# winner is descended from the seed through records the loop itself
+# probed and verified.
+#
+# Expected outcome: passes (3 authored tests).
+# Run: emath test tests/fixtures/constructor/dream_world_quadratic.emath
+
+use search.archive
+use search.experiments
+use search.research
+
+emath function dream_world:
+    # The emission seam: the case table the dream must master.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [0, 1, 4, 9, 16]
+
+emath function dream_pred:
+    # The emission seam: the candidate family's prediction for key k
+    # on case i (k = 25a + 5b + c, prediction a*i^2 + b*i + c).
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        a = int_quot(k, 25)
+        t = int_rem(k, 25)
+        b = int_quot(t, 5)
+        c = int_rem(t, 5)
+        result = a * i * i + b * i + c
+
+emath function world_at:
+    inputs:
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = dream_world(0)[i]
+
+emath function case_error:
+    # 1 if key k mispredicts case i, else 0.
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if dream_pred(k, i) == world_at(i): 0 else: 1
+
+emath function errors_at:
+    # k's error count over the case ids from position j.
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        one = if done: 0 else: case_error(k, ids[j])
+        result = if done: 0 else: one + errors_at(k, ids, j + 1)
+
+emath function first_wrong:
+    # The smallest case ordinal in ids that k mispredicts (-1 = none).
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        result = if done: -1 else: if case_error(k, c) == 1: c else: first_wrong(k, ids, j + 1)
+
+emath function full_ids:
+    # The full-world audit: every case ordinal.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [0, 1, 2, 3, 4]
+
+emath function next_missing:
+    # The smallest world ordinal not yet frozen (-1 = the world is
+    # fully frozen).
+    inputs:
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        w = dream_world(0)
+        done = j >= length(w)
+        result = if done: -1 else: if seq_has(ids, j, 0): next_missing(ids, j + 1) else: j
+
+emath function MakeValueOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 124
+
+emath function MakeMoves:
+    # The (a, b, c) grid neighborhood: step a (k +- 25), step b
+    # (k +- 5), or step c (k +- 1); admit gates the domain edges.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k - 25, k + 25, k - 5, k + 5, k - 1, k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    # Whole-domain capacity: every batch can propose the entire
+    # reachable domain.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 125
+
+emath function MakeScore:
+    # The probe and verify tier (one truth): k's error count over the
+    # frozen case set, as an exact rational.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: errors_at(k, cs.ids, 0) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: first_wrong(k, cs.ids, 0)
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    # The dream has no terminal goal: mastery grows the audit instead
+    # of closing the run.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: false
+
+emath function MakeBetter:
+    # Fewer errors is better, strictly (better(x, y) = x beats y).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    # The self-escalating curriculum: when the incumbent masters the
+    # frozen set, freeze the smallest unheard-of case; a full world
+    # stays frozen.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: if errors_at(k, cs.ids, 0) == 0 and length(cs.ids) < length(dream_world(0)): CaseSet: {ids: cases_union(cs.ids, [next_missing(cs.ids, 0)])} else: cs
+
+emath function graduate_mark:
+    # Walk the archive graduating every record whose current-set error
+    # already exceeds the incumbent's full-world error.
+    inputs:
+        arch: sequence(ResearchCandidate)
+        oi: Int
+        bound: Rat
+    outputs:
+        result: sequence(ResearchCandidate)
+    definitions:
+        done = oi >= length(arch)
+        r = if done: arch[0] else: arch[oi]
+        graduated = (not done) and r.score > bound
+        r2 = if not graduated: r else: ResearchCandidate: {key: r.key, value: r.value, parent: r.parent, move: r.move, family: r.family, target_id: r.target_id, evaluator_id: r.evaluator_id, input_id: r.input_id, tier: r.tier, score: r.score, bound: r.bound, witness: r.witness, counterexample: r.counterexample, refusal: r.refusal, accepted: r.accepted, retained: false}
+        arch2 = if graduated: arch_set(arch, oi, r2) else: arch
+        result = if done: arch else: graduate_mark(arch2, oi + 1, bound)
+
+emath function graduate:
+    # The graduation law over one batch's result.
+    inputs:
+        state: LoopState
+    outputs:
+        result: LoopState
+    definitions:
+        inc_key = state.archive[state.incumbent].key
+        bound = errors_at(inc_key, full_ids(0), 0) / 1
+        result = LoopState: {archive: graduate_mark(state.archive, 0, bound), incumbent: state.incumbent, case_set: state.case_set, batch: state.batch, used: state.used, verdict: state.verdict, mode: state.mode}
+
+emath function lineage_root:
+    # The lineage law, left fold: walk the parent chain from archive
+    # ordinal oi; the chain strictly descends (a record's parent is an
+    # ordinal in the pre-batch archive), so it terminates at the seed
+    # record (parent -1) and returns its key.
+    inputs:
+        arch: sequence(ResearchCandidate)
+        oi: Int
+    outputs:
+        result: Int
+    definitions:
+        r = arch[oi]
+        result = if r.parent == -1: r.key else: lineage_root(arch, r.parent)
+
+emath function lineage_depth:
+    # The number of parent links from archive ordinal oi up to (not
+    # including) the seed record.
+    inputs:
+        arch: sequence(ResearchCandidate)
+        oi: Int
+    outputs:
+        result: Int
+    definitions:
+        r = arch[oi]
+        result = if r.parent == -1: 0 else: 1 + lineage_depth(arch, r.parent)
+
+emath function SeedDream:
+    # Archive mode, seeded at the trivial predictor k = 0 on the empty
+    # frozen set.
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: []}, MakeScore(0), MakeWitness(0), 2, 0, 1, 1)
+    tests:
+        example <seed_state>:
+            given unused = 0
+            expect result.archive[0].key == 0
+            expect result.batch == 0
+            expect result.used == 1
+            expect result.mode == 1
+
+emath function StepDream:
+    # One dream batch: the target-agnostic loop, then the graduation
+    # law.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        ran = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+        result = graduate(ran)
+
+emath function RunDream:
+    # The straight walk: the seed, then batches past the close. The
+    # dream discovers the world's law (k = 25: a = 1, b = 0, c = 0),
+    # the audit escalates to the full world, and the winner's lineage
+    # roots at the seed.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+        case_count: Int
+        errors: Int
+        root: Int
+        depth: Int
+    definitions:
+        s0 = SeedDream(0)
+        s1 = StepDream(s0, 5000)
+        s2 = StepDream(s1, 5000)
+        s3 = StepDream(s2, 5000)
+        s4 = StepDream(s3, 5000)
+        s5 = StepDream(s4, 5000)
+        s6 = StepDream(s5, 5000)
+        s7 = StepDream(s6, 5000)
+        s8 = StepDream(s7, 5000)
+        s9 = StepDream(s8, 5000)
+        winner = s9.archive[s9.incumbent].key
+        verdict = s9.verdict
+        case_count = length(s9.case_set.ids)
+        errors = errors_at(winner, full_ids(0), 0)
+        root = lineage_root(s9.archive, s9.incumbent)
+        depth = lineage_depth(s9.archive, s9.incumbent)
+    tests:
+        example <masters_the_world>:
+            given unused = 0
+            expect winner == 25
+            expect verdict == 2
+            expect case_count == 5
+            expect errors == 0
+        example <winner_lineage_roots_at_seed>:
+            given unused = 0
+            expect root == 0
+            expect depth >= 1

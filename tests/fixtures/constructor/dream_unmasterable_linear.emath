@@ -1,0 +1,279 @@
+# Dream target 4 (bead emath-gav6o): the unmasterable world. The
+# same linear world as target 1 (5-case table [1, 3, 5, 7, 9], keys
+# k = 5a + b) but the unique master k = 11 (a = 2, b = 1, the only
+# line through all five points) is OUTSIDE the admitted domain.
+# Every other line shares at most one point with the world line (two
+# distinct lines meet once), so every admittable key errs on at least
+# four of the five cases.
+#
+# The dream's honest partial answer: the curriculum freezes {0} (the
+# b = 1 keys master the first case), then freezes case 1, and no
+# admittable key masters {0, 1} - so the audit stops growing and the
+# level closes by domain exhaustion with the best partial incumbent
+# on the frozen set. The graduation bound is the incumbent's honest
+# full-world error 4, which no current-set score exceeds, so
+# graduation retires nothing here: this world has no dominated
+# records, only an unreachable law.
+#
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/constructor/dream_unmasterable_linear.emath
+
+use search.archive
+use search.experiments
+use search.research
+
+emath function dream_world:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [1, 3, 5, 7, 9]
+
+emath function dream_pred:
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_quot(k, 5) * i + int_rem(k, 5)
+
+emath function world_at:
+    inputs:
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = dream_world(0)[i]
+
+emath function case_error:
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if dream_pred(k, i) == world_at(i): 0 else: 1
+
+emath function errors_at:
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        one = if done: 0 else: case_error(k, ids[j])
+        result = if done: 0 else: one + errors_at(k, ids, j + 1)
+
+emath function first_wrong:
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        result = if done: -1 else: if case_error(k, c) == 1: c else: first_wrong(k, ids, j + 1)
+
+emath function full_ids:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [0, 1, 2, 3, 4]
+
+emath function next_missing:
+    inputs:
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        w = dream_world(0)
+        done = j >= length(w)
+        result = if done: -1 else: if seq_has(ids, j, 0): next_missing(ids, j + 1) else: j
+
+emath function MakeValueOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    # The whole grid EXCEPT the unique master k = 11.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 24 and not (k == 11)
+
+emath function MakeMoves:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k - 5, k + 5, k - 1, k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 25
+
+emath function MakeScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: errors_at(k, cs.ids, 0) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: first_wrong(k, cs.ids, 0)
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: false
+
+emath function MakeBetter:
+    # Fewer errors is better, strictly (better(x, y) = x beats y).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: if errors_at(k, cs.ids, 0) == 0 and length(cs.ids) < length(dream_world(0)): CaseSet: {ids: cases_union(cs.ids, [next_missing(cs.ids, 0)])} else: cs
+
+emath function graduate_mark:
+    inputs:
+        arch: sequence(ResearchCandidate)
+        oi: Int
+        bound: Rat
+    outputs:
+        result: sequence(ResearchCandidate)
+    definitions:
+        done = oi >= length(arch)
+        r = if done: arch[0] else: arch[oi]
+        graduated = (not done) and r.score > bound
+        r2 = if not graduated: r else: ResearchCandidate: {key: r.key, value: r.value, parent: r.parent, move: r.move, family: r.family, target_id: r.target_id, evaluator_id: r.evaluator_id, input_id: r.input_id, tier: r.tier, score: r.score, bound: r.bound, witness: r.witness, counterexample: r.counterexample, refusal: r.refusal, accepted: r.accepted, retained: false}
+        arch2 = if graduated: arch_set(arch, oi, r2) else: arch
+        result = if done: arch else: graduate_mark(arch2, oi + 1, bound)
+
+emath function graduate:
+    inputs:
+        state: LoopState
+    outputs:
+        result: LoopState
+    definitions:
+        inc_key = state.archive[state.incumbent].key
+        bound = errors_at(inc_key, full_ids(0), 0) / 1
+        result = LoopState: {archive: graduate_mark(state.archive, 0, bound), incumbent: state.incumbent, case_set: state.case_set, batch: state.batch, used: state.used, verdict: state.verdict, mode: state.mode}
+
+emath function SeedDream:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: []}, MakeScore(0), MakeWitness(0), 4, 0, 1, 1)
+    tests:
+        example <seed_state>:
+            given unused = 0
+            expect result.archive[0].key == 0
+            expect result.used == 1
+            expect result.mode == 1
+
+emath function StepDream:
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        ran = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+        result = graduate(ran)
+
+emath function RunDream:
+    # The walk over an unmasterable world: the audit grows to {0, 1},
+    # stops (nothing admittable masters it), and the level closes by
+    # domain exhaustion with the best partial incumbent. The pinned
+    # winner is the first admittable key in archive order whose error
+    # on the frozen set {0, 1} is 1 (one case correct), the honest
+    # partial optimum.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+        case_count: Int
+        errors: Int
+        frozen_error: Int
+    definitions:
+        s0 = SeedDream(0)
+        s1 = StepDream(s0, 1000)
+        s2 = StepDream(s1, 1000)
+        s3 = StepDream(s2, 1000)
+        s4 = StepDream(s3, 1000)
+        s5 = StepDream(s4, 1000)
+        s6 = StepDream(s5, 1000)
+        s7 = StepDream(s6, 1000)
+        s8 = StepDream(s7, 1000)
+        s9 = StepDream(s8, 1000)
+        winner = s9.archive[s9.incumbent].key
+        verdict = s9.verdict
+        case_count = length(s9.case_set.ids)
+        errors = errors_at(winner, full_ids(0), 0)
+        frozen_error = errors_at(winner, s9.case_set.ids, 0)
+    tests:
+        example <the_honest_partial_answer>:
+            given unused = 0
+            expect winner == 1
+            expect case_count == 2
+            expect verdict == 2
+            expect errors == 4
+            expect frozen_error == 1

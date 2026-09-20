@@ -1,0 +1,309 @@
+# Dream target 3 (bead emath-gav6o): the Goodhart defense. The same
+# linear world as target 1 (5-case table, keys k = 5a + b), driven to
+# the same close (winner k = 11), but this fixture asserts both
+# retirement laws on the transient cheater:
+#
+# 1. Quarantine (the freshness law): the key k = 1 (b = 1, the
+#    constant-1 predictor) masters the first frozen case, is promoted
+#    on that partial audit, and is then REFUTED when the curriculum
+#    freezes case 1 (its prediction on case 1 is 1, the world says 3).
+#    The promotion is withdrawn (accepted = false) and the refuting
+#    case ordinal is recorded as its counterexample. A quarantined
+#    candidate is not deleted: the record stays in the archive as
+#    evidence.
+#
+# 2. Graduation (the dream's compute law): the incumbent's full-world
+#    error is 0, so any record whose current-set error exceeds 0 can
+#    never win on any future frozen set; the trap (full-set error 4)
+#    graduates (retained = false): it is skipped by freshness
+#    re-probes and can never be promoted.
+#
+# The seed baseline k = 0 is displaced by the trap (E5a exempts the
+# seed from withdrawal-on-displacement) and then honestly refuted by
+# case 0 itself (its prediction is 0, the world says 1): accepted
+# withdrawn, counterexample 0. E5a protects displacement, not
+# refutation.
+#
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/constructor/dream_goodhart_linear.emath
+
+use search.archive
+use search.experiments
+use search.research
+
+emath function dream_world:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [1, 3, 5, 7, 9]
+
+emath function dream_pred:
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_quot(k, 5) * i + int_rem(k, 5)
+
+emath function world_at:
+    inputs:
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = dream_world(0)[i]
+
+emath function case_error:
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if dream_pred(k, i) == world_at(i): 0 else: 1
+
+emath function errors_at:
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        one = if done: 0 else: case_error(k, ids[j])
+        result = if done: 0 else: one + errors_at(k, ids, j + 1)
+
+emath function first_wrong:
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        result = if done: -1 else: if case_error(k, c) == 1: c else: first_wrong(k, ids, j + 1)
+
+emath function full_ids:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [0, 1, 2, 3, 4]
+
+emath function next_missing:
+    inputs:
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        w = dream_world(0)
+        done = j >= length(w)
+        result = if done: -1 else: if seq_has(ids, j, 0): next_missing(ids, j + 1) else: j
+
+emath function MakeValueOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 24
+
+emath function MakeMoves:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k - 5, k + 5, k - 1, k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 25
+
+emath function MakeScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: errors_at(k, cs.ids, 0) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: first_wrong(k, cs.ids, 0)
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: false
+
+emath function MakeBetter:
+    # Fewer errors is better, strictly (better(x, y) = x beats y).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: if errors_at(k, cs.ids, 0) == 0 and length(cs.ids) < length(dream_world(0)): CaseSet: {ids: cases_union(cs.ids, [next_missing(cs.ids, 0)])} else: cs
+
+emath function graduate_mark:
+    inputs:
+        arch: sequence(ResearchCandidate)
+        oi: Int
+        bound: Rat
+    outputs:
+        result: sequence(ResearchCandidate)
+    definitions:
+        done = oi >= length(arch)
+        r = if done: arch[0] else: arch[oi]
+        graduated = (not done) and r.score > bound
+        r2 = if not graduated: r else: ResearchCandidate: {key: r.key, value: r.value, parent: r.parent, move: r.move, family: r.family, target_id: r.target_id, evaluator_id: r.evaluator_id, input_id: r.input_id, tier: r.tier, score: r.score, bound: r.bound, witness: r.witness, counterexample: r.counterexample, refusal: r.refusal, accepted: r.accepted, retained: false}
+        arch2 = if graduated: arch_set(arch, oi, r2) else: arch
+        result = if done: arch else: graduate_mark(arch2, oi + 1, bound)
+
+emath function graduate:
+    inputs:
+        state: LoopState
+    outputs:
+        result: LoopState
+    definitions:
+        inc_key = state.archive[state.incumbent].key
+        bound = errors_at(inc_key, full_ids(0), 0) / 1
+        result = LoopState: {archive: graduate_mark(state.archive, 0, bound), incumbent: state.incumbent, case_set: state.case_set, batch: state.batch, used: state.used, verdict: state.verdict, mode: state.mode}
+
+emath function find_key:
+    # The archive ordinal holding key (-1 = absent).
+    inputs:
+        arch: sequence(ResearchCandidate)
+        oi: Int
+        key: Int
+    outputs:
+        result: Int
+    definitions:
+        done = oi >= length(arch)
+        r = if done: arch[0] else: arch[oi]
+        result = if done: -1 else: if r.key == key: oi else: find_key(arch, oi + 1, key)
+
+emath function SeedDream:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: []}, MakeScore(0), MakeWitness(0), 3, 0, 1, 1)
+    tests:
+        example <seed_state>:
+            given unused = 0
+            expect result.archive[0].key == 0
+            expect result.used == 1
+            expect result.mode == 1
+
+emath function StepDream:
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        ran = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+        result = graduate(ran)
+
+emath function RunDream:
+    # The same walk as target 1, exposing the archive's verdict on the
+    # transient cheater k = 1 and on the displaced seed baseline.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        errors: Int
+        trap_accepted: Bool
+        trap_counterexample: Int
+        trap_retained: Bool
+        trap_present: Bool
+        seed_counterexample: Int
+    definitions:
+        s0 = SeedDream(0)
+        s1 = StepDream(s0, 1000)
+        s2 = StepDream(s1, 1000)
+        s3 = StepDream(s2, 1000)
+        s4 = StepDream(s3, 1000)
+        s5 = StepDream(s4, 1000)
+        s6 = StepDream(s5, 1000)
+        s7 = StepDream(s6, 1000)
+        s8 = StepDream(s7, 1000)
+        s9 = StepDream(s8, 1000)
+        winner = s9.archive[s9.incumbent].key
+        errors = errors_at(winner, full_ids(0), 0)
+        trap_ordinal = find_key(s9.archive, 0, 1)
+        trap = s9.archive[trap_ordinal]
+        trap_accepted = trap.accepted
+        trap_counterexample = trap.counterexample
+        trap_retained = trap.retained
+        trap_present = trap_ordinal >= 0
+        seed_counterexample = s9.archive[0].counterexample
+    tests:
+        example <the_cheater_is_quarantined_not_deleted>:
+            given unused = 0
+            expect winner == 11
+            expect errors == 0
+            expect trap_accepted == false
+            expect trap_counterexample == 1
+            expect trap_present == true
+        example <the_cheater_graduates_and_the_seed_is_refuted>:
+            # graduation: the trap's full-set error 4 exceeds the
+            # incumbent's full-world bound 0, so it can never win -
+            # retained false. The seed's own refuting case is 0.
+            given unused = 0
+            expect trap_retained == false
+            expect seed_counterexample == 0

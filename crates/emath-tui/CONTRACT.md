@@ -6,7 +6,9 @@ The loop surface crate: the headless research-loop host core (B2),
 the `emath loop` line-REPL (B3), and the dashboard implementing the
 user's design spec (B4). The host core is lane-agnostic session
 bookkeeping over the VM engine; the native lane (B5) re-implements the
-same `emath.scratch.v1` contract over the artifact ABI. This crate owns
+same `emath.scratch.v1` contract over the artifact ABI. The dream
+driver (bead emath-gav6o) is thin orchestration over the host core for
+open-ended self-escalating research. This crate owns
 no loop policy: proposal order, charging, freshness, promotion, and
 verdicts are the authored module's mathematics.
 
@@ -91,6 +93,56 @@ The state type `T` is expected to carry the loop state contract fields
   open-time admission, and an export over edited bytes would pair a
   stale meaning id with new math.
 
+## Dream driver contract (bead emath-gav6o)
+
+A dream target is an ordinary module: a Step/Seed session surface
+whose module owns every loop law, plus the self-escalating curriculum
+(`next_cases` grows the frozen audit when the incumbent masters it)
+and, where the target wants the compute law, graduation (retiring
+records that can never win on any future frozen set). The driver
+`dream::run_dream(module, target, config)` drives ONE level over ONE
+module and owns only the dream laws:
+
+- **Resume:** on verdict 4 (budget exhausted, partial-but-committed)
+  the logical-unit watermark becomes `2 * used + budget_step`. The
+  doubling shape is the law: the freshness law re-charges the whole
+  retained archive from ordinal 0 every batch, so a linear ladder
+  smaller than the per-batch refresh cost locksteps forever (the same
+  first records re-probed, the margin never accumulates); doubling
+  the committed spend always outruns any finite per-batch cost. Every
+  unit stays charged - only the watermark moves.
+- **Plateau:** consecutive verdict-3 batches close the level at
+  `plateau_close` (default 3). Any verdict-0 batch (promotion or
+  audit growth) resets the counter: a level only closes after the
+  plateau survives every growth cycle the module's curriculum can
+  attempt.
+- **Close:** verdict 2 (domain exhausted) and verdict 1 (goal)
+  close immediately. An unknown verdict refuses `dream_verdict`.
+- **Stop:** `max_batches` is the external stop button (budget-halted
+  batches count; they commit too). A stopped run returns no level and
+  emits nothing. There is no self-scheduler: nothing re-invokes the
+  dream on its own.
+- **Emission:** at close the driver emits `level_001.emath` into
+  `out_dir` - the discovery audit trail. The incumbent key, the
+  frozen case set, the incumbent's observed predictions over the
+  whole world, and the observed world table are pinned as literals
+  with authored tests (the `LevelData` pin and the `frozen_errors`
+  recomputation), and the driver verifies that certificate
+  in-process before reporting the level verified. Re-verification
+  later is cheap: `emath test` on the level file. The emission seam
+  is the authored pair `dream_world` (one Int input, the case table
+  as `sequence(Int)`) and `dream_pred` (two Int inputs, the
+  prediction); a module without them refuses `dream_emission_surface`
+  at open when an out_dir is configured (fail fast, no driving). An
+  existing level file refuses `dream_level_exists` - the dream never
+  overwrites a level.
+
+`DreamConfig { budget0, budget_step, max_batches, plateau_close,
+out_dir }` (defaults 64 / 64 / 10,000 / 3 / none); `DreamOutcome {
+stop, level, resumes }`; `LevelRecord` is the level journal entry
+(close reason, batches, used units, incumbent key and score, frozen
+case set, path, certificate).
+
 ## Invariants
 
 - The ledger is immutable and append-only; its length is the revision.
@@ -108,7 +160,10 @@ with their own codes (`scratch_identity`, `scratch_ledger`,
 `loop_ambiguous`, `loop_identity`, `loop_state_contract`,
 `loop_ledger_law`, `loop_case_duplicate`, `loop_command`,
 `loop_run_cap`, `loop_stream`, `loop_export_emit`,
-`loop_export_state`, `loop_export_compile`). No silent guessing.
+`loop_export_state`, `loop_export_compile`) and `dream_*` codes
+(`dream_config`, `dream_verdict`, `dream_emission_surface`,
+`dream_level_exists`, `dream_level_write`, `dream_certificate`).
+No silent guessing.
 
 ## Determinism class
 
@@ -156,10 +211,43 @@ session-surface lift's closure-valued-def pattern) exports with the
 same byte parity. Mutation probe: swapping the rational's num/den in
 the generated renderer fails `cross-lane-parity/scratch-bytes-equal`.
 
+The dream fixtures (`tests/fixtures/constructor/dream_*.emath`) pin
+the dream worlds module-side with authored walks: the linear world
+(master k = 11, full audit, plus the trickle surface whose
+plateau/growth interleave is pinned verdict by verdict), the
+quadratic world (master k = 25, the winner's lineage roots at the
+seed), the Goodhart world (the transient cheater quarantined with
+counterexample 1, graduated by the incumbent's full-world bound, the
+seed honestly refuted at case 0), the unmasterable world (the honest
+partial: frozen {0, 1}, four full-world errors), and the plateau
+world (an unbounded domain that can never exhaust - only the
+plateau law closes it).
+`tests/emath-tui/tests/dream_sessions.rs` is the driver acceptance:
+the linear close with a mid-walk budget resume and an independently
+re-verified level certificate, the dead-start budget ladder, the
+unmasterable honest partial, the plateau close at three, the
+max-batches stop with no level and no file, the emission-seam
+refusal on a module without `dream_world`/`dream_pred`, and the
+plateau-counter reset on growth (the trickle surface's interleaved
+walk closes at the post-mastery plateau run, not the cumulative
+count). Mutation probes: reverting the resume law to a linear ladder
+fails the linear and dead-start cases (the refresh lockstep);
+off-by-one in the plateau close fails both batch pins; removing the
+verdict-0 reset fails the trickle case's batch pin (cumulative close
+mid-walk).
+
 ## No-claim boundaries
 
 The host does not interpret case semantics, choose budgets, or
-evaluate targets. The dashboard (B4) is implemented strictly from the
+evaluate targets. The dream driver owns no loop law either: the
+curriculum, the graduation bound, and every verdict are the module's
+mathematics; the driver only resumes, counts, closes, stops, and
+emits. One `run_dream` call drives one level of one module - level
+chaining across worlds is caller orchestration, not claimed here.
+The dream has no self-scheduler: unattended multi-level runs are a
+caller loop around the stop button, not a driver behavior. The level
+file's certificate pins observed data and its own recomputation; it
+is evidence, not a theorem. The dashboard (B4) is implemented strictly from the
 user's design spec; this crate does not design UI. Native-lane parity
 is claimed exactly as tested: same module, surface, and budget
 schedule produce byte-identical checkpoints on the valley and fitting

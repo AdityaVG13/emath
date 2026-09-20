@@ -378,6 +378,14 @@ impl LoopHost {
         &self.path
     }
 
+    /// The host's own parsed tree (same admission the session and the
+    /// native export were opened against). The dream driver re-uses
+    /// it to observe the emission seam (`dream_world`/`dream_pred`)
+    /// in-process.
+    pub(crate) fn tree(&self) -> &SyntaxTree {
+        &self.tree
+    }
+
     /// Begin a session at the surface's seed state.
     pub fn begin(&self) -> Result<LoopSession, HostFault> {
         let inputs = BTreeMap::from([(

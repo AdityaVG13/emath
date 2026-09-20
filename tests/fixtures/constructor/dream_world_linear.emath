@@ -1,0 +1,386 @@
+# Dream target 1 (bead emath-gav6o): the open-ended research loop
+# over a linear world. The world is a 5-case table; the candidate
+# family is the linear predictors a*i + b over keys k = 5a + b (25
+# keys). The dream never attains a goal (goal_met is constant false):
+# mastery of the frozen case set grows the set (the self-escalating
+# curriculum), and the level closes on plateau or domain exhaustion
+# once the whole world is mastered. The budget is the total
+# logical-unit watermark (used accumulates across batches), sized so
+# the close comes from the dream's own laws, never from the budget.
+#
+# The graduation law: a record whose current-set error already exceeds
+# the incumbent's FULL-world error graduates (retained = false). Error
+# is monotone in cases, so such a record can never strictly beat the
+# incumbent on any future frozen set within this world; graduated
+# records keep their lineage, are skipped by freshness re-probes, and
+# cannot be promoted or re-proposed.
+#
+# Expected outcome: passes (4 authored tests).
+# Run: emath test tests/fixtures/constructor/dream_world_linear.emath
+
+use search.archive
+use search.experiments
+use search.research
+
+emath function dream_world:
+    # The emission seam: the case table the dream must master.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [1, 3, 5, 7, 9]
+
+emath function dream_pred:
+    # The emission seam: the candidate family's prediction for key k
+    # on case i (k = 5a + b, prediction a*i + b).
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_quot(k, 5) * i + int_rem(k, 5)
+
+emath function world_at:
+    inputs:
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = dream_world(0)[i]
+
+emath function case_error:
+    # 1 if key k mispredicts case i, else 0.
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if dream_pred(k, i) == world_at(i): 0 else: 1
+
+emath function errors_at:
+    # k's error count over the case ids from position j.
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        one = if done: 0 else: case_error(k, ids[j])
+        result = if done: 0 else: one + errors_at(k, ids, j + 1)
+
+emath function first_wrong:
+    # The smallest case ordinal in ids that k mispredicts (-1 = none).
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        result = if done: -1 else: if case_error(k, c) == 1: c else: first_wrong(k, ids, j + 1)
+
+emath function full_ids:
+    # The full-world audit: every case ordinal.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [0, 1, 2, 3, 4]
+
+emath function next_missing:
+    # The smallest world ordinal not yet frozen (-1 = the world is
+    # fully frozen).
+    inputs:
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        w = dream_world(0)
+        done = j >= length(w)
+        result = if done: -1 else: if seq_has(ids, j, 0): next_missing(ids, j + 1) else: j
+
+emath function MakeValueOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 24
+
+emath function MakeMoves:
+    # The (a, b) grid neighborhood: step a (k +- 5) or step b (k +- 1);
+    # admit gates the domain edges.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k - 5, k + 5, k - 1, k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    # One family, whole-domain capacity: every batch can propose the
+    # entire reachable domain.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 25
+
+emath function MakeScore:
+    # The probe and verify tier (one truth): k's error count over the
+    # frozen case set, as an exact rational.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: errors_at(k, cs.ids, 0) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: first_wrong(k, cs.ids, 0)
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    # The dream has no terminal goal: mastery grows the audit instead
+    # of closing the run.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: false
+
+emath function MakeBetter:
+    # Fewer errors is better, strictly (better(x, y) = x beats y).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    # The self-escalating curriculum: when the incumbent masters the
+    # frozen set, freeze the smallest unheard-of case; a full world
+    # stays frozen.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: if errors_at(k, cs.ids, 0) == 0 and length(cs.ids) < length(dream_world(0)): CaseSet: {ids: cases_union(cs.ids, [next_missing(cs.ids, 0)])} else: cs
+
+emath function graduate_mark:
+    # Walk the archive graduating every record whose current-set error
+    # already exceeds the incumbent's full-world error.
+    inputs:
+        arch: sequence(ResearchCandidate)
+        oi: Int
+        bound: Rat
+    outputs:
+        result: sequence(ResearchCandidate)
+    definitions:
+        done = oi >= length(arch)
+        r = if done: arch[0] else: arch[oi]
+        graduated = (not done) and r.score > bound
+        r2 = if not graduated: r else: ResearchCandidate: {key: r.key, value: r.value, parent: r.parent, move: r.move, family: r.family, target_id: r.target_id, evaluator_id: r.evaluator_id, input_id: r.input_id, tier: r.tier, score: r.score, bound: r.bound, witness: r.witness, counterexample: r.counterexample, refusal: r.refusal, accepted: r.accepted, retained: false}
+        arch2 = if graduated: arch_set(arch, oi, r2) else: arch
+        result = if done: arch else: graduate_mark(arch2, oi + 1, bound)
+
+emath function graduate:
+    # The graduation law over one batch's result.
+    inputs:
+        state: LoopState
+    outputs:
+        result: LoopState
+    definitions:
+        inc_key = state.archive[state.incumbent].key
+        bound = errors_at(inc_key, full_ids(0), 0) / 1
+        result = LoopState: {archive: graduate_mark(state.archive, 0, bound), incumbent: state.incumbent, case_set: state.case_set, batch: state.batch, used: state.used, verdict: state.verdict, mode: state.mode}
+
+emath function SeedDream:
+    # Archive mode, seeded at the trivial predictor k = 0 on the empty
+    # frozen set.
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: []}, MakeScore(0), MakeWitness(0), 1, 0, 1, 1)
+    tests:
+        example <seed_state>:
+            given unused = 0
+            expect result.archive[0].key == 0
+            expect result.batch == 0
+            expect result.used == 1
+            expect result.mode == 1
+
+emath function StepDream:
+    # One dream batch: the target-agnostic loop, then the graduation
+    # law.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        ran = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+        result = graduate(ran)
+
+emath function RunDream:
+    # The straight walk: the seed, then batches past the close. The
+    # dream discovers the world's law (k = 11: a = 2, b = 1) and the
+    # audit escalates to the full world; the close is domain
+    # exhaustion (the whole 25-key domain is proposed under the
+    # whole-domain quota) and extra batches past the close stay
+    # closed (no promotion, the set full and frozen).
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+        case_count: Int
+        errors: Int
+    definitions:
+        s0 = SeedDream(0)
+        s1 = StepDream(s0, 1000)
+        s2 = StepDream(s1, 1000)
+        s3 = StepDream(s2, 1000)
+        s4 = StepDream(s3, 1000)
+        s5 = StepDream(s4, 1000)
+        s6 = StepDream(s5, 1000)
+        s7 = StepDream(s6, 1000)
+        s8 = StepDream(s7, 1000)
+        s9 = StepDream(s8, 1000)
+        winner = s9.archive[s9.incumbent].key
+        verdict = s9.verdict
+        case_count = length(s9.case_set.ids)
+        errors = errors_at(winner, full_ids(0), 0)
+    tests:
+        example <masters_the_world>:
+            given unused = 0
+            expect winner == 11
+            expect verdict == 2
+            expect case_count == 5
+            expect errors == 0
+
+emath function MakeQuotaTrickle:
+    # Two proposals per batch: the frontier trickles in, so the walk
+    # interleaves plateau batches (the quota's current proposals all
+    # fail) with promotion batches (a later proposal carries the
+    # improvement).
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 2
+
+emath function SeedDreamTrickle:
+    # The same linear world explored at trickle quota, WITHOUT the
+    # graduation law: the stepping stones stay retained, so proposals
+    # keep flowing past mastery and the post-mastery tail is a pure
+    # plateau run (the driver's reset law: the plateau counter must
+    # survive the walk's interleaved plateau runs, resetting only on
+    # growth).
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: []}, MakeScore(0), MakeWitness(0), 1, 0, 1, 1)
+    tests:
+        example <trickle_seed_state>:
+            given unused = 0
+            expect result.archive[0].key == 0
+            expect result.used == 1
+            expect result.mode == 1
+
+emath function StepDreamTrickle:
+    # One trickle batch: research_batch only (no graduation - the
+    # stones stay retained so the proposal stream never collapses).
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuotaTrickle(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+
+emath function RunTrickleInterleave:
+    # The interleave law, module-side: batch 1 grows the audit, batch
+    # 2 promotes the ALREADY-ARCHIVED k = 1 (the freshness law
+    # re-scores the whole archive every batch, so a stepping stone
+    # already in the archive can win without being re-proposed) and
+    # grows, batches 3-4 plateau (the quota's current proposals all
+    # fail on {0, 1}), batch 5 promotes k = 11 and grows - a plateau
+    # run of two, broken by growth.
+    inputs:
+        unused: Int
+    outputs:
+        v1: Int
+        v2: Int
+        v3: Int
+        v4: Int
+        v5: Int
+        winner5: Int
+    definitions:
+        s0 = SeedDreamTrickle(0)
+        s1 = StepDreamTrickle(s0, 1000)
+        s2 = StepDreamTrickle(s1, 1000)
+        s3 = StepDreamTrickle(s2, 1000)
+        s4 = StepDreamTrickle(s3, 1000)
+        s5 = StepDreamTrickle(s4, 1000)
+        v1 = s1.verdict
+        v2 = s2.verdict
+        v3 = s3.verdict
+        v4 = s4.verdict
+        v5 = s5.verdict
+        winner5 = s5.archive[s5.incumbent].key
+    tests:
+        example <plateau_growth_interleave>:
+            given unused = 0
+            expect v1 == 0
+            expect v2 == 0
+            expect v3 == 3
+            expect v4 == 3
+            expect v5 == 0
+            expect winner5 == 11
