@@ -75,9 +75,10 @@ The state type `T` is expected to carry the loop state contract fields
   `Seed<Name>(0)` / `Step<Name>(state, budget)` over the artifact
   ABI, projects the ledger, enforces the ledger law, and writes an
   `emath.scratch.v1` checkpoint that MIRRORS the exec-ir interchange
-  (records alphabetical by emath field name - the inverse of the
-  backend's keyword escape orders and names them - sequences
-  comma-space, the JsonWriter envelope shape) instead of linking
+  (records alphabetical by authored field name, taken from the
+  emission's own authored record list - the backend's keyword escape
+  is non-injective, so the mirror never guesses names back; sequences
+  comma-space; the JsonWriter envelope shape) instead of linking
   emath-exec-ir. Cross-lane parity (native checkpoint byte-identical
   to the VM lane's for the same schedule) is enforced by tests, not
   by shared code; the state shape is parsed from the emitted artifact

@@ -31,7 +31,7 @@
 //! at generation time; a state the epoch host cannot drive refuses
 //! `loop_export_state` by name.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -40,6 +40,8 @@ use emath_build::{generated_crate_target_dir, run_cargo_timed};
 use emath_rust_backend::constructor_crate::{
     emit_constructor_crate, ConstructorEmitRefusal,
 };
+use emath_rust_backend::rust_ir::ast::escape_ident;
+use emath_rust_backend::AuthoredRecord;
 
 /// What an export produced.
 #[derive(Clone, Debug)]
@@ -63,21 +65,27 @@ enum MirrorType {
     Record(String),
 }
 
-/// One emitted `EmathRecord_*` struct.
+/// One emitted `EmathRecord_*` struct, with both name vocabularies:
+/// the authored (emath) names are the scratch JSON's names and sort
+/// keys (the VM's record carrier is a BTreeMap keyed by them); the
+/// emitted Rust names are the field-access identifiers.
 #[derive(Clone, Debug)]
 struct StructShape {
+    /// The authored record name (`LoopState`).
     name: String,
-    /// Declaration order (rendering sorts alphabetically; the CValue
-    /// record carrier is a BTreeMap).
-    fields: Vec<(String, MirrorType)>,
+    /// The emitted Rust record name (`LoopState`; keywords escaped).
+    rust_name: String,
+    /// (authored field name, emitted Rust field name, carrier type),
+    /// in declaration order.
+    fields: Vec<(String, String, MirrorType)>,
 }
 
 impl StructShape {
     fn field(&self, name: &str) -> Option<&MirrorType> {
         self.fields
             .iter()
-            .find(|(key, _)| key == name)
-            .map(|(_, ty)| ty)
+            .find(|(key, _, _)| key == name)
+            .map(|(_, _, ty)| ty)
     }
 }
 
@@ -106,51 +114,107 @@ fn parse_rust_type(text: &str) -> Option<MirrorType> {
     None
 }
 
-/// Parse one `pub struct EmathRecord_<name> { pub field: Type, ... }`
-/// block out of the emitted lib.rs.
-fn parse_struct(lib: &str, name: &str) -> Result<StructShape, String> {
-    let marker = format!("pub struct EmathRecord_{name} {{");
-    let start =
-        lib.find(&marker).ok_or_else(|| format!("the emitted artifact does not declare `EmathRecord_{name}`"))?;
+/// The exact name bridge between the emission's authored records and
+/// the emitted Rust: record names and field names both directions.
+/// The backend's keyword escape (`move` -> `move_`) is not injective
+/// (an authored `move_` field escapes to the same Rust name), so the
+/// bridge is built from the emission's OWN authored list - never by
+/// heuristic.
+#[derive(Clone, Debug, Default)]
+struct NameMaps {
+    /// emitted Rust record name -> authored record name.
+    records: BTreeMap<String, String>,
+    /// emitted Rust record name -> (emitted Rust field -> authored
+    /// field).
+    fields: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+fn name_maps(records: &[AuthoredRecord]) -> NameMaps {
+    let mut maps = NameMaps::default();
+    for record in records {
+        let rust_record = escape_ident(&record.name);
+        maps.records.insert(rust_record.clone(), record.name.clone());
+        let entry = maps.fields.entry(rust_record).or_default();
+        for (field, _) in &record.fields {
+            entry.insert(escape_ident(field), field.clone());
+        }
+    }
+    maps
+}
+
+/// Parse one `pub struct EmathRecord_<rust_name> { pub field: Type,
+/// ... }` block out of the emitted lib.rs, resolving every field to
+/// its authored name through `maps`. A field without an authored pair
+/// is a generation-time refusal, never a guess.
+fn parse_struct(
+    lib: &str,
+    rust_name: &str,
+    maps: &NameMaps,
+) -> Result<StructShape, String> {
+    let marker = format!("pub struct EmathRecord_{rust_name} {{");
+    let start = lib
+        .find(&marker)
+        .ok_or_else(|| format!("the emitted artifact does not declare `EmathRecord_{rust_name}`"))?;
     let body = &lib[start + marker.len()..];
-    let end = body
-        .find('}')
-        .ok_or_else(|| format!("`EmathRecord_{name}` has no closing brace in the emitted artifact"))?;
+    let end = body.find('}').ok_or_else(|| {
+        format!("`EmathRecord_{rust_name}` has no closing brace in the emitted artifact")
+    })?;
+    let emath_name = maps.records.get(rust_name).ok_or_else(|| {
+        format!(
+            "the emitted record `{rust_name}` has no authored name in the emission's record list"
+        )
+    })?;
+    let field_map = maps
+        .fields
+        .get(rust_name)
+        .ok_or_else(|| format!("the emitted record `{rust_name}` has no authored field list"))?;
     let mut fields = Vec::new();
     for line in body[..end].lines() {
         let line = line.trim();
         let Some(rest) = line.strip_prefix("pub ") else {
             continue;
         };
-        let Some((field, ty)) = rest.split_once(": ") else {
+        let Some((rust_field, ty)) = rest.split_once(": ") else {
             return Err(format!(
-                "`EmathRecord_{name}` field declaration `{line}` is not `pub name: Type,`"
+                "`EmathRecord_{rust_name}` field declaration `{line}` is not `pub name: Type,`"
             ));
         };
         let ty = parse_rust_type(ty.trim_end_matches(',')).ok_or_else(|| {
             format!(
-                "`EmathRecord_{name}` field `{field}` has type `{ty}`, which is not scratch cargo (i64, bool, ExactRatio, Vec<T>, nested EmathRecord_* only)"
+                "`EmathRecord_{rust_name}` field `{rust_field}` has type `{ty}`, which is not scratch cargo (i64, bool, ExactRatio, Vec<T>, nested EmathRecord_* only)"
             )
         })?;
-        fields.push((field.to_string(), ty));
+        let emath_field = field_map.get(rust_field).ok_or_else(|| {
+            format!(
+                "`EmathRecord_{rust_name}` field `{rust_field}` has no authored name in the emission's record list"
+            )
+        })?;
+        fields.push((emath_field.clone(), rust_field.to_string(), ty));
     }
     Ok(StructShape {
-        name: name.to_string(),
+        name: emath_name.clone(),
+        rust_name: rust_name.to_string(),
         fields,
     })
 }
 
-/// Parse the state struct and every nested record, transitively.
-fn state_shapes(lib: &str, state_type: &str) -> Result<Vec<StructShape>, String> {
+/// Parse the state struct and every nested record, transitively,
+/// starting from the authored state type name.
+fn state_shapes(
+    lib: &str,
+    state_type: &str,
+    records: &[AuthoredRecord],
+) -> Result<Vec<StructShape>, String> {
+    let maps = name_maps(records);
     let mut shapes = Vec::new();
-    let mut queue = vec![state_type.to_string()];
+    let mut queue = vec![escape_ident(state_type)];
     let mut seen = BTreeSet::new();
-    while let Some(name) = queue.pop() {
-        if !seen.insert(name.clone()) {
+    while let Some(rust_name) = queue.pop() {
+        if !seen.insert(rust_name.clone()) {
             continue;
         }
-        let shape = parse_struct(lib, &name)?;
-        for (_, ty) in &shape.fields {
+        let shape = parse_struct(lib, &rust_name, &maps)?;
+        for (_, _, ty) in &shape.fields {
             collect_records(ty, &mut queue);
         }
         shapes.push(shape);
@@ -308,7 +372,7 @@ pub fn export_native(host: &LoopHost, out_dir: &Path) -> Result<ExportReport, Ho
     let lib = emission.lib.clone();
     let crate_name = emission.package_name.clone();
     let state_type = host.surface().state_type.clone();
-    let shapes = state_shapes(&lib, &state_type).map_err(|detail| {
+    let shapes = state_shapes(&lib, &state_type, &emission.records).map_err(|detail| {
         HostFault::fault("loop_export_state", format!("state shape refused: {detail}"))
     })?;
     // The contract check is the gate; the element name is inside it.
@@ -404,19 +468,6 @@ path = "src/main.rs"
     })
 }
 
-/// The emath field name for an emitted Rust field: the inverse of the
-/// backend's `escape_ident` (a Rust keyword gained a trailing `_`;
-/// stripping it back only when the stem IS a keyword keeps a genuine
-/// `move_` field distinct from an escaped `move`).
-fn json_field_name(rust_name: &str) -> String {
-    if let Some(stem) = rust_name.strip_suffix('_') {
-        if emath_rust_backend::rust_ir::ast::RUST_KEYWORDS.contains(&stem) {
-            return stem.to_string();
-        }
-    }
-    rust_name.to_string()
-}
-
 /// Substitute `<Token>` placeholders in a template chunk. Tokens are
 /// delimited by angle brackets to stay visible in review.
 fn fill(template: &str, values: &[(&str, &str)]) -> String {
@@ -436,6 +487,13 @@ fn generate_main(
 ) -> String {
     let surface = host.surface();
     let identity = host.identity();
+    // The state record's emitted Rust name (keywords escaped); the
+    // transcript keeps the authored name, the type paths take this.
+    let state_rust = shapes
+        .iter()
+        .find(|shape| shape.name == state_type)
+        .map(|shape| shape.rust_name.clone())
+        .unwrap_or_else(|| escape_ident(state_type));
     let mut text = String::new();
 
     text.push_str(&fill(
@@ -519,32 +577,29 @@ fn i64_list(items: &[i64]) -> String {
         ],
     ));
 
-    // One render function per record shape; fields alphabetical.
+    // One render function per record shape. Names are exact from the
+    // emission's authored list: the JSON type name and field names are
+    // the AUTHORED names (the VM's record carrier is a BTreeMap keyed
+    // by them, so ordering follows them too), while field ACCESS uses
+    // the emitted Rust names.
     for shape in shapes {
         text.push_str(&format!(
             "fn render_record_{}(out: &mut String, v: &{}::EmathRecord_{}) {{\n",
-            shape.name, crate_ident, shape.name
+            shape.rust_name, crate_ident, shape.rust_name
         ));
         text.push_str("    out.push_str(\"{\\\"record\\\": {\\\"type\\\": \");\n");
         text.push_str(&format!("    out.push_str(&json_quote(\"{}\"));\n", shape.name));
         text.push_str("    out.push_str(\",\\\"fields\\\": {\");\n");
-        // The VM's record carrier is a BTreeMap keyed by the EMATH
-        // field name, so ordering and rendering follow the emath
-        // names (the inverse of the backend's keyword escape), while
-        // field ACCESS uses the emitted Rust names.
-        let mut sorted: Vec<&(String, MirrorType)> = shape.fields.iter().collect();
-        sorted.sort_by(|a, b| {
-            json_field_name(&a.0).cmp(&json_field_name(&b.0))
-        });
-        for (index, (field, ty)) in sorted.iter().enumerate() {
+        let mut sorted: Vec<&(String, String, MirrorType)> = shape.fields.iter().collect();
+        sorted.sort_by(|a, b| a.0.cmp(&b.0));
+        for (index, (emath_field, rust_field, ty)) in sorted.iter().enumerate() {
             if index > 0 {
                 text.push_str("    out.push(',');\n");
             }
             text.push_str(&format!(
-                "    out.push_str(&json_quote(\"{}\"));\n    out.push_str(\": \");\n",
-                json_field_name(field)
+                "    out.push_str(&json_quote(\"{emath_field}\"));\n    out.push_str(\": \");\n"
             ));
-            push_render_call(&mut text, ty, &format!("v.{field}"), 1);
+            push_render_call(&mut text, ty, &format!("v.{rust_field}"), 1);
         }
         text.push_str("    out.push_str(\"}}}\");\n}\n\n");
     }
@@ -565,8 +620,8 @@ fn i64_list(items: &[i64]) -> String {
 }
 
 fn project(
-    previous: &<Crate>::EmathRecord_<StateType>,
-    next: &<Crate>::EmathRecord_<StateType>,
+    previous: &<Crate>::EmathRecord_<StateRust>,
+    next: &<Crate>::EmathRecord_<StateRust>,
 ) -> Entry {
     if next.archive.len() < previous.archive.len() {
         fail("loop_state_contract: the archive shrank across a batch: archive ordinals are append-only");
@@ -636,11 +691,11 @@ fn render_entry(entry: &Entry) -> String {
 fn write_scratch(
     path: &std::path::Path,
     revision: u64,
-    state: &<Crate>::EmathRecord_<StateType>,
+    state: &<Crate>::EmathRecord_<StateRust>,
     entries: &[Entry],
 ) {
     let mut state_json = String::new();
-    render_record_<StateType>(&mut state_json, state);
+    render_record_<StateRust>(&mut state_json, state);
     let ledger_body = if entries.is_empty() {
         "[]".to_string()
     } else {
@@ -674,7 +729,7 @@ fn write_scratch(
     }
 }
 
-fn incumbent_key(state: &<Crate>::EmathRecord_<StateType>) -> i64 {
+fn incumbent_key(state: &<Crate>::EmathRecord_<StateRust>) -> i64 {
     let ordinal = usize::try_from(state.incumbent).unwrap_or_else(|_| {
         fail(&format!(
             "loop_state_contract: incumbent ordinal {} is not a valid archive index",
@@ -692,20 +747,24 @@ fn incumbent_key(state: &<Crate>::EmathRecord_<StateType>) -> i64 {
         .key
 }
 
-fn seed_line(state: &<Crate>::EmathRecord_<StateType>) -> String {
+fn seed_line(state: &<Crate>::EmathRecord_<StateRust>) -> String {
     let key = incumbent_key(state);
-    let score = &state.archive[usize::try_from(state.incumbent).unwrap_or_else(|_| {
+    let ordinal = usize::try_from(state.incumbent).unwrap_or_else(|_| {
         fail("loop_state_contract: incumbent ordinal is not a valid archive index")
-    })]
-    .score;
+    });
+    let record = state.archive.get(ordinal).unwrap_or_else(|| {
+        fail(&format!(
+            "loop_state_contract: incumbent ordinal {ordinal} is outside the archive"
+        ))
+    });
     format!(
         "seed batch {} verdict {} used {} incumbent key {} score {}/{} mode {}",
         state.batch,
         verdict_name(state.verdict),
         state.used,
         key,
-        score.0,
-        score.1,
+        record.score.0,
+        record.score.1,
         state.mode,
     )
 }
@@ -768,7 +827,7 @@ fn main() {
         fail("missing --scratch PATH (the checkpoint destination is explicit, never guessed)");
     };
     println!("module <Crate>");
-    println!("target {} state <StateType>", TARGET);
+    println!("target {} state {}", TARGET, STATE_TYPE);
     println!("meaning {}", MEANING_ID);
     let started = std::time::Instant::now();
     let mut state = <Crate>::<Seed>(0).unwrap_or_else(|error| fail(&error));
@@ -800,6 +859,7 @@ fn main() {
         &[
             ("Crate", crate_ident),
             ("StateType", state_type),
+            ("StateRust", &state_rust),
             ("Seed", &surface.seed),
             ("Step", &surface.step),
         ],

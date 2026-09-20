@@ -36,6 +36,14 @@ pub struct ConstructorCrateEmission {
     pub functions: Vec<String>,
     /// Why entries are not runnable, when they are not.
     pub unresolved: Vec<String>,
+    /// The authored records the emission registered, with their
+    /// AUTHORED (emath) field names and carrier signatures. The
+    /// emitted Rust escapes keywords (`move` becomes `move_` via
+    /// `escape_ident`), and that escape is not injective, so
+    /// consumers that must recover the authored names (the native
+    /// epoch export's scratch mirror) map back through THIS list,
+    /// never by heuristic.
+    pub records: Vec<AuthoredRecord>,
 }
 
 /// A typed refusal from crate emission; callers keep their own
@@ -284,5 +292,6 @@ pub fn emit_constructor_crate(
         runnable,
         functions,
         unresolved,
+        records,
     })
 }
