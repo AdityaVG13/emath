@@ -766,6 +766,7 @@ dependencies = [
  "emath-sema",
  "emath-syntax",
  "emath-term",
+ "emath-tui",
 ]
 
 [[package]]

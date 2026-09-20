@@ -42,14 +42,31 @@ The state type `T` is expected to carry the loop state contract fields
   entry from the previous and next states (acceptance flips diff by
   archive ordinal; append-only archive enforced); enforces the
   module-semantic ledger law.
+- `LoopSession::grow_case(case_id)` - the host curriculum seam: freeze
+  one more case ordinal into the state's `case_set.ids`. Duplicates
+  refuse `loop_case_duplicate`. The next batch re-probes and re-scores
+  the whole archive on the grown set (the authored freshness law).
 - `LoopSession::save/load` - `emath.scratch.v1` checkpoints through
   the exec-ir scratch contract, plus the host-side laws (state type
   match, batch counter equals revision).
 - `value_int/value_rat/value_bool/value_sequence`, `state_int`,
-  `incumbent_record` - loop-state field readers for surfaces and the
-  REPL. Exact integers read as rationals where a score is expected
-  (authored targets may return exact zero as an Int).
+  `incumbent_record`, `case_ids` - loop-state field readers for
+  surfaces and the REPL. Exact integers read as rationals where a
+  score is expected (authored targets may return exact zero as an
+  Int).
 - `verdict_name` - the verdict vocabulary for display only.
+- `repl::run_repl(host, config, input, out)` - the line-REPL core
+  (`ReplConfig { default_budget, interactive }`): `help`, `step
+  [budget]`, `run [n]`, `show`, `grow-case <id>`, `save/load <path>`,
+  `export-native`, `quit`. Blank lines and `#` comments are ignored.
+  `run` without a count stops on the closing verdicts
+  (`goal_attained`, `domain_exhausted`) and resumes across `plateau`
+  and `budget_exhausted` per the authored vocabulary; a bare `run`
+  that reaches 1000 batches without closing refuses `loop_run_cap`.
+  Errors print `error <code>: <message>` and the session continues;
+  only a failed session start or a broken stream ends the run.
+  `export-native` is an honest boundary notice: the epoch host bin is
+  bead emath-8k3zw's deliverable, not an emulated export.
 
 ## Invariants
 
@@ -66,13 +83,18 @@ with their own codes (`scratch_identity`, `scratch_ledger`,
 `bad_budget`, ...); host-owned refusals use `loop_*` codes
 (`loop_read`, `loop_parse`, `loop_surface`, `loop_target`,
 `loop_ambiguous`, `loop_identity`, `loop_state_contract`,
-`loop_ledger_law`). No silent guessing.
+`loop_ledger_law`, `loop_case_duplicate`, `loop_command`,
+`loop_run_cap`, `loop_stream`). No silent guessing.
 
 ## Determinism class
 
 Identical module, surface, budget schedule, and scratch produce
 identical sessions: the engine is deterministic and the ledger
-projection reads state fields only.
+projection reads state fields only. REPL transcripts are
+byte-deterministic: no timestamps, no timings, ordered fields, the
+same script over the same module produces identical bytes
+(interactive mode adds only the `> ` prompts, which are transcript
+decoration, not data).
 
 ## Unsafe boundary
 
@@ -89,6 +111,15 @@ session surfaces (`tests/fixtures/constructor/research_step_*.emath`)
 batch by batch to the authored outcomes, checks the lift diagnostics
 and near-miss problems, and proves scratch resume equality with the
 straight run plus the identity and ledger refusals.
+`tests/emath-tui/tests/repl_sessions.rs` drives scripted REPL
+sessions over the valley surface: the goal walk with pinned batch
+lines, byte-determinism, save/load resume, grow-case freeze and
+duplicate refusal, budget-halt resume, error continuation, and the
+export-native boundary. `tests/emath-cli/tests/loop_cmd.rs` runs the
+`emath loop` binary end to end: scripted goal, default budget, auto
+target, ambiguity refusal, lift diagnostic, usage fault, and piped
+stdin sessions. Mutation probe: disabling the grow-case duplicate
+guard fails `repl-grow-case/duplicate-refused`.
 
 ## No-claim boundaries
 

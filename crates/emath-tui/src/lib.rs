@@ -5,3 +5,4 @@
 //! scratch contract over the artifact ABI.
 
 pub mod host;
+pub mod repl;

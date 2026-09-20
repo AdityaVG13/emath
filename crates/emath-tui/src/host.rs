@@ -24,6 +24,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use emath_core::tree::{Declaration, Item, StmtKind, SyntaxTree, TypeExpr, TypeKind};
 use emath_exec_ir::constructor_layer::{
@@ -61,7 +62,9 @@ pub struct HostFault {
 }
 
 impl HostFault {
-    fn fault(code: &str, message: impl Into<String>) -> Self {
+    /// Mint a host-owned `loop_*` refusal (also used by the REPL for
+    /// stream and command faults).
+    pub(crate) fn fault(code: &str, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -369,6 +372,12 @@ impl LoopHost {
         &self.identity
     }
 
+    /// The module file this host runs (the path `open` was given).
+    #[must_use]
+    pub fn module_path(&self) -> &Path {
+        &self.path
+    }
+
     /// Begin a session at the surface's seed state.
     pub fn begin(&self) -> Result<LoopSession, HostFault> {
         let inputs = BTreeMap::from([(
@@ -471,6 +480,9 @@ pub fn value_int(value: &CValue, name: &str) -> Result<i128, HostFault> {
 }
 
 /// Read a Rat field of a record as canonical `(num, den)`.
+///
+/// Prefer [`value_rational`] for authored values: targets may return
+/// exact integers where a rational is declared.
 pub fn value_rat(value: &CValue, name: &str) -> Result<(i128, i128), HostFault> {
     match record_fields(value)?.get(name) {
         Some(CValue::Rat { num, den }) => {
@@ -545,6 +557,47 @@ impl LoopSession {
         self.ledger.len() as u64
     }
 
+    /// The session's frozen case ordinals (the host curriculum seam).
+    pub fn case_ids(&self) -> Result<Vec<i128>, HostFault> {
+        let fields = match &self.state {
+            CValue::Record { fields, .. } => fields,
+            other => {
+                return Err(HostFault::fault(
+                    "loop_state_contract",
+                    format!("expected a record state, found {other:?}"),
+                ))
+            }
+        };
+        let ids = match fields.get("case_set") {
+            Some(CValue::Record { fields, .. }) => match fields.get("ids") {
+                Some(CValue::Sequence(items)) => items,
+                other => {
+                    return Err(HostFault::fault(
+                        "loop_state_contract",
+                        format!("`case_set.ids` is not a Sequence: {other:?}"),
+                    ))
+                }
+            },
+            other => {
+                return Err(HostFault::fault(
+                    "loop_state_contract",
+                    format!("`case_set` is not a record: {other:?}"),
+                ))
+            }
+        };
+        ids.iter()
+            .map(|id| match id {
+                CValue::Int(n) => n
+                    .to_i128()
+                    .ok_or_else(|| HostFault::fault("loop_state_contract", "case id overflows")),
+                other => Err(HostFault::fault(
+                    "loop_state_contract",
+                    format!("case id is not an Int: {other:?}"),
+                )),
+            })
+            .collect()
+    }
+
     /// Read an Int field of the current state.
     pub fn state_int(&self, name: &str) -> Result<i128, HostFault> {
         value_int(&self.state, name)
@@ -590,6 +643,77 @@ impl LoopSession {
         Ok(self.ledger.last().expect("just pushed"))
     }
 
+    /// Freeze one more case ordinal into the session's case set (the
+    /// host curriculum seam: the case set is explicit host-owned data,
+    /// X1). Duplicates refuse by name. The next batch's freshness law
+    /// re-probes and re-scores the whole archive on the grown set.
+    pub fn grow_case(&mut self, case_id: i128) -> Result<(), HostFault> {
+        let (type_name, fields) = match &self.state {
+            CValue::Record { type_name, fields } => {
+                (type_name.clone(), fields.as_ref().clone())
+            }
+            other => {
+                return Err(HostFault::fault(
+                    "loop_state_contract",
+                    format!("expected a record state, found {other:?}"),
+                ))
+            }
+        };
+        let case_set = match fields.get("case_set") {
+            Some(case_set) => case_set.clone(),
+            None => {
+                return Err(HostFault::fault(
+                    "loop_state_contract",
+                    "the state has no `case_set` field",
+                ))
+            }
+        };
+        let (case_type, mut case_fields) = match &case_set {
+            CValue::Record { type_name, fields } => {
+                (type_name.clone(), fields.as_ref().clone())
+            }
+            other => {
+                return Err(HostFault::fault(
+                    "loop_state_contract",
+                    format!("`case_set` is not a record: {other:?}"),
+                ))
+            }
+        };
+        let mut ids = match case_fields.get("ids") {
+            Some(CValue::Sequence(items)) => items.as_ref().clone(),
+            other => {
+                return Err(HostFault::fault(
+                    "loop_state_contract",
+                    format!("`case_set.ids` is not a Sequence: {other:?}"),
+                ))
+            }
+        };
+        if ids
+            .iter()
+            .any(|id| matches!(id, CValue::Int(n) if n.to_i128() == Some(case_id)))
+        {
+            return Err(HostFault::fault(
+                "loop_case_duplicate",
+                format!("case {case_id} is already frozen"),
+            ));
+        }
+        ids.push(CValue::Int(ExactInt::from(case_id)));
+        case_fields.insert("ids".into(), CValue::Sequence(Arc::new(ids)));
+        let mut fields = fields;
+        fields.insert(
+            "case_set".into(),
+            CValue::Record {
+                type_name: case_type,
+                fields: Arc::new(case_fields),
+            },
+        );
+        self.state = CValue::Record {
+            type_name,
+            fields: Arc::new(fields),
+        };
+        Ok(())
+    }
+
     /// Save the session as an `emath.scratch.v1` checkpoint.
     pub fn save(&self, host: &LoopHost, path: &Path) -> Result<(), HostFault> {
         save_scratch(
@@ -632,7 +756,7 @@ impl LoopSession {
 /// (authored targets may return exact zero as an Int - the fitting
 /// score at truth is the live example - and an exact integer is an
 /// exact rational).
-fn field_rational(value: &CValue, name: &str) -> Result<(i128, i128), HostFault> {
+pub fn value_rational(value: &CValue, name: &str) -> Result<(i128, i128), HostFault> {
     let field = record_fields(value)?.get(name).ok_or_else(|| {
         HostFault::fault(
             "loop_state_contract",
@@ -737,7 +861,7 @@ fn project_batch(previous: &CValue, next: &CValue) -> Result<BatchLedgerEntry, H
         })
         .collect::<Result<Vec<i128>, HostFault>>()?;
     let verdict = field_i128(next, "verdict")?;
-    let (score_num, score_den) = field_rational(incumbent_record, "score")?;
+    let (score_num, score_den) = value_rational(incumbent_record, "score")?;
     Ok(BatchLedgerEntry {
         batch: field_i128(next, "batch")? as u64,
         verdict,

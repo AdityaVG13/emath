@@ -15,6 +15,7 @@ pub const COMMANDS: &[&str] = &[
     "migrate",
     "explain",
     "run",
+    "loop",
     "step",
     "test",
     "verify",
@@ -173,6 +174,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "run" => {
             "run <file.emath> [--function NAME] [--set name=value] [--set-file path.json] [--work N] [--out dir] [--json]"
         }
+        "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
         }
@@ -276,6 +278,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         }
         "run" => {
             "evaluate an `emath function` or `emath query` under explicit inputs; `--json` prints the constructor receipt"
+        }
+        "loop" => {
+            "open a research-loop session surface and drive it with line commands (step, run, show, grow-case, save, load); `--script` replays a command file deterministically"
         }
         "step" => {
             "resume a constructor-layer continuation; incompatible checkpoints refuse"
@@ -758,6 +763,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "--help",
             "-h",
         ],
+        "loop" => &["--target", "--budget", "--script", "--help", "-h"],
         "verify" => &["--json", "--help", "-h"],
         "explain" => &["--json", "--provenance", "--show-defaults", "--list-codes", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
@@ -860,6 +866,9 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--raise"
             | "--apply"
             | "--receipt"
+            | "--target"
+            | "--budget"
+            | "--script"
     )
 }
 

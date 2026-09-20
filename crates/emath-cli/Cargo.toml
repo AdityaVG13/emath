@@ -36,6 +36,9 @@ emath-plan = { workspace = true }
 emath-provider-api = { workspace = true }
 emath-sema = { workspace = true }
 emath-syntax = { workspace = true }
+# Research-loop sessions: `emath loop` opens an authored session surface
+# (Step/Seed pair) and drives it through the emath-tui host + REPL.
+emath-tui = { workspace = true }
 
 [lints]
 workspace = true

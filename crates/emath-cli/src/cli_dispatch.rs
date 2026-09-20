@@ -159,6 +159,7 @@ pub(super) fn run_command(command: Command) -> CliExit {
         ),
         Command::Explain(request) => tooling_cmd::explain_cmd(request),
         Command::Run(request) => execution::run(request),
+        Command::Loop(request) => loop_cmd::run(request),
         Command::Search(request) => compiled_search::run(request),
         Command::Step(request) => execution::step(request),
         Command::Api(request) => language_cmd::api(request),

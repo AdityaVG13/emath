@@ -77,6 +77,7 @@ emath-ir = { path = "crates/emath-ir" }
 emath-plan = { path = "crates/emath-plan" }
 emath-sema = { path = "crates/emath-sema" }
 emath-exec-ir = { path = "crates/emath-exec-ir" }
+emath-tui = { path = "crates/emath-tui" }
 emath-rust-backend = { path = "crates/emath-rust-backend" }
 emath-rt = { path = "crates/emath-rt" }
 emath-artifact = { path = "crates/emath-artifact" }

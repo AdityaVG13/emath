@@ -105,6 +105,7 @@ pub(super) enum Command {
     },
     Explain(ExplainRequest),
     Run(execution::RunRequest),
+    Loop(loop_cmd::LoopRequest),
     Search(compiled_search::SearchRequest),
     Step(execution::RunRequest),
     Api(language_cmd::ApiRequest),
@@ -419,6 +420,8 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                 .with_usage(format!("emath {}", compiled_search::USAGE)),
             )),
         },
+        "loop" => require_single_file("loop", loop_cmd::USAGE, rest, loop_cmd::LoopRequest::parse)
+            .map(Command::Loop),
         "run" => require_single_file(
             "run",
             "run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]",
