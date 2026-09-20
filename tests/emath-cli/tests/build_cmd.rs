@@ -35,7 +35,10 @@ fn scratch(tag: &str) -> std::path::PathBuf {
 }
 
 fn entry_count(lib: &str) -> usize {
-    lib.lines().filter(|line| line.starts_with("pub fn ")).count()
+    // The embedded runtime (`pub mod emath_rt`) carries its own
+    // `pub fn` lines; every emitted entry carries the
+    // `// function `<name>`` marker, which the runtime never contains.
+    lib.lines().filter(|line| line.starts_with("// function `")).count()
 }
 
 const SINGLE: &str = "emath function only_fn:
