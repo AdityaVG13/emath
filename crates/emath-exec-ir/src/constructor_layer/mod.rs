@@ -526,6 +526,7 @@ mod ops;
 mod query;
 mod residual;
 mod scalar;
+mod scratch;
 mod setup;
 mod value;
 
@@ -535,5 +536,6 @@ pub use eval::*;
 pub use query::*;
 pub use residual::*;
 pub use scalar::*;
+pub use scratch::*;
 pub use setup::*;
 

@@ -13,6 +13,9 @@ emath-rt = { workspace = true }
 emath-term = { workspace = true }
 emath-schema = { workspace = true }
 emath-syntax = { workspace = true }
+# JSON DOM/parser for the constructor-layer scratch contract (below
+# exec-ir in the stack: core + ir only, no cycle).
+emath-artifact = { workspace = true }
 stacker = "0.1.21"
 
 [lints]

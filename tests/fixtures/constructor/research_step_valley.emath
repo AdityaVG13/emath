@@ -1,0 +1,177 @@
+# Session-surface lift of the E5a valley target: the closures the
+# research loop consumes, lifted to module level as ordinary
+# functions, plus the seed and one-batch Step entry points a loop
+# host drives (bead emath-8aqvm). This is the authored session
+# surface: a host instantiates closures from these declarations and
+# steps batches through StepValley; nothing about the loop is host
+# policy. The landscape and graph are the valley fixture's own.
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/constructor/research_step_valley.emath
+
+use search.archive
+use search.research
+
+emath function MakeValueOf:
+    # value_of: the canonical parameter of a key, recorded before any
+    # probe evaluation.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 7
+
+emath function MakeMoves:
+    # The valley graph: flip-one-bit neighbors of a 3-bit key.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: if k == 0: [1, 2, 4] else: if k == 1: [0, 3, 5] else: if k == 2: [0, 3, 6] else: if k == 3: [1, 2, 7] else: if k == 4: [0, 5, 6] else: if k == 5: [1, 4, 7] else: if k == 6: [2, 4, 7] else: [3, 5, 6]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 9
+
+emath function MakeLandscape:
+    # probe and verify (both tiers, the same landscape): 000 scores 4;
+    # its flip-one-bit neighbors score 2/0/1 (the valley); the far
+    # side 011 scores 3; 111 scores 6 (the goal).
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: if k == 0: 4 / 1 else: if k == 1: 2 / 1 else: if k == 2: 0 / 1 else: if k == 3: 3 / 1 else: if k == 4: 1 / 1 else: if k == 5: 0 / 1 else: if k == 6: 0 / 1 else: 6 / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: -1
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: s == 6 / 1
+
+emath function MakeBetter:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: b < a
+
+emath function MakeNextCases:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: cs
+
+emath function SeedValley:
+    # The archive-mode seed at key 0 on the empty frozen case set.
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        value_of = MakeValueOf(0)
+        val = MakeLandscape(0)
+        witness_of = MakeWitness(0)
+        result = research_seed(0, value_of, CaseSet: {ids: []}, val, witness_of, 1, 0, 1, 1)
+    tests:
+        example <seed_state>:
+            given unused = 0
+            expect result.incumbent == 0
+            expect result.batch == 0
+            expect result.used == 1
+            expect result.mode == 1
+            expect result.archive[0].key == 0
+            expect result.archive[0].score == 4 / 1
+            expect result.archive[0].accepted == true
+
+emath function StepValley:
+    # One batch of the valley target over explicit state: the session
+    # surface a loop host steps batch by batch.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        value_of = MakeValueOf(0)
+        admit = MakeAdmit(0)
+        moves = MakeMoves(0)
+        family_of = MakeFamilyOf(0)
+        quota = MakeQuota(0)
+        val = MakeLandscape(0)
+        witness_of = MakeWitness(0)
+        hard_ok = MakeHardOk(0)
+        goal_met = MakeGoalMet(0)
+        better = MakeBetter(0)
+        next_cases = MakeNextCases(0)
+        result = research_batch(state, value_of, admit, moves, family_of, quota, val, val, witness_of, hard_ok, goal_met, better, next_cases, budget)
+
+emath function RunValley:
+    # The three-batch straight run through the lifted surface: it
+    # reproduces the E5a acceptance - the archive crosses the valley
+    # to the goal and retains the stepping stones.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+        used: Int
+        stepping_stones_retained: Bool
+    definitions:
+        s0 = SeedValley(0)
+        s1 = StepValley(s0, 60)
+        s2 = StepValley(s1, 60)
+        s3 = StepValley(s2, 60)
+        winner = s3.archive[s3.incumbent].key
+        verdict = s3.verdict
+        used = s3.used
+        stepping_stones_retained = key_in_arch(s3.archive, 1, 0) and key_in_arch(s3.archive, 3, 0)
+    tests:
+        example <crosses_the_valley_to_the_goal>:
+            given unused = 0
+            expect winner == 7
+            expect verdict == 1
+            expect stepping_stones_retained == true

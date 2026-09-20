@@ -87,6 +87,44 @@ constructor, assumption, lowering, and verdict rules. They return `TestRun`
 values without evaluating sibling cases. The CLI uses these boundaries
 for saved progress; they do not suspend inside a capability or solver.
 
+## Loop-session scratch checkpoints
+
+`constructor_layer::scratch` is the `emath.scratch.v1` host-side checkpoint
+of one research-loop session: module identity, target Step function,
+explicit loop state (a `CValue`), and the immutable batch ledger. It is a
+sibling of the continuation checkpoint with a different job: the
+continuation suspends an engine mid-reduction; the scratch commits a
+session at a batch boundary (all loop state is explicit data, X1).
+
+Identity is carried, never computed: the host passes the module's meaning
+id, language image id, and target name in; `decode_scratch`/`load_scratch`
+compare them against the expectation and refuse `scratch_identity` on any
+mismatch. File-internal consistency is enforced on both save and load:
+the ledger length must equal the declared revision and entries are
+1-based and ordered (`scratch_ledger`); a non-writer-JSON document refuses
+`scratch_torn`; a foreign schema line refuses `scratch_schema`. The
+module-semantic law that the revision equal the loop state's own batch
+count belongs to the host (it knows the `LoopState` shape), not this
+contract.
+
+The value interchange is verbatim, not normalizing: exact integers render
+as decimal (arbitrary magnitude), rationals as `[num, den]` (zero
+denominator refused), floats as bit-exact hex, records/variants/tuples/
+sequences with ordered fields. Closures, code, receipts, and buffers
+refuse `scratch_unserializable`: closures are re-instantiated by the host
+from authored declarations; the others are engine artifacts or mutable
+state, not checkpoint cargo. Ledger projections are machine-scale
+(`i128`); loops whose keys or scores exceed that scale cannot keep a
+scratch ledger.
+
+Determinism class: the encoding is byte-deterministic for equal inputs.
+Conformance is `tests/emath-exec-ir/tests/constructor_scratch.rs` over
+the valley session surface
+(`tests/fixtures/constructor/research_step_valley.emath`), including
+resume-through-file equality with the straight run, mutation divergence,
+identity refusal, and torn-file refusal.
+
+
 Case runners retain independent definitions after a lowering or execution fault.
 A failed definition never supplies a guessed binding to later expressions.
 The first failure remains the case verdict; a failed case cannot pass its expectation.
