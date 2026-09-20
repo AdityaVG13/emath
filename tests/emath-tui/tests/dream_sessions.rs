@@ -320,5 +320,61 @@ fn dream_sessions() {
         p.eq("batches", level.batches, 10);
     });
 
+    // 8. The Rat world: a program-space dream target (candidates as
+    //    quoted programs, the pred seam over Rat) closes goal_attained
+    //    and emits a level whose world table and predictions are Rat
+    //    literals. The driver converts its Int key and case ordinal to
+    //    the seam's declared Rat carriers at the pred call; the
+    //    certificate pins the exact rational rows.
+    probe.case("rat-world-program-space-dream", |p| {
+        let out = temp_out("pspace");
+        let config = DreamConfig {
+            budget0: 64,
+            budget_step: 64,
+            max_batches: 200,
+            plateau_close: 3,
+            out_dir: Some(out.clone()),
+        };
+        let outcome = run_dream(
+            &fixture_path("dream_program_space.emath"),
+            Some("StepPS"),
+            &config,
+        )
+        .expect("the program-space dream runs");
+        p.demand(
+            "closed",
+            outcome.stop == DreamStopReason::Closed,
+            format!("{:?}", outcome.stop),
+        );
+        let level = outcome.level.as_ref().expect("closed");
+        p.eq("close-reason", level.close_reason, "goal_attained");
+        p.eq("incumbent", level.incumbent_key, 1);
+        p.eq("case-ids", level.case_ids.clone(), vec![0, 1, 2, 3, 4]);
+        p.eq("score", level.incumbent_score, (0, 1));
+        p.demand("certificate-verified", level.certificate, "the driver must verify the level");
+        let text = level_text(&level.path);
+        p.demand(
+            "world-rows-are-rat",
+            text.contains("world = [1 / 2, 3 / 2, 5 / 2, 7 / 2, 9 / 2]"),
+            format!("the pinned world table must be Rat literals:\n{text}"),
+        );
+        p.demand(
+            "predictions-are-rat",
+            text.contains("predictions = [1 / 2, 3 / 2, 5 / 2, 7 / 2, 9 / 2]"),
+            format!("the pinned predictions must be Rat literals:\n{text}"),
+        );
+        p.demand(
+            "level-carriers-declared",
+            text.contains("world: sequence(Rat)") && text.contains("predictions: sequence(Rat)"),
+            format!("the level's carriers must be declared Rat:\n{text}"),
+        );
+        let (ok, passed, total) = level_certificate(&text);
+        p.demand(
+            "independent-certificate",
+            ok && passed == total && total >= 2,
+            format!("independent re-verification: {passed}/{total}"),
+        );
+    });
+
     probe.finish();
 }

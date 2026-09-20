@@ -141,23 +141,29 @@ by numerical solver callers, remains fail-fast.
 ## Program-space quote emission (emath-npky7)
 
 Constructor lowering emits exactly one quote subset: `quote(<unary
-Rat -> Rat function literal>)`, `quote.substitute(code, "name", value)`,
-and `quote.evaluate(code)`. The ops are `CodeLiteral` (the template's
-nested program with the open constants as trailing runtime inputs),
-`CodeSubstitute` (partial application; the reference is a static string
-resolved at lowering, the value is Rational-carried), and `CodeEvaluate`
+scalar-carrier function literal>)`, `quote.substitute(code, "name",
+value)`, and `quote.evaluate(code)`. The ops are `CodeLiteral` (the
+template's nested program with the open constants as trailing runtime
+inputs, plus the declared carrier), `CodeSubstitute` (partial
+application; the reference is a static string resolved at lowering,
+the value is carried in the template's carrier), and `CodeEvaluate`
 (the guarded executor; a def bound to it is closure-valued, so later
 `f(x)` lowers as `CallValue` — the fourth closure-valued def source).
+The admitted carriers are the declared scalar domains `Int`, `Rat`,
+and `Bool`: the domain governs the parameter AND the open constants,
+so the artifact's compiled factory is monomorphic in the carrier
+(emath-3ran3 widened this from the original Rat-only cut).
 
 The hygiene law is structural: a quote never captures the ambient
 frame. Every free name of the template body (beyond the parameter)
 stays open and becomes a substitution input; nested rebinders keep
 their own scope (the free-name collector's L2 rule). One predicate
-(`is_emitted_quote_template`) is the single authority admitting the
-shape in both the lowering and the unresolved walk, so the two cannot
+(`emitted_quote_carrier`) is the single authority admitting the shape
+in both the lowering and the unresolved walk, so the two cannot
 disagree. Every other quote form (`QuoteBind`, non-lambda bodies,
-other `quote.*` spellings or arities) keeps the emission fence: it
-lowers to a named refusal and the module is not runnable.
+other domains, other `quote.*` spellings or arities) keeps the
+emission fence: it lowers to a named refusal and the module is not
+runnable.
 
 The E-MIR interpreter refuses the three ops as emission-carried
 (`CarrierRefused`): the constructor lane computes quotes through its
@@ -166,11 +172,12 @@ own `CValue::Code` machinery; these ops exist for the native lane.
 Determinism class: lowering is a pure function of the authored tree.
 Conformance is `tests/emath-tui/tests/export_native.rs` case 9
 (cross-lane scratch parity over
-`tests/fixtures/constructor/dream_program_space.emath`) and
+`tests/fixtures/constructor/dream_program_space.emath`, whose
+template carriers are Rat, Int, and Bool) and
 `tests/emath-rt/tests/code_carrier.rs` (the carrier laws), with
 mutation probes: splice position, the `unbound_code` guard, the
-closure-valued source, and the unresolved exemption each kill their
-suite.
+closure-valued source, the unresolved exemption, and the
+carrier-kind mapping each kill their suite.
 
 ## Kernel boundary
 

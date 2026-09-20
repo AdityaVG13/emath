@@ -145,15 +145,21 @@ and program bodies through the same generic backend.
 ## Code carrier (emath-npky7)
 
 `body/code.rs` (embedded as `pub mod code` in both the crate and
-`SOURCE`) is the artifact-side Code value: a quoted unary
-`Rat -> Rat` program compiled once into a closure factory. It is a
-representation carrier, not a mathematical method: `open(free, make)`
-pairs the open-constant names with the compiled factory;
+`SOURCE`) is the artifact-side Code value: a quoted unary program
+compiled once into a closure factory. It is a representation
+carrier, not a mathematical method: `open(free, make)` pairs the
+open-constant names with the compiled factory;
 `substitute` binds one constant by partial application (by name - the
 value splices at the name's slot; an absent reference is a no-op,
 tree-substitution parity); `evaluate` is the guarded executor (open
 code refuses `unbound_code` naming the remaining constants in binding
 order; closed code yields the specialized closure). No tree is
-carried and no interpreter runs. Conformance:
+carried and no interpreter runs. The carrier is generic
+(`Code<V: Clone + 'static>`): the backend instantiates it over the
+template's declared scalar domain - `Code<ExactRatio>` for Rat,
+`Code<i64>` for Int, `Code<bool>` for Bool - so one implementation
+serves every scalar program family. Conformance:
 `tests/emath-rt/tests/code_carrier.rs` with splice-position and
-guard-removal mutation probes.
+guard-removal mutation probes; the Int and Bool instantiations are
+exercised end-to-end by the program-space fixture and the export
+acceptance.

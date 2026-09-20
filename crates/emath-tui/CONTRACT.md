@@ -130,10 +130,15 @@ module and owns only the dream laws:
   recomputation), and the driver verifies that certificate
   in-process before reporting the level verified. Re-verification
   later is cheap: `emath test` on the level file. The emission seam
-  is the authored pair `dream_world` (one Int input, the case table
-  as `sequence(Int)`) and `dream_pred` (two Int inputs, the
-  prediction); a module without them refuses `dream_emission_surface`
-  at open when an out_dir is configured (fail fast, no driving). An
+  is the authored pair `dream_world` (one scalar input, the case table
+  as `sequence(Int)` or `sequence(Rat)`) and `dream_pred` (two inputs
+  of the world's carrier, the prediction): the world's element
+  carrier is the seam's carrier, the pred's declared inputs must pair
+  with it (uniform, matching the world), and the driver's Int key and
+  case ordinal ride the engine's exact scalar widening into
+  Rat-declared inputs. A module without the pair, a mixed world
+  table, or a mismatched pred refuses `dream_emission_surface` at
+  open when an out_dir is configured (fail fast, no driving). An
   existing level file refuses `dream_level_exists` - the dream never
   overwrites a level.
 
@@ -227,14 +232,20 @@ the linear close with a mid-walk budget resume and an independently
 re-verified level certificate, the dead-start budget ladder, the
 unmasterable honest partial, the plateau close at three, the
 max-batches stop with no level and no file, the emission-seam
-refusal on a module without `dream_world`/`dream_pred`, and the
+refusal on a module without `dream_world`/`dream_pred`, the
 plateau-counter reset on growth (the trickle surface's interleaved
 walk closes at the post-mastery plateau run, not the cumulative
-count). Mutation probes: reverting the resume law to a linear ladder
+count), and the Rat-world program-space dream (a `sequence(Rat)`
+world with a Rat-keyed pred closes goal_attained and emits a level
+whose world and prediction rows are Rat literals, independently
+re-verified). Mutation probes: reverting the resume law to a linear ladder
 fails the linear and dead-start cases (the refresh lockstep);
 off-by-one in the plateau close fails both batch pins; removing the
 verdict-0 reset fails the trickle case's batch pin (cumulative close
-mid-walk).
+mid-walk); truncating the rational row rendering fails the Rat-world
+case's literal pins (the level's internal consistency alone cannot
+catch a uniformly wrong renderer - the explicit Rat-literal demands
+are the discriminator).
 
 ## No-claim boundaries
 

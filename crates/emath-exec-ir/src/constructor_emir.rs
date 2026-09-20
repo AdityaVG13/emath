@@ -806,20 +806,22 @@ impl Lowerer {
                 }))
             }
             ExprKind::Quote { body } => {
-                // Program-space quote emission: the unary Rat-domain
-                // function template lowers once into compiled code.
-                // The body's free names beyond the parameter are the
-                // OPEN constants - the hygiene law keeps them open (a
-                // quote never captures the ambient frame), so they
+                // Program-space quote emission: the unary scalar-
+                // carrier function template lowers once into compiled
+                // code. The body's free names beyond the parameter are
+                // the OPEN constants - the hygiene law keeps them open
+                // (a quote never captures the ambient frame), so they
                 // become the template's runtime substitution inputs.
                 // One predicate admits the shape, shared with the
-                // unresolved walk, so the two can never disagree.
-                if !is_emitted_quote_template(body) {
+                // unresolved walk, so the two can never disagree. The
+                // declared domain is the carrier: it governs the
+                // parameter and the constants together.
+                let Some(carrier) = emitted_quote_carrier(body) else {
                     return Err(
-                        "quote emission supports unary Rat -> Rat function templates in this cut"
+                        "quote emission supports unary Int/Rat/Bool function templates in this cut"
                             .into(),
                     );
-                }
+                };
                 let ExprKind::FunctionAbs { param, body: inner, .. } = &body.kind else {
                     return Err("quote emission supports function templates in this cut".into());
                 };
@@ -848,6 +850,7 @@ impl Lowerer {
                     body: program,
                     param: param.clone(),
                     free,
+                    carrier: carrier.to_string(),
                 }))
             }
             ExprKind::List(items) => {
@@ -1026,20 +1029,27 @@ fn expr_uses_quote(expr: &Expr) -> bool {
     }
 }
 
-/// The emitted quote-template shape: a unary Rat-domain function
-/// literal (bare `Rat` domain spelling). One authority for both the
-/// lowering admission and the unresolved exemption, so the two can
-/// never disagree; every other quote stays behind the fence as
-/// symbolic code.
-fn is_emitted_quote_template(body: &Expr) -> bool {
+/// The emitted quote-template shape and its declared scalar carrier:
+/// a unary function literal over `Int`, `Rat`, or `Bool` (bare domain
+/// spelling). One authority for both the lowering admission and the
+/// unresolved exemption, so the two can never disagree; every other
+/// quote stays behind the fence as symbolic code.
+fn emitted_quote_carrier(body: &Expr) -> Option<&'static str> {
     let ExprKind::FunctionAbs { domain, .. } = &body.kind else {
-        return false;
+        return None;
     };
-    matches!(
-        &domain.kind,
-        ExprKind::Path { segments, .. }
-            if segments.len() == 1 && segments[0] == "Rat"
-    )
+    let ExprKind::Path { segments, .. } = &domain.kind else {
+        return None;
+    };
+    match segments.as_slice() {
+        [segment] => match segment.as_str() {
+            "Int" => Some("Int"),
+            "Rat" => Some("Rat"),
+            "Bool" => Some("Bool"),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// `constructor_refuse(quote(name))`: the authored single-identifier
@@ -1236,7 +1246,7 @@ fn collect_unresolved(expr: &Expr, out: &mut Vec<String>) {
         ExprKind::Quote { body } => {
             // The emitted template shape resolves (the Quote arm
             // lowers it); every other quote stays symbolic code.
-            if !is_emitted_quote_template(body) {
+            if emitted_quote_carrier(body).is_none() {
                 out.push("quote".into());
             }
         }

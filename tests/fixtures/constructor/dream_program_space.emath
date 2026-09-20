@@ -12,8 +12,11 @@
 # through compiled emission - the template lowers once into a closure
 # factory, substitute is partial application, evaluate is closure
 # demand. The export acceptance pins cross-lane checkpoint parity.
+# The template carriers are the declared domains: Rat, Int, and Bool
+# programs all compile (the carrier governs the parameter AND the
+# open constants in the native lane).
 #
-# Expected outcome: passes (4 authored tests).
+# Expected outcome: passes (6 authored tests).
 # Run: emath test tests/fixtures/constructor/dream_program_space.emath
 
 emath function MakeTemplate:
@@ -102,6 +105,60 @@ emath function TwoTemplate:
     definitions:
         result = quote(function x in Rat: a * x + b)
 
+emath function IntTemplate:
+    # The Int-carrier template: an integer program with an integer
+    # open constant. The declared domain governs both the parameter
+    # and the constant in the native lane (the compiled factory is
+    # monomorphic in the carrier).
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(function x in Int: x * c + 1)
+
+emath function EvalCandidateInt:
+    inputs:
+        c: Int
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        cand = quote.substitute(IntTemplate(0), "c", c)
+        f = quote.evaluate(cand)
+        result = f(x)
+    tests:
+        example <int_program_evaluates>:
+            given c = 3
+            given x = 5
+            expect result == 16
+
+emath function BoolTemplate:
+    # The Bool-carrier template: a predicate program with a Bool open
+    # constant.
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(function p in Bool: p or c)
+
+emath function EvalCandidateBool:
+    inputs:
+        c: Bool
+        p: Bool
+    outputs:
+        result: Bool
+    definitions:
+        cand = quote.substitute(BoolTemplate(0), "c", c)
+        f = quote.evaluate(cand)
+        result = f(p)
+    tests:
+        example <bool_program_evaluates>:
+            given c = true
+            given p = false
+            expect result == true
+
 # --- The session surface (the export seam) ---
 #
 # The program-space search as an ordinary session: the candidate key
@@ -112,8 +169,9 @@ emath function TwoTemplate:
 use search.archive
 use search.research
 
-emath function ps_world:
-    # The case table: w(i) = i + 1/2.
+emath function dream_world:
+    # The emission seam (the dream driver's case table): a Rat world.
+    # w(i) = i + 1/2.
     inputs:
         unused: Int
     outputs:
@@ -121,10 +179,11 @@ emath function ps_world:
     definitions:
         result = [1 / 2, 3 / 2, 5 / 2, 7 / 2, 9 / 2]
 
-emath function ps_pred:
-    # The program-space seam: key k IS the substituted constant. The
-    # prediction runs through the quote chain - substitute k, evaluate
-    # the closed code, apply it to the case input.
+emath function dream_pred:
+    # The emission seam (the candidate family's prediction): key k IS
+    # the substituted constant. The prediction runs through the quote
+    # chain - substitute k, evaluate the closed code, apply it to the
+    # case input.
     inputs:
         k: Rat
         i: Rat
@@ -143,7 +202,7 @@ emath function case_error:
     outputs:
         result: Int
     definitions:
-        result = if ps_pred(k, i / 1) == ps_world(0)[i]: 0 else: 1
+        result = if dream_pred(k, i / 1) == dream_world(0)[i]: 0 else: 1
 
 emath function errors_at:
     # k's error count over the case ids from position j.

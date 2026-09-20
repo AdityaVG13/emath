@@ -243,10 +243,12 @@ pub enum EmirOp {
     /// body lowered once, with the open (free) constant names as
     /// trailing runtime inputs after the parameter. The artifact
     /// value is the compiled closure factory - no tree is carried and
-    /// no interpreter runs. This cut admits unary `Rat -> Rat`
-    /// templates whose open constants are Rat-valued; the hygiene law
-    /// is structural: a quote never captures the ambient frame, so
-    /// every free name of the body stays open until substituted.
+    /// no interpreter runs. This cut admits unary function templates
+    /// over the scalar carriers (`Rat`, `Int`, `Bool`): the declared
+    /// domain governs the parameter AND the open constants, so the
+    /// compiled factory is monomorphic in the carrier; the hygiene
+    /// law is structural: a quote never captures the ambient frame,
+    /// so every free name of the body stays open until substituted.
     CodeLiteral {
         body: EmirProgram,
         /// The template's parameter name (nested input 0).
@@ -254,6 +256,10 @@ pub enum EmirOp {
         /// The open constant names in binding order (nested inputs
         /// 1..=free.len(), sorted by the free-name collector).
         free: Vec<String>,
+        /// The declared scalar carrier signature (`Rat`, `Int`, or
+        /// `Bool`): the Rust type the backend instantiates the Code
+        /// factory over.
+        carrier: String,
     },
     /// `quote.substitute(code, name, value)`: bind one open constant
     /// by partial application. The reference is a static string

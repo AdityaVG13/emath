@@ -460,21 +460,36 @@ pub(crate) fn op_expr(
             Ok(Expr::Raw(format!("{{ {capture_bindings} let __program: std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>> = std::sync::Arc::new(move |__program_inputs: &[f64]| {{ {arity_guard} {bindings} Ok({result}) }}); __program }}")))
             }
         }
-        EmirOp::CodeLiteral { body, param, free } => {
+        EmirOp::CodeLiteral { body, param, free, carrier } => {
             // The compiled template: the nested program lowers once
             // into a two-stage factory - the outer closure consumes
             // the open constants' values (in `free` order, as a
             // slice), the inner closure is the specialized unary
             // program. The nested inputs are [param, free...] -
             // positional like every EmirProgram - so the authored
-            // names bind the closure parameters in that order. No
-            // tree, no interpreter: candidates execute as this
+            // names bind the closure parameters in that order. The
+            // declared domain is the carrier: it governs the
+            // parameter and the constants together, so the factory
+            // instantiates `emath_rt::code::Code<V>` monomorphically
+            // and a body computing any other carrier refuses typed.
+            // No tree, no interpreter: candidates execute as this
             // emitted closure.
+            let carrier_kind = ValueKind::from_signature(carrier);
+            if matches!(carrier_kind, ValueKind::Other) {
+                return Err(BackendError::UnsupportedType(format!(
+                    "quote template carrier `{carrier}` has no native scalar instantiation"
+                )));
+            }
             let mut parameters = vec![param.clone()];
             parameters.extend(free.iter().cloned());
             let mut inputs = InputKinds::new();
             for name in &parameters {
-                inputs.insert(name.clone(), ValueKind::Rational);
+                inputs.insert(name.clone(), carrier_kind.clone());
+            }
+            if program_kind(body, &parameters, &[], &inputs) != carrier_kind {
+                return Err(BackendError::UnsupportedType(format!(
+                    "quote template body must compute its declared `{carrier}` carrier"
+                )));
             }
             let _reference = ReferenceScope::enter();
             let body_code = render_expr(&value_expr(body, &parameters, &[], &inputs)?);
@@ -487,11 +502,14 @@ pub(crate) fn op_expr(
             } else {
                 format!("Ok({body_code})")
             };
-            let carrier = "emath_rt::ExactRatio";
-            let unary_ty = format!("std::rc::Rc<dyn Fn({carrier}) -> Result<{carrier}, String>>");
+            let carrier_ty =
+                crate::rust_ir::render::render_ty(&carrier_kind.rust_ty()?);
+            let unary_ty = format!(
+                "std::rc::Rc<dyn Fn({carrier_ty}) -> Result<{carrier_ty}, String>>"
+            );
             let closure_params = parameters
                 .iter()
-                .map(|name| format!("{name}: {carrier}"))
+                .map(|name| format!("{name}: {carrier_ty}"))
                 .collect::<Vec<_>>()
                 .join(", ");
             let bindings = free
@@ -510,22 +528,37 @@ pub(crate) fn op_expr(
                 .collect::<Vec<_>>()
                 .join(", ");
             Ok(Expr::Raw(format!(
-                "{{ let __code_body = move |{closure_params}| -> Result<{carrier}, String> {{ {tail} }}; \
-                 emath_rt::code::open(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[{carrier}]| -> Result<{unary_ty}, String> {{ \
-                 {bindings} let __code_unary: {unary_ty} = std::rc::Rc::new(move |{param}: {carrier}| __code_body({forwarded})); \
+                "{{ let __code_body = move |{closure_params}| -> Result<{carrier_ty}, String> {{ {tail} }}; \
+                 emath_rt::code::open::<{carrier_ty}>(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[{carrier_ty}]| -> Result<{unary_ty}, String> {{ \
+                 {bindings} let __code_unary: {unary_ty} = std::rc::Rc::new(move |{param}: {carrier_ty}| __code_body({forwarded})); \
                  Ok(__code_unary) }})) }}"
             )))
         }
         EmirOp::CodeSubstitute { code, reference, value } => {
             // Partial application of one open constant: the reference
             // resolved statically at lowering, the value a runtime
-            // Rational in this cut.
+            // scalar of the template's declared carrier (the carrier
+            // check is named at emission; the generic instantiation
+            // would not compile a mismatch anyway).
             let kinds = value_kinds(program, names, states, input_kinds);
-            if kind_at(&kinds, *value) != ValueKind::Rational {
+            let ValueKind::Code(carrier) = kind_at(&kinds, *code) else {
                 return Err(BackendError::UnsupportedType(
-                    "code-substitute value must be Rat in this cut".into(),
+                    "code-substitute requires a Code value".into(),
                 ));
-            }
+            };
+            let value_kind = kind_at(&kinds, *value);
+            if value_kind != *carrier {
+                let name = |kind: &ValueKind| match kind {
+                    ValueKind::Rational => "Rat".to_string(),
+                    ValueKind::I64 => "Int".to_string(),
+                    ValueKind::Bool => "Bool".to_string(),
+                    other => format!("{other:?}"),
+                };
+                return Err(BackendError::UnsupportedType(format!(
+                    "code-substitute value must be {}-carried to match the template's carrier {}",
+                    name(&value_kind),
+                    name(carrier.as_ref())
+                )));            }
             Ok(Expr::Raw(format!(
                 "emath_rt::code::substitute(&{}, {:?}, {})",
                 render_expr(&operand(program, *code)),

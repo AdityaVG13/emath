@@ -2,16 +2,20 @@
 //! fixed position), an absent reference is a no-op, and evaluate is
 //! the guarded executor (open code refuses `unbound_code` naming the
 //! remaining constants; closed code yields the specialized closure).
+//! The carrier is generic - these laws are pinned over the Rat
+//! instantiation `Code<ExactRatio>`; the Int and Bool instantiations
+//! are the same generic code, exercised end-to-end by the
+//! program-space fixture and export acceptance.
 
 use std::rc::Rc;
 
-use emath_rt::code::{evaluate, open, substitute, free_names};
+use emath_rt::code::{evaluate, open, substitute, free_names, Code};
 use emath_rt::{ratio_add, ratio_mul, ExactRatio};
 use emath_test_harness::{Probe, boot};
 
 /// The two-constant template `a * x + b` as a compiled factory: the
 /// free slice is (a, b) in declaration order.
-fn template() -> emath_rt::code::Code {
+fn template() -> Code<ExactRatio> {
     open(
         vec!["a".to_string(), "b".to_string()],
         Rc::new(|values: &[ExactRatio]| {

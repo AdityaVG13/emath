@@ -18,10 +18,12 @@ pub(crate) enum ValueKind {
     Text,
     Program,
     /// The artifact Code carrier (emath-npky7): a quoted unary
-    /// `Rat -> Rat` program compiled once into a closure factory
-    /// (`emath_rt::code::Code`). Open until `substitute` closes it;
-    /// `evaluate` yields the specialized closure.
-    Code,
+    /// program compiled once into a closure factory
+    /// (`emath_rt::code::Code<V>`), instantiated over the template's
+    /// declared scalar carrier (the boxed kind). Open until
+    /// `substitute` closes it; `evaluate` yields the specialized
+    /// closure.
+    Code(Box<ValueKind>),
     /// Typed program value: a closure with explicit parameter and
     /// result kinds (the constructor lane's `Int -> CaseSet -> Rat`
     /// carriers and `CallValue` callees). It renders as a generic call
@@ -111,7 +113,10 @@ impl ValueKind {
             Self::Rational => Ty::Named("emath_rt::ExactRatio".into()),
             Self::Bool => Ty::Bool,
             Self::Text => Ty::Named("String".into()),
-            Self::Code => Ty::Named("emath_rt::code::Code".into()),
+            Self::Code(carrier) => Ty::Named(format!(
+                "emath_rt::code::Code<{}>",
+                render_ty(&carrier.rust_ty()?)
+            )),
             Self::DenseLayout(_) => Ty::Named("emath_rt::DenseLayout".into()),
             Self::Program => Ty::Named(
                 "std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>>"
@@ -398,14 +403,25 @@ pub(super) fn kind_of_op(
             }
         }
         // The quoted-template carrier: open code (a CodeLiteral or a
-        // further partial application) stays a Code value; only the
-        // guarded executor yields a callable.
-        EmirOp::CodeLiteral { .. } | EmirOp::CodeSubstitute { .. } => ValueKind::Code,
+        // further partial application) stays a Code value over the
+        // template's declared scalar carrier; only the guarded
+        // executor yields a callable.
+        EmirOp::CodeLiteral { carrier, .. } => {
+            ValueKind::Code(Box::new(ValueKind::from_signature(carrier)))
+        }
+        EmirOp::CodeSubstitute { code, .. } => match kind_at(kinds, *code) {
+            kind @ ValueKind::Code(_) => kind,
+            _ => ValueKind::Other,
+        },
         // quote.evaluate: closed code yields the specialized unary
-        // Rat -> Rat closure, so a def bound to it is callable.
-        EmirOp::CodeEvaluate { .. } => ValueKind::Closure {
-            params: vec![ValueKind::Rational],
-            result: Box::new(ValueKind::Rational),
+        // closure over the template's carrier, so a def bound to it
+        // is callable.
+        EmirOp::CodeEvaluate { code } => match kind_at(kinds, *code) {
+            ValueKind::Code(carrier) => ValueKind::Closure {
+                params: vec![carrier.as_ref().clone()],
+                result: carrier,
+            },
+            _ => ValueKind::Other,
         },
         // A call consumes the callee's declared parameters one stage
         // at a time: a curried callee (`Fn<A, Fn<B, C>>` lowered as

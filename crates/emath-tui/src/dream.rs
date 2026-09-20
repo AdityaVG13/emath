@@ -32,11 +32,15 @@
 //!   table are pinned as literals with authored tests, and the driver
 //!   verifies that certificate in-process before reporting the level
 //!   verified. Re-verification later is cheap: `emath test` on the
-//!   level file. The emission seam is the authored pair
-//!   `dream_world` (one Int input, the case table) and `dream_pred`
-//!   (two Int inputs, the candidate family's prediction); a module
-//!   without them refuses by name at open when emission is
-//!   configured.
+//!   level file. The emission seam is the authored pair `dream_world`
+//!   (one scalar input, the case table as sequence(Int) or
+//!   sequence(Rat)) and `dream_pred` (two inputs of the world's
+//!   carrier: the candidate family's prediction); the world's element
+//!   carrier is the seam's carrier, the pred's declared inputs must
+//!   pair with it, and the driver converts its Int key and case
+//!   ordinal to that carrier at the pred call. A module without the
+//!   pair (or with mismatched carriers) refuses by name at open when
+//!   emission is configured.
 //!
 //! One run drives one level (one module). Chaining levels across
 //! worlds is caller orchestration; the level number is this run's own.
@@ -136,19 +140,58 @@ pub struct DreamOutcome {
     pub resumes: u64,
 }
 
+/// The seam's scalar carrier: the world's element carrier. An Int
+/// world pairs with an Int-keyed pred (the linear-dream shape); a
+/// Rat world (the program-space dream shape) pairs with a Rat-keyed
+/// pred. The driver converts its Int key and case ordinal to the
+/// seam's carrier at the pred call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SeamCarrier {
+    Int,
+    Rat,
+}
+
+impl SeamCarrier {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Int => "Int",
+            Self::Rat => "Rat",
+        }
+    }
+}
+
+/// One observed seam row: an integer or an exact rational.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SeamValue {
+    Int(i128),
+    Rat((i128, i128)),
+}
+
+impl SeamValue {
+    /// The authored literal for the level file.
+    fn render(self) -> String {
+        match self {
+            Self::Int(value) => value.to_string(),
+            Self::Rat((num, den)) => format!("{num} / {den}"),
+        }
+    }
+}
+
 /// The authored emission seam: `dream_world` (the case table) and
 /// `dream_pred` (the candidate family's prediction), with their
-/// author-chosen Int input names.
+/// author-chosen input names. The seam's carrier is the world's
+/// ELEMENT carrier, which the pred's declared inputs must pair with.
 struct EmissionSeam {
     world_input: String,
     pred_k_input: String,
     pred_i_input: String,
+    carrier: SeamCarrier,
 }
 
-/// The Int input names of one named function, in declaration order.
-/// Any non-Int input makes the seam unmet (the dream's emission pair
-/// is Int-keyed).
-fn int_inputs(tree: &SyntaxTree, function: &str) -> Option<Vec<String>> {
+/// The input names and scalar carriers (Int or Rat) of one named
+/// function, in declaration order. Any other input carrier makes the
+/// seam unmet (the dream's emission pair is scalar-keyed).
+fn seam_inputs(tree: &SyntaxTree, function: &str) -> Option<Vec<(String, SeamCarrier)>> {
     for item in &tree.items {
         let Item::Declaration(decl) = item else {
             continue;
@@ -161,15 +204,17 @@ fn int_inputs(tree: &SyntaxTree, function: &str) -> Option<Vec<String>> {
             for stmt in &section.suite.statements {
                 match &stmt.kind {
                     StmtKind::FieldDecl { name, ty, .. } => {
-                        let is_int = matches!(
-                            &ty.kind,
-                            TypeKind::Path { segments, .. }
-                                if segments.last().is_some_and(|s| s == "Int")
-                        );
-                        if !is_int {
-                            return None;
-                        }
-                        names.push(name.clone());
+                        let carrier = match &ty.kind {
+                            TypeKind::Path { segments, .. } => {
+                                match segments.last().map(String::as_str) {
+                                    Some("Int") => Some(SeamCarrier::Int),
+                                    Some("Rat") => Some(SeamCarrier::Rat),
+                                    _ => None,
+                                }
+                            }
+                            _ => None,
+                        }?;
+                        names.push((name.clone(), carrier));
                     }
                     _ => {}
                 }
@@ -181,36 +226,69 @@ fn int_inputs(tree: &SyntaxTree, function: &str) -> Option<Vec<String>> {
 }
 
 /// Resolve the emission seam (`dream_world`, `dream_pred`) or refuse
-/// by name with what to author.
-fn resolve_emission(tree: &SyntaxTree) -> Result<EmissionSeam, HostFault> {
-    let world_inputs = int_inputs(tree, "dream_world");
-    let pred_inputs = int_inputs(tree, "dream_pred");
-    match (world_inputs, pred_inputs) {
-        (Some(world), Some(pred)) if world.len() == 1 && pred.len() == 2 => {
-            let mut pred = pred.into_iter();
-            Ok(EmissionSeam {
-                world_input: world.into_iter().next().unwrap_or_default(),
-                pred_k_input: pred.next().unwrap_or_default(),
-                pred_i_input: pred.next().unwrap_or_default(),
-            })
+/// by name with what to author. The seam's carrier is the world's
+/// observed element carrier, and the pred's declared inputs must pair
+/// with it (Int world with Int pred, Rat world with Rat pred) - every
+/// seam refusal happens at open, before any driving.
+fn resolve_emission(host: &LoopHost) -> Result<EmissionSeam, HostFault> {
+    let tree = host.tree();
+    let world = seam_inputs(tree, "dream_world");
+    let pred = seam_inputs(tree, "dream_pred");
+    let (world_inputs, pred_inputs) = match (world, pred) {
+        (Some(world), Some(pred)) if world.len() == 1 && pred.len() == 2 => (world, pred),
+        _ => {
+            return Err(HostFault::fault(
+                "dream_emission_surface",
+                "level emission needs the authored dream emission seam: \
+                 `emath function dream_world` with one scalar input returning the case \
+                 table as sequence(Int) or sequence(Rat), and `emath function dream_pred` \
+                 with two inputs (key, case ordinal) of the world's carrier returning the \
+                 candidate family's prediction. Author both, or run without an out_dir.",
+            ));
         }
-        _ => Err(HostFault::fault(
+    };
+    if pred_inputs[0].1 != pred_inputs[1].1 {
+        return Err(HostFault::fault(
             "dream_emission_surface",
-            "level emission needs the authored dream emission seam: \
-             `emath function dream_world` with one Int input returning the case \
-             table as sequence(Int), and `emath function dream_pred` with two Int \
-             inputs (key, case ordinal) returning the candidate family's \
-             prediction as Int. Author both, or run without an out_dir.",
-        )),
+            "dream_pred's two inputs must share one scalar carrier (both Int or both Rat)",
+        ));
     }
+    let (world_carrier, _) = observed_world(host, &world_inputs[0].0)?;
+    if pred_inputs[0].1 != world_carrier {
+        return Err(HostFault::fault(
+            "dream_emission_surface",
+            format!(
+                "dream_pred's {} inputs do not pair with the observed sequence({}) world: \
+                 the pred's carriers must match the world's elements",
+                pred_inputs[0].1.name(),
+                world_carrier.name()
+            ),
+        ));
+    }
+    let mut pred = pred_inputs.into_iter();
+    Ok(EmissionSeam {
+        world_input: world_inputs
+            .into_iter()
+            .next()
+            .expect("arity checked: one world input")
+            .0,
+        pred_k_input: pred.next().expect("arity checked: two pred inputs").0,
+        pred_i_input: pred.next().expect("arity checked: two pred inputs").0,
+        carrier: world_carrier,
+    })
 }
 
-/// Evaluate `dream_world` at key 0: the observed case table.
+/// Evaluate `dream_world` at its scalar input's zero: the observed
+/// case table and its element carrier. A mixed or non-scalar table
+/// refuses named.
 fn observed_world(
     host: &LoopHost,
-    seam: &EmissionSeam,
-) -> Result<Vec<i128>, HostFault> {
-    let inputs = BTreeMap::from([(seam.world_input.clone(), CValue::Int(ExactInt::from(0)))]);
+    world_input: &str,
+) -> Result<(SeamCarrier, Vec<SeamValue>), HostFault> {
+    // The world input is driven at its zero as an Int projection; the
+    // engine's scalar admission widens it exactly into a Rat-declared
+    // input (the same coercion the pred call relies on).
+    let inputs = BTreeMap::from([(world_input.to_string(), CValue::Int(ExactInt::from(0)))]);
     let value = evaluate_function_at(
         host.tree(),
         "dream_world",
@@ -218,37 +296,92 @@ fn observed_world(
         Some(host.module_path()),
     )
     .map_err(HostFault::from)?;
-    match value {
-        CValue::Sequence(items) => items
-            .iter()
-            .map(|item| match item {
-                CValue::Int(n) => n.to_i128().ok_or_else(|| {
+    let CValue::Sequence(items) = value else {
+        return Err(HostFault::fault(
+            "dream_emission_surface",
+            format!("dream_world must return a sequence, found {value:?}"),
+        ));
+    };
+    let mut carrier: Option<SeamCarrier> = None;
+    let mut rows = Vec::with_capacity(items.len());
+    for item in items.iter() {
+        let row = match item {
+            CValue::Int(n) => {
+                let raw = n.to_i128().ok_or_else(|| {
                     HostFault::fault(
                         "dream_emission_surface",
                         "a dream_world case value exceeds the i128 host projection",
                     )
-                }),
-                other => Err(HostFault::fault(
+                })?;
+                if carrier == Some(SeamCarrier::Rat) {
+                    return Err(HostFault::fault(
+                        "dream_emission_surface",
+                        "dream_world rows must share one scalar carrier (sequence(Int) or \
+                         sequence(Rat)); the observed table is mixed",
+                    ));
+                }
+                carrier = Some(SeamCarrier::Int);
+                SeamValue::Int(raw)
+            }
+            CValue::Rat { num, den } => {
+                let num = num.to_i128().ok_or_else(|| {
+                    HostFault::fault(
+                        "dream_emission_surface",
+                        "a dream_world case value exceeds the i128 host projection",
+                    )
+                })?;
+                let den = den.to_i128().ok_or_else(|| {
+                    HostFault::fault(
+                        "dream_emission_surface",
+                        "a dream_world case value exceeds the i128 host projection",
+                    )
+                })?;
+                if carrier == Some(SeamCarrier::Int) {
+                    return Err(HostFault::fault(
+                        "dream_emission_surface",
+                        "dream_world rows must share one scalar carrier (sequence(Int) or \
+                         sequence(Rat)); the observed table is mixed",
+                    ));
+                }
+                carrier = Some(SeamCarrier::Rat);
+                SeamValue::Rat((num, den))
+            }
+            other => {
+                return Err(HostFault::fault(
                     "dream_emission_surface",
-                    format!("dream_world must return sequence(Int), found {other:?}"),
-                )),
-            })
-            .collect(),
-        other => Err(HostFault::fault(
-            "dream_emission_surface",
-            format!("dream_world must return sequence(Int), found {other:?}"),
-        )),
+                    format!(
+                        "dream_world must return sequence(Int) or sequence(Rat), found {other:?}"
+                    ),
+                ));
+            }
+        };
+        rows.push(row);
     }
+    let carrier = carrier.ok_or_else(|| {
+        HostFault::fault(
+            "dream_emission_surface",
+            "dream_world returned an empty case table: the certificate has nothing to pin",
+        )
+    })?;
+    Ok((carrier, rows))
 }
 
-/// Evaluate `dream_pred(key, case)`: one observed prediction.
+/// Evaluate `dream_pred(key, case)`: one observed prediction. The
+/// driver's Int key and case ordinal convert to the seam's carrier.
 fn observed_prediction(
     host: &LoopHost,
     seam: &EmissionSeam,
     key: i128,
     case: i128,
-) -> Result<i128, HostFault> {
+) -> Result<SeamValue, HostFault> {
     let inputs = BTreeMap::from([
+        // The driver's projections are Int (the loop's key space and
+        // the case ordinals are Int); the engine's scalar admission
+        // widens them exactly into Rat-declared seam inputs (an Int
+        // key k arrives as k/1), the same coercion an authored
+        // Int-literal call gets. The pairing check at open keeps the
+        // pred's declared carriers honest; the return-type check
+        // below is the backstop.
         (seam.pred_k_input.clone(), CValue::Int(ExactInt::from(key))),
         (seam.pred_i_input.clone(), CValue::Int(ExactInt::from(case))),
     ]);
@@ -259,24 +392,42 @@ fn observed_prediction(
         Some(host.module_path()),
     )
     .map_err(HostFault::from)?;
-    match value {
-        CValue::Int(n) => n.to_i128().ok_or_else(|| {
-            HostFault::fault(
-                "dream_emission_surface",
-                "a dream_pred value exceeds the i128 host projection",
-            )
-        }),
-        other => Err(HostFault::fault(
+    match (&value, seam.carrier) {
+        (CValue::Int(n), SeamCarrier::Int) => {
+            let raw = n.to_i128().ok_or_else(|| {
+                HostFault::fault(
+                    "dream_emission_surface",
+                    "a dream_pred value exceeds the i128 host projection",
+                )
+            })?;
+            Ok(SeamValue::Int(raw))
+        }
+        (CValue::Rat { num, den }, SeamCarrier::Rat) => {
+            let num = num.to_i128().ok_or_else(|| {
+                HostFault::fault(
+                    "dream_emission_surface",
+                    "a dream_pred value exceeds the i128 host projection",
+                )
+            })?;
+            let den = den.to_i128().ok_or_else(|| {
+                HostFault::fault(
+                    "dream_emission_surface",
+                    "a dream_pred value exceeds the i128 host projection",
+                )
+            })?;
+            Ok(SeamValue::Rat((num, den)))
+        }
+        (other, carrier) => Err(HostFault::fault(
             "dream_emission_surface",
-            format!("dream_pred must return Int, found {other:?}"),
+            format!("dream_pred must return {}, found {other:?}", carrier.name()),
         )),
     }
 }
 
-fn seq_literal(values: &[i128]) -> String {
+fn value_seq_literal(values: &[SeamValue]) -> String {
     let inner = values
         .iter()
-        .map(|v| v.to_string())
+        .map(|value| value.render())
         .collect::<Vec<_>>()
         .join(", ");
     if inner.is_empty() {
@@ -287,7 +438,8 @@ fn seq_literal(values: &[i128]) -> String {
 }
 
 /// Render the level file: the discovery audit trail with authored
-/// tests pinning exactly what the driver observed.
+/// tests pinning exactly what the driver observed. The world's
+/// element carrier types the pinned rows (Int or Rat literals).
 #[allow(clippy::too_many_arguments)]
 fn render_level(
     module: &Path,
@@ -299,13 +451,17 @@ fn render_level(
     incumbent_key: i128,
     score: (i128, i128),
     case_ids: &[i128],
-    predictions: &[i128],
-    world: &[i128],
+    predictions: &[SeamValue],
+    world: &[SeamValue],
+    carrier: SeamCarrier,
     frozen_errors: i128,
 ) -> String {
-    let cases = seq_literal(case_ids);
-    let preds = seq_literal(predictions);
-    let table = seq_literal(world);
+    let cases = value_seq_literal(
+        &case_ids.iter().copied().map(SeamValue::Int).collect::<Vec<_>>(),
+    );
+    let preds = value_seq_literal(predictions);
+    let table = value_seq_literal(world);
+    let row_ty = carrier.name();
     format!(
         r#"# Dream level 1 - {module} ({target})
 # close: {close_reason} after {batches} batches, {used} logical units, {resumes} budget resume(s)
@@ -320,8 +476,8 @@ emath function LevelData:
     outputs:
         incumbent_key: Int
         case_ids: sequence(Int)
-        predictions: sequence(Int)
-        world: sequence(Int)
+        predictions: sequence({row_ty})
+        world: sequence({row_ty})
     definitions:
         incumbent_key = {incumbent_key}
         case_ids = {cases}
@@ -341,8 +497,8 @@ emath function frozen_errors:
     # the pinned data alone ({frozen_errors} at emission).
     inputs:
         case_ids: sequence(Int)
-        predictions: sequence(Int)
-        world: sequence(Int)
+        predictions: sequence({row_ty})
+        world: sequence({row_ty})
         j: Int
     outputs:
         result: Int
@@ -381,7 +537,7 @@ fn emit_level(
     let incumbent_key = crate::host::value_int(&incumbent, "key")?;
     let score = value_rational(&incumbent, "score")?;
     let case_ids = session.case_ids()?;
-    let world = observed_world(host, seam)?;
+    let (world_carrier, world) = observed_world(host, &seam.world_input)?;
     if world.is_empty() {
         return Err(HostFault::fault(
             "dream_emission_surface",
@@ -426,6 +582,7 @@ fn emit_level(
         &case_ids,
         &predictions,
         &world,
+        world_carrier,
         frozen_errors,
     );
 
@@ -518,7 +675,7 @@ pub fn run_dream(
     }
     let host = LoopHost::open(module, target)?;
     let seam = match &config.out_dir {
-        Some(_) => Some(resolve_emission(host.tree())?),
+        Some(_) => Some(resolve_emission(&host)?),
         None => None,
     };
     let mut session = host.begin()?;
