@@ -85,7 +85,11 @@ The state type `T` is expected to carry the loop state contract fields
   itself and checked against the loop-state contract at generation
   time. The bin's transcript mirrors the REPL's seed/batch/end lines
   plus a measured `timing native_step_total_ns` line - timing is
-  reported, never claimed as a ratio.
+  reported, never claimed as a ratio. Before emitting, the export
+  re-admits the module on disk and refuses `loop_export_emit` if it no
+  longer mints the session's meaning id: the VM lane steps the
+  open-time admission, and an export over edited bytes would pair a
+  stale meaning id with new math.
 
 ## Invariants
 
@@ -145,7 +149,8 @@ acceptance: the export emits and builds both crates, the native
 checkpoint is byte-identical to the VM lane's for the same schedule
 (cross-lane parity), the native lane is deterministic, a different
 schedule diverges, the transcript mirrors the REPL's lines with a
-measured timing line, and argument faults are typed. Mutation probe:
+measured timing line, argument faults are typed, and a module edited
+after the session opened refuses the export. Mutation probe:
 swapping the rational's num/den in the generated renderer fails
 `cross-lane-parity/scratch-bytes-equal`.
 

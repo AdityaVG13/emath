@@ -412,7 +412,12 @@ impl LoopHost {
     }
 }
 
-fn admitted_meaning_id(module: &Path, source: &str) -> Result<String, HostFault> {
+/// The meaning id a fresh admission of `source` would mint. The host
+/// uses it at open time; the native export re-runs it to prove the
+/// module on disk still admits to the SAME meaning before emitting an
+/// artifact over it (a session and its export must never pair a stale
+/// meaning id with edited math).
+pub(crate) fn admitted_meaning_id(module: &Path, source: &str) -> Result<String, HostFault> {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let result = session.check_owned(&module.display().to_string(), source);
     if result.diagnostics.has_errors() {

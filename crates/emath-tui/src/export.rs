@@ -29,13 +29,17 @@
 //! Rust is the native lane's truth; no second emath-type-to-Rust
 //! mapping table exists here). Loop-state contract fields are checked
 //! at generation time; a state the epoch host cannot drive refuses
-//! `loop_export_state` by name.
+//! `loop_export_state` by name. The export also re-admits the module
+//! on disk and refuses `loop_export_emit` if it no longer mints the
+//! session's meaning id: the VM lane steps the open-time admission,
+//! and an export over edited bytes would pair a stale meaning id with
+//! new math.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use super::host::{HostFault, LoopHost};
+use super::host::{admitted_meaning_id, HostFault, LoopHost};
 use emath_build::{generated_crate_target_dir, run_cargo_timed};
 use emath_rust_backend::constructor_crate::{
     emit_constructor_crate, ConstructorEmitRefusal,
@@ -318,6 +322,23 @@ pub fn export_native(host: &LoopHost, out_dir: &Path) -> Result<ExportReport, Ho
         return Err(HostFault::fault(
             "loop_export_emit",
             format!("the module does not parse: {first}"),
+        ));
+    }
+    // The export pairs with THIS session: the VM lane steps the
+    // open-time admission, so the emitted artifact must come from the
+    // same bytes that minted the host's meaning id. A module edited
+    // after the session opened refuses by name - never a stale
+    // meaning id over new math.
+    let meaning_now = admitted_meaning_id(host.module_path(), &source)?;
+    if meaning_now != host.identity().meaning_id {
+        return Err(HostFault::fault(
+            "loop_export_emit",
+            format!(
+                "the module {} changed since the session opened (meaning id {} is not the session's {}): re-open the session before exporting",
+                host.module_path().display(),
+                meaning_now,
+                host.identity().meaning_id
+            ),
         ));
     }
     let emission = emit_constructor_crate(&tree, host.module_path()).map_err(

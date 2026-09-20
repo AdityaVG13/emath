@@ -194,5 +194,31 @@ fn export_native_sessions() {
         );
     });
 
+    // 7. The export pairs with THIS session: a module edited on disk
+    //    after the host opened refuses by name. The VM lane steps the
+    //    open-time admission; an export over edited bytes would pair a
+    //    stale meaning id with new math - never a silent re-pairing.
+    probe.case("module-changed-refuses-export", |p| {
+        let module = temp_path("changed.emath");
+        std::fs::copy(fixture_path("research_step_valley.emath"), &module)
+            .expect("copy fixture");
+        let host = LoopHost::open(&module, Some("StepValley")).expect("open copy");
+        let out_dir = temp_path("changed_out");
+        let before = export_native(&host, &out_dir);
+        p.demand("unchanged-copy-exports", before.is_ok(), format!("{before:?}"));
+        let source = std::fs::read_to_string(&module).expect("read copy");
+        let edited = source + "\nemath function ChangedProbe:\n    inputs:\n        unused: Int\n    outputs:\n        result: Int\n    definitions:\n        result = 0\n";
+        std::fs::write(&module, edited).expect("edit copy");
+        let after = export_native(&host, &out_dir);
+        let refusal = after.err().map(|fault| (fault.code, fault.message));
+        p.demand(
+            "changed-module-refuses",
+            refusal.as_ref().is_some_and(|(code, message)| {
+                code == "loop_export_emit" && message.contains("changed since the session opened")
+            }),
+            format!("{refusal:?}"),
+        );
+    });
+
     probe.finish();
 }
