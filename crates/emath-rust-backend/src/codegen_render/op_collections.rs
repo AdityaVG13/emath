@@ -144,11 +144,24 @@ pub(super) fn op_collection_exprs(
             condition,
             then_value,
             else_value,
-        } => Ok(Expr::IfElse {
-            condition: Box::new(operand(program, *condition)),
-            then: Box::new(Stmt::Expr(operand(program, *then_value))),
-            else_value: Box::new(Stmt::Expr(operand(program, *else_value))),
-        }),
+        } => {
+            // The union lane: a CodeValue condition (a comparison or
+            // boolean combinator inside an expression template)
+            // projects to bool checked - the VM's dynamic condition.
+            let condition = if kind_at(kinds, *condition) == ValueKind::CodeValue {
+                Expr::Raw(format!(
+                    "emath_rt::code::code_as_bool(&{})?",
+                    render_expr(&operand(program, *condition))
+                ))
+            } else {
+                operand(program, *condition)
+            };
+            Ok(Expr::IfElse {
+                condition: Box::new(condition),
+                then: Box::new(Stmt::Expr(operand(program, *then_value))),
+                else_value: Box::new(Stmt::Expr(operand(program, *else_value))),
+            })
+        }
         EmirOp::VectorLength(value) => {
             let value_code = render_expr(&operand(program, *value));
             let storage = match kind_at(kinds, *value) {

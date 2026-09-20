@@ -243,38 +243,52 @@ pub enum EmirOp {
     /// body lowered once, with the open (free) constant names as
     /// trailing runtime inputs after the parameter. The artifact
     /// value is the compiled closure factory - no tree is carried and
-    /// no interpreter runs. This cut admits unary function templates
-    /// over the scalar carriers (`Rat`, `Int`, `Bool`): the declared
-    /// domain governs the parameter AND the open constants, so the
-    /// compiled factory is monomorphic in the carrier; the hygiene
-    /// law is structural: a quote never captures the ambient frame,
-    /// so every free name of the body stays open until substituted.
+    /// no interpreter runs. Two template shapes are admitted. A
+    /// FUNCTION template (`quote(function x in Rat: ...)`) carries
+    /// `param: Some(x)`: the declared domain governs the parameter
+    /// AND the open constants, so the compiled factory is
+    /// monomorphic in the carrier. An EXPRESSION template
+    /// (`quote(x + c)`, bead emath-expression-quotes-324y0) carries
+    /// `param: None` and carrier `Union`: the body computes over the
+    /// dynamic value union, every free name is a runtime input, and
+    /// `evaluate` yields a scalar of dynamic carrier, projected at
+    /// typed boundaries. The hygiene law is structural for both: a
+    /// quote never captures the ambient frame, so every free name of
+    /// the body stays open until substituted.
     CodeLiteral {
         body: EmirProgram,
-        /// The template's parameter name (nested input 0).
-        param: String,
-        /// The open constant names in binding order (nested inputs
-        /// 1..=free.len(), sorted by the free-name collector).
+        /// The template's parameter name (nested input 0); `None` for
+        /// an expression template (no parameter, no closure).
+        param: Option<String>,
+        /// The open names in binding order: a function template's
+        /// open constants (nested inputs 1..=free.len()), or an
+        /// expression template's free names (nested inputs
+        /// 0..free.len(), sorted by the free-name collector).
         free: Vec<String>,
-        /// The declared scalar carrier signature (`Rat`, `Int`, or
-        /// `Bool`): the Rust type the backend instantiates the Code
-        /// factory over.
+        /// The carrier signature: a function template's declared
+        /// scalar carrier (`Rat`, `Int`, or `Bool`) that the backend
+        /// instantiates the Code factory over, or `Union` for an
+        /// expression template (the dynamic value-union lane).
         carrier: String,
     },
-    /// `quote.substitute(code, name, value)`: bind one open constant
-    /// by partial application. The reference is a static string
-    /// resolved at lowering; the value is a runtime Rational. Binding
-    /// a name that is not open is a no-op (tree-substitution parity:
-    /// substituting an absent name leaves the code unchanged).
+    /// `quote.substitute(code, name, value)`: bind one open name by
+    /// partial application. The reference is a static string resolved
+    /// at lowering; the value is a runtime scalar of the template's
+    /// carrier (any scalar carrier for an expression template).
+    /// Binding a name that is not open is a no-op
+    /// (tree-substitution parity: substituting an absent name leaves
+    /// the code unchanged).
     CodeSubstitute {
         code: EmirValue,
         reference: String,
         value: EmirValue,
     },
     /// `quote.evaluate(code)`: the guarded executor. Open code
-    /// refuses `unbound_code` naming every remaining open constant;
-    /// closed code yields the specialized unary `Rat -> Rat` closure,
-    /// a callable value (a def bound to it is closure-valued).
+    /// refuses `unbound_code` naming every remaining open name;
+    /// closed code yields the specialized unary closure for a
+    /// function template (a callable value, so a def bound to it is
+    /// closure-valued) or the computed scalar for an expression
+    /// template.
     CodeEvaluate {
         code: EmirValue,
     },

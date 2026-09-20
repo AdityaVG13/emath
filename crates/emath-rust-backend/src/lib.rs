@@ -210,12 +210,18 @@ pub fn emit_record_definitions(records: &[AuthoredRecord]) -> Result<String, Bac
 /// numeric-lane default), authored records scope the emission's record
 /// layouts, and the result carrier comes from the program's inferred
 /// kind (kinds without a concrete carrier keep the `impl Debug`
-/// fallback of the numeric shim). Reference context is on for the
-/// whole entry, so runtime refusals propagate through `Result`.
+/// fallback of the numeric shim). The declared `output` (authored
+/// name + carrier signature, single-output functions) is the carrier
+/// authority at the expression-template boundary: a CodeValue result
+/// projects checked onto it - the engine's `type_admits` law (Rat
+/// widens Int exactly; Int refuses a Rational by name; Bool admits
+/// Bool only). Reference context is on for the whole entry, so
+/// runtime refusals propagate through `Result`.
 pub fn emit_constructor_entry(
     program: &emath_exec_ir::EmirProgram,
     function_name: &str,
     inputs: &[(String, Option<String>)],
+    output: Option<(&str, &str)>,
     records: &[AuthoredRecord],
 ) -> Result<String, BackendError> {
     use crate::codegen_render::{
@@ -250,11 +256,42 @@ pub fn emit_constructor_entry(
     let params = params.join(", ");
     let input_names: Vec<String> = inputs.iter().map(|(name, _)| name.clone()).collect();
     let result_kind = program_kind(program, &input_names, &[], &kinds);
-    let result_ty = match result_kind.rust_ty() {
-        Ok(ty) => render_ty(&ty),
-        Err(_) => "impl core::fmt::Debug".to_string(),
+    // The expression-template boundary: the union collapses onto the
+    // declared carrier through the checked projection; without a
+    // declared scalar output there is no carrier to collapse onto.
+    let (result_ty, body) = if result_kind == ValueKind::CodeValue {
+        let Some((output_name, signature)) = output else {
+            return Err(BackendError::UnsupportedType(
+                "an expression-template result needs a declared Int/Rat/Bool output to project its carrier".into(),
+            ));
+        };
+        let declared = ValueKind::from_signature(signature);
+        let rendered = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
+        let projected = match declared {
+            ValueKind::I64 => format!(
+                "emath_rt::code::project_i64(&({rendered}), {output_name:?})?"
+            ),
+            ValueKind::Rational => format!(
+                "emath_rt::code::project_ratio(&({rendered}), {output_name:?})?"
+            ),
+            ValueKind::Bool => format!(
+                "emath_rt::code::project_bool(&({rendered}), {output_name:?})?"
+            ),
+            _ => {
+                return Err(BackendError::UnsupportedType(format!(
+                    "output `{output_name}` declares `{signature}`, not a scalar the union lane can project"
+                )));
+            }
+        };
+        (render_ty(&declared.rust_ty()?), projected)
+    } else {
+        let result_ty = match result_kind.rust_ty() {
+            Ok(ty) => render_ty(&ty),
+            Err(_) => "impl core::fmt::Debug".to_string(),
+        };
+        let body = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
+        (result_ty, body)
     };
-    let body = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
     let entry_name = escape_ident(function_name);
     if contains_call_self(program) {
         let self_params = self_params.join(", ");

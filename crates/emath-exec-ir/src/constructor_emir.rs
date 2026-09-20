@@ -806,52 +806,81 @@ impl Lowerer {
                 }))
             }
             ExprKind::Quote { body } => {
-                // Program-space quote emission: the unary scalar-
-                // carrier function template lowers once into compiled
-                // code. The body's free names beyond the parameter are
-                // the OPEN constants - the hygiene law keeps them open
-                // (a quote never captures the ambient frame), so they
-                // become the template's runtime substitution inputs.
-                // One predicate admits the shape, shared with the
-                // unresolved walk, so the two can never disagree. The
-                // declared domain is the carrier: it governs the
-                // parameter and the constants together.
+                // Quote emission: two template shapes share one
+                // predicate (admission and the unresolved walk can
+                // never disagree). A FUNCTION template wraps a unary
+                // scalar-carrier program; its body's free names
+                // beyond the parameter are the OPEN constants - the
+                // hygiene law keeps them open (a quote never captures
+                // the ambient frame), so they become the template's
+                // runtime substitution inputs. An EXPRESSION
+                // template (bead emath-expression-quotes-324y0) is a
+                // quoted expression with free names and no wrapper:
+                // no parameter, every free name a runtime input, the
+                // carrier dynamic (`Union`) - the body compiles over
+                // the value union and `evaluate` yields a scalar
+                // projected at typed boundaries.
                 let Some(carrier) = emitted_quote_carrier(body) else {
                     return Err(
-                        "quote emission supports unary Int/Rat/Bool function templates in this cut"
+                        "quote emission supports unary Int/Rat/Bool function templates and scalar expression templates in this cut"
                             .into(),
                     );
                 };
-                let ExprKind::FunctionAbs { param, body: inner, .. } = &body.kind else {
-                    return Err("quote emission supports function templates in this cut".into());
-                };
-                let mut free = BTreeSet::new();
-                collect_free_names(inner, param, &mut free);
-                let free: Vec<String> = free.into_iter().collect();
-                let mut inputs = vec![param.clone()];
-                inputs.extend(free.iter().cloned());
-                let mut child = Lowerer {
-                    inputs,
-                    locals: BTreeMap::new(),
-                    siblings: self.siblings.clone(),
-                    objects: self.objects.clone(),
-                    ops: Vec::new(),
-                    obligations: Vec::new(),
-                    self_name: None,
-                    self_result: String::new(),
-                    // Empty arrow names: the open constants are data
-                    // inputs, not callables, and the parameter is the
-                    // template's only binder.
-                    arrow_names: BTreeSet::new(),
-                };
-                let lowered = child.expr(inner)?;
-                let program = child.finish(lowered);
-                Ok(self.push(EmirOp::CodeLiteral {
-                    body: program,
-                    param: param.clone(),
-                    free,
-                    carrier: carrier.to_string(),
-                }))
+                if let ExprKind::FunctionAbs { param, body: inner, .. } = &body.kind {
+                    let mut free = BTreeSet::new();
+                    collect_free_names(inner, param, &mut free);
+                    let free: Vec<String> = free.into_iter().collect();
+                    let mut inputs = vec![param.clone()];
+                    inputs.extend(free.iter().cloned());
+                    let mut child = Lowerer {
+                        inputs,
+                        locals: BTreeMap::new(),
+                        siblings: self.siblings.clone(),
+                        objects: self.objects.clone(),
+                        ops: Vec::new(),
+                        obligations: Vec::new(),
+                        self_name: None,
+                        self_result: String::new(),
+                        // Empty arrow names: the open constants are
+                        // data inputs, not callables, and the
+                        // parameter is the template's only binder.
+                        arrow_names: BTreeSet::new(),
+                    };
+                    let lowered = child.expr(inner)?;
+                    let program = child.finish(lowered);
+                    Ok(self.push(EmirOp::CodeLiteral {
+                        body: program,
+                        param: Some(param.clone()),
+                        free,
+                        carrier: carrier.to_string(),
+                    }))
+                } else {
+                    // The expression template: all free names are
+                    // runtime inputs (no parameter to exclude), the
+                    // carrier is the dynamic union.
+                    let mut free = BTreeSet::new();
+                    collect_free_names(body, "", &mut free);
+                    let free: Vec<String> = free.into_iter().collect();
+                    let mut child = Lowerer {
+                        inputs: free.clone(),
+                        locals: BTreeMap::new(),
+                        siblings: self.siblings.clone(),
+                        objects: self.objects.clone(),
+                        ops: Vec::new(),
+                        obligations: Vec::new(),
+                        self_name: None,
+                        self_result: String::new(),
+                        arrow_names: BTreeSet::new(),
+                    };
+                    let lowered = child.expr(body)?;
+                    let program = child.finish(lowered);
+                    Ok(self.push(EmirOp::CodeLiteral {
+                        body: program,
+                        param: None,
+                        free,
+                        carrier: carrier.to_string(),
+                    }))
+                }
             }
             ExprKind::List(items) => {
                 let mut values = Vec::new();
@@ -1035,6 +1064,16 @@ fn expr_uses_quote(expr: &Expr) -> bool {
 /// unresolved exemption, so the two can never disagree; every other
 /// quote stays behind the fence as symbolic code.
 fn emitted_quote_carrier(body: &Expr) -> Option<&'static str> {
+    // An expression template (bead emath-expression-quotes-324y0): a
+    // quoted expression with free names, no function wrapper. The
+    // carrier of each free name is a substitute-time fact, so the
+    // declared-carrier lane does not apply; the `Union` marker routes
+    // the backend onto the dynamic value-union lane. Everything the
+    // union lane cannot compute still refuses named (the body-kind
+    // check and the scalar-op kind rules gate it).
+    if !matches!(body.kind, ExprKind::FunctionAbs { .. }) {
+        return Some("Union");
+    }
     let ExprKind::FunctionAbs { domain, .. } = &body.kind else {
         return None;
     };

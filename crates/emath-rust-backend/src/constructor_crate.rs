@@ -236,7 +236,28 @@ pub fn emit_constructor_crate(
                         (input.clone(), signature)
                     })
                     .collect();
-                match emit_constructor_entry(&lowered.program, name, &inputs, &records) {
+                // The single-output declaration is the carrier
+                // authority at the expression-template boundary (the
+                // checked projection site); multi-output functions
+                // pack a record and never carry a raw union result.
+                let output = main
+                    .items
+                    .iter()
+                    .find_map(|item| match item {
+                        emath_core::tree::Item::Declaration(decl) if &decl.name == name => {
+                            let outputs =
+                                emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
+                            let (output, ty) = outputs.first()?;
+                            let signature =
+                                emath_exec_ir::constructor_emir::constructor_type_signature(
+                                    ty, &objects,
+                                )?;
+                            Some((output.clone(), signature))
+                        }
+                        _ => None,
+                    })
+                    .map(|(name, signature)| (name, signature));
+                match emit_constructor_entry(&lowered.program, name, &inputs, output.as_ref().map(|(name, signature)| (name.as_str(), signature.as_str())), &records) {
                     Ok(body) => {
                         rust.push_str(&format!("// function `{name}`\n"));
                         rust.push_str(&body);

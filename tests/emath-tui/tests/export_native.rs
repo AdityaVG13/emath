@@ -279,5 +279,38 @@ fn export_native_sessions() {
         );
     });
 
+    // 10. The native lane carries the fourth real surface: expression
+    //     templates (bead emath-expression-quotes-324y0). The quoted
+    //     program is an EXPRESSION with free names - no parameter, no
+    //     closure. The prediction substitutes the constant key and the
+    //     case input by name, then evaluates the closed expression to
+    //     a scalar directly. The carriers are dynamic (the same
+    //     template substitutes Int and Rat values), so the artifact
+    //     compiles the body over a value union with dynamic scalar
+    //     kernels implementing the VM's exact carrier rules.
+    probe.case("expression-quote-surface-exports", |p| {
+        let host = LoopHost::open(
+            &fixture_path("expression_quote.emath"),
+            Some("StepExpr"),
+        )
+        .expect("open expression-quote");
+        let report = export_native(&host, &temp_path("exprq")).expect("export expression-quote");
+        let native_path = temp_path("exprq_native.json");
+        let (code, stdout, stderr, native) = native_lane_run(&report, 2, 60, &native_path);
+        p.demand(
+            "native-run-ok",
+            code == Some(0) && stdout.contains("end batches 2 verdict goal_attained"),
+            format!("exit {code:?}\n{stdout}\n{stderr}"),
+        );
+        let vm_path = temp_path("exprq_vm.json");
+        vm_lane_scratch(&host, 2, 60, &vm_path);
+        let vm = std::fs::read_to_string(&vm_path).expect("vm scratch");
+        p.demand(
+            "scratch-bytes-equal",
+            native == vm,
+            format!("--- native ---\n{native}\n--- vm ---\n{vm}"),
+        );
+    });
+
     probe.finish();
 }

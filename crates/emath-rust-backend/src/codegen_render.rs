@@ -33,6 +33,31 @@ pub(crate) use kernels::element_tensor_expr;
 pub(crate) use record_layouts::{record_layout, AuthoredRecordScope};
 pub(crate) use rtcalls::*;
 
+/// Wrap an operand expression into the value union by its kind. Total
+/// over the joinable kinds (union, Int, Rat, Bool): the union-lane
+/// kind rules only admit those beside a CodeValue operand, so the
+/// `unreachable` arm is a compile-time invariant, not a runtime path.
+pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
+    match kind {
+        ValueKind::CodeValue => expr,
+        ValueKind::I64 => Expr::Raw(format!(
+            "emath_rt::code::CodeValue::Int({})",
+            render_expr(&expr)
+        )),
+        ValueKind::Rational => Expr::Raw(format!(
+            "emath_rt::code::CodeValue::Rat({})",
+            render_expr(&expr)
+        )),
+        ValueKind::Bool => Expr::Raw(format!(
+            "emath_rt::code::CodeValue::Bool({})",
+            render_expr(&expr)
+        )),
+        other => unreachable!(
+            "the union-lane kind rules admit only Int/Rat/Bool beside the union, found {other:?}"
+        ),
+    }
+}
+
 pub(crate) fn op_expr(
     op: &EmirOp,
     program: &EmirProgram,
@@ -461,7 +486,46 @@ pub(crate) fn op_expr(
             }
         }
         EmirOp::CodeLiteral { body, param, free, carrier } => {
-            // The compiled template: the nested program lowers once
+            if param.is_none() {
+                // The compiled EXPRESSION template (bead
+                // emath-expression-quotes-324y0): the quoted
+                // expression lowers once over the value union - every
+                // scalar op of the body renders as a dynamic rt kernel
+                // call implementing the VM's exact carrier rules, no
+                // tree carried and no interpreter run. All free names
+                // are runtime inputs (the hygiene law keeps them
+                // open); the factory computes the union-valued
+                // expression directly - no parameter, no inner
+                // closure. The body-kind check is the named gate:
+                // anything the union lane cannot compute (structured
+                // values, floats, non-scalar ops, a closed body with
+                // no free name to carry the union) refuses here.
+                let mut inputs = InputKinds::new();
+                for name in free {
+                    inputs.insert(name.clone(), ValueKind::CodeValue);
+                }
+                if program_kind(body, free, &[], &inputs) != ValueKind::CodeValue {
+                    return Err(BackendError::UnsupportedType(
+                        "quote expression template body must compute the scalar union (Int/Rat/Bool arithmetic, comparisons, and boolean combinators over its free names)".into(),
+                    ));
+                }
+                let _reference = ReferenceScope::enter();
+                let body_code = render_expr(&value_expr(body, free, &[], &inputs)?);
+                let bindings = free
+                    .iter()
+                    .enumerate()
+                    .map(|(index, name)| format!("let {name} = __code_free[{index}]; "))
+                    .collect::<String>();
+                let free_list = free
+                    .iter()
+                    .map(|name| format!("String::from({name:?})"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Ok(Expr::Raw(format!(
+                    "{{ emath_rt::code::open_expr(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[emath_rt::code::CodeValue]| -> Result<emath_rt::code::CodeValue, String> {{ {bindings} Ok({body_code}) }})) }}"
+                )));
+            }
+            // The compiled FUNCTION template: the nested program lowers once
             // into a two-stage factory - the outer closure consumes
             // the open constants' values (in `free` order, as a
             // slice), the inner closure is the specialized unary
@@ -474,6 +538,7 @@ pub(crate) fn op_expr(
             // and a body computing any other carrier refuses typed.
             // No tree, no interpreter: candidates execute as this
             // emitted closure.
+            let param = param.clone().unwrap_or_default();
             let carrier_kind = ValueKind::from_signature(carrier);
             if matches!(carrier_kind, ValueKind::Other) {
                 return Err(BackendError::UnsupportedType(format!(
@@ -535,45 +600,85 @@ pub(crate) fn op_expr(
             )))
         }
         EmirOp::CodeSubstitute { code, reference, value } => {
-            // Partial application of one open constant: the reference
-            // resolved statically at lowering, the value a runtime
-            // scalar of the template's declared carrier (the carrier
-            // check is named at emission; the generic instantiation
-            // would not compile a mismatch anyway).
+            // Partial application of one open name. The reference
+            // resolved statically at lowering. A FUNCTION template
+            // demands the declared carrier (the carrier check is
+            // named at emission; the generic instantiation would not
+            // compile a mismatch anyway). An EXPRESSION template
+            // accepts any scalar - the substitute-time carrier fact -
+            // converted into the union.
             let kinds = value_kinds(program, names, states, input_kinds);
-            let ValueKind::Code(carrier) = kind_at(&kinds, *code) else {
-                return Err(BackendError::UnsupportedType(
+            match kind_at(&kinds, *code) {
+                ValueKind::Code(carrier) => {
+                    let value_kind = kind_at(&kinds, *value);
+                    if value_kind != *carrier {
+                        let name = |kind: &ValueKind| match kind {
+                            ValueKind::Rational => "Rat".to_string(),
+                            ValueKind::I64 => "Int".to_string(),
+                            ValueKind::Bool => "Bool".to_string(),
+                            other => format!("{other:?}"),
+                        };
+                        return Err(BackendError::UnsupportedType(format!(
+                            "code-substitute value must be {}-carried to match the template's carrier {}",
+                            name(&value_kind),
+                            name(carrier.as_ref())
+                        )));
+                    }
+                    Ok(Expr::Raw(format!(
+                        "emath_rt::code::substitute(&{}, {:?}, {})",
+                        render_expr(&operand(program, *code)),
+                        reference,
+                        render_expr(&operand(program, *value))
+                    )))
+                }
+                ValueKind::ExprCode => {
+                    let value_kind = kind_at(&kinds, *value);
+                    if !union_promotable(&value_kind) || value_kind == ValueKind::CodeValue {
+                        let name = |kind: &ValueKind| match kind {
+                            ValueKind::Rational => "Rat".to_string(),
+                            ValueKind::I64 => "Int".to_string(),
+                            ValueKind::Bool => "Bool".to_string(),
+                            other => format!("{other:?}"),
+                        };
+                        return Err(BackendError::UnsupportedType(format!(
+                            "code-substitute into an expression template requires a scalar value, found {}",
+                            name(&value_kind)
+                        )));
+                    }
+                    let converted = to_code_value(operand(program, *value), &value_kind);
+                    Ok(Expr::Raw(format!(
+                        "emath_rt::code::substitute_expr(&{}, {:?}, {})",
+                        render_expr(&operand(program, *code)),
+                        reference,
+                        render_expr(&converted)
+                    )))
+                }
+                _ => Err(BackendError::UnsupportedType(
                     "code-substitute requires a Code value".into(),
-                ));
-            };
-            let value_kind = kind_at(&kinds, *value);
-            if value_kind != *carrier {
-                let name = |kind: &ValueKind| match kind {
-                    ValueKind::Rational => "Rat".to_string(),
-                    ValueKind::I64 => "Int".to_string(),
-                    ValueKind::Bool => "Bool".to_string(),
-                    other => format!("{other:?}"),
-                };
-                return Err(BackendError::UnsupportedType(format!(
-                    "code-substitute value must be {}-carried to match the template's carrier {}",
-                    name(&value_kind),
-                    name(carrier.as_ref())
-                )));            }
-            Ok(Expr::Raw(format!(
-                "emath_rt::code::substitute(&{}, {:?}, {})",
-                render_expr(&operand(program, *code)),
-                reference,
-                render_expr(&operand(program, *value))
-            )))
+                )),
+            }
         }
         EmirOp::CodeEvaluate { code } => {
             // The guarded executor: open code refuses `unbound_code`
-            // at runtime, naming the remaining constants; closed code
-            // yields the specialized closure (kind Closure).
-            Ok(Expr::Raw(format!(
-                "emath_rt::code::evaluate(&{})?",
-                render_expr(&operand(program, *code))
-            )))
+            // at runtime, naming the remaining names. Closed code
+            // yields the specialized closure for a function template
+            // (kind Closure) or the computed union scalar for an
+            // expression template (kind CodeValue, projected at the
+            // typed boundary).
+            let kinds = value_kinds(program, names, states, input_kinds);
+            match kind_at(&kinds, *code) {
+                ValueKind::Code(_) => Ok(Expr::Raw(format!(
+                    "emath_rt::code::evaluate(&{})?",
+                    render_expr(&operand(program, *code))
+                ))),
+                ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                    "emath_rt::code::evaluate_expr(&{})?",
+                    render_expr(&operand(program, *code))
+                ))),
+                _ => Err(BackendError::UnsupportedType(
+                    "code-evaluate requires a Code value".into(),
+                )),
+            }
         }
         EmirOp::VectorMap { .. }
         | EmirOp::VectorMapScalar { .. }

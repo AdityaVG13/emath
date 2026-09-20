@@ -27,6 +27,66 @@ pub(super) fn op_arith_exprs(
     program: &EmirProgram,
     kinds: &[ValueKind],
 ) -> Result<Expr, BackendError> {
+    // The expression-template union lane (bead
+    // emath-expression-quotes-324y0): a joinable union pair routes the
+    // op onto the dynamic rt kernels, which implement the VM's exact
+    // carrier rules. Every render returns the union (comparisons and
+    // boolean combinators yield CodeValue::Bool), so the body composes
+    // to one union value that the typed boundary projects. The kind
+    // rules guarantee the pair is joinable when this lane fires.
+    let union_arith = match op {
+        EmirOp::F64Add(a, b) => Some(("code_add", *a, *b)),
+        EmirOp::F64Sub(a, b) => Some(("code_sub", *a, *b)),
+        EmirOp::F64Mul(a, b) => Some(("code_mul", *a, *b)),
+        EmirOp::F64Div(a, b) => Some(("code_div", *a, *b)),
+        _ => None,
+    };
+    if let Some((function, left, right)) = union_arith {
+        if union_pair(kinds, left, right) {
+            let left_kind = kind_at(kinds, left);
+            let right_kind = kind_at(kinds, right);
+            let left_code = render_expr(&to_code_value(operand(program, left), &left_kind));
+            let right_code = render_expr(&to_code_value(operand(program, right), &right_kind));
+            return Ok(Expr::Raw(format!(
+                "emath_rt::code::{function}(&{left_code}, &{right_code})?"
+            )));
+        }
+    }
+    if let EmirOp::Neg(value) = op {
+        if kind_at(kinds, *value) == ValueKind::CodeValue {
+            return Ok(Expr::Raw(format!(
+                "emath_rt::code::code_neg(&{})?",
+                render_expr(&operand(program, *value))
+            )));
+        }
+    }
+    if let EmirOp::Not(value) = op {
+        if kind_at(kinds, *value) == ValueKind::CodeValue {
+            return Ok(Expr::Raw(format!(
+                "emath_rt::code::CodeValue::Bool(emath_rt::code::code_not(&{})?)",
+                render_expr(&operand(program, *value))
+            )));
+        }
+    }
+    let union_bool = match op {
+        EmirOp::And(a, b) => Some(("&&", *a, *b)),
+        EmirOp::Or(a, b) => Some(("||", *a, *b)),
+        _ => None,
+    };
+    if let Some((join, left, right)) = union_bool {
+        if union_pair(kinds, left, right) {
+            // Short-circuit parity: the VM's And/Or arms evaluate the
+            // right side only when the left side does not decide, and
+            // Rust's `&&`/`||` over the checked projections do exactly
+            // that (a non-Bool operand that is never reached never
+            // faults, matching the engine).
+            let left_code = render_expr(&operand(program, left));
+            let right_code = render_expr(&operand(program, right));
+            return Ok(Expr::Raw(format!(
+                "emath_rt::code::CodeValue::Bool(emath_rt::code::code_as_bool(&{left_code})? {join} emath_rt::code::code_as_bool(&{right_code})?)"
+            )));
+        }
+    }
     let exact = match op {
         EmirOp::F64Add(a, b) => Some(("ratio_add", *a, *b, false)),
         EmirOp::F64Sub(a, b) => Some(("ratio_sub", *a, *b, false)),
@@ -42,6 +102,40 @@ pub(super) fn op_arith_exprs(
         if kind_at(kinds, left) == ValueKind::Rational && kind_at(kinds, right) == ValueKind::Rational {
             let value = map_runtime_result(format!("emath_rt::{function}({}, {})", render_expr(&operand(program, left)), render_expr(&operand(program, right))));
             return Ok(if negate { Expr::Un { op: UnOp::Not, value: Box::new(value) } } else { value });
+        }
+        // Mixed Int/Rational arithmetic (the residualized
+        // expression-template lane hits this: `x * c + 1/2` with Int
+        // inputs): the VM's `as_rat` law - the Int operand widens
+        // exactly (`n` becomes `n/1`), the result stays Rational (a
+        // Rational operand locks the carrier, never a float join).
+        let ratio_of = |value: EmirValue| -> Option<Expr> {
+            match kind_at(kinds, value) {
+                ValueKind::Rational => Some(operand(program, value)),
+                ValueKind::I64 => Some(Expr::Raw(format!(
+                    "(i128::from({}), 1)",
+                    render_expr(&operand(program, value))
+                ))),
+                _ => None,
+            }
+        };
+        if let (Some(left_ratio), Some(right_ratio)) = (ratio_of(left), ratio_of(right)) {
+            if matches!(kind_at(kinds, left), ValueKind::Rational)
+                || matches!(kind_at(kinds, right), ValueKind::Rational)
+            {
+                let value = map_runtime_result(format!(
+                    "emath_rt::{function}({}, {})",
+                    render_expr(&left_ratio),
+                    render_expr(&right_ratio)
+                ));
+                return Ok(if negate {
+                    Expr::Un {
+                        op: UnOp::Not,
+                        value: Box::new(value),
+                    }
+                } else {
+                    value
+                });
+            }
         }
         if matches!(kind_at(kinds, left), ValueKind::ExactInt | ValueKind::I64)
             && matches!(kind_at(kinds, right), ValueKind::ExactInt | ValueKind::I64)

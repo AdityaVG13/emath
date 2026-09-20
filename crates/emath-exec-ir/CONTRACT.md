@@ -138,13 +138,13 @@ The first failure remains the case verdict; a failed case cannot pass its expect
 Constructor and assumption checks remain strict. `eval_definitions_values`, used
 by numerical solver callers, remains fail-fast.
 
-## Program-space quote emission (emath-npky7)
+## Program-space quote emission (emath-npky7, expression templates emath-expression-quotes-324y0)
 
-Constructor lowering emits exactly one quote subset: `quote(<unary
-scalar-carrier function literal>)`, `quote.substitute(code, "name",
-value)`, and `quote.evaluate(code)`. The ops are `CodeLiteral` (the
-template's nested program with the open constants as trailing runtime
-inputs, plus the declared carrier), `CodeSubstitute` (partial
+Constructor lowering emits exactly two quote subsets. The FUNCTION
+template (`quote(<unary scalar-carrier function literal>)`,
+emath-npky7): the ops are `CodeLiteral` (the template's nested
+program with the open constants as trailing runtime inputs, plus the
+declared carrier; `param: Some(name)`), `CodeSubstitute` (partial
 application; the reference is a static string resolved at lowering,
 the value is carried in the template's carrier), and `CodeEvaluate`
 (the guarded executor; a def bound to it is closure-valued, so later
@@ -154,14 +154,31 @@ and `Bool`: the domain governs the parameter AND the open constants,
 so the artifact's compiled factory is monomorphic in the carrier
 (emath-3ran3 widened this from the original Rat-only cut).
 
+The EXPRESSION template (`quote(<expression with free names>)`,
+emath-expression-quotes-324y0): `CodeLiteral` carries `param: None`
+and carrier `Union` — no parameter, every free name a runtime input,
+the body compiled over the dynamic value union (the backend's
+`ExprCode`/`CodeValue` lane). `quote.substitute` accepts any scalar
+value (the substitute-time carrier fact); `quote.evaluate` yields
+the computed union scalar, projected checked onto the declared
+output at the typed boundary (the engine's `type_admits` law). The
+residual lane still runs first (the pre-existing quote-elimination
+law): a substitute-then-evaluate chain over statically-known
+templates folds to plain arithmetic over the function's declared
+inputs — the union `CodeLiteral` remains for template VALUES (a
+function whose def IS the bare quote) and non-residualizable
+consumers.
+
 The hygiene law is structural: a quote never captures the ambient
-frame. Every free name of the template body (beyond the parameter)
-stays open and becomes a substitution input; nested rebinders keep
-their own scope (the free-name collector's L2 rule). One predicate
-(`emitted_quote_carrier`) is the single authority admitting the shape
-in both the lowering and the unresolved walk, so the two cannot
-disagree. Every other quote form (`QuoteBind`, non-lambda bodies,
-other domains, other `quote.*` spellings or arities) keeps the
+frame. Every free name of the template body (beyond the parameter,
+or all of them for an expression template) stays open and becomes a
+substitution input; nested rebinders keep their own scope (the
+free-name collector's L2 rule). One predicate
+(`emitted_quote_carrier`) is the single authority admitting both
+shapes in both the lowering and the unresolved walk, so the two
+cannot disagree. Every other quote form (`QuoteBind`, other domains
+beyond the declared scalar carriers, structured bodies the union
+lane cannot compute, other `quote.*` spellings or arities) keeps the
 emission fence: it lowers to a named refusal and the module is not
 runnable.
 
@@ -173,11 +190,17 @@ Determinism class: lowering is a pure function of the authored tree.
 Conformance is `tests/emath-tui/tests/export_native.rs` case 9
 (cross-lane scratch parity over
 `tests/fixtures/constructor/dream_program_space.emath`, whose
-template carriers are Rat, Int, and Bool) and
-`tests/emath-rt/tests/code_carrier.rs` (the carrier laws), with
-mutation probes: splice position, the `unbound_code` guard, the
-closure-valued source, the unresolved exemption, and the
-carrier-kind mapping each kill their suite.
+template carriers are Rat, Int, and Bool), case 10 (the
+expression-template fixture
+`tests/fixtures/constructor/expression_quote.emath`, whose 7
+authored tests pin the carrier laws in the VM lane and whose export
+checkpoint is byte-identical cross-lane), and
+`tests/emath-rt/tests/code_carrier.rs` (the carrier and union laws),
+with mutation probes: splice position, the `unbound_code` guard, the
+closure-valued source, the unresolved exemption, the carrier-kind
+mapping, the union fast path, the Rat-lock, the projection refusal,
+the mixed Int/Rational render, and the union factory render each
+kill their suite.
 
 ## Kernel boundary
 

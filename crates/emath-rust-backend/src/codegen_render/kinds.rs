@@ -24,6 +24,17 @@ pub(crate) enum ValueKind {
     /// `substitute` closes it; `evaluate` yields the specialized
     /// closure.
     Code(Box<ValueKind>),
+    /// The open expression template (emath-expression-quotes-324y0):
+    /// a quoted EXPRESSION with free names, compiled over the value
+    /// union - no parameter, no closure. Open until `substitute`
+    /// closes it; `evaluate` yields the computed
+    /// [`ValueKind::CodeValue`].
+    ExprCode,
+    /// The dynamic scalar union an expression template computes over
+    /// and `evaluate` yields: the Int/Rat/Bool carriers as one
+    /// value. Typed boundaries project it checked onto the declared
+    /// carrier.
+    CodeValue,
     /// Typed program value: a closure with explicit parameter and
     /// result kinds (the constructor lane's `Int -> CaseSet -> Rat`
     /// carriers and `CallValue` callees). It renders as a generic call
@@ -117,6 +128,8 @@ impl ValueKind {
                 "emath_rt::code::Code<{}>",
                 render_ty(&carrier.rust_ty()?)
             )),
+            Self::ExprCode => Ty::Named("emath_rt::code::ExprCode".into()),
+            Self::CodeValue => Ty::Named("emath_rt::code::CodeValue".into()),
             Self::DenseLayout(_) => Ty::Named("emath_rt::DenseLayout".into()),
             Self::Program => Ty::Named(
                 "std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>>"
@@ -163,9 +176,28 @@ impl ValueKind {
     pub(crate) fn is_copy(&self) -> bool {
         matches!(
             self,
-            Self::I64 | Self::F64 | Self::Rational | Self::Bool | Self::Complex
+            Self::I64 | Self::F64 | Self::Rational | Self::Bool | Self::Complex | Self::CodeValue
         )
     }
+}
+
+/// An operand that can join the value-union lane: the union itself or
+/// a scalar the render wraps into it (Int, Rat, Bool). Float64 and
+/// structured carriers beside the union fall back to their own lanes
+/// and the expression-template body check refuses them named.
+pub(super) fn union_promotable(kind: &ValueKind) -> bool {
+    matches!(
+        kind,
+        ValueKind::CodeValue | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
+    )
+}
+
+/// True when one side is the union and the other can join it.
+pub(super) fn union_pair(kinds: &[ValueKind], left: EmirValue, right: EmirValue) -> bool {
+    let left_kind = kind_at(kinds, left);
+    let right_kind = kind_at(kinds, right);
+    (left_kind == ValueKind::CodeValue && union_promotable(&right_kind))
+        || (right_kind == ValueKind::CodeValue && union_promotable(&left_kind))
 }
 
 /// A kind that carries no usable carrier information: `Other`, or a
@@ -402,25 +434,34 @@ pub(super) fn kind_of_op(
                 result: Box::new(result),
             }
         }
-        // The quoted-template carrier: open code (a CodeLiteral or a
-        // further partial application) stays a Code value over the
-        // template's declared scalar carrier; only the guarded
-        // executor yields a callable.
-        EmirOp::CodeLiteral { carrier, .. } => {
-            ValueKind::Code(Box::new(ValueKind::from_signature(carrier)))
+        // The quoted-template carrier. A FUNCTION template is open
+        // code over its declared scalar carrier (a CodeLiteral or a
+        // further partial application stays a Code value; only the
+        // guarded executor yields a callable). An EXPRESSION
+        // template (param None) is the union lane: an ExprCode value
+        // whose executor yields the computed CodeValue scalar.
+        EmirOp::CodeLiteral { param, carrier, .. } => {
+            if param.is_none() {
+                ValueKind::ExprCode
+            } else {
+                ValueKind::Code(Box::new(ValueKind::from_signature(carrier)))
+            }
         }
         EmirOp::CodeSubstitute { code, .. } => match kind_at(kinds, *code) {
             kind @ ValueKind::Code(_) => kind,
+            ValueKind::ExprCode => ValueKind::ExprCode,
             _ => ValueKind::Other,
         },
         // quote.evaluate: closed code yields the specialized unary
-        // closure over the template's carrier, so a def bound to it
-        // is callable.
+        // closure over the template's carrier (a def bound to it is
+        // callable), or - for an expression template - the computed
+        // union scalar, projected at the typed boundary.
         EmirOp::CodeEvaluate { code } => match kind_at(kinds, *code) {
             ValueKind::Code(carrier) => ValueKind::Closure {
                 params: vec![carrier.as_ref().clone()],
                 result: carrier,
             },
+            ValueKind::ExprCode => ValueKind::CodeValue,
             _ => ValueKind::Other,
         },
         // A call consumes the callee's declared parameters one stage
@@ -656,7 +697,12 @@ pub(super) fn kind_of_op(
             ValueKind::Other
         }
         EmirOp::F64Div(left, right) => {
-            if kind_at(kinds, *left) == ValueKind::Complex
+            // The union lane: division over the union stays the
+            // union (the kernel's result is ALWAYS Rational - the
+            // VM's never-collapse rule for division).
+            if union_pair(kinds, *left, *right) {
+                ValueKind::CodeValue
+            } else if kind_at(kinds, *left) == ValueKind::Complex
                 || kind_at(kinds, *right) == ValueKind::Complex
             {
                 ValueKind::Complex
@@ -675,7 +721,13 @@ pub(super) fn kind_of_op(
         EmirOp::LoadInput(index) => input_kind(names.get(*index as usize), input_kinds),
         EmirOp::LoadState(index) => input_kind(states.get(*index as usize), input_kinds),
         EmirOp::F64Add(left, right) | EmirOp::F64Sub(left, right) | EmirOp::F64Mul(left, right) => {
-            if (kind_at(kinds, *left) == ValueKind::ExactInt
+            // The expression-template union lane: one union operand
+            // with a joinable other routes the op onto the dynamic
+            // kernels; the result stays the union until a typed
+            // boundary projects it.
+            if union_pair(kinds, *left, *right) {
+                ValueKind::CodeValue
+            } else if (kind_at(kinds, *left) == ValueKind::ExactInt
                 || kind_at(kinds, *right) == ValueKind::ExactInt)
                 && matches!(
                     kind_at(kinds, *left),
@@ -689,9 +741,22 @@ pub(super) fn kind_of_op(
                 ValueKind::ExactInt
             } else if kind_at(kinds, *left) == ValueKind::I64 && kind_at(kinds, *right) == ValueKind::I64 {
                 ValueKind::I64
-            } else if kind_at(kinds, *left) == ValueKind::Rational
-                && kind_at(kinds, *right) == ValueKind::Rational
+            } else if matches!(kind_at(kinds, *left), ValueKind::Rational)
+                && matches!(
+                    kind_at(kinds, *right),
+                    ValueKind::Rational | ValueKind::I64 | ValueKind::ExactInt
+                )
+                || matches!(kind_at(kinds, *right), ValueKind::Rational)
+                    && matches!(
+                        kind_at(kinds, *left),
+                        ValueKind::Rational | ValueKind::I64 | ValueKind::ExactInt
+                    )
             {
+                // Mixed Int/Rational arithmetic: the VM's `as_rat`
+                // law - the Int operand widens exactly (`n` becomes
+                // `n/1`) and a Rational operand locks the Rational
+                // carrier (`x + 1/2` with Int x computes Rat, never
+                // a float join).
                 ValueKind::Rational
             } else if kind_at(kinds, *left) == ValueKind::Complex
                 || kind_at(kinds, *right) == ValueKind::Complex
@@ -702,20 +767,38 @@ pub(super) fn kind_of_op(
             }
         }
         EmirOp::Neg(value) => kind_at(kinds, *value),
+        // The union lane: comparisons and boolean combinators over a
+        // joinable union pair compute the union (a Bool-valued
+        // expression template yields CodeValue::Bool; the typed
+        // boundary projects it). A non-joinable pair (Float64 beside
+        // the union) keeps the Bool lane, and the expression-template
+        // body check refuses it named.
+        EmirOp::Eq(left, right)
+        | EmirOp::Ne(left, right)
+        | EmirOp::Lt(left, right)
+        | EmirOp::Le(left, right)
+        | EmirOp::Gt(left, right)
+        | EmirOp::Ge(left, right)
+        | EmirOp::And(left, right)
+        | EmirOp::Or(left, right) => {
+            if union_pair(kinds, *left, *right) {
+                ValueKind::CodeValue
+            } else {
+                ValueKind::Bool
+            }
+        }
+        EmirOp::Not(value) => {
+            if matches!(kind_at(kinds, *value), ValueKind::CodeValue) {
+                ValueKind::CodeValue
+            } else {
+                ValueKind::Bool
+            }
+        }
         EmirOp::IsFinite(_)
         | EmirOp::SameBits(_, _)
-        | EmirOp::Eq(..)
-        | EmirOp::Ne(..)
-        | EmirOp::Lt(..)
-        | EmirOp::Le(..)
-        | EmirOp::Gt(..)
-        | EmirOp::Ge(..)
-        | EmirOp::And(..)
-        | EmirOp::Or(..)
         | EmirOp::Imply(..)
         | EmirOp::Iff(..)
         | EmirOp::SetContains { .. }
-        | EmirOp::Not(_)
         | EmirOp::OptionIsSome(_)
         | EmirOp::ResultIsOk(_)
         | EmirOp::VectorAllFinite(_) => ValueKind::Bool,
@@ -843,6 +926,42 @@ pub(super) fn cmp_expr(
     let lk = operand_kind(kinds, left);
     let rk = operand_kind(kinds, right);
     match (&lk, &rk) {
+        // The union lane: comparisons route through the dynamic
+        // kernels - exact cross-multiplication ordering, VALUE
+        // equality (`2 == 2/1` is true), mixed kinds never equal.
+        // The joinable pair is guaranteed by the kind rules (the arm
+        // only fires when the other side is Int/Rat/Bool/union), so
+        // both sides wrap totally.
+        (ValueKind::CodeValue, _) | (_, ValueKind::CodeValue) => {
+            let left = to_code_value(operand(program, left), &lk);
+            let right = to_code_value(operand(program, right), &rk);
+            let (left, right) = (render_expr(&left), render_expr(&right));
+            let raw = match op {
+                BinOp::Eq => format!("emath_rt::code::code_eq(&{left}, &{right})?"),
+                BinOp::Ne => format!("!emath_rt::code::code_eq(&{left}, &{right})?"),
+                BinOp::Lt => format!(
+                    "matches!(emath_rt::code::code_cmp(&{left}, &{right})?, core::cmp::Ordering::Less)"
+                ),
+                BinOp::Gt => format!(
+                    "matches!(emath_rt::code::code_cmp(&{left}, &{right})?, core::cmp::Ordering::Greater)"
+                ),
+                BinOp::Le => format!(
+                    "matches!(emath_rt::code::code_cmp(&{left}, &{right})?, core::cmp::Ordering::Less | core::cmp::Ordering::Equal)"
+                ),
+                BinOp::Ge => format!(
+                    "matches!(emath_rt::code::code_cmp(&{left}, &{right})?, core::cmp::Ordering::Greater | core::cmp::Ordering::Equal)"
+                ),
+                BinOp::Add
+                | BinOp::Sub
+                | BinOp::Mul
+                | BinOp::Div
+                | BinOp::Rem
+                | BinOp::Pow
+                | BinOp::And
+                | BinOp::Or => unreachable!("cmp_expr only emits comparison BinOps"),
+            };
+            Expr::Raw(raw)
+        }
         (ValueKind::I64, ValueKind::I64)
         | (ValueKind::ExactInt, ValueKind::ExactInt)
         | (ValueKind::Bool, ValueKind::Bool) => Expr::Bin {

@@ -163,3 +163,53 @@ serves every scalar program family. Conformance:
 guard-removal mutation probes; the Int and Bool instantiations are
 exercised end-to-end by the program-space fixture and the export
 acceptance.
+
+## Expression-template union (emath-expression-quotes-324y0)
+
+The same file carries the expression-template lane: a quoted
+EXPRESSION with free names (`quote(x + c)`, no parameter, no
+closure). The carrier of each free name is a substitute-time fact,
+so the body computes over `CodeValue` - the dynamic union
+`Int(i64) | Rat(ExactRatio) | Bool(bool)` - and every scalar
+operation renders as a call to a dynamic kernel (`code_add`,
+`code_sub`, `code_mul`, `code_div`, `code_neg`, `code_eq`,
+`code_cmp`, `code_as_bool`, `code_not`). The kernels implement the
+constructor VM's EXACT carrier rules (normative source:
+`constructor_layer/ops.rs` - `binary`, `neg`, `eq_values`,
+`cmp_numeric`; the short-circuit And/Or arm in `engine_step/core.rs`):
+
+- Int x Int keeps Int for `+ - *` (`2 + 3` is Int 5, never Rat 5/1);
+  the collapse lives in the both-Int fast paths only (a probe-proven
+  dead collapse branch on the rational path was deleted).
+- Any Rational operand locks the Rat carrier forever, even when the
+  result is integer-valued (`1/4 - 1/4` is Rat 0/1).
+- Division NEVER collapses (`4 / 2` is Rat 2/1); a zero denominator
+  refuses `division_by_zero`.
+- Equality compares VALUES by cross-multiplication (`2 == 2/1` is
+  true); Bool equality is structural; mixed kinds are never equal.
+- Checked projections (`project_i64`/`project_ratio`/`project_bool`)
+  mirror the engine's `type_admits` at typed boundaries: a
+  Rat-declared output widens Int exactly (`5` becomes `5/1`), an
+  Int-declared output refuses a Rational by name (matching the
+  engine's `output ... does not have the declared type` message), Bool
+  admits Bool only.
+
+`ExprCode` (`open_expr`/`substitute_expr`/`evaluate_expr`) obeys the
+same laws as the function carrier: by-name binding, absent-reference
+no-op, `unbound_code` naming the remaining names in binding order.
+Carrier-width law: the VM's Int is arbitrary-precision `ExactInt`;
+this union's Int is checked i64 (the existing cross-lane width
+distinction) - parity holds in the i64-shared domain and beyond-i64
+values refuse here exactly as the Int emission lane always has.
+Still no tree, no interpreter: the body is the compiled arithmetic
+the backend emitted, as kernel calls over the union. Conformance:
+the `probe_union_kernels` probe in `code_carrier.rs` (22 checks) with
+fast-path, rat-lock, and truncation mutation probes all killing;
+end-to-end parity via the expression-quote fixture and the export
+acceptance case.
+
+No-claim boundaries: no structured values (sequences/records) in the
+union; no Float64 lane (a float reaching a union op refuses named);
+no Text carrier; the rt comparison kernels are pinned at the unit
+level - the authored surface's comparison-valued templates compute
+through them but the export parity case rides the arithmetic lane.

@@ -1192,10 +1192,17 @@ emath function Form:
         p.demand("quote-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
         match lower_constructor_function(&tree, "Form") {
             Ok(lowered) => {
-                p.demand("quote-not-runnable", !lowered.runnable, "quoted form was marked runnable");
+                // Expression templates are runnable since bead
+                // emath-expression-quotes-324y0: `quote(unused + 1)`
+                // lowers onto the union lane (the free name becomes
+                // the template's runtime input), so the quote fence
+                // no longer marks the form unresolved. The EMIR
+                // interp still refuses Code ops (CarrierRefused) -
+                // the native lane executes them, not the interp.
+                p.demand("quote-runnable", lowered.runnable, "the expression template must lower as runnable");
                 p.demand(
-                    "quote-unresolved",
-                    lowered.unresolved.iter().any(|item| item == "quote"),
+                    "quote-no-unresolved",
+                    lowered.unresolved.is_empty(),
                     format!("{:?}", lowered.unresolved),
                 );
             }
