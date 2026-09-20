@@ -46,6 +46,7 @@ emath run language/examples/intro/add-exact.emath --set a=2 --set b=1 --json
 |---------|---------|
 | `emath check FILE` | Parse and admit |
 | `emath run FILE` | Evaluate a function or query |
+| `emath loop FILE` | Drive a research-loop session surface (step, run, show, grow-case, save, load, export-native) |
 | `emath step CHECKPOINT` | Resume a constructor continuation |
 | `emath inspect CHECKPOINT` | Read saved question and artifacts |
 | `emath verify CHECKPOINT` | Replay recorded observations |
