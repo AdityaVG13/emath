@@ -233,20 +233,45 @@ impl super::Parser {
                     if !self.eat(&TokenKind::Gt) {
                         self.error_here("E-SYN-102", "expected `>` to close type arguments");
                     }
-                } else if matches!(self.peek(), TokenKind::LBracket) {
+                } else if matches!(self.peek(), TokenKind::LBracket | TokenKind::LParen) {
+                    // Parenthesized application is the normative
+                    // parameterized-type spelling (`sequence(T)` per the
+                    // reference); brackets serve the same role for
+                    // extent-style args. Both record their arguments -
+                    // previously the parenthesized form silently dropped
+                    // the element type.
+                    let paren = matches!(self.peek(), TokenKind::LParen);
                     self.advance();
-                    while !matches!(self.peek(), TokenKind::RBracket | TokenKind::Eof) {
-                        if self.eat(&TokenKind::Comma) {
-                            continue;
+                    let closed = if paren {
+                        while !matches!(self.peek(), TokenKind::RParen | TokenKind::Eof) {
+                            if self.eat(&TokenKind::Comma) {
+                                continue;
+                            }
+                            if let Some(arg) = self.parse_generic_arg() {
+                                generic_args.push(arg);
+                            } else {
+                                break;
+                            }
                         }
-                        if let Some(arg) = self.parse_generic_arg() {
-                            generic_args.push(arg);
-                        } else {
-                            break;
+                        self.eat(&TokenKind::RParen)
+                    } else {
+                        while !matches!(self.peek(), TokenKind::RBracket | TokenKind::Eof) {
+                            if self.eat(&TokenKind::Comma) {
+                                continue;
+                            }
+                            if let Some(arg) = self.parse_generic_arg() {
+                                generic_args.push(arg);
+                            } else {
+                                break;
+                            }
                         }
-                    }
-                    if !self.eat(&TokenKind::RBracket) {
-                        self.error_here("E-SYN-102", "expected `]` to close type arguments");
+                        self.eat(&TokenKind::RBracket)
+                    };
+                    if !closed {
+                        self.error_here(
+                            "E-SYN-102",
+                            "expected closing bracket to close type arguments",
+                        );
                     }
                 }
                 Some(TypeExpr {

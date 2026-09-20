@@ -17,6 +17,15 @@ pub(crate) enum ValueKind {
     BigInt,
     Text,
     Program,
+    /// Typed program value: a closure with explicit parameter and
+    /// result kinds (the constructor lane's `Int -> CaseSet -> Rat`
+    /// carriers and `CallValue` callees). It renders as a generic call
+    /// target - there is no standalone concrete type, so type-annotated
+    /// bindings refuse and callers borrow it untyped.
+    Closure {
+        params: Vec<ValueKind>,
+        result: Box<ValueKind>,
+    },
     /// Complex scalar `(f64, f64)` — the VM's complex carrier.
     Complex,
     DenseLayout(Box<ValueKind>),
@@ -67,6 +76,17 @@ impl ValueKind {
                         .and_then(|text| text.strip_suffix('>'))
                     {
                         ValueKind::Record(name.to_string())
+                    } else if text.starts_with("Fn<") && text.ends_with('>') {
+                        // Typed closure signature: every part but the
+                        // last is a parameter; the last is the result.
+                        let parts = split_signature_parts(&text[3..text.len() - 1]);
+                        let Some((result, params)) = parts.split_last() else {
+                            return ValueKind::Other;
+                        };
+                        ValueKind::Closure {
+                            params: params.iter().map(|part| parse(part, remaining - 1)).collect(),
+                            result: Box::new(parse(result, remaining - 1)),
+                        }
                     } else {
                         ValueKind::Other
                     }
@@ -105,6 +125,14 @@ impl ValueKind {
             Self::Tensor => Ty::Named("emath_rt::Tensor".into()),
             Self::Record(name) => Ty::Named(format!("EmathRecord_{}", escape_ident(name))),
             Self::Never => Ty::Named("!".into()),
+            Self::Closure { params, result } => {
+                // Shared `Rc<dyn Fn>` carrier: callable through the
+                // handle (call expressions auto-deref), cloneable at
+                // every crossing, and `'static` when captured by a
+                // program literal. A `&dyn Fn` layer is never emitted
+                // because `&Rc<..> -> &dyn Fn` does not coerce.
+                Ty::Named(format!("std::rc::Rc<{}>", callable_ty(params, result)?))
+            }
             Self::Other => {
                 return Err(BackendError::UnsupportedType(
                     "unknown value carrier".into(),
@@ -121,12 +149,99 @@ impl ValueKind {
         }
     }
 
-    pub(super) fn is_copy(&self) -> bool {
+    pub(crate) fn is_copy(&self) -> bool {
         matches!(
             self,
             Self::I64 | Self::F64 | Self::Rational | Self::Bool | Self::Complex
         )
     }
+}
+
+/// A kind that carries no usable carrier information: `Other`, or a
+/// vector whose element kind is `Other` (an empty `[]` literal).
+pub(super) fn kind_is_degenerate(kind: &ValueKind) -> bool {
+    matches!(kind, ValueKind::Other)
+        || matches!(kind, ValueKind::Vector(element) if matches!(**element, ValueKind::Other))
+}
+
+/// Recover a frame input's kind from the callee's authored
+/// declaration when the argument's own kind is degenerate (an empty
+/// `[]` literal carries no element kind of its own). The declaration
+/// wins only over degenerate kinds, never over a concrete inferred
+/// one.
+pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> ValueKind {
+    let Some(signature) = declared else { return kind };
+    if kind_is_degenerate(&kind) {
+        let declared_kind = ValueKind::from_signature(signature);
+        if !matches!(declared_kind, ValueKind::Other) {
+            return declared_kind;
+        }
+    }
+    kind
+}
+
+/// Native callable carrier for a closure kind: `dyn Fn(P...) ->
+/// Result<R, String>`. The carrier is shared `Rc<dyn Fn>` at every
+/// position (parameters, results, captures): handles clone at
+/// crossings, calls auto-deref through the handle, and a shared
+/// handle is `'static` when a program literal captures it. A `&dyn`
+/// layer is never emitted because `&Rc<..> -> &dyn Fn` does not
+/// coerce.
+pub(super) fn callable_ty(
+    params: &[ValueKind],
+    result: &ValueKind,
+) -> Result<String, BackendError> {
+    let param_tys = params
+        .iter()
+        .map(|param| match param {
+            ValueKind::Closure { params, result } => {
+                Ok(format!("std::rc::Rc<{}>", callable_ty(params, result)?))
+            }
+            other => {
+                let ty = crate::rust_ir::render::render_ty(&other.rust_ty()?);
+                if other.is_copy() {
+                    Ok(ty)
+                } else {
+                    // Non-copy parameters (records, vectors) arrive
+                    // borrowed, matching the call-site rendering.
+                    Ok(format!("&{ty}"))
+                }
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let result_ty = match result {
+        ValueKind::Closure { params, result } => {
+            format!("std::rc::Rc<{}>", callable_ty(params, result)?)
+        }
+        other => crate::rust_ir::render::render_ty(&other.rust_ty()?),
+    };
+    Ok(format!(
+        "dyn Fn({}) -> Result<{}, String>",
+        param_tys.join(", "),
+        result_ty
+    ))
+}
+
+/// Split a `Fn<...>` signature body on top-level commas (nested
+/// `<...>` stays intact), so `Fn<Int,Record<CS>,Rat>` yields the
+/// parameter parts `["Int", "Record<CS>"]` and result `"Rat"`.
+fn split_signature_parts(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (index, character) in text.char_indices() {
+        match character {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(text[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(text[start..].trim());
+    parts
 }
 
 pub(super) fn checked_integer_operand(
@@ -183,6 +298,15 @@ pub(super) fn kind_at(kinds: &[ValueKind], value: EmirValue) -> ValueKind {
         .unwrap_or(ValueKind::Other)
 }
 
+/// True when a body's result register is a direct self-call (the
+/// tail-recursive shape; its kind is the enclosing function's own).
+fn result_is_call_self(program: &EmirProgram) -> bool {
+    program
+        .ops
+        .get(program.result.0 as usize)
+        .is_some_and(|(op, _)| matches!(op, EmirOp::CallSelf { .. }))
+}
+
 pub(super) fn kind_of_op(
     op: &EmirOp,
     kinds: &[ValueKind],
@@ -230,21 +354,87 @@ pub(super) fn kind_of_op(
             let ValueKind::Record(name) = kind_at(kinds, *record) else {
                 return ValueKind::Other;
             };
-            emath_exec_ir::native_kernel::installed_record_layout(&name)
-                .and_then(|layout| layout.fields.into_iter().find(|(name, _)| name == field))
+            record_layout(&name)
+                .and_then(|fields| fields.into_iter().find(|(name, _)| name == field))
                 .map(|(_, ty)| ValueKind::from_signature(&ty))
                 .unwrap_or(ValueKind::Other)
         }
         EmirOp::Refuse(_) | EmirOp::RefuseValue(_) => ValueKind::Never,
-        EmirOp::ProgramLiteral { .. } => ValueKind::Program,
-        EmirOp::CallSelf { inputs } => inputs
-            .first()
-            .map(|value| kind_at(kinds, *value))
-            .unwrap_or(ValueKind::I64),
+        // Typed closure literal: the parameter-domain signature plus
+        // the body's inferred result compose the callable kind. An
+        // empty signature is the numeric/VM-converted carrier
+        // (Program), which renders through the dyn-program ABI.
+        EmirOp::ProgramLiteral { body, captures, signature, .. } => {
+            if signature.is_empty() {
+                return ValueKind::Program;
+            }
+            let param_kind = ValueKind::from_signature(signature);
+            let names = (0..usize::from(body.input_count))
+                .map(|index| format!("__program_arg_{index}"))
+                .collect::<Vec<_>>();
+            let explicit = names.len() - captures.len();
+            let frame = names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| {
+                    let kind = if index < explicit {
+                        param_kind.clone()
+                    } else {
+                        kind_at(kinds, captures[index - explicit])
+                    };
+                    (name.clone(), kind)
+                })
+                .collect();
+            let result = program_kind(body, &names, &[], &frame);
+            ValueKind::Closure {
+                params: vec![param_kind; explicit],
+                result: Box::new(result),
+            }
+        }
+        // A call consumes the callee's declared parameters one stage
+        // at a time: a curried callee (`Fn<A, Fn<B, C>>` lowered as
+        // one CallValue with all arguments) walks the result chain,
+        // applying each stage's arguments and unwrapping with `?`.
+        EmirOp::CallValue { program, inputs } => {
+            let mut kind = kind_at(kinds, *program);
+            let mut remaining = inputs.len();
+            while remaining > 0 {
+                let ValueKind::Closure { params, result } = kind else {
+                    return ValueKind::Other;
+                };
+                if remaining < params.len() {
+                    // Under-applied partial call: no carrier for the
+                    // partially applied callable in this cut.
+                    return ValueKind::Other;
+                }
+                remaining -= params.len();
+                if remaining == 0 {
+                    return *result;
+                }
+                kind = *result;
+            }
+            ValueKind::Other
+        }
+        // A self-recursive call's kind is the enclosing function's
+        // authored output; the first-argument fallback only serves
+        // the recur lane, whose result carrier is not declared here.
+        EmirOp::CallSelf { inputs, result } => {
+            if !result.is_empty() {
+                let declared = ValueKind::from_signature(result);
+                if !matches!(declared, ValueKind::Other) {
+                    return declared;
+                }
+            }
+            inputs
+                .first()
+                .map(|value| kind_at(kinds, *value))
+                .unwrap_or(ValueKind::I64)
+        }
         EmirOp::CallFrame {
             body,
             inputs,
             state,
+            declared,
         } => {
             let names = (0..inputs.len())
                 .map(|index| format!("__frame_input_{index}"))
@@ -255,8 +445,16 @@ pub(super) fn kind_of_op(
             let frame = names
                 .iter()
                 .zip(inputs)
-                .chain(states.iter().zip(state))
-                .map(|(name, value)| (name.clone(), kind_at(kinds, *value)))
+                .enumerate()
+                .map(|(index, (name, value))| {
+                    (
+                        name.clone(),
+                        frame_input_kind(kind_at(kinds, *value), declared.get(index)),
+                    )
+                })
+                .chain(states.iter().zip(state).map(|(name, value)| {
+                    (name.clone(), frame_input_kind(kind_at(kinds, *value), None))
+                }))
                 .collect();
             program_kind(body, &names, &states, &frame)
         }
@@ -266,6 +464,18 @@ pub(super) fn kind_of_op(
         EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::F64SortTotal(_) => {
             ValueKind::Vector(Box::new(ValueKind::F64))
         }
+        // Authored cons preserves the element carrier (records stay
+        // records), unlike the Float64 dense-lane concat above.
+        EmirOp::ListConcat(values) => ValueKind::Vector(Box::new(
+            values
+                .first()
+                .map(|value| kind_at(kinds, *value))
+                .map(|kind| match kind {
+                    ValueKind::Vector(element) => *element,
+                    other => other,
+                })
+                .unwrap_or(ValueKind::Other),
+        )),
         EmirOp::DenseValues(_) => ValueKind::Vector(Box::new(ValueKind::F64)),
         EmirOp::DenseRepack { template, .. } => match kind_at(kinds, *template) {
             ValueKind::DenseLayout(kind) => {
@@ -315,9 +525,26 @@ pub(super) fn kind_of_op(
                 .collect();
             let left = program_kind(then_body, &names, &[], &inputs);
             let right = program_kind(else_body, &names, &[], &inputs);
-            if left == ValueKind::Never {
+            // A self-recursive tail (`CallSelf` as the body result)
+            // returns the enclosing function's own kind - the sibling
+            // arm already states it, so the join takes the other side
+            // instead of mismatching into `Other`. A degenerate side
+            // (an empty `[]` literal carries no element kind) yields
+            // to the other side's concrete kind: `if done: [] else:
+            // moves(k)` joins to the moves carrier.
+            let left_degenerate = kind_is_degenerate(&left);
+            let right_degenerate = kind_is_degenerate(&right);
+            if left == ValueKind::Never
+                || (result_is_call_self(then_body) && right != ValueKind::Other)
+                || (left_degenerate && !right_degenerate && right != ValueKind::Other)
+            {
                 right
-            } else if right == ValueKind::Never || left == right {
+            } else if right == ValueKind::Never
+                || (result_is_call_self(else_body) && left != ValueKind::Other)
+                || (right_degenerate && !left_degenerate && left != ValueKind::Other)
+            {
+                left
+            } else if left == right {
                 left
             } else {
                 ValueKind::Other

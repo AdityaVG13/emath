@@ -53,6 +53,25 @@ pub(super) fn op_collection_exprs(
             code.push_str("Ok(output) })()");
             Ok(map_runtime_result(code))
         }
+        EmirOp::ListConcat(values) => {
+            // Authored cons: element carriers are preserved (records stay
+            // records), unlike the Float64 dense-lane VectorConcat. Each
+            // part renders owned so extend consumes it.
+            let parts = values
+                .iter()
+                .map(|value| render_expr(&owned_operand(program, *value, kinds)))
+                .collect::<Vec<_>>();
+            let mut code = String::from("(|| -> Result<Vec<_>, String> { let mut count = 0usize; ");
+            for part in &parts {
+                code.push_str(&format!("count = count.checked_add(({part}).len()).ok_or_else(|| String::from(\"concatenated length exceeds usize\"))?; "));
+            }
+            code.push_str("let mut output = Vec::new(); output.try_reserve_exact(count).map_err(|_| String::from(\"list allocation exceeds available capacity\"))?; ");
+            for part in &parts {
+                code.push_str(&format!("output.extend({part}); "));
+            }
+            code.push_str("Ok(output) })()");
+            Ok(map_runtime_result(code))
+        }
         EmirOp::SameDenseShape(left, right) => {
             let a = render_expr(&operand(program, *left));
             let b = render_expr(&operand(program, *right));

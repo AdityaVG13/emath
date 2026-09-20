@@ -102,6 +102,8 @@ impl EmirOp {
             Self::CallScalarProgram { .. } => "call-scalar-program",
             Self::CallRealProgram { .. } => "call-real-program",
             Self::TryCallRealProgram { .. } => "try-call-real-program",
+            Self::CallValue { .. } => "call-value",
+            Self::ListConcat(_) => "list-concat",
             Self::VectorMap { .. } => "vector-map",
             Self::VectorMapScalar { .. } => "vector-map-scalar",
             Self::VectorReduce { .. } => "vector-reduce",

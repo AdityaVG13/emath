@@ -13,6 +13,7 @@ pub(super) fn eval_calls(
             body,
             inputs,
             state,
+            ..
         } => {
             if inputs.len() != usize::from(body.input_count)
                 || state.len() != usize::from(body.state_count)
@@ -26,7 +27,7 @@ pub(super) fn eval_calls(
             let state = ValueFrame::mapped(registers, state)?;
             evaluate_frames(body, inputs, state, budget)
         }
-        EmirOp::CallSelf { inputs } => {
+        EmirOp::CallSelf { inputs, .. } => {
             if inputs.len() != usize::from(self_program.input_count) {
                 return Err(EvalFault::Arithmetic {
                     op: "call-self",
@@ -42,6 +43,53 @@ pub(super) fn eval_calls(
                 ValueFrame::direct(&[]),
                 budget,
             )
+        }
+        EmirOp::CallValue { program, inputs } => {
+            let Value::Program(callee) = register(registers, *program)?.clone() else {
+                return Err(EvalFault::TypeConfusion {
+                    register: program.0,
+                    op: "call-value",
+                });
+            };
+            let mut arguments = Vec::with_capacity(inputs.len());
+            for value in inputs {
+                arguments.push(register(registers, *value)?.clone());
+            }
+            if arguments.is_empty() {
+                return Err(EvalFault::Arithmetic {
+                    op: "call-value",
+                    detail: "call requires at least one argument",
+                });
+            }
+            // Curried fold: apply one argument at a time; a partial
+            // application yields another program value for the next
+            // argument, so the house application form `f(a, b)` is one op.
+            let mut result = Value::Program(callee);
+            for argument in arguments {
+                let Value::Program(current) = result else {
+                    return Err(EvalFault::CarrierRefused {
+                        op: "call-value",
+                        detail: "curried application reached a non-program value".into(),
+                    });
+                };
+                if current.vector_input || current.body.state_count != 0 {
+                    return Err(EvalFault::Arithmetic {
+                        op: "call-value",
+                        detail: "expected a closed typed program",
+                    });
+                }
+                let mut frame = Vec::with_capacity(1 + current.captures.len());
+                frame.push(argument);
+                frame.extend(current.captures.iter().cloned());
+                if frame.len() != usize::from(current.body.input_count) {
+                    return Err(EvalFault::Arithmetic {
+                        op: "call-value",
+                        detail: "program input count mismatch",
+                    });
+                }
+                result = evaluate_with_budget(&current.body, &frame, &[], budget)?;
+            }
+            Ok(result)
         }
         EmirOp::DenseLayout(value) => register(registers, *value)?
             .dense_layout()
@@ -179,6 +227,7 @@ pub(super) fn eval_calls(
             body,
             captures,
             vector_input,
+            ..
         } => Ok(Value::Program(ProgramValue {
             body: body.clone(),
             captures: captures

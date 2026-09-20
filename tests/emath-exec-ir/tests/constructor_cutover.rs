@@ -1350,6 +1350,138 @@ emath function Fib:
         demand_emission_parity(p, &approx_tree, "candidate", &unused);
     });
 
+    probe.case("emit-lane-forms-parity", |p| {
+        // The emit-lane pilot shapes (bead emath-ch6e3): every source
+        // form the research loop lowers must reach VM-vs-EMIR parity,
+        // and the refusal seam must stay a named refusal in both lanes.
+        all_passed("emit_lane_forms.emath");
+        let tree = parse_ok("emit_lane_forms.emath");
+        let unused = unused_inputs();
+
+        // p1: nested record-field projection.
+        let outer = CValue::Record {
+            type_name: "Outer".into(),
+            fields: std::sync::Arc::new(BTreeMap::from([(
+                "inner".into(),
+                CValue::Record {
+                    type_name: "Inner".into(),
+                    fields: std::sync::Arc::new(BTreeMap::from([("x".into(), int(7))])),
+                },
+            )])),
+        };
+        demand_emission_parity(
+            p,
+            &tree,
+            "ReadNested",
+            &BTreeMap::from([("o".into(), outer)]),
+        );
+
+        // p2: record construction in a definition.
+        demand_emission_parity(p, &tree, "MakePt", &BTreeMap::from([("a".into(), int(4))]));
+
+        // p3: function-typed input applied in the body. The closure
+        // value itself is produced by MakeF, so this also pins closure
+        // values as emitted carriers (ProgramLiteral parity).
+        demand_emission_parity(p, &tree, "MakeF", &unused);
+        let f = match evaluate_function(&tree, "MakeF", &unused) {
+            Ok(value @ CValue::Closure(_)) => value,
+            other => {
+                p.fail("makef-vm", format!("{other:?}"));
+                return;
+            }
+        };
+        demand_emission_parity(
+            p,
+            &tree,
+            "ApplyTwice",
+            &BTreeMap::from([("f".into(), f), ("k".into(), int(1))]),
+        );
+
+        // p4: two-level curried closure input (the loop's probe seam).
+        demand_emission_parity(p, &tree, "MakeProbe", &unused);
+        let probe = match evaluate_function(&tree, "MakeProbe", &unused) {
+            Ok(value @ CValue::Closure(_)) => value,
+            other => {
+                p.fail("makeprobe-vm", format!("{other:?}"));
+                return;
+            }
+        };
+        let cs = CValue::Record {
+            type_name: "CS".into(),
+            fields: std::sync::Arc::new(BTreeMap::from([(
+                "ids".into(),
+                CValue::Sequence(std::sync::Arc::new(Vec::new())),
+            )])),
+        };
+        demand_emission_parity(
+            p,
+            &tree,
+            "ScoreAt",
+            &BTreeMap::from([
+                ("probe".into(), probe),
+                ("k".into(), int(3)),
+                ("cs".into(), cs),
+            ]),
+        );
+
+        // p5: sequence of records - literal, cons, index-field chain.
+        demand_emission_parity(p, &tree, "SeqOps", &BTreeMap::from([("a".into(), int(3))]));
+
+        // p7: the refusal path refuses in BOTH lanes with the authored code.
+        let negative = BTreeMap::from([("n".into(), int(-1))]);
+        match evaluate_function(&tree, "Guarded", &negative) {
+            Err(fault) => {
+                p.demand(
+                    "guarded-vm-refuses",
+                    fault.to_string().contains("bad_input"),
+                    fault.to_string(),
+                );
+            }
+            Ok(value) => {
+                p.fail("guarded-vm-refuses", format!("vm returned {value:?}"));
+            }
+        }
+        match lower_constructor_function(&tree, "Guarded") {
+            Ok(lowered) => {
+                p.demand(
+                    "guarded-runnable",
+                    lowered.runnable,
+                    format!("{:?}", lowered.unresolved),
+                );
+                if lowered.runnable {
+                    let emir_n = match cvalue_to_emir(&int(-1)) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            p.fail("guarded-input", err);
+                            return;
+                        }
+                    };
+                    match evaluate(&lowered.program, &[emir_n], &[]) {
+                        Err(fault) => {
+                            p.demand(
+                                "guarded-emir-refuses",
+                                fault.to_string().contains("bad_input"),
+                                fault.to_string(),
+                            );
+                        }
+                        Ok(value) => {
+                            p.fail("guarded-emir-refuses", format!("emir returned {value:?}"));
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                p.fail("guarded-lower", err);
+            }
+        }
+        // The non-refusing arm still computes in both lanes.
+        demand_emission_parity(p, &tree, "Guarded", &BTreeMap::from([("n".into(), int(2))]));
+
+        // p8: sibling call (direct cross-function reference).
+        demand_emission_parity(p, &tree, "Double", &BTreeMap::from([("n".into(), int(3))]));
+        demand_emission_parity(p, &tree, "Quad", &BTreeMap::from([("n".into(), int(3))]));
+    });
+
     probe.case("constructor-check-unbound", |p| {
         let (tree, diagnostics) = parse_str(
             "emath function Bad:\n    inputs:\n        x: Int\n    outputs:\n        y: Int\n    definitions:\n        y = missing_name\n",

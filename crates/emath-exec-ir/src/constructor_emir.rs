@@ -7,7 +7,8 @@
 
 use emath_core::Span;
 use emath_core::tree::{
-    BinaryOp, Declaration, Expr, ExprKind, Item, StmtKind, SyntaxTree, UnaryOp,
+    BinaryOp, Declaration, Expr, ExprKind, GenericArg, Item, StmtKind, SyntaxTree, TypeExpr,
+    TypeKind, UnaryOp,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -74,13 +75,38 @@ fn lower_named(
     for (_, expr) in &defs {
         collect_called_names(expr, &mut callees);
     }
+    let objects = object_kinds(tree);
+    let object_names: BTreeSet<String> = objects.keys().cloned().collect();
     for callee in callees {
         if callee == name || !function_exists(tree, &callee) {
             continue;
         }
         match lower_named(tree, &callee, cache, visiting) {
             Ok(other) if other.runnable => {
-                siblings.insert(callee, other.program);
+                // Authored input carriers for the inlined frame: an
+                // argument with no self-evident kind (an empty `[]`)
+                // recovers its carrier from the callee's declaration.
+                let declared = tree
+                    .items
+                    .iter()
+                    .find_map(|item| match item {
+                        Item::Declaration(decl)
+                            if decl.as_kind == "function" && decl.name == callee =>
+                        {
+                            Some(
+                                section_typed_fields(decl, "inputs")
+                                    .iter()
+                                    .map(|(_, ty)| {
+                                        constructor_type_signature(ty, &object_names)
+                                            .unwrap_or_default()
+                                    })
+                                    .collect::<Vec<_>>(),
+                            )
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                siblings.insert(callee, (other.program, declared));
             }
             Ok(other) => {
                 unresolved.extend(other.unresolved);
@@ -95,10 +121,28 @@ fn lower_named(
         inputs: inputs.clone(),
         locals: BTreeMap::new(),
         siblings,
-        objects: object_kinds(tree),
+        objects,
         ops: Vec::new(),
         obligations: Vec::new(),
         self_name: Some(name.to_string()),
+        // The authored output grounds self-recursion kind inference:
+        // multi-output functions pack a `Record<name>` result.
+        self_result: {
+            let outputs = section_typed_fields(decl, "outputs");
+            if outputs.len() > 1 {
+                format!("Record<{name}>")
+            } else {
+                outputs
+                    .first()
+                    .and_then(|(_, ty)| constructor_type_signature(ty, &object_names))
+                    .unwrap_or_default()
+            }
+        },
+        arrow_names: section_typed_fields(decl, "inputs")
+            .iter()
+            .filter(|(_, ty)| matches!(ty.kind, TypeKind::Fn { .. }))
+            .map(|(input, _)| input.clone())
+            .collect(),
     };
     if !unresolved.is_empty() {
         visiting.remove(name);
@@ -119,6 +163,12 @@ fn lower_named(
         match lowerer.expr(expr) {
             Ok(value) => {
                 lowerer.locals.insert(def_name.clone(), value);
+                // A def bound to a function literal is closure-valued:
+                // later one-argument calls on this name are closure
+                // calls, not field access.
+                if matches!(expr.kind, ExprKind::FunctionAbs { .. }) {
+                    lowerer.arrow_names.insert(def_name.clone());
+                }
             }
             Err(err) => {
                 visiting.remove(name);
@@ -186,11 +236,26 @@ fn function_exists(tree: &SyntaxTree, name: &str) -> bool {
 struct Lowerer {
     inputs: Vec<String>,
     locals: BTreeMap<String, EmirValue>,
-    siblings: BTreeMap<String, EmirProgram>,
+    /// Inlined sibling programs with their authored input carrier
+    /// signatures (one per declared input, empty = unknown). The
+    /// backend recovers degenerate argument kinds (an empty `[]`)
+    /// from the declaration instead of guessing.
+    siblings: BTreeMap<String, (EmirProgram, Vec<String>)>,
     objects: BTreeMap<String, String>,
     ops: Vec<(EmirOp, Span)>,
     obligations: Vec<DomainObligation>,
     self_name: Option<String>,
+    /// The enclosing function's authored output carrier signature
+    /// (empty = unknown). `CallSelf` sites carry it so backend kind
+    /// inference reads the declared result instead of guessing from
+    /// the first argument.
+    self_result: String,
+    /// Names known to be closure-valued: arrow-declared inputs, defs
+    /// bound to function literals, arrow-domain params of nested
+    /// literals. A one-argument call on any OTHER name is field access
+    /// (`base.field` parses as `Call { Path[field], [base] }`), so
+    /// this set is what disambiguates closure calls from projections.
+    arrow_names: BTreeSet<String>,
 }
 
 impl Lowerer {
@@ -235,6 +300,8 @@ impl Lowerer {
             ops: Vec::new(),
             obligations: Vec::new(),
             self_name: self.self_name.clone(),
+            self_result: self.self_result.clone(),
+            arrow_names: self.arrow_names.clone(),
         }
     }
 
@@ -258,7 +325,66 @@ impl Lowerer {
             body: program,
             inputs,
             state: Vec::new(),
+            declared: Vec::new(),
         }))
+    }
+
+    /// Lower a function literal capture-aware: free names of the body
+    /// that resolve in the enclosing frame become explicit capture
+    /// inputs, so a nested literal like `function k in Int: function cs
+    /// in CS: k / 8` closes over `k` instead of faulting unbound. The
+    /// returned capture values are enclosing-frame registers; both the
+    /// value form (ProgramLiteral) and immediate application (CallFrame)
+    /// place them after the explicit arguments. The child inherits the
+    /// arrow-ness of captured closure names; an arrow-domain parameter
+    /// is itself callable.
+    fn lower_function_abs(
+        &mut self,
+        param: &str,
+        domain: &Expr,
+        body: &Expr,
+    ) -> Result<(EmirProgram, Vec<EmirValue>), String> {
+        let mut free = BTreeSet::new();
+        collect_free_names(body, param, &mut free);
+        let mut captures: Vec<String> = Vec::new();
+        for name in &free {
+            if self.inputs.contains(name) || self.locals.contains_key(name) {
+                captures.push(name.clone());
+            }
+        }
+        let mut inputs = vec![param.to_string()];
+        inputs.extend(captures.iter().cloned());
+        let mut arrow_names = self
+            .arrow_names
+            .iter()
+            .filter(|name| inputs.contains(*name))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        if is_arrow_domain(domain) {
+            arrow_names.insert(param.to_string());
+        }
+        let mut child = Lowerer {
+            inputs,
+            locals: BTreeMap::new(),
+            siblings: self.siblings.clone(),
+            objects: self.objects.clone(),
+            ops: Vec::new(),
+            obligations: Vec::new(),
+            self_name: None,
+            self_result: String::new(),
+            arrow_names,
+        };
+        let result = child.expr(body)?;
+        let program = child.finish(result);
+        let mut values = Vec::with_capacity(captures.len());
+        for name in &captures {
+            if let Some(index) = self.inputs.iter().position(|input| input == name) {
+                values.push(self.push(EmirOp::LoadInput(index as u16)));
+            } else if let Some(value) = self.locals.get(name) {
+                values.push(*value);
+            }
+        }
+        Ok((program, values))
     }
 
     fn lower_cases(
@@ -293,11 +419,13 @@ impl Lowerer {
         if let Some(index) = self.inputs.iter().position(|input| input == &name) {
             return Ok(self.push(EmirOp::LoadInput(index as u16)));
         }
-        if segments.len() == 2 {
-            let record = self.lookup_path(&segments[..1])?;
+        if segments.len() >= 2 {
+            // Nested record projection: resolve the head, then chain one
+            // RecordField per remaining hop (`o.inner.x` projects twice).
+            let record = self.lookup_path(&segments[..segments.len() - 1])?;
             return Ok(self.push(EmirOp::RecordField {
                 record,
-                field: segments[1].clone(),
+                field: segments[segments.len() - 1].clone(),
             }));
         }
         Err(format!("unbound `{name}` in emission"))
@@ -330,6 +458,14 @@ impl Lowerer {
             }));
         }
         if called == "constructor_refuse" {
+            // Intentional refusal ABI in emission: a quoted single
+            // identifier names the refusal code, and the evaluating
+            // branch refuses at runtime with that code (the same named
+            // fault the constructor VM raises). Any other shape stays
+            // refused - a refusal is never emitted as a value.
+            if let Some(code) = quoted_reason(args) {
+                return Ok(self.push(EmirOp::Refuse(code)));
+            }
             return Err(
                 "constructor_refuse is an intentional refusal ABI; it is not emitted as a successful call"
                     .into(),
@@ -349,9 +485,12 @@ impl Lowerer {
             for arg in args {
                 inputs.push(self.expr(arg)?);
             }
-            return Ok(self.push(EmirOp::CallSelf { inputs }));
+            return Ok(self.push(EmirOp::CallSelf {
+                inputs,
+                result: self.self_result.clone(),
+            }));
         }
-        if let Some(body) = self.siblings.get(&called).cloned() {
+        if let Some((body, declared)) = self.siblings.get(&called).cloned() {
             let mut inputs = Vec::new();
             for arg in args {
                 inputs.push(self.expr(arg)?);
@@ -360,9 +499,37 @@ impl Lowerer {
                 body,
                 inputs,
                 state: Vec::new(),
+                declared,
             }));
         }
-        if segments.len() == 1 && args.len() == 1 && !self.inputs.iter().any(|input| input == &called)
+        // A callee bound in the enclosing frame is a closure value:
+        // emit a typed indirect call. Curried programs fold application
+        // left, so `probe(k, cs)` on `Int -> CaseSet -> Rat` is one op.
+        // The arrow-name gate keeps field access (`base.field`, which
+        // parses as this same one-argument call shape) from shadowing:
+        // only closure-valued names (arrow-declared inputs, function
+        // literal defs, arrow-domain params) take this arm.
+        if self.arrow_names.contains(&called)
+            && let Some(program) = self.locals.get(&called).copied().or_else(|| {
+            self.inputs
+                .iter()
+                .position(|input| input == &called)
+                .map(|index| self.push(EmirOp::LoadInput(index as u16)))
+        }) {
+            let mut inputs = Vec::new();
+            for arg in args {
+                inputs.push(self.expr(arg)?);
+            }
+            if inputs.is_empty() {
+                return Err(format!("call `{called}` requires at least one argument"));
+            }
+            return Ok(self.push(EmirOp::CallValue { program, inputs }));
+        }
+        // `base.field` parses as `Call { Path[field], [base] }`: a
+        // one-argument call on a name that is not closure-valued is
+        // record projection. (A bound non-arrow callee cannot be a
+        // call: the engine faults calling a non-function.)
+        if segments.len() == 1 && args.len() == 1 && !self.arrow_names.contains(&called)
         {
             let record = self.expr(&args[0])?;
             return Ok(self.push(EmirOp::RecordField {
@@ -522,24 +689,45 @@ impl Lowerer {
             }
             ExprKind::Call { function, args } => match &function.kind {
                 ExprKind::Recur { name, body, .. } => self.lower_recur_apply(name, body, args),
-                ExprKind::FunctionAbs { param, body, .. } => {
-                    let nested = lower_closed(std::slice::from_ref(param), body, None)?;
+                ExprKind::FunctionAbs { param, domain, body } => {
+                    let (nested, captures) = self.lower_function_abs(param, domain, body)?;
                     let mut inputs = Vec::new();
                     for arg in args {
                         inputs.push(self.expr(arg)?);
                     }
+                    // Immediate application: the literal frame takes the
+                    // call arguments first, then the closure's captures.
+                    let capture_count = captures.len();
+                    inputs.extend(captures);
+                    // The parameter's authored domain declares the
+                    // first frame input; captures carry their own
+                    // parent-frame kinds.
+                    let mut declared = vec![
+                        domain_signature(domain, &self.objects).unwrap_or_default(),
+                    ];
+                    declared.extend(std::iter::repeat(String::new()).take(capture_count));
                     Ok(self.push(EmirOp::CallFrame {
                         body: nested,
                         inputs,
                         state: Vec::new(),
+                        declared,
                     }))
                 }
                 ExprKind::Path { segments, .. } => self.lower_named_call(segments, args),
                 other => Err(format!("call is not yet emitted: {other:?}")),
             },
-            ExprKind::FunctionAbs { param, body, .. } => {
-                let nested = lower_closed(std::slice::from_ref(param), body, None)?;
-                Ok(self.push(EmirOp::program_literal(nested)))
+            ExprKind::FunctionAbs { param, domain, body } => {
+                let (nested, captures) = self.lower_function_abs(param, domain, body)?;
+                // An unmapped domain keeps the empty numeric-lane
+                // signature (interp-verified carrier), matching the
+                // pre-typed-ABI behavior instead of refusing lowering.
+                let signature = domain_signature(domain, &self.objects).unwrap_or_default();
+                Ok(self.push(EmirOp::ProgramLiteral {
+                    body: nested,
+                    captures,
+                    vector_input: false,
+                    signature,
+                }))
             }
             ExprKind::List(items) => {
                 let mut values = Vec::new();
@@ -554,6 +742,32 @@ impl Lowerer {
                     values.push(self.expr(item)?);
                 }
                 Ok(self.push(EmirOp::ListCreate(values)))
+            }
+            ExprKind::Record { type_path, fields } => {
+                // Authored record literal: the type name is the final
+                // path segment (module-qualified spellings install the
+                // bare name), fields stay in authored order.
+                let type_name = type_path.last().cloned().ok_or_else(|| {
+                    "record literal requires a type path".to_string()
+                })?;
+                let mut values = Vec::with_capacity(fields.len());
+                for (name, field) in fields {
+                    values.push((name.clone(), self.expr(field)?));
+                }
+                Ok(self.push(EmirOp::RecordCreate {
+                    type_name,
+                    fields: values,
+                }))
+            }
+            ExprKind::SequenceCons { head, tail } => {
+                // `[head, ..tail]`: cons as a one-element list
+                // concatenated onto the tail. ListConcat preserves
+                // element carriers (records stay records), unlike the
+                // Float64 dense-lane VectorConcat.
+                let head = self.expr(head)?;
+                let tail = self.expr(tail)?;
+                let singleton = self.push(EmirOp::ListCreate(vec![head]));
+                Ok(self.push(EmirOp::ListConcat(vec![singleton, tail])))
             }
             ExprKind::Index { value, indices } => {
                 let vector = self.expr(value)?;
@@ -615,6 +829,8 @@ fn lower_closed(
         ops: Vec::new(),
         obligations: Vec::new(),
         self_name,
+        self_result: String::new(),
+        arrow_names: BTreeSet::new(),
     };
     let result = lowerer.expr(body)?;
     Ok(lowerer.finish(result))
@@ -629,6 +845,12 @@ fn expr_uses_quote(expr: &Expr) -> bool {
     match &expr.kind {
         ExprKind::Quote { .. } | ExprKind::QuoteBind { .. } => true,
         ExprKind::Call { function, args } => {
+            if is_refuse_quote_call(function, args) {
+                // `constructor_refuse(quote(code))` is emitted as a
+                // named runtime refusal, not residualized as a quote
+                // transform.
+                return false;
+            }
             if let ExprKind::Path { segments, .. } = &function.kind {
                 if segments.first().map(String::as_str) == Some("quote") {
                     return true;
@@ -683,12 +905,206 @@ fn expr_uses_quote(expr: &Expr) -> bool {
     }
 }
 
+/// `constructor_refuse(quote(name))`: the authored single-identifier
+/// reason carried by the quote, if the argument is exactly that shape.
+fn quoted_reason(args: &[Expr]) -> Option<String> {
+    if args.len() != 1 {
+        return None;
+    }
+    match &args[0].kind {
+        ExprKind::Quote { body } => match &body.kind {
+            ExprKind::Path { segments, .. } if segments.len() == 1 => Some(segments[0].clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// True when the call is exactly `constructor_refuse(quote(name))` - the
+/// one quote shape emission handles directly (a named runtime refusal).
+fn is_refuse_quote_call(function: &Expr, args: &[Expr]) -> bool {
+    let ExprKind::Path { segments, .. } = &function.kind else {
+        return false;
+    };
+    segments.len() == 1 && segments[0] == "constructor_refuse" && quoted_reason(args).is_some()
+}
+
+/// Carrier signature for a binder-domain expression: `Int` -> `Int`,
+/// an object name -> `Record<Name>`, `sequence(T)` -> `Vector<T>`, and
+/// the arrow bridge `A -> B` (parsed as `Call { Path[Fn], [A, B] }`)
+/// -> `Fn<A,B>`. None means the domain has no native carrier.
+fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>) -> Option<String> {
+    match &domain.kind {
+        ExprKind::Path { segments, .. } => {
+            let name = segments.last()?;
+            match name.as_str() {
+                "Int" | "Rat" | "Bool" | "Text" | "Float64" => Some(name.to_string()),
+                _ => objects.contains_key(name).then(|| format!("Record<{name}>")),
+            }
+        }
+        ExprKind::Call { function, args } => {
+            let ExprKind::Path { segments, .. } = &function.kind else {
+                return None;
+            };
+            match segments.last()?.as_str() {
+                // Arrow bridge: every part but the last is a domain.
+                "Fn" => {
+                    let parts = args
+                        .iter()
+                        .map(|arg| domain_signature(arg, objects))
+                        .collect::<Option<Vec<_>>>()?;
+                    let (result, domains) = parts.split_last()?;
+                    Some(format!("Fn<{},{}>", domains.join(","), result))
+                }
+                "sequence" => {
+                    let [element] = args.as_slice() else { return None };
+                    Some(format!("Vector<{}>", domain_signature(element, objects)?))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Free path-head names of a closure body, excluding the closure's own
+/// parameter. Nested literals bind their own params, so only true
+/// enclosing names surface (the capture candidates).
+/// `A -> B` in a domain position parses as `Call { Path[Fn], [A, B] }`
+/// (the parser's fn-arrow bridge); the literal's parameter is itself
+/// callable when its domain has that shape.
+fn is_arrow_domain(domain: &Expr) -> bool {
+    matches!(
+        &domain.kind,
+        ExprKind::Call { function, .. }
+            if matches!(
+                &function.kind,
+                ExprKind::Path { segments, .. }
+                    if segments.len() == 1 && segments[0] == "Fn"
+            )
+    )
+}
+
+fn collect_free_names(expr: &Expr, param: &str, out: &mut BTreeSet<String>) {
+    let mut bound = BTreeSet::from([param.to_string()]);
+    collect_free_names_bound(expr, &mut bound, out);
+}
+
+fn collect_free_names_bound(
+    expr: &Expr,
+    bound: &mut BTreeSet<String>,
+    out: &mut BTreeSet<String>,
+) {
+    match &expr.kind {
+        ExprKind::Path { segments, .. } => {
+            if let Some(head) = segments.first() {
+                if !bound.contains(head) {
+                    out.insert(head.clone());
+                }
+            }
+        }
+        ExprKind::Call { function, args } => {
+            collect_free_names_bound(function, bound, out);
+            for arg in args {
+                collect_free_names_bound(arg, bound, out);
+            }
+        }
+        ExprKind::Unary { value, .. } => collect_free_names_bound(value, bound, out),
+        ExprKind::Binary { left, right, .. } => {
+            collect_free_names_bound(left, bound, out);
+            collect_free_names_bound(right, bound, out);
+        }
+        ExprKind::If {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            collect_free_names_bound(condition, bound, out);
+            collect_free_names_bound(then_value, bound, out);
+            collect_free_names_bound(else_value, bound, out);
+        }
+        ExprKind::FunctionAbs { param, body, .. } => {
+            bound.insert(param.clone());
+            collect_free_names_bound(body, bound, out);
+            bound.remove(param);
+        }
+        ExprKind::Recur { name, body, ty } => {
+            bound.insert(name.clone());
+            collect_free_names_bound(ty, bound, out);
+            collect_free_names_bound(body, bound, out);
+            bound.remove(name);
+        }
+        ExprKind::QuoteBind {
+            param,
+            domain,
+            body,
+        } => {
+            bound.insert(param.clone());
+            collect_free_names_bound(domain, bound, out);
+            collect_free_names_bound(body, bound, out);
+            bound.remove(param);
+        }
+        ExprKind::CallableBinder {
+            callee,
+            param,
+            domain,
+            body,
+        } => {
+            bound.insert(param.clone());
+            collect_free_names_bound(callee, bound, out);
+            collect_free_names_bound(domain, bound, out);
+            collect_free_names_bound(body, bound, out);
+            bound.remove(param);
+        }
+        ExprKind::Cases {
+            subject,
+            arms,
+            else_arm,
+        } => {
+            if let Some(subject) = subject {
+                collect_free_names_bound(subject, bound, out);
+            }
+            for (cond, value) in arms {
+                collect_free_names_bound(cond, bound, out);
+                collect_free_names_bound(value, bound, out);
+            }
+            collect_free_names_bound(else_arm, bound, out);
+        }
+        ExprKind::List(items) | ExprKind::Tuple(items) => {
+            for item in items {
+                collect_free_names_bound(item, bound, out);
+            }
+        }
+        ExprKind::Index { value, indices } => {
+            collect_free_names_bound(value, bound, out);
+            for index in indices {
+                collect_free_names_bound(index, bound, out);
+            }
+        }
+        ExprKind::Record { fields, .. } => {
+            for (_, field) in fields {
+                collect_free_names_bound(field, bound, out);
+            }
+        }
+        ExprKind::SequenceCons { head, tail } => {
+            collect_free_names_bound(head, bound, out);
+            collect_free_names_bound(tail, bound, out);
+        }
+        _ => {}
+    }
+}
+
 fn collect_unresolved(expr: &Expr, out: &mut Vec<String>) {
     match &expr.kind {
         ExprKind::Quote { .. } | ExprKind::QuoteBind { .. } => {
             out.push("quote".into());
         }
         ExprKind::Call { function, args } => {
+            if is_refuse_quote_call(function, args) {
+                // The named-refusal quote is emitted (Refuse), so it is
+                // not unresolved symbolic code.
+                return;
+            }
             collect_unresolved(function, out);
             for arg in args {
                 collect_unresolved(arg, out);
@@ -757,6 +1173,18 @@ fn collect_unresolved(expr: &Expr, out: &mut Vec<String>) {
                 collect_unresolved(index, out);
             }
         }
+        ExprKind::SequenceCons { head, tail } => {
+            collect_unresolved(head, out);
+            collect_unresolved(tail, out);
+        }
+        // A record-literal field can carry a call (`SimState: {y:
+        // combine(...)}`); without this arm the callee never joins
+        // the sibling map.
+        ExprKind::Record { fields, .. } => {
+            for (_, field) in fields {
+                collect_unresolved(field, out);
+            }
+        }
         _ => {}
     }
 }
@@ -819,6 +1247,18 @@ fn collect_called_names(expr: &Expr, out: &mut BTreeSet<String>) {
                 collect_called_names(index, out);
             }
         }
+        // A cons head can carry a call (`[row_dot(tab, i, v), ..acc]`);
+        // without this arm the callee never joins the sibling map and
+        // the call falls through to the not-yet-emitted refusal.
+        ExprKind::SequenceCons { head, tail } => {
+            collect_called_names(head, out);
+            collect_called_names(tail, out);
+        }
+        ExprKind::Record { fields, .. } => {
+            for (_, field) in fields {
+                collect_called_names(field, out);
+            }
+        }
         _ => {}
     }
 }
@@ -833,6 +1273,60 @@ fn section_fields(decl: &Declaration, name: &str) -> Vec<String> {
         }
     }
     names
+}
+
+/// Section fields with their declared types (`inputs:`/`outputs:`
+/// FieldDecls). The declared types are ground truth for the emitted
+/// entry's parameter signature.
+pub fn section_typed_fields(decl: &Declaration, name: &str) -> Vec<(String, TypeExpr)> {
+    let mut fields = Vec::new();
+    for section in decl.sections().filter(|section| section.name == name) {
+        for stmt in &section.suite.statements {
+            if let StmtKind::FieldDecl { name, ty, .. } = &stmt.kind {
+                fields.push((name.clone(), ty.clone()));
+            }
+        }
+    }
+    fields
+}
+
+/// Declared type → carrier signature string, the interchange between
+/// the constructor lane and the Rust backend's kind parser:
+/// `Int`/`Nat` → "Int", `Rat` → "Rat", `Bool` → "Bool", `Float64` →
+/// "Float64", `Text` → "Text", an object name → "Record<name>",
+/// `sequence(T)` → "Vector<T>", `A -> B` → "Fn<A,B>". Unmapped forms
+/// return None - the caller refuses emission rather than guessing a
+/// carrier.
+pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> Option<String> {
+    match &ty.kind {
+        TypeKind::Path { segments, generic_args } => {
+            let last = segments.last()?;
+            match last.as_str() {
+                "Int" | "Nat" => Some("Int".into()),
+                "Rat" => Some("Rat".into()),
+                "Bool" => Some("Bool".into()),
+                "Float64" => Some("Float64".into()),
+                "Text" => Some("Text".into()),
+                "sequence" => {
+                    let GenericArg::Type(element) = generic_args.first()? else {
+                        return None;
+                    };
+                    Some(format!(
+                        "Vector<{}>",
+                        constructor_type_signature(element, objects)?
+                    ))
+                }
+                name if objects.contains(name) => Some(format!("Record<{name}>")),
+                _ => None,
+            }
+        }
+        TypeKind::Fn { domain, codomain } => Some(format!(
+            "Fn<{},{}>",
+            constructor_type_signature(domain, objects)?,
+            constructor_type_signature(codomain, objects)?
+        )),
+        _ => None,
+    }
 }
 
 fn object_kinds(tree: &SyntaxTree) -> BTreeMap<String, String> {
@@ -914,6 +1408,33 @@ pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate:
                 type_name: type_name.clone(),
                 fields: converted,
             })
+        }
+        CValue::Closure(clos) => {
+            // A closed function literal lowers to a typed program value
+            // (the CallValue callee carrier). Closed means the body's
+            // free names are all parameters: the engine's captured env
+            // routinely holds enclosing-frame bindings the body never
+            // reads, so the gate is free names, not env population. A
+            // genuinely capturing or recursive closure stays in the
+            // constructor VM.
+            if clos.recursive.is_some() {
+                return Err(
+                    "recursive closures are not emitted as input carriers in this cut".into(),
+                );
+            }
+            let mut free = BTreeSet::new();
+            collect_free_names(&clos.body, &clos.param, &mut free);
+            if !free.is_empty() {
+                return Err(
+                    "capturing closures are not emitted as input carriers in this cut".into(),
+                );
+            }
+            let program = lower_closed(std::slice::from_ref(&clos.param), &clos.body, None)?;
+            Ok(Value::Program(crate::interp::ProgramValue {
+                body: program,
+                captures: Vec::new(),
+                vector_input: false,
+            }))
         }
         CValue::Buffer(_) => Err(
             "buffer carrier values are not emitted in this cut; run in the constructor VM"
@@ -1031,7 +1552,69 @@ fn emir_values_equal(left: &crate::interp::Value, right: &crate::interp::Value) 
                         .is_some_and(|other| emir_values_equal(value, other))
                 })
         }
+        (crate::interp::Value::Program(a), crate::interp::Value::Program(b)) => {
+            program_values_equal(a, b)
+        }
         _ => left == right,
+    }
+}
+
+/// Structural equality for program carriers. A literal's `signature`
+/// is an emission-ABI annotation that legitimately differs between
+/// the authored-lowering lane and the closed-value conversion lane,
+/// so it is ignored; bodies, captures, and packing must match.
+fn program_values_equal(
+    left: &crate::interp::ProgramValue,
+    right: &crate::interp::ProgramValue,
+) -> bool {
+    left.vector_input == right.vector_input
+        && left.captures.len() == right.captures.len()
+        && programs_equal(&left.body, &right.body)
+}
+
+fn programs_equal(left: &EmirProgram, right: &EmirProgram) -> bool {
+    left.input_count == right.input_count
+        && left.state_count == right.state_count
+        && left.result == right.result
+        && left.ops.len() == right.ops.len()
+        && left
+            .ops
+            .iter()
+            .zip(&right.ops)
+            .all(|((left_op, _), (right_op, _))| ops_equal(left_op, right_op))
+}
+
+fn ops_equal(left: &EmirOp, right: &EmirOp) -> bool {
+    match (left, right) {
+        (
+            EmirOp::ProgramLiteral { body: left_body, captures: left_captures, vector_input: left_vector, .. },
+            EmirOp::ProgramLiteral { body: right_body, captures: right_captures, vector_input: right_vector, .. },
+        ) => {
+            left_vector == right_vector
+                && left_captures == right_captures
+                && programs_equal(left_body, right_body)
+        }
+        (EmirOp::CallFrame { body: left_body, .. }, EmirOp::CallFrame { body: right_body, .. })
+        | (EmirOp::Fold { body: left_body, .. }, EmirOp::Fold { body: right_body, .. })
+        | (EmirOp::Collect { body: left_body, .. }, EmirOp::Collect { body: right_body, .. }) => {
+            programs_equal(left_body, right_body)
+        }
+        (
+            EmirOp::Branch { then_body: left_then, else_body: left_else, .. },
+            EmirOp::Branch { then_body: right_then, else_body: right_else, .. },
+        ) => programs_equal(left_then, right_then) && programs_equal(left_else, right_else),
+        (
+            EmirOp::Iterate { body: left_body, stop: left_stop, .. },
+            EmirOp::Iterate { body: right_body, stop: right_stop, .. },
+        ) => {
+            programs_equal(left_body, right_body)
+                && match (left_stop, right_stop) {
+                    (None, None) => true,
+                    (Some(left_stop), Some(right_stop)) => programs_equal(left_stop, right_stop),
+                    _ => false,
+                }
+        }
+        (left, right) => left == right,
     }
 }
 
@@ -1056,6 +1639,8 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         ops: Vec::new(),
         obligations: Vec::new(),
         self_name: None,
+        self_result: String::new(),
+        arrow_names: BTreeSet::new(),
     };
     let acc = step.push(EmirOp::LoadInput(1));
     let coeff = if contains_path(coeff, param) {
@@ -1083,6 +1668,8 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         ops: Vec::new(),
         obligations: Vec::new(),
         self_name: None,
+        self_result: String::new(),
+        arrow_names: BTreeSet::new(),
     };
     let count = outer.push(EmirOp::LoadInput(0));
     let init = outer.expr(then_value).ok()?;

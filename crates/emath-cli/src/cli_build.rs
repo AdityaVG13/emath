@@ -474,7 +474,25 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             "`emath build` emits constructor functions. Write `emath object`, `emath function`, or `emath query`.",
         ));
     }
-    let functions: Vec<String> = tree
+    // Merge `use` imports into one whole-program tree (the engine's
+    // install order) so imported objects and functions lower here too.
+    // The MAIN file's functions are the crate's entries; imported
+    // declarations join as lowering context (siblings, record
+    // layouts), never as re-emitted entries.
+    let main = tree;
+    let tree = match emath_exec_ir::constructor_layer::merged_tree_with_imports(&main, Some(spec)) {
+        Ok(tree) => tree,
+        Err(error) => {
+            return Some(refuse_coded(
+                "build",
+                json,
+                EXIT_ADMISSION,
+                emath_exec_ir::constructor_layer::constructor_admit_code(&error.code),
+                &format!("{}: {}", error.code, error.message),
+            ));
+        }
+    };
+    let functions: Vec<String> = main
         .items
         .iter()
         .filter_map(|item| match item {
@@ -493,14 +511,83 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             "`emath build` emits lowered Rust for `emath function` entries. Symbolic query-only files are not marked runnable.",
         ));
     }
+    // Authored records: every object's representation fields in the
+    // backend's carrier-signature interchange. An object with a field
+    // the interchange cannot map is left unregistered - referencing it
+    // then refuses with the named no-layout error instead of guessing.
+    use std::collections::BTreeSet;
+    let objects: BTreeSet<String> = tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            emath_core::tree::Item::Declaration(decl) if decl.as_kind == "object" => {
+                Some(decl.name.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    let mut records = Vec::new();
+    for item in &tree.items {
+        let emath_core::tree::Item::Declaration(decl) = item else {
+            continue;
+        };
+        if decl.as_kind == "object" {
+            let mut fields = Vec::new();
+            let mut mappable = true;
+            for (field, ty) in
+                emath_exec_ir::constructor_emir::section_typed_fields(decl, "representation")
+            {
+                match emath_exec_ir::constructor_emir::constructor_type_signature(&ty, &objects) {
+                    Some(signature) => fields.push((field, signature)),
+                    None => mappable = false,
+                }
+            }
+            if mappable {
+                records.push(emath_rust_backend::AuthoredRecord {
+                    name: decl.name.clone(),
+                    fields,
+                });
+            }
+        } else if decl.as_kind == "function" {
+            // Multi-output functions pack their outputs as a record
+            // named after the function (the lowerer's output packing),
+            // so the entry's result carrier needs that layout too.
+            let outputs =
+                emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
+            if outputs.len() > 1 {
+                let mut fields = Vec::new();
+                let mut mappable = true;
+                for (output, ty) in outputs {
+                    match emath_exec_ir::constructor_emir::constructor_type_signature(
+                        &ty,
+                        &objects,
+                    ) {
+                        Some(signature) => fields.push((output, signature)),
+                        None => mappable = false,
+                    }
+                }
+                if mappable {
+                    records.push(emath_rust_backend::AuthoredRecord {
+                        name: decl.name.clone(),
+                        fields,
+                    });
+                }
+            }
+        }
+    }
     let mut rust = String::from("#![forbid(unsafe_code)]\n\n");
     let mut runnable = true;
     let mut unresolved = Vec::new();
-    // One runnable entry per crate: a second runnable
-    // function would emit a second `pub fn entry` into the same
-    // lib.rs — a duplicate symbol the crate could never compile.
-    // Not-runnable siblings emit as comments and never count.
-    let mut entries = 0usize;
+    match emath_rust_backend::emit_record_definitions(&records) {
+        Ok(definitions) => rust.push_str(&definitions),
+        Err(error) => {
+            runnable = false;
+            unresolved.push(error.to_string());
+        }
+    }
+    // One named entry per runnable function: sibling calls (pilot p8)
+    // need both functions in the same crate, so entries carry their
+    // function names instead of a shared `entry` symbol.
     for name in &functions {
         match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, name) {
             Ok(lowered) => {
@@ -512,34 +599,56 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
                     ));
                     continue;
                 }
-                match emath_rust_backend::emit_constructor_program(&lowered.program, &lowered.inputs)
-                {
+                // Declared carriers ground the entry ABI; an untyped
+                // input falls back to the numeric lane's Int.
+                let declared = main
+                    .items
+                    .iter()
+                    .find_map(|item| match item {
+                        emath_core::tree::Item::Declaration(decl) if &decl.name == name => Some(
+                            emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs"),
+                        ),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                let inputs: Vec<(String, Option<String>)> = lowered
+                    .inputs
+                    .iter()
+                    .map(|input| {
+                        let signature = declared
+                            .iter()
+                            .find(|(declared, _)| declared == input)
+                            .and_then(|(_, ty)| {
+                                emath_exec_ir::constructor_emir::constructor_type_signature(
+                                    ty, &objects,
+                                )
+                            });
+                        (input.clone(), signature)
+                    })
+                    .collect();
+                match emath_rust_backend::emit_constructor_entry(
+                    &lowered.program,
+                    name,
+                    &inputs,
+                    &records,
+                ) {
                     Ok(body) => {
-                        entries += 1;
-                        if entries > 1 {
-                            return Some(refuse_coded(
-                                "build",
-                                json,
-                                EXIT_ADMISSION,
-                                "E-CODEGEN-013",
-                                &format!(
-                                    "`emath build` emits one entry per crate: `{name}` is a second runnable function in this file. Split the file into one `emath function` per file."
-                                ),
-                            ));
-                        }
                         rust.push_str(&format!("// function `{name}`\n"));
                         rust.push_str(&body);
                         rust.push('\n');
                     }
-                    Err(err) => {
+                    Err(error) => {
                         runnable = false;
-                        unresolved.push(err.to_string());
+                        unresolved.push(error.to_string());
+                        rust.push_str(&format!(
+                            "// `{name}` is not marked runnable: {error}\n"
+                        ));
                     }
                 }
             }
-            Err(err) => {
+            Err(error) => {
                 runnable = false;
-                unresolved.push(err);
+                unresolved.push(error);
             }
         }
     }

@@ -604,8 +604,9 @@ lane_begin
 for FIXTURE in language/examples/*/*.emath; do
     if cargo run -q -p emath-cli -- check "$FIXTURE" >/dev/null 2>&1; then
         # Admitted examples must build honestly OR refuse with a typed
-        # code (multi-function teaching files refuse E-CODEGEN-013 by
-        # design); a silent build failure is the escape this catches.
+        # code (multi-function teaching files build with one named
+        # entry per function); a silent build failure is the escape
+        # this catches.
         if ! cargo run -q -p emath-cli -- build "$FIXTURE" --out "$TMP_DIR/examples" >/dev/null 2>&1; then
             BUILD_OUT="$(cargo run -q -p emath-cli -- build "$FIXTURE" --out "$TMP_DIR/examples" 2>&1 || true)"
             if ! printf '%s\n' "$BUILD_OUT" | grep -qE "E-[A-Z]+-[0-9A-Z]+"; then

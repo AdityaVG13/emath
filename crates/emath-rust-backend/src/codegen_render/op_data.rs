@@ -96,17 +96,23 @@ pub(super) fn op_data_exprs(
             render_expr(&operand(program, *element))
         ))),
         EmirOp::RecordCreate { type_name, fields } => {
-            if emath_exec_ir::native_kernel::installed_record_layout(type_name).is_none() {
+            if record_layout(type_name).is_none() {
                 return Err(BackendError::UnsupportedType(format!(
                     "record {type_name} has no authored layout"
                 )));
             }
-            let layout = emath_exec_ir::native_kernel::installed_record_layout(type_name)
+            let layout = record_layout(type_name)
                 .ok_or_else(|| BackendError::UnsupportedType(type_name.clone()))?;
+            for (field, _) in &layout {
+                if !fields.iter().any(|(name, _)| name == field) {
+                    return Err(BackendError::UnsupportedType(format!(
+                        "record {type_name} literal must list every field: missing {field}"
+                    )));
+                }
+            }
             let mut members = Vec::with_capacity(fields.len());
             for (name, value) in fields {
                 let ty = layout
-                    .fields
                     .iter()
                     .find(|(field, _)| field == name)
                     .ok_or_else(|| {

@@ -219,7 +219,10 @@ Codegen (`crates/emath-build/src/builder/build.rs`):
 Generated-crate profiles (`crates/emath-rust-ir/src/profiles.rs`,
 checked on the build path via `CrateProfile::Library`):
 
-- `E-CODEGEN-013`: `emath build` emits one runnable entry per crate: a second runnable function in the same file refuses (split the file into one `emath function` per file).
+`emath build` emits one NAMED entry per runnable function
+(`pub fn <function_name>`), so sibling calls compile in one crate. The
+old `E-CODEGEN-013` one-entry-per-crate spelling is retired and is not
+emitted.
 
 - `E-CODEGEN-002`: generated module contains `unsafe` while the profile
   is safe (every profile bans unsafe); the build fails before any
@@ -1102,7 +1105,6 @@ Not yet documented at generation time: **0**.
 | `E-CODEGEN-009` | crates/emath-build/src/deps.rs | `E-CODEGEN-009` |
 | `E-CODEGEN-010` | crates/emath-build/src/script.rs | `E-CODEGEN-010` |
 | `E-CODEGEN-012` | crates/emath-build/src/builder/build.rs | `compile spec `{}/{}` outside the current subset (E-CODEGEN-012)` |
-| `E-CODEGEN-013` | crates/emath-cli/src/cli_build.rs | `E-CODEGEN-013` |
 | `E-CSV-001` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-001` |
 | `E-CSV-002` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-002` |
 | `E-CSV-003` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-003` |

@@ -170,6 +170,15 @@ pub(super) fn authored_control_expr(
             let expression = render_expr(&operand(program, *value));
             let kind = kind_at(&kinds, *value);
             if kind.is_copy() { source.push_str(&format!("let {name} = {expression};")); }
+            else if let ValueKind::Closure { params, result } = &kind {
+                // A closure capture clones the shared `Rc<dyn Fn>`
+                // handle; every closure carrier (register or scope
+                // binding) is an `Rc`.
+                source.push_str(&format!(
+                    "let {name}: std::rc::Rc<{}> = {expression}.clone();",
+                    callable_ty(params, result)?
+                ));
+            }
             else { source.push_str(&format!("let {name}: &{} = &{expression};", crate::rust_ir::render::render_ty(&kind.borrowed_rust_ty()?))); }
         }
         Ok(source)

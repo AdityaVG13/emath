@@ -1,0 +1,172 @@
+# Emit-lane forms: the source shapes the constructor lowerer must emit
+# (bead emath-ch6e3). Each function pins one pilot refusal from
+# internal/scratch/pilot_ladder; the cutover pack demands VM-vs-EMIR
+# parity for every one of them.
+
+emath object Inner:
+    representation:
+        x: Int
+
+emath object Outer:
+    representation:
+        inner: Inner
+
+emath object Pt:
+    representation:
+        x: Int
+        y: Int
+
+emath object Cell:
+    # The sequence pilot's record: one field, as in the pilot ladder's
+    # own shape (records in sequences stay complete literals).
+    representation:
+        x: Int
+
+emath object CS:
+    representation:
+        ids: sequence(Int)
+
+emath function ReadNested:
+    # Pilot p1: nested record-field projection (o.inner.x).
+    inputs:
+        o: Outer
+    outputs:
+        result: Int
+    definitions:
+        result = o.inner.x
+    tests:
+        example <reads_through_two_hops>:
+            given o = Outer: {inner: Inner: {x: 7}}
+            expect result == 7
+
+emath function MakePt:
+    # Pilot p2: record construction in a definition.
+    inputs:
+        a: Int
+    outputs:
+        result: Pt
+    definitions:
+        p = Pt: {x: a, y: a + 1}
+        result = p
+    tests:
+        example <builds_and_reads>:
+            given a = 4
+            expect result.x == 4
+            expect result.y == 5
+
+emath function ApplyTwice:
+    # Pilot p3: function-typed input applied in the body.
+    inputs:
+        f: Int -> Int
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = f(f(k))
+    tests:
+        example <applies_the_closure>:
+            given f = function n in Int: n + 3
+            given k = 1
+            expect result == 7
+
+emath function ScoreAt:
+    # Pilot p4: two-level curried closure input (the loop's probe seam).
+    inputs:
+        probe: Int -> CS -> Rat
+        k: Int
+        cs: CS
+    outputs:
+        result: Rat
+    definitions:
+        result = probe(k, cs)
+    tests:
+        example <curried_application>:
+            given probe = function k in Int: function cs in CS: k / 8
+            given k = 3
+            given cs = CS: {ids: []}
+            expect result == 3 / 8
+
+emath function SeqOps:
+    # Pilot p5: sequence of records - literal, cons, index-field chain.
+    inputs:
+        a: Int
+    outputs:
+        first_x: Int
+        consed_x: Int
+    definitions:
+        xs = [Cell: {x: 9}, Cell: {x: 5}]
+        ys = [Cell: {x: a}, ..xs]
+        first_x = xs[0].x
+        consed_x = ys[0].x
+    tests:
+        example <index_field_cons>:
+            given a = 3
+            expect first_x == 9
+            expect consed_x == 3
+
+emath function Guarded:
+    # Pilot p7: constructor_refuse named-refusal seam in a definition.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        gate = if n < 0: constructor_refuse(quote(bad_input)) else: 0
+        result = n + gate
+    tests:
+        example <admits_nonnegative>:
+            given n = 2
+            expect result == 2
+        example <refuses_negative>:
+            given n = 0 - 1
+            expect diagnostic.code == bad_input
+
+emath function MakeF:
+    # Parity plumbing: produces the 1-arg closure ApplyTwice consumes.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function n in Int: n + 3
+    tests:
+        example <returns_the_closure>:
+            given unused = 0
+            given k = 1
+            expect result(k) == 4
+
+emath function MakeProbe:
+    # Parity plumbing: produces the curried closure ScoreAt consumes.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CS -> Rat
+    definitions:
+        result = function k in Int: function cs in CS: k / 8
+    tests:
+        example <returns_the_curried_closure>:
+            given unused = 0
+            given k = 3
+            given cs = CS: {ids: []}
+            expect result(k, cs) == 3 / 8
+
+emath function Double:
+    # Pilot p8: sibling call (direct cross-function reference).
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n + n
+
+emath function Quad:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = Double(Double(n))
+    tests:
+        example <calls_the_sibling>:
+            given n = 3
+            expect result == 12

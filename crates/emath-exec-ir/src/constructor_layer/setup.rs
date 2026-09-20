@@ -342,3 +342,124 @@ pub fn module_roots_for(source: Option<&Path>) -> Vec<PathBuf> {
     roots
 }
 
+/// Merge a file's `use` imports into one whole-program tree (the build
+/// lane's lowering input). Imported declarations join under their bare
+/// names exactly as the engine installs them, the use selector filters
+/// what a named import contributes, and nested imports merge before
+/// their parent's declarations (engine load order). `package` and
+/// `use` items stay the main file's authority; search roots follow the
+/// same discovery as the test lane (`module_roots_for`).
+pub fn merged_tree_with_imports(
+    tree: &SyntaxTree,
+    source: Option<&Path>,
+) -> Result<SyntaxTree, ConstructorError> {
+    let roots = module_roots_for(source);
+    let mut items = Vec::new();
+    let mut visiting = BTreeSet::new();
+    // `installed` is the diamond law: a module reached through two
+    // import paths merges once (the engine's same-origin idempotent
+    // install), while `visiting` only guards cycles on the active
+    // path.
+    let mut installed = BTreeSet::new();
+    merge_tree_items(tree, source, &roots, &mut visiting, &mut installed, &mut items)?;
+    Ok(SyntaxTree { source: tree.source.clone(), items })
+}
+
+/// The main file's own items push in order; each `use` expands to its
+/// selected imported declarations in place (engine install order).
+fn merge_tree_items(
+    tree: &SyntaxTree,
+    source: Option<&Path>,
+    roots: &[PathBuf],
+    visiting: &mut BTreeSet<PathBuf>,
+    installed: &mut BTreeSet<PathBuf>,
+    items: &mut Vec<Item>,
+) -> Result<(), ConstructorError> {
+    let package = package_of(tree);
+    for item in &tree.items {
+        let Item::Use { path, tree: use_tree, .. } = item else {
+            items.push(item.clone());
+            continue;
+        };
+        merge_use(
+            path,
+            use_tree,
+            source,
+            package.as_deref(),
+            roots,
+            visiting,
+            installed,
+            items,
+        )?;
+    }
+    Ok(())
+}
+
+/// Expand one `use` statement: the imported file's own nested `use`s
+/// merge first (engine load order, unselected by this selector), then
+/// this selector's chosen declarations join under their bare names.
+fn merge_use(
+    path: &[String],
+    use_tree: &UseTree,
+    source: Option<&Path>,
+    package: Option<&[String]>,
+    roots: &[PathBuf],
+    visiting: &mut BTreeSet<PathBuf>,
+    installed: &mut BTreeSet<PathBuf>,
+    items: &mut Vec<Item>,
+) -> Result<(), ConstructorError> {
+    let file = resolve_import(path, roots, source, package)?;
+    if !installed.insert(file.clone()) {
+        return Ok(());
+    }
+    if visiting.contains(&file) {
+        return Err(fault(
+            "E-USE-ADMISSION",
+            format!("cyclic import `{}`", path.join(".")),
+        ));
+    }
+    visiting.insert(file.clone());
+    let text = std::fs::read_to_string(&file).map_err(|err| {
+        fault(
+            "E-USE-ADMISSION",
+            format!("cannot read {}: {err}", file.display()),
+        )
+    })?;
+    let (imported, diagnostics) = emath_syntax::parse_str(&text);
+    if diagnostics.has_errors() {
+        return Err(fault(
+            "E-USE-ADMISSION",
+            format!("imported module `{}` has parse errors", path.join(".")),
+        ));
+    }
+    for item in &imported.items {
+        if let Item::Use { path: nested_path, tree: nested_use, .. } = item {
+            merge_use(
+                nested_path,
+                nested_use,
+                Some(file.as_path()),
+                package_of(&imported).as_deref(),
+                roots,
+                visiting,
+                installed,
+                items,
+            )?;
+        }
+    }
+    for sibling_item in imported.items {
+        let Item::Declaration(decl) = &sibling_item else {
+            continue;
+        };
+        let selected = match use_tree {
+            UseTree::All => true,
+            UseTree::Named(names) if names.is_empty() => true,
+            UseTree::Named(names) => names.iter().any(|(name, _)| name == &decl.name),
+        };
+        if selected {
+            items.push(sibling_item);
+        }
+    }
+    visiting.remove(&file);
+    Ok(())
+}
+

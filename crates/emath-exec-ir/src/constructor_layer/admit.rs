@@ -465,23 +465,32 @@ impl Engine {
         if let Some(ty) = types.get(&name) {
             return Ok(ty.clone());
         }
-        if segments.len() == 2 {
+        if segments.len() >= 2 {
             if let Some(ty) = types.get(&segments[0]) {
-                return Ok(match (ty, segments[1].as_str()) {
-                    (CType::Sequence, "length") => CType::Int,
-                    (CType::Rat, "numer" | "denom") | (CType::Int, "numer" | "denom") => CType::Int,
-                    // Projection type is not reconstructed from a record tag.
-                    // Unknown conforms to a declared field type; Schema does not.
-                    (CType::Receipt, _)
-                    | (CType::Record, _)
-                    | (CType::Tuple, _)
-                    | (CType::Code, _)
-                    | (CType::Schema, _)
-                    | (CType::Unknown, _) => CType::Unknown,
-                    _ => CType::Unknown,
-                });
+                if segments.len() == 2 {
+                    return Ok(match (ty, segments[1].as_str()) {
+                        (CType::Sequence, "length") => CType::Int,
+                        (CType::Rat, "numer" | "denom") | (CType::Int, "numer" | "denom") => CType::Int,
+                        // Projection type is not reconstructed from a record tag.
+                        // Unknown conforms to a declared field type; Schema does not.
+                        (CType::Receipt, _)
+                        | (CType::Record, _)
+                        | (CType::Tuple, _)
+                        | (CType::Code, _)
+                        | (CType::Schema, _)
+                        | (CType::Unknown, _) => CType::Unknown,
+                        _ => CType::Unknown,
+                    });
+                }
+                // Nested projection beyond one hop (`o.inner.x`): every
+                // deeper hop projects through a record carrier whose
+                // field type is not reconstructed from the record tag
+                // (the two-segment record policy, extended to any
+                // depth). A projection miss still faults `unbound` at
+                // runtime in the engine.
+                return Ok(CType::Unknown);
             }
-            if self.objects.contains_key(&segments[0]) {
+            if segments.len() == 2 && self.objects.contains_key(&segments[0]) {
                 return Ok(match segments[1].as_str() {
                     "pack" | "open" => CType::Closure,
                     _ => CType::Unknown,

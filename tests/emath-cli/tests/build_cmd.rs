@@ -1,14 +1,16 @@
-//! `emath build` emission contract: exactly one runnable entry per
-//! emitted crate, and no flag that promises a gate the command never
-//! runs.
+//! `emath build` emission contract: one NAMED entry per runnable
+//! function in the emitted crate, and no flag that promises a gate the
+//! command never runs.
 //!
 //! Failure-first against the duplicate-entry defect: a file with two
 //! runnable functions used to emit ONE lib.rs containing two
-//! `pub fn entry` definitions — a crate that cannot compile. And
-//! `--verify` was accepted while feeding only an unreachable path.
+//! `pub fn entry` definitions - a crate that cannot compile. The
+//! shared `entry` symbol is gone; each function emits under its own
+//! name, which is also what sibling calls (pilot p8) need.
+//! And `--verify` was accepted while feeding only an unreachable path.
 
 mod common;
-use emath_cli::{EXIT_ADMISSION, EXIT_OK, EXIT_USAGE};
+use emath_cli::{EXIT_OK, EXIT_USAGE};
 use emath_test_harness::Probe;
 
 fn build(path: &std::path::Path, args: &[&str]) -> (String, i32) {
@@ -33,7 +35,7 @@ fn scratch(tag: &str) -> std::path::PathBuf {
 }
 
 fn entry_count(lib: &str) -> usize {
-    lib.matches("pub fn entry").count()
+    lib.lines().filter(|line| line.starts_with("pub fn ")).count()
 }
 
 const SINGLE: &str = "emath function only_fn:
@@ -85,9 +87,9 @@ const ONE_RUNNABLE_ONE_CLOSURE: &str = "emath function plain_fn:
             given a = 2
             expect result == 3
 emath function closure_fn:
-    # A closure call does not lower to flat scalar arithmetic, so this
-    # function is emitted as a not-runnable comment, NOT a second
-    # entry — the build must stay green with exactly one entry.
+    # A closure parameter emits natively (`&dyn Fn` carrier), so this
+    # function emits as its own runnable entry - one named entry per
+    # function, closure or not.
     inputs:
         g: Rat -> Rat
         x: Rat
@@ -104,23 +106,34 @@ emath function closure_fn:
 
 #[test]
 fn probe() {
-    let mut p = Probe::new("build emits exactly one runnable entry per crate and carries no dead flags");
+    let mut p = Probe::new("build emits one named entry per runnable function and carries no dead flags");
 
-    p.case("second-runnable-refuses-by-name", |p| {
+    p.case("second-runnable-emits-its-own-name", |p| {
         let src = scratch("multi-src");
         let out = scratch("multi-out");
         std::fs::write(&src, TWO_RUNNABLE).expect("write source");
         let (text, code) = build(&src, &["--out", &out.to_string_lossy()]);
-        p.eq("exit", code, EXIT_ADMISSION as i32);
-        p.contains("named code", &text, "E-CODEGEN-013");
+        p.eq("exit", code, EXIT_OK as i32);
+        p.contains("runnable", &text, "runnable");
+        let lib = std::fs::read_to_string(out.join("src/lib.rs")).expect("emitted lib");
+        p.contains(
+            "first entry named",
+            &lib,
+            "pub fn first_fn(a: i64) -> Result<i64, String>",
+        );
+        p.contains(
+            "second entry named",
+            &lib,
+            "pub fn second_fn(a: i64) -> Result<i64, String>",
+        );
         p.demand(
-            "no partial crate",
-            !out.join("src/lib.rs").is_file(),
-            "a refused build must not write the crate",
+            "no shared entry symbol",
+            !lib.contains("pub fn entry"),
+            "each runnable function emits under its own name, not a shared `entry`",
         );
     });
 
-    p.case("single-function-one-entry", |p| {
+    p.case("single-function-named-entry", |p| {
         let src = scratch("single-src");
         let out = scratch("single-out");
         std::fs::write(&src, SINGLE).expect("write source");
@@ -128,6 +141,7 @@ fn probe() {
         p.eq("exit", code, EXIT_OK as i32);
         p.contains("runnable", &text, "runnable");
         let lib = std::fs::read_to_string(out.join("src/lib.rs")).expect("emitted lib");
+        p.contains("entry named", &lib, "pub fn only_fn(a: i64) -> Result<i64, String>");
         p.demand(
             "one entry",
             entry_count(&lib) == 1,
@@ -135,22 +149,23 @@ fn probe() {
         );
     });
 
-    p.case("closure-sibling-still-one-entry", |p| {
+    p.case("closure-param-emits-native-entry", |p| {
         let src = scratch("closure-src");
         let out = scratch("closure-out");
         std::fs::write(&src, ONE_RUNNABLE_ONE_CLOSURE).expect("write source");
         let (text, code) = build(&src, &["--out", &out.to_string_lossy()]);
         p.eq("exit", code, EXIT_OK as i32);
-        p.contains(
-            "sibling marked not runnable",
-            &text,
-            "not marked runnable",
-        );
+        p.contains("closure sibling runnable", &text, "runnable");
         let lib = std::fs::read_to_string(out.join("src/lib.rs")).expect("emitted lib");
+        p.contains(
+            "closure entry typed",
+            &lib,
+            "pub fn closure_fn(g: std::rc::Rc<dyn Fn(emath_rt::ExactRatio) -> Result<emath_rt::ExactRatio, String>>, x: emath_rt::ExactRatio) -> Result<emath_rt::ExactRatio, String>",
+        );
         p.demand(
-            "one entry with closure sibling",
-            entry_count(&lib) == 1,
-            format!("a not-runnable sibling emits a comment, never a second entry, got {}", entry_count(&lib)),
+            "one entry per function",
+            entry_count(&lib) == 2,
+            format!("each function emits exactly one entry, closure carriers included, got {}", entry_count(&lib)),
         );
     });
 

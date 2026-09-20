@@ -93,6 +93,10 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         | EmirOp::CallScalarProgram { program, inputs }
         | EmirOp::CallRealProgram { program, inputs }
         | EmirOp::TryCallRealProgram { program, inputs } => out.extend([*program, *inputs]),
+        EmirOp::CallValue { program, inputs } => {
+            out.push(*program);
+            out.extend(inputs.iter().copied());
+        }
         EmirOp::SetCreate { elements, guards } => {
             out.extend(elements.iter().copied());
             out.extend(guards.iter().flatten().copied());
@@ -130,11 +134,11 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         EmirOp::VectorMap { source, .. } | EmirOp::VectorReduce { source, .. } => out.push(*source),
         EmirOp::VectorMapScalar { vector, scalar, .. } => out.extend([*vector, *scalar]),
         EmirOp::CallFrame { inputs, state, .. } => { out.extend(inputs); out.extend(state); }
-        EmirOp::CallSelf { inputs } => out.extend(inputs),
+        EmirOp::CallSelf { inputs, .. } => out.extend(inputs),
         EmirOp::SameDenseShape(left, right) => out.extend([*left, *right]),
         EmirOp::DenseValues(value) | EmirOp::DenseLayout(value) | EmirOp::ToF64(value) | EmirOp::F64SortTotal(value) => out.push(*value),
         EmirOp::VectorSlice { vector, offset, count } => out.extend([*vector, *offset, *count]),
-        EmirOp::VectorConcat(values) => out.extend(values),
+        EmirOp::VectorConcat(values) | EmirOp::ListConcat(values) => out.extend(values),
         EmirOp::DenseRepack { template, data } => out.extend([*template, *data]),
         // Body registers are local; capture registers belong to this frame.
         EmirOp::ProgramLiteral { captures, .. } => out.extend(captures),

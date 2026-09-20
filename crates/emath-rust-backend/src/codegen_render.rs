@@ -7,6 +7,7 @@ use emath_exec_ir::{EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
 
 use crate::BackendError;
 use crate::codegen_helpers::comparison;
+use crate::contains_call_self;
 
 mod op_arith;
 mod op_collections;
@@ -22,12 +23,14 @@ mod carrier;
 mod flat;
 mod kinds;
 pub(crate) mod kernels;
+mod record_layouts;
 mod rtcalls;
 
 use carrier::*;
 pub(crate) use flat::*;
 pub(crate) use kinds::*;
 pub(crate) use kernels::element_tensor_expr;
+pub(crate) use record_layouts::{record_layout, AuthoredRecordScope};
 pub(crate) use rtcalls::*;
 
 pub(crate) fn op_expr(
@@ -38,20 +41,38 @@ pub(crate) fn op_expr(
     input_kinds: &InputKinds,
 ) -> Result<Expr, BackendError> {
     match op {
-        EmirOp::CallFrame { body, inputs, state } => {
+        EmirOp::CallFrame { body, inputs, state, declared } => {
             let kinds = value_kinds(program, names, states, input_kinds);
-            literal_frame_expr(body, inputs, state, program, &kinds)
+            literal_frame_expr(body, inputs, state, program, &kinds, declared)
         }
-        EmirOp::CallSelf { inputs } => {
+        EmirOp::CallSelf { inputs, .. } => {
+            // The recursive target (`__self` at entries, `__frame_self`
+            // in inlined frames) declares owned parameters for
+            // non-copy carriers and `&dyn Fn` for closures. Arguments
+            // follow: records and vectors re-materialize owned
+            // (clone), closure carriers rest as `Rc<dyn Fn>` registers
+            // so one borrow coerces to the `&dyn Fn` parameter.
+            let kinds = value_kinds(program, names, states, input_kinds);
             let args = inputs
                 .iter()
-                .map(|value| render_expr(&operand(program, *value)))
+                .map(|value| {
+                    let kind = kind_at(&kinds, *value);
+                    if matches!(kind, ValueKind::Closure { .. }) {
+                        // Closure carriers are shared `Rc` handles:
+                        // clone into the `Rc<dyn Fn>` parameter.
+                        format!("{}.clone()", render_expr(&operand(program, *value)))
+                    } else if kind.is_copy() {
+                        render_expr(&operand(program, *value))
+                    } else {
+                        render_expr(&owned_operand(program, *value, &kinds))
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
             Ok(Expr::Raw(format!("__self({args})?")))
         }
         EmirOp::SameDenseShape(..) | EmirOp::DenseValues(_) | EmirOp::DenseRepack { .. } | EmirOp::ToF64(_)
-        | EmirOp::DenseLayout(_) | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::F64SortTotal(_) => {
+        | EmirOp::DenseLayout(_) | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::ListConcat(_) | EmirOp::F64SortTotal(_) => {
             let kinds = value_kinds(program, names, states, input_kinds);
             op_collection_exprs(op, program, &kinds)
         }
@@ -224,17 +245,185 @@ pub(crate) fn op_expr(
                 _ => Expr::Raw(format!("{call}.and_then(emath_rt::NumericProgramResult::into_real)")),
             })
         }
-        EmirOp::ProgramLiteral { body, captures, vector_input } => {
+        EmirOp::CallValue { program: callee_value, inputs } => {
+            // Typed indirect call on a closure carrier. The callee's
+            // declared signature decides arity and borrowing: copy
+            // arguments render owned, reference carriers borrow, and
+            // the closure's own Result propagates with `?`. A curried
+            // callee consumes its arguments one stage at a time -
+            // `(f)(a)?` yields the next callable (boxed), which the
+            // following stage calls.
+            let kinds = value_kinds(program, names, states, input_kinds);
+            let ValueKind::Closure { .. } = kind_at(&kinds, *callee_value) else {
+                return Err(BackendError::UnsupportedType(
+                    "closure call requires a callee with a declared signature".into(),
+                ));
+            };
+            let callee = render_expr(&operand(program, *callee_value));
+            let mut call = format!("({callee})");
+            let mut remaining: &[EmirValue] = inputs;
+            let mut kind = kind_at(&kinds, *callee_value);
+            loop {
+                let ValueKind::Closure { params, result } = kind else {
+                    return Err(BackendError::UnsupportedType(
+                        "closure call requires a callee with a declared signature".into(),
+                    ));
+                };
+                if remaining.len() < params.len() {
+                    return Err(BackendError::UnsupportedType(
+                        "closure call argument count does not match the declared signature".into(),
+                    ));
+                }
+                let (args, rest) = remaining.split_at(params.len());
+                let rendered = args
+                    .iter()
+                    .zip(params.iter())
+                    .map(|(value, param)| {
+                        let expression = render_expr(&operand(program, *value));
+                        if param.is_copy() {
+                            return expression;
+                        }
+                        // One reference layer exactly for data carriers:
+                        // a LoadInput / LoadState register already
+                        // rests as a borrowed binding, every other
+                        // producer is owned (`&&T -> &T` never coerces
+                        // at call arguments). Closure carriers are
+                        // shared `Rc` handles and clone into the
+                        // `Rc<dyn Fn>` parameter.
+                        if matches!(param, ValueKind::Closure { .. }) {
+                            return format!("{expression}.clone()");
+                        }
+                        let already_borrowed = program
+                            .ops
+                            .get(value.0 as usize)
+                            .map(|(op, _)| {
+                                matches!(op, EmirOp::LoadInput(_) | EmirOp::LoadState(_))
+                            })
+                            .unwrap_or(false);
+                        if already_borrowed { expression } else { format!("&{expression}") }
+                    })
+                    .collect::<Vec<_>>();
+                call = format!("({call}({})?)", rendered.join(", "));
+                if rest.is_empty() {
+                    break;
+                }
+                kind = *result;
+                remaining = rest;
+            }
+            Ok(Expr::Raw(call))
+        }
+        EmirOp::ProgramLiteral { body, captures, vector_input, signature } => {
             if body.state_count != 0 {
                 return Err(BackendError::UnsupportedType("program literal must be closed over state".into()));
             }
             let parameters = (0..body.input_count).map(|index| format!("__program_arg_{index}")).collect::<Vec<_>>();
             let explicit = usize::from(body.input_count).checked_sub(captures.len())
                 .ok_or_else(|| BackendError::UnsupportedType("program captures exceed input count".into()))?;
+            let kinds = value_kinds(program, names, states, input_kinds);
+            if !signature.is_empty() {
+                // Typed literal: the authored parameter domain fixes the
+                // callable ABI. One explicit parameter, owned captures
+                // moved into the closure, body ops propagate with `?`,
+                // and the inferred result kind types the return.
+                if *vector_input {
+                    return Err(BackendError::UnsupportedType("vector program carrier is the numeric lane only".into()));
+                }
+                if explicit != 1 {
+                    return Err(BackendError::UnsupportedType("typed program literal takes exactly one domain parameter".into()));
+                }
+                let param_kind = ValueKind::from_signature(signature);
+                if matches!(param_kind, ValueKind::Other) {
+                    return Err(BackendError::UnsupportedType(format!("program literal parameter domain {signature} has no native carrier")));
+                }
+                let param_ty = {
+                    if matches!(param_kind, ValueKind::Closure { .. }) {
+                        // A closure parameter's rust type already
+                        // carries the `&dyn Fn` layer; borrowing again
+                        // would double it.
+                        crate::rust_ir::render::render_ty(&param_kind.rust_ty()?)
+                    } else {
+                        let ty = crate::rust_ir::render::render_ty(&param_kind.rust_ty()?);
+                        if param_kind.is_copy() { ty } else { format!("&{ty}") }
+                    }
+                };
+                let mut inputs = InputKinds::new();
+                let mut capture_bindings = String::new();
+                let mut bindings = String::new();
+                inputs.insert(parameters[0].clone(), param_kind);
+                for (index, name) in parameters.iter().enumerate().skip(1) {
+                    let argument = captures[index - 1];
+                    let kind = kind_at(&kinds, argument);
+                    if let ValueKind::Closure { params, result } = &kind {
+                        // A captured callable must be SHARED into the
+                        // literal's `'static` carrier: borrowing the
+                        // producing register would dangle once the
+                        // carrier outlives it (E0515/E0597), and a
+                        // `move` would break multi-use registers.
+                        // Every closure carrier is a shared `Rc`
+                        // handle, so the capture (and the per-call
+                        // parameter binding) clone the handle.
+                        capture_bindings.push_str(&format!(
+                            "let __program_capture_{index}: std::rc::Rc<{}> = {}.clone(); ",
+                            callable_ty(params, result)?,
+                            render_expr(&operand(program, argument))
+                        ));
+                        bindings.push_str(&format!(
+                            "let {name}: std::rc::Rc<{}> = __program_capture_{index}.clone(); ",
+                            callable_ty(params, result)?
+                        ));
+                        inputs.insert(name.clone(), kind);
+                        continue;
+                    }
+                    let value = render_expr(&owned_operand(program, argument, &kinds));
+                    capture_bindings.push_str(&format!("let __program_capture_{index} = {value}; "));
+                    let borrow = if kind.is_copy() { "" } else { "&" };
+                    bindings.push_str(&format!("let {name} = {borrow}__program_capture_{index}; "));
+                    inputs.insert(name.clone(), kind);
+                }
+                let _reference = ReferenceScope::enter();
+                let body_code = render_expr(&value_expr(body, &parameters, &[], &inputs)?);
+                let result_kind = program_kind(body, &parameters, &[], &inputs);
+                let result_ty = match &result_kind {
+                    ValueKind::Never => String::from("()"),
+                    ValueKind::Other => {
+                        let result_op = body
+                            .ops
+                            .get(body.result.0 as usize)
+                            .map(|(op, _)| op.name().to_string())
+                            .unwrap_or_else(|| "?".into());
+                        return Err(BackendError::UnsupportedType(format!(
+                            "program literal result has no native carrier (parameter domain {signature}, result op {result_op})"
+                        )));
+                    }
+                    // A curried literal returns the next callable in
+                    // SHARED `Rc<dyn Fn>` storage: the stage may be
+                    // captured by further literals and called many
+                    // times, and a borrowed closure cannot cross the
+                    // `'static` carrier boundary.
+                    ValueKind::Closure { params, result } => {
+                        format!("std::rc::Rc<{}>", callable_ty(params, result)?)
+                    }
+                    kind => crate::rust_ir::render::render_ty(&kind.rust_ty()?),
+                };
+                // A curried literal returns the next callable, which
+                // the inner literal already renders as shared
+                // `Rc<dyn Fn>`; the literal value itself rests in an
+                // `Rc` too, so every carrier position is callable
+                // through any reference layer and capturable by
+                // further literals without dangling borrows.
+                let tail = if result_kind == ValueKind::Never {
+                    body_code
+                } else {
+                    format!("Ok({body_code})")
+                };
+                Ok(Expr::Raw(format!(
+                    "{{ {capture_bindings} std::rc::Rc::new(move |{}: {param_ty}| -> Result<{result_ty}, String> {{ {bindings} {tail} }}) }}",
+                    parameters[0]
+                )))
+            } else {
             if *vector_input && explicit != 1 {
                 return Err(BackendError::UnsupportedType("vector program requires exactly one explicit input".into()));
             }
-            let kinds = value_kinds(program, names, states, input_kinds);
             let mut inputs = InputKinds::new();
             let mut capture_bindings = String::new();
             let mut bindings = String::new();
@@ -269,6 +458,7 @@ pub(crate) fn op_expr(
             };
             let arity_guard = if *vector_input { String::new() } else { format!("if __program_inputs.len() != {explicit} {{ return Err(String::from(\"call-program: argument count mismatch\")); }} ") };
             Ok(Expr::Raw(format!("{{ {capture_bindings} let __program: std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>> = std::sync::Arc::new(move |__program_inputs: &[f64]| {{ {arity_guard} {bindings} Ok({result}) }}); __program }}")))
+            }
         }
         EmirOp::VectorMap { .. }
         | EmirOp::VectorMapScalar { .. }
@@ -523,7 +713,14 @@ const KERNEL_ARTIFACTS: &[KernelArtifact] = &[
     },
 ];
 
-fn literal_frame_expr(body: &EmirProgram, inputs: &[EmirValue], state: &[EmirValue], outer: &EmirProgram, kinds: &[ValueKind]) -> Result<Expr, BackendError> {
+fn literal_frame_expr(
+    body: &EmirProgram,
+    inputs: &[EmirValue],
+    state: &[EmirValue],
+    outer: &EmirProgram,
+    kinds: &[ValueKind],
+    declared: &[String],
+) -> Result<Expr, BackendError> {
     if inputs.len() != usize::from(body.input_count) || state.len() != usize::from(body.state_count) {
         return Err(BackendError::UnsupportedType("frame argument count mismatch".into()));
     }
@@ -531,7 +728,26 @@ fn literal_frame_expr(body: &EmirProgram, inputs: &[EmirValue], state: &[EmirVal
     let states = (0..state.len()).map(|index| format!("__frame_state_{index}")).collect::<Vec<_>>();
     let mut frame_kinds = InputKinds::new();
     let mut code = String::from("{ ");
-    for (name, value) in names.iter().zip(inputs).chain(states.iter().zip(state)) {
+    for (index, (name, value)) in names.iter().zip(inputs).enumerate() {
+        let kind = frame_input_kind(kind_at(kinds, *value), declared.get(index));
+        // A closure carrier binds as a clone of the shared `Rc<dyn
+        // Fn>` handle: every closure carrier (register or scope
+        // binding) is an `Rc`, so crossings clone and calls
+        // auto-deref.
+        if let ValueKind::Closure { params, result } = &kind {
+            let source = render_expr(&operand(outer, *value));
+            code.push_str(&format!(
+                "let {name}: std::rc::Rc<{}> = {source}.clone(); ",
+                callable_ty(params, result)?
+            ));
+            frame_kinds.insert(name.clone(), kind);
+            continue;
+        }
+        let borrow = if kind.is_copy() { "" } else { "&" };
+        code.push_str(&format!("let {name} = {borrow}{}; ", render_expr(&operand(outer, *value))));
+        frame_kinds.insert(name.clone(), kind);
+    }
+    for (name, value) in states.iter().zip(state) {
         let kind = kind_at(kinds, *value);
         let borrow = if kind.is_copy() { "" } else { "&" };
         code.push_str(&format!("let {name} = {borrow}{}; ", render_expr(&operand(outer, *value))));
@@ -539,6 +755,63 @@ fn literal_frame_expr(body: &EmirProgram, inputs: &[EmirValue], state: &[EmirVal
     }
     let _reference = ReferenceScope::enter();
     let _state = LocalStateScope::enter();
+    if contains_call_self(body) {
+        // A sibling body that recurses on itself cannot inline: its
+        // `__self` would bind the entry's wrapper with the wrong
+        // signature. Render the frame as a local recursive fn over
+        // the frame inputs instead - the same checked body, one
+        // callable per frame. Frame lets above stay as the call's
+        // argument bindings; the fn's parameters shadow them inside.
+        let mut params = Vec::new();
+        let mut call_args = Vec::new();
+        for name in names.iter().chain(states.iter()) {
+            let kind = frame_kinds.get(name).cloned().unwrap_or(ValueKind::Other);
+            let ty = crate::rust_ir::render::render_ty(&kind.rust_ty()?);
+            if matches!(kind, ValueKind::Closure { .. }) {
+                // A closure parameter carries the shared `Rc<dyn Fn>`
+                // handle; the initial call clones the frame binding
+                // into it.
+                params.push(format!("{name}: {ty}"));
+                call_args.push(format!("{name}.clone()"));
+            } else if kind.is_copy() {
+                params.push(format!("{name}: {ty}"));
+                call_args.push(name.clone());
+            } else {
+                // The recursive frame fn owns its non-copy carriers.
+                // A frame binding is always a reference (one or two
+                // layers: the operand may itself be a borrowed
+                // register), so `&*` normalizes to exactly one layer
+                // and the clone re-materializes the owned value for
+                // the initial call. `CallSelf` re-materializes on
+                // every recursive step the same way.
+                params.push(format!("{name}: {ty}"));
+                call_args.push(format!(
+                    "<{ty} as Clone>::clone(&*{name})"
+                ));
+            }
+        }
+        let result_kind = program_kind(body, &names, &states, &frame_kinds);
+        let result_ty = match result_kind.rust_ty() {
+            Ok(ty) => crate::rust_ir::render::render_ty(&ty),
+            Err(_) => "impl core::fmt::Debug".to_string(),
+        };
+        let mut body_code = render_expr(&value_expr(body, &names, &states, &frame_kinds)?)
+            .replace("__self(", "__frame_self(");
+        // A frame tail that resolves to a borrowed register (a
+        // LoadInput binding) must return the owned carrier the
+        // recursive fn's signature promises; `owned_value` handles
+        // both owned and borrowed register shapes.
+        if !result_kind.is_copy() && !matches!(result_kind, ValueKind::Closure { .. }) {
+            body_code = render_expr(&owned_value(Expr::Raw(body_code), &result_kind));
+        }
+        code.push_str(&format!(
+            "fn __frame_self({}) -> Result<{result_ty}, String> {{ Ok({body_code}) }} __frame_self({})? ",
+            params.join(", "),
+            call_args.join(", ")
+        ));
+        code.push_str(" }");
+        return Ok(Expr::Raw(code));
+    }
     code.push_str(&render_expr(&value_expr(body, &names, &states, &frame_kinds)?));
     code.push_str(" }");
     Ok(Expr::Raw(code))

@@ -36,13 +36,16 @@ pub(crate) fn forward_difference_expr(
         body,
         captures,
         vector_input,
+        signature,
+        ..
     } = &program.ops.get(program_value.0 as usize)?.0
     else {
         return None;
     };
     // The kernel ABI passes no captures and no vector-input packing
-    // (`program_carrier` in calculus.rs refuses both).
-    if !captures.is_empty() || *vector_input {
+    // (`program_carrier` in calculus.rs refuses both); it differentiates
+    // the numeric lane only, so typed literals are out of contract.
+    if !captures.is_empty() || *vector_input || !signature.is_empty() {
         return None;
     }
     if !matches!(kind_at(kinds, *point), ValueKind::Vector(_)) {

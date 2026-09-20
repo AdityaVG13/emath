@@ -189,10 +189,30 @@ pub enum EmirOp {
     /// nothing; like any value it can flow into an `ApplyCapability`
     /// argument register.
     /// Evaluate a literal program with explicit typed input and state frames.
-    CallFrame { body: EmirProgram, inputs: Vec<EmirValue>, state: Vec<EmirValue> },
+    ///
+    /// `declared` carries the callee's authored input carrier
+    /// signatures (`Int`, `Record<CS>`, `Fn<A,B>`, one entry per
+    /// input, empty = unknown). The backend uses them to recover the
+    /// kind of degenerate argument expressions (an empty `[]` literal
+    /// has no element kind of its own); evaluation ignores them.
+    CallFrame {
+        body: EmirProgram,
+        inputs: Vec<EmirValue>,
+        state: Vec<EmirValue>,
+        declared: Vec<String>,
+    },
     /// Re-enter the active recursive program with a new input frame.
     /// Generic self-application; not a mathematical leaf.
-    CallSelf { inputs: Vec<EmirValue> },
+    ///
+    /// `result` carries the enclosing function's authored output
+    /// carrier signature (empty = unknown, e.g. the recur lane).
+    /// Kind inference uses it instead of guessing from the first
+    /// argument; a multi-argument recursion's result rarely matches
+    /// its first argument's carrier.
+    CallSelf {
+        inputs: Vec<EmirValue>,
+        result: String,
+    },
     /// Compare scalar/dense carrier layout, including stored element counts.
     SameDenseShape(EmirValue, EmirValue),
     DenseLayout(EmirValue),
@@ -211,12 +231,29 @@ pub enum EmirOp {
         captures: Vec<EmirValue>,
         /// Bind the numeric argument vector as one input, not one input per element.
         vector_input: bool,
+        /// The literal's parameter-domain carrier signature
+        /// (`Int`, `Rat`, `Record<CS>`, `Fn<A,B>`); empty is the
+        /// numeric-lane/VM-converted form with no typed ABI. The
+        /// literal's own callable kind composes this with the body's
+        /// inferred result.
+        signature: String,
     },
+
+    /// Concatenate list carriers, preserving element carriers. The
+    /// authored cons spelling `[head, ..tail]` lowers here; unlike
+    /// [`Self::VectorConcat`] this is not a Float64 dense-lane op.
+    ListConcat(Vec<EmirValue>),
 
     /// Invoke a closed numeric program with a dynamic Float64 argument vector.
     /// Scalar results are packed as one element; vector results retain their shape.
     /// This instruction does not select a method or impose mathematical guards.
     CallProgram { program: EmirValue, inputs: EmirValue },
+    /// Invoke a typed program value with explicit argument values. Curried
+    /// programs fold application left, so one op covers the house curried
+    /// application form `f(a, b)`. Unlike the `CallProgram` family this is
+    /// not the Float64 numeric ABI: arguments and result keep their own
+    /// carriers, and captures occupy the callee's trailing input slots.
+    CallValue { program: EmirValue, inputs: Vec<EmirValue> },
     /// Require a Float64 callback result without packing or widening it.
     CallScalarProgram { program: EmirValue, inputs: EmirValue },
     /// Convert a Float64 or Int callback result to binary64.
@@ -244,6 +281,6 @@ pub enum EmirOp {
 impl EmirOp {
     /// A closed numeric program with one Float64 input per supplied element.
     pub fn program_literal(body: EmirProgram) -> Self {
-        Self::ProgramLiteral { body, captures: Vec::new(), vector_input: false }
+        Self::ProgramLiteral { body, captures: Vec::new(), vector_input: false, signature: String::new() }
     }
 }

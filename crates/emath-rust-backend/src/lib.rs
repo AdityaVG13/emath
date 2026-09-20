@@ -166,7 +166,109 @@ pub fn emit_constructor_program(
     }
 }
 
-fn contains_call_self(program: &emath_exec_ir::EmirProgram) -> bool {
+/// One authored record: name plus `(field, carrier signature)` rows -
+/// the build-local layout for `EmathRecord_{name}`. Signatures use the
+/// constructor lane's interchange forms (`Int`, `Rat`, `Record<CS>`,
+/// `Vector<T>`, `Fn<A,B>`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthoredRecord {
+    pub name: String,
+    pub fields: Vec<(String, String)>,
+}
+
+/// Struct definitions for the authored records an entry references.
+/// Field carriers render through the same kind parser as entry
+/// signatures, so `Record<CS>` fields nest by name. A field the parser
+/// cannot map to a concrete carrier is a refusal, not a guess.
+pub fn emit_record_definitions(records: &[AuthoredRecord]) -> Result<String, BackendError> {
+    use crate::codegen_render::ValueKind;
+    use crate::rust_ir::ast::escape_ident;
+    use crate::rust_ir::render::render_ty;
+    let mut rust = String::new();
+    for record in records {
+        let mut fields = String::new();
+        for (field, signature) in &record.fields {
+            let ty = render_ty(&ValueKind::from_signature(signature).rust_ty()?);
+            // Escape field names the same way the record-literal
+            // render does, so `EmathRecord_X { field_: .. }` sites and
+            // the struct definition agree (authored names may be Rust
+            // keywords, e.g. `move`).
+            fields.push_str(&format!("    pub {}: {ty},\n", escape_ident(field)));
+        }
+        rust.push_str(&format!(
+            "#[derive(Clone, Debug, PartialEq)]\npub struct EmathRecord_{} {{\n{fields}}}\n\n",
+            escape_ident(&record.name)
+        ));
+    }
+    Ok(rust)
+}
+
+/// Emit one typed entry for a constructor-lowered function - the named
+/// Rust ABI the build lane emits per function. Parameters take their
+/// declared carrier signatures (`None` falls back to `Int`, the
+/// numeric-lane default), authored records scope the emission's record
+/// layouts, and the result carrier comes from the program's inferred
+/// kind (kinds without a concrete carrier keep the `impl Debug`
+/// fallback of the numeric shim). Reference context is on for the
+/// whole entry, so runtime refusals propagate through `Result`.
+pub fn emit_constructor_entry(
+    program: &emath_exec_ir::EmirProgram,
+    function_name: &str,
+    inputs: &[(String, Option<String>)],
+    records: &[AuthoredRecord],
+) -> Result<String, BackendError> {
+    use crate::codegen_render::{
+        program_kind, value_expr, AuthoredRecordScope, InputKinds, ReferenceScope, ValueKind,
+    };
+    use crate::rust_ir::ast::escape_ident;
+    use crate::rust_ir::render::{render_expr, render_ty};
+    let _reference = ReferenceScope::enter();
+    let mut scope_records = std::collections::BTreeMap::new();
+    for record in records {
+        scope_records.insert(record.name.clone(), record.fields.clone());
+    }
+    let _records = AuthoredRecordScope::enter(scope_records);
+    let mut kinds = InputKinds::new();
+    let mut params = Vec::new();
+    let mut self_params = Vec::new();
+    let mut self_args = Vec::new();
+    for (name, signature) in inputs {
+        let kind = signature
+            .as_deref()
+            .map(ValueKind::from_signature)
+            .unwrap_or(ValueKind::I64);
+        params.push(format!("{name}: {}", render_ty(&kind.rust_ty()?)));
+        // The recursive wrapper mirrors the public parameter exactly
+        // (copy carriers, shared `Rc<dyn Fn>` closure handles, and
+        // owned non-copy carriers alike), and the entry call passes
+        // the parameter directly.
+        self_params.push(format!("{name}: {}", render_ty(&kind.rust_ty()?)));
+        self_args.push(name.clone());
+        kinds.insert(name.clone(), kind);
+    }
+    let params = params.join(", ");
+    let input_names: Vec<String> = inputs.iter().map(|(name, _)| name.clone()).collect();
+    let result_kind = program_kind(program, &input_names, &[], &kinds);
+    let result_ty = match result_kind.rust_ty() {
+        Ok(ty) => render_ty(&ty),
+        Err(_) => "impl core::fmt::Debug".to_string(),
+    };
+    let body = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
+    let entry_name = escape_ident(function_name);
+    if contains_call_self(program) {
+        let self_params = self_params.join(", ");
+        let call_args = self_args.join(", ");
+        Ok(format!(
+            "pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        Ok({body})\n    }}\n    Ok(__self({call_args})?)\n}}\n"
+        ))
+    } else {
+        Ok(format!(
+            "pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    Ok({body})\n}}\n"
+        ))
+    }
+}
+
+pub(crate) fn contains_call_self(program: &emath_exec_ir::EmirProgram) -> bool {
     use emath_exec_ir::EmirOp;
     program.ops.iter().any(|(op, _)| match op {
         EmirOp::CallSelf { .. } => true,

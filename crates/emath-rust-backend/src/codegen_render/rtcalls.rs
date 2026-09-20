@@ -18,6 +18,10 @@ pub(super) fn owned_operand(program: &EmirProgram, value: EmirValue, kinds: &[Va
 pub(super) fn owned_value(expression: Expr, kind: &ValueKind) -> Expr {
     if kind.is_copy() { expression } else if *kind == ValueKind::Text {
         Expr::MethodCall { receiver: Box::new(expression), method: "to_string".into(), args: Vec::new() }
+    } else if matches!(kind, ValueKind::Closure { .. }) {
+        // Closures are shared `Rc` handles: an owning boundary clones
+        // the handle (never a deep clone, never a borrow).
+        Expr::Raw(format!("std::rc::Rc::clone(&{})", render_expr(&expression)))
     } else if let Ok(ty) = kind.rust_ty() {
         Expr::Raw(format!("{{ let __owned_source = &{}; <{} as Clone>::clone(__owned_source) }}", render_expr(&expression), crate::rust_ir::render::render_ty(&ty)))
     } else { clone_expr(expression) }
@@ -26,6 +30,12 @@ pub(super) fn owned_value(expression: Expr, kind: &ValueKind) -> Expr {
 /// Keep one reference layer at load boundaries, including borrowed captures.
 pub(super) fn borrowed_value(value: Expr, kind: &ValueKind) -> Expr {
     let expression = render_expr(&value);
+    if matches!(kind, ValueKind::Closure { .. }) {
+        // A closure carrier is a shared `Rc<dyn Fn>` handle: loading
+        // it clones the handle so multi-use registers never move the
+        // scope binding.
+        return Expr::Raw(format!("std::rc::Rc::clone(&{expression})"));
+    }
     match kind.borrowed_rust_ty() {
         Ok(ty) => Expr::Raw(format!("{{ let __borrow: &{} = &{expression}; __borrow }}", crate::rust_ir::render::render_ty(&ty))),
         Err(_) => Expr::Raw(format!("&{expression}")),
@@ -44,9 +54,9 @@ pub(super) fn rt_call(name: &str, args: Vec<Expr>) -> Expr {
 }
 
 thread_local! { static REFERENCE_CONTEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
-pub(super) struct ReferenceScope(bool);
+pub(crate) struct ReferenceScope(bool);
 impl ReferenceScope {
-    pub(super) fn enter() -> Self { Self(REFERENCE_CONTEXT.with(|context| context.replace(true))) }
+    pub(crate) fn enter() -> Self { Self(REFERENCE_CONTEXT.with(|context| context.replace(true))) }
 }
 impl Drop for ReferenceScope {
     fn drop(&mut self) { REFERENCE_CONTEXT.with(|context| context.set(self.0)); }
@@ -63,8 +73,8 @@ pub(crate) fn program_may_fault(program: &EmirProgram) -> bool {
     program.ops.iter().any(|(op, _)| match op {
         EmirOp::Branch { then_body, else_body, .. } => program_may_fault(then_body) || program_may_fault(else_body),
         EmirOp::CallFrame { .. } | EmirOp::CallSelf { .. } | EmirOp::DenseRepack { .. } | EmirOp::DenseValues(_)
-        | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_)
-        | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) | EmirOp::ToInt(_) | EmirOp::IntegerQuotient(_, _) | EmirOp::ExactIntCall { .. } | EmirOp::CallProgram { .. } | EmirOp::CallScalarProgram { .. } | EmirOp::CallRealProgram { .. } | EmirOp::TryCallRealProgram { .. } => true,
+        | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::ListConcat(_)
+        | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) | EmirOp::ToInt(_) | EmirOp::IntegerQuotient(_, _) | EmirOp::ExactIntCall { .. } | EmirOp::CallProgram { .. } | EmirOp::CallScalarProgram { .. } | EmirOp::CallRealProgram { .. } | EmirOp::TryCallRealProgram { .. } | EmirOp::CallValue { .. } => true,
         EmirOp::VectorIndex { .. }
         | EmirOp::MatrixCreate { .. }
         | EmirOp::MatrixRows(_)

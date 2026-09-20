@@ -96,6 +96,34 @@ pub(super) fn eval_structure(
                 fields,
             })
         }
+        EmirOp::ListConcat(values) => {
+            let mut parts = Vec::with_capacity(values.len());
+            let mut count = 0usize;
+            for value in values {
+                let Value::List(items) = register(registers, *value)? else {
+                    return Err(EvalFault::TypeConfusion {
+                        register: value.0,
+                        op: "list-concat",
+                    });
+                };
+                count = count.checked_add(items.len()).ok_or_else(|| EvalFault::Arithmetic {
+                    op: "list-concat",
+                    detail: "concatenated length exceeds usize",
+                })?;
+                parts.push(items.clone());
+            }
+            let mut output = Vec::new();
+            output
+                .try_reserve_exact(count)
+                .map_err(|_| EvalFault::CarrierRefused {
+                    op: "list-concat",
+                    detail: "list allocation exceeds available capacity".into(),
+                })?;
+            for items in parts {
+                output.extend(items);
+            }
+            Ok(Value::List(output))
+        }
         EmirOp::VectorLength(value) => match register(registers, *value)? {
             Value::Vector(values) => Ok(Value::I64(values.len() as i64)),
             Value::List(values) => Ok(Value::I64(values.len() as i64)),
