@@ -1,0 +1,316 @@
+# Program-space candidates (bead emath-npky7): the candidate family
+# is a QUOTED unary program with free constant binders, and the
+# search mutates the PROGRAM, not the parameters - each candidate key
+# substitutes its constants into the template and evaluates the closed
+# code at probe time. This is the program-space RSI seam: candidates
+# as Code values, quote.substitute as the mutation, quote.evaluate as
+# the guarded executor (open code refuses unbound_code; there is no
+# ambient-scope leak).
+#
+# Both lanes compute this module: the VM lane through its own quote
+# machinery (tree substitution, guarded evaluation), the native lane
+# through compiled emission - the template lowers once into a closure
+# factory, substitute is partial application, evaluate is closure
+# demand. The export acceptance pins cross-lane checkpoint parity.
+#
+# Expected outcome: passes (4 authored tests).
+# Run: emath test tests/fixtures/constructor/dream_program_space.emath
+
+emath function MakeTemplate:
+    # The candidate template: a unary Rat program with the free
+    # constant binder `c` (the mutation site).
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(function x in Rat: x * c + 1 / 2)
+
+emath function EvalCandidate:
+    # One candidate's probe: substitute the runtime constant (its
+    # VALUE splices as a literal - the capture keeps names symbolic,
+    # so only substitution injects runtime data), evaluate the now
+    # closed code, apply it to the runtime input.
+    inputs:
+        c: Rat
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        cand = quote.substitute(MakeTemplate(0), "c", c)
+        f = quote.evaluate(cand)
+        result = f(x)
+    tests:
+        example <substituted_program_evaluates>:
+            given c = 3 / 1
+            given x = 5 / 1
+            expect result == 31 / 2
+
+emath function ShadowGuard:
+    # The substitution hygiene law: a binder that rebinds the
+    # reference preserves shadowing - the inner function's own `c`
+    # binder is NOT a mutation site, so the substitution never leaks
+    # under it, while the FREE `c` takes the substituted constant.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        cand = quote.substitute(ShadowTemplate(0), "c", 3 / 1)
+        f = quote.evaluate(cand)
+        result = f(5 / 1)
+    tests:
+        example <rebinder_shadows_substitution>:
+            # (x + 7) + 3 + 1/2 at x = 5, the inner c = 7 computation
+            # untouched: 31/2. A substitute that ignored the rebinding
+            # binder would splice under it too and give 37/2.
+            given unused = 0
+            expect result == 31 / 2
+
+emath function ShadowTemplate:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(function x in Rat: (x + (function c in Rat: c + 7 / 1)(0 / 1)) + c + 1 / 2)
+
+emath function TwoConstants:
+    # Two open constants, bound in the NON-declaration order (b first,
+    # then a): the binding law is by NAME, so the value splices at the
+    # name's slot, never at a fixed position. a*x + b with a = 2, b = 5
+    # at x = 3 is 11; a position-blind splice would swap them (17).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        cand0 = quote.substitute(TwoTemplate(0), "b", 5 / 1)
+        cand1 = quote.substitute(cand0, "a", 2 / 1)
+        f = quote.evaluate(cand1)
+        result = f(3 / 1)
+    tests:
+        example <binding_is_by_name>:
+            given unused = 0
+            expect result == 11 / 1
+
+emath function TwoTemplate:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(function x in Rat: a * x + b)
+
+# --- The session surface (the export seam) ---
+#
+# The program-space search as an ordinary session: the candidate key
+# IS the constant the search substitutes into the template, so every
+# probe is a program mutation, not a parameter sweep. The world wants
+# the predictor i*1 + 1/2: only k = 1 masters all five cases.
+
+use search.archive
+use search.research
+
+emath function ps_world:
+    # The case table: w(i) = i + 1/2.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = [1 / 2, 3 / 2, 5 / 2, 7 / 2, 9 / 2]
+
+emath function ps_pred:
+    # The program-space seam: key k IS the substituted constant. The
+    # prediction runs through the quote chain - substitute k, evaluate
+    # the closed code, apply it to the case input.
+    inputs:
+        k: Rat
+        i: Rat
+    outputs:
+        result: Rat
+    definitions:
+        cand = quote.substitute(MakeTemplate(0), "c", k)
+        f = quote.evaluate(cand)
+        result = f(i)
+
+emath function case_error:
+    # 1 if key k mispredicts case i, else 0.
+    inputs:
+        k: Rat
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if ps_pred(k, i / 1) == ps_world(0)[i]: 0 else: 1
+
+emath function errors_at:
+    # k's error count over the case ids from position j.
+    inputs:
+        k: Rat
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        one = if done: 0 else: case_error(k, ids[j])
+        result = if done: 0 else: one + errors_at(k, ids, j + 1)
+
+emath function first_wrong:
+    # The smallest case ordinal in ids that k mispredicts (-1 = none).
+    inputs:
+        k: Rat
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        result = if done: -1 else: if case_error(k, c) == 1: c else: first_wrong(k, ids, j + 1)
+
+emath function MakeValueOf:
+    # The canonical parameter: the key is the constant itself.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    # The constant domain: c in 0..6.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 6
+
+emath function MakeMoves:
+    # The ladder: step the constant by one either way; admit gates
+    # the domain edges.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k - 1, k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    # Whole-domain capacity: every batch can propose the ladder.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 7
+
+emath function MakeScore:
+    # The probe and verify tier (one truth): k's error count over the
+    # frozen case set, as an exact rational. Every probe is the quote
+    # chain - the program-space search's only scorer.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: errors_at(k / 1, cs.ids, 0) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: first_wrong(k / 1, cs.ids, 0)
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    # Exact mastery of the frozen set closes the run.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: s == 0 / 1
+
+emath function MakeBetter:
+    # Fewer errors is better, strictly (better(x, y) = x beats y).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    # No curriculum: the full world is frozen from the seed.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: cs
+
+emath function SeedPS:
+    # Archive mode, seeded at the trivial constant k = 0 on the full
+    # frozen world (4 of 5 cases mispredicted).
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: [0, 1, 2, 3, 4]}, MakeScore(0), MakeWitness(0), 1, 0, 1, 1)
+
+emath function StepPS:
+    # One batch of the program-space target over explicit state: the
+    # session surface a loop host steps batch by batch.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+
+emath function RunPS:
+    # The straight walk: the seed at k = 0 (score 4), then the ladder
+    # proposes k = 1 - the one constant whose closed program masters
+    # the whole world. The run closes goal_attained and stays closed.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+        errors: Int
+    definitions:
+        s0 = SeedPS(0)
+        s1 = StepPS(s0, 60)
+        s2 = StepPS(s1, 60)
+        winner = s2.archive[s2.incumbent].key
+        verdict = s2.verdict
+        errors = errors_at(winner / 1, [0, 1, 2, 3, 4], 0)
+    tests:
+        example <program_space_master>:
+            given unused = 0
+            expect winner == 1
+            expect verdict == 1
+            expect errors == 0

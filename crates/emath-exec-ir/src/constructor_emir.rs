@@ -33,6 +33,16 @@ pub fn lower_constructor_function(
     lower_named(tree, name, &mut cache, &mut visiting)
 }
 
+/// `f = quote.evaluate(cand)`: the def binds the specialized unary
+/// closure, so later `f(x)` calls lower as closure calls (CallValue),
+/// not field access.
+fn is_quote_evaluate_call(function: &Expr) -> bool {
+    let ExprKind::Path { segments, .. } = &function.kind else {
+        return false;
+    };
+    segments.len() == 2 && segments[0] == "quote" && segments[1] == "evaluate"
+}
+
 /// A def whose RHS is a call to a declared function with exactly one
 /// arrow output binds a closure value (`fam = MakeFamily(0)`, the
 /// session-surface lift pattern): the callee's declaration is the
@@ -190,17 +200,22 @@ fn lower_named(
                 lowerer.locals.insert(def_name.clone(), value);
                 // A def bound to a closure value is closure-valued:
                 // later one-argument calls on this name are closure
-                // calls, not field access. Three sources: a function
-                // literal, a path naming a known arrow name, and a
-                // call to a declared function with a single arrow
-                // output (`fam = MakeFamily(0)` then `fam(1/2)` is
-                // the lift pattern's applied-local shape).
+                // calls, not field access. Four sources: a function
+                // literal, a path naming a known arrow name, a call
+                // to a declared function with a single arrow output
+                // (`fam = MakeFamily(0)` then `fam(1/2)` is the lift
+                // pattern's applied-local shape), and a
+                // `quote.evaluate` call (`f = quote.evaluate(cand)`
+                // then `f(x)` is the program-space application seam).
                 let closure_valued = match &expr.kind {
                     ExprKind::FunctionAbs { .. } => true,
                     ExprKind::Path { segments, .. } => {
                         segments.len() == 1 && lowerer.arrow_names.contains(&segments[0])
                     }
-                    ExprKind::Call { function, .. } => call_binds_closure(tree, function),
+                    ExprKind::Call { function, .. } => {
+                        call_binds_closure(tree, function)
+                            || is_quote_evaluate_call(function)
+                    }
                     _ => false,
                 };
                 if closure_valued {
@@ -509,7 +524,31 @@ impl Lowerer {
             );
         }
         if called.starts_with("quote.") {
-            return Err(format!("call is not yet emitted: {called}"));
+            // Program-space quote calls: substitute binds one open
+            // constant by partial application; evaluate is the
+            // guarded executor yielding the specialized closure.
+            // Every other quote.* spelling or arity keeps the fence.
+            return match (called.as_str(), args.len()) {
+                ("quote.substitute", 3) => {
+                    let ExprKind::Str(reference) = &args[1].kind else {
+                        return Err(
+                            "quote.substitute requires a static reference string".into()
+                        );
+                    };
+                    let code = self.expr(&args[0])?;
+                    let value = self.expr(&args[2])?;
+                    Ok(self.push(EmirOp::CodeSubstitute {
+                        code,
+                        reference: reference.clone(),
+                        value,
+                    }))
+                }
+                ("quote.evaluate", 1) => {
+                    let code = self.expr(&args[0])?;
+                    Ok(self.push(EmirOp::CodeEvaluate { code }))
+                }
+                _ => Err(format!("call is not yet emitted: {called}")),
+            };
         }
         if segments.len() == 2 && segments[1] == "pack" {
             return self.lower_pack(&segments[0], args);
@@ -766,6 +805,51 @@ impl Lowerer {
                     signature,
                 }))
             }
+            ExprKind::Quote { body } => {
+                // Program-space quote emission: the unary Rat-domain
+                // function template lowers once into compiled code.
+                // The body's free names beyond the parameter are the
+                // OPEN constants - the hygiene law keeps them open (a
+                // quote never captures the ambient frame), so they
+                // become the template's runtime substitution inputs.
+                // One predicate admits the shape, shared with the
+                // unresolved walk, so the two can never disagree.
+                if !is_emitted_quote_template(body) {
+                    return Err(
+                        "quote emission supports unary Rat -> Rat function templates in this cut"
+                            .into(),
+                    );
+                }
+                let ExprKind::FunctionAbs { param, body: inner, .. } = &body.kind else {
+                    return Err("quote emission supports function templates in this cut".into());
+                };
+                let mut free = BTreeSet::new();
+                collect_free_names(inner, param, &mut free);
+                let free: Vec<String> = free.into_iter().collect();
+                let mut inputs = vec![param.clone()];
+                inputs.extend(free.iter().cloned());
+                let mut child = Lowerer {
+                    inputs,
+                    locals: BTreeMap::new(),
+                    siblings: self.siblings.clone(),
+                    objects: self.objects.clone(),
+                    ops: Vec::new(),
+                    obligations: Vec::new(),
+                    self_name: None,
+                    self_result: String::new(),
+                    // Empty arrow names: the open constants are data
+                    // inputs, not callables, and the parameter is the
+                    // template's only binder.
+                    arrow_names: BTreeSet::new(),
+                };
+                let lowered = child.expr(inner)?;
+                let program = child.finish(lowered);
+                Ok(self.push(EmirOp::CodeLiteral {
+                    body: program,
+                    param: param.clone(),
+                    free,
+                }))
+            }
             ExprKind::List(items) => {
                 let mut values = Vec::new();
                 for item in items {
@@ -940,6 +1024,22 @@ fn expr_uses_quote(expr: &Expr) -> bool {
         ExprKind::Record { fields, .. } => fields.iter().any(|(_, value)| expr_uses_quote(value)),
         _ => false,
     }
+}
+
+/// The emitted quote-template shape: a unary Rat-domain function
+/// literal (bare `Rat` domain spelling). One authority for both the
+/// lowering admission and the unresolved exemption, so the two can
+/// never disagree; every other quote stays behind the fence as
+/// symbolic code.
+fn is_emitted_quote_template(body: &Expr) -> bool {
+    let ExprKind::FunctionAbs { domain, .. } = &body.kind else {
+        return false;
+    };
+    matches!(
+        &domain.kind,
+        ExprKind::Path { segments, .. }
+            if segments.len() == 1 && segments[0] == "Rat"
+    )
 }
 
 /// `constructor_refuse(quote(name))`: the authored single-identifier
@@ -1133,7 +1233,14 @@ fn collect_free_names_bound(
 
 fn collect_unresolved(expr: &Expr, out: &mut Vec<String>) {
     match &expr.kind {
-        ExprKind::Quote { .. } | ExprKind::QuoteBind { .. } => {
+        ExprKind::Quote { body } => {
+            // The emitted template shape resolves (the Quote arm
+            // lowers it); every other quote stays symbolic code.
+            if !is_emitted_quote_template(body) {
+                out.push("quote".into());
+            }
+        }
+        ExprKind::QuoteBind { .. } => {
             out.push("quote".into());
         }
         ExprKind::Call { function, args } => {

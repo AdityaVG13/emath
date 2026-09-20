@@ -142,6 +142,12 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         EmirOp::DenseRepack { template, data } => out.extend([*template, *data]),
         // Body registers are local; capture registers belong to this frame.
         EmirOp::ProgramLiteral { captures, .. } => out.extend(captures),
+        // Quote-code ops: the code/value registers belong to this
+        // frame; a literal's nested body registers stay local (the
+        // ProgramLiteral rule).
+        EmirOp::CodeLiteral { .. } => {}
+        EmirOp::CodeSubstitute { code, value, .. } => out.extend([*code, *value]),
+        EmirOp::CodeEvaluate { code } => out.push(*code),
     }
 }
 

@@ -37,5 +37,17 @@ pub(super) fn eval_op(
             | EmirOp::TryCallRealProgram { .. } | EmirOp::CallValue { .. } => eval_calls(
             self_program, op, registers, inputs, state, budget,
         ),
+        // Emission-carried quote ops: the constructor lane computes
+        // quotes through its own Code machinery (the reference VM's
+        // CValue::Code); the E-MIR interpreter refuses them by name
+        // instead of guessing a carrier.
+        EmirOp::CodeLiteral { .. } | EmirOp::CodeSubstitute { .. } | EmirOp::CodeEvaluate { .. } => {
+            Err(EvalFault::CarrierRefused {
+                op: op.name(),
+                detail: String::from(
+                    "emission-carried quote op; the constructor lane computes quotes through its own Code machinery",
+                ),
+            })
+        }
     }
 }

@@ -141,3 +141,19 @@ parameter cases, series enclosures, and quantization execute from authored
 Language Image programs. The runtime no longer exports their former
 record types or algorithms. Generated Rust emits authored record layouts
 and program bodies through the same generic backend.
+
+## Code carrier (emath-npky7)
+
+`body/code.rs` (embedded as `pub mod code` in both the crate and
+`SOURCE`) is the artifact-side Code value: a quoted unary
+`Rat -> Rat` program compiled once into a closure factory. It is a
+representation carrier, not a mathematical method: `open(free, make)`
+pairs the open-constant names with the compiled factory;
+`substitute` binds one constant by partial application (by name - the
+value splices at the name's slot; an absent reference is a no-op,
+tree-substitution parity); `evaluate` is the guarded executor (open
+code refuses `unbound_code` naming the remaining constants in binding
+order; closed code yields the specialized closure). No tree is
+carried and no interpreter runs. Conformance:
+`tests/emath-rt/tests/code_carrier.rs` with splice-position and
+guard-removal mutation probes.

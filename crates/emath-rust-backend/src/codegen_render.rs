@@ -460,6 +460,88 @@ pub(crate) fn op_expr(
             Ok(Expr::Raw(format!("{{ {capture_bindings} let __program: std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>> = std::sync::Arc::new(move |__program_inputs: &[f64]| {{ {arity_guard} {bindings} Ok({result}) }}); __program }}")))
             }
         }
+        EmirOp::CodeLiteral { body, param, free } => {
+            // The compiled template: the nested program lowers once
+            // into a two-stage factory - the outer closure consumes
+            // the open constants' values (in `free` order, as a
+            // slice), the inner closure is the specialized unary
+            // program. The nested inputs are [param, free...] -
+            // positional like every EmirProgram - so the authored
+            // names bind the closure parameters in that order. No
+            // tree, no interpreter: candidates execute as this
+            // emitted closure.
+            let mut parameters = vec![param.clone()];
+            parameters.extend(free.iter().cloned());
+            let mut inputs = InputKinds::new();
+            for name in &parameters {
+                inputs.insert(name.clone(), ValueKind::Rational);
+            }
+            let _reference = ReferenceScope::enter();
+            let body_code = render_expr(&value_expr(body, &parameters, &[], &inputs)?);
+            // The nested body's result is a plain value; the closure
+            // returns Result (a Never body - an authored refusal -
+            // already renders as the error tail, mirroring the typed
+            // literal's law).
+            let tail = if program_kind(body, &parameters, &[], &inputs) == ValueKind::Never {
+                body_code
+            } else {
+                format!("Ok({body_code})")
+            };
+            let carrier = "emath_rt::ExactRatio";
+            let unary_ty = format!("std::rc::Rc<dyn Fn({carrier}) -> Result<{carrier}, String>>");
+            let closure_params = parameters
+                .iter()
+                .map(|name| format!("{name}: {carrier}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let bindings = free
+                .iter()
+                .enumerate()
+                .map(|(index, name)| format!("let {name} = __code_free[{index}]; "))
+                .collect::<String>();
+            // The inner closure owns the bound free values (Copy
+            // tuples) and forwards them with the parameter.
+            let mut forwarded = vec![param.clone()];
+            forwarded.extend(free.iter().cloned());
+            let forwarded = forwarded.join(", ");
+            let free_list = free
+                .iter()
+                .map(|name| format!("String::from({name:?})"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Ok(Expr::Raw(format!(
+                "{{ let __code_body = move |{closure_params}| -> Result<{carrier}, String> {{ {tail} }}; \
+                 emath_rt::code::open(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[{carrier}]| -> Result<{unary_ty}, String> {{ \
+                 {bindings} let __code_unary: {unary_ty} = std::rc::Rc::new(move |{param}: {carrier}| __code_body({forwarded})); \
+                 Ok(__code_unary) }})) }}"
+            )))
+        }
+        EmirOp::CodeSubstitute { code, reference, value } => {
+            // Partial application of one open constant: the reference
+            // resolved statically at lowering, the value a runtime
+            // Rational in this cut.
+            let kinds = value_kinds(program, names, states, input_kinds);
+            if kind_at(&kinds, *value) != ValueKind::Rational {
+                return Err(BackendError::UnsupportedType(
+                    "code-substitute value must be Rat in this cut".into(),
+                ));
+            }
+            Ok(Expr::Raw(format!(
+                "emath_rt::code::substitute(&{}, {:?}, {})",
+                render_expr(&operand(program, *code)),
+                reference,
+                render_expr(&operand(program, *value))
+            )))
+        }
+        EmirOp::CodeEvaluate { code } => {
+            // The guarded executor: open code refuses `unbound_code`
+            // at runtime, naming the remaining constants; closed code
+            // yields the specialized closure (kind Closure).
+            Ok(Expr::Raw(format!(
+                "emath_rt::code::evaluate(&{})?",
+                render_expr(&operand(program, *code))
+            )))
+        }
         EmirOp::VectorMap { .. }
         | EmirOp::VectorMapScalar { .. }
         | EmirOp::VectorReduce { .. }

@@ -17,6 +17,11 @@ pub(crate) enum ValueKind {
     BigInt,
     Text,
     Program,
+    /// The artifact Code carrier (emath-npky7): a quoted unary
+    /// `Rat -> Rat` program compiled once into a closure factory
+    /// (`emath_rt::code::Code`). Open until `substitute` closes it;
+    /// `evaluate` yields the specialized closure.
+    Code,
     /// Typed program value: a closure with explicit parameter and
     /// result kinds (the constructor lane's `Int -> CaseSet -> Rat`
     /// carriers and `CallValue` callees). It renders as a generic call
@@ -106,6 +111,7 @@ impl ValueKind {
             Self::Rational => Ty::Named("emath_rt::ExactRatio".into()),
             Self::Bool => Ty::Bool,
             Self::Text => Ty::Named("String".into()),
+            Self::Code => Ty::Named("emath_rt::code::Code".into()),
             Self::DenseLayout(_) => Ty::Named("emath_rt::DenseLayout".into()),
             Self::Program => Ty::Named(
                 "std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>>"
@@ -391,6 +397,16 @@ pub(super) fn kind_of_op(
                 result: Box::new(result),
             }
         }
+        // The quoted-template carrier: open code (a CodeLiteral or a
+        // further partial application) stays a Code value; only the
+        // guarded executor yields a callable.
+        EmirOp::CodeLiteral { .. } | EmirOp::CodeSubstitute { .. } => ValueKind::Code,
+        // quote.evaluate: closed code yields the specialized unary
+        // Rat -> Rat closure, so a def bound to it is callable.
+        EmirOp::CodeEvaluate { .. } => ValueKind::Closure {
+            params: vec![ValueKind::Rational],
+            result: Box::new(ValueKind::Rational),
+        },
         // A call consumes the callee's declared parameters one stage
         // at a time: a curried callee (`Fn<A, Fn<B, C>>` lowered as
         // one CallValue with all arguments) walks the result chain,

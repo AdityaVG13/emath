@@ -248,5 +248,36 @@ fn export_native_sessions() {
         );
     });
 
+    // 9. The native lane carries the third real surface: program-space
+    //    candidates. The candidate family is a quoted unary program
+    //    with a free constant; every probe is `quote.substitute`
+    //    (the mutation) + `quote.evaluate` (the guarded executor) +
+    //    the compiled closure's application. The artifact must
+    //    compile with the Code carrier and match the VM lane's
+    //    checkpoint byte for byte.
+    probe.case("program-space-surface-exports", |p| {
+        let host = LoopHost::open(
+            &fixture_path("dream_program_space.emath"),
+            Some("StepPS"),
+        )
+        .expect("open program-space");
+        let report = export_native(&host, &temp_path("pspace")).expect("export program-space");
+        let native_path = temp_path("pspace_native.json");
+        let (code, stdout, stderr, native) = native_lane_run(&report, 2, 60, &native_path);
+        p.demand(
+            "native-run-ok",
+            code == Some(0) && stdout.contains("end batches 2 verdict goal_attained"),
+            format!("exit {code:?}\n{stdout}\n{stderr}"),
+        );
+        let vm_path = temp_path("pspace_vm.json");
+        vm_lane_scratch(&host, 2, 60, &vm_path);
+        let vm = std::fs::read_to_string(&vm_path).expect("vm scratch");
+        p.demand(
+            "scratch-bytes-equal",
+            native == vm,
+            format!("--- native ---\n{native}\n--- vm ---\n{vm}"),
+        );
+    });
+
     probe.finish();
 }

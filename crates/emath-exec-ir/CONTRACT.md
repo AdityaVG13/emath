@@ -138,6 +138,40 @@ The first failure remains the case verdict; a failed case cannot pass its expect
 Constructor and assumption checks remain strict. `eval_definitions_values`, used
 by numerical solver callers, remains fail-fast.
 
+## Program-space quote emission (emath-npky7)
+
+Constructor lowering emits exactly one quote subset: `quote(<unary
+Rat -> Rat function literal>)`, `quote.substitute(code, "name", value)`,
+and `quote.evaluate(code)`. The ops are `CodeLiteral` (the template's
+nested program with the open constants as trailing runtime inputs),
+`CodeSubstitute` (partial application; the reference is a static string
+resolved at lowering, the value is Rational-carried), and `CodeEvaluate`
+(the guarded executor; a def bound to it is closure-valued, so later
+`f(x)` lowers as `CallValue` — the fourth closure-valued def source).
+
+The hygiene law is structural: a quote never captures the ambient
+frame. Every free name of the template body (beyond the parameter)
+stays open and becomes a substitution input; nested rebinders keep
+their own scope (the free-name collector's L2 rule). One predicate
+(`is_emitted_quote_template`) is the single authority admitting the
+shape in both the lowering and the unresolved walk, so the two cannot
+disagree. Every other quote form (`QuoteBind`, non-lambda bodies,
+other `quote.*` spellings or arities) keeps the emission fence: it
+lowers to a named refusal and the module is not runnable.
+
+The E-MIR interpreter refuses the three ops as emission-carried
+(`CarrierRefused`): the constructor lane computes quotes through its
+own `CValue::Code` machinery; these ops exist for the native lane.
+
+Determinism class: lowering is a pure function of the authored tree.
+Conformance is `tests/emath-tui/tests/export_native.rs` case 9
+(cross-lane scratch parity over
+`tests/fixtures/constructor/dream_program_space.emath`) and
+`tests/emath-rt/tests/code_carrier.rs` (the carrier laws), with
+mutation probes: splice position, the `unbound_code` guard, the
+closure-valued source, and the unresolved exemption each kill their
+suite.
+
 ## Kernel boundary
 
 Native kernels are immutable implementations keyed by domain-neutral kernel IDs and carrier signatures. `install_language_distribution` derives FeatureID bindings exclusively from capsule-active Language Image rows and starts from an empty binding map. There are no built-in FeatureID aliases or legacy bindings.

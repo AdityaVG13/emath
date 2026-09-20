@@ -239,6 +239,40 @@ pub enum EmirOp {
         signature: String,
     },
 
+    /// A quoted unary program template as compiled code: the lambda
+    /// body lowered once, with the open (free) constant names as
+    /// trailing runtime inputs after the parameter. The artifact
+    /// value is the compiled closure factory - no tree is carried and
+    /// no interpreter runs. This cut admits unary `Rat -> Rat`
+    /// templates whose open constants are Rat-valued; the hygiene law
+    /// is structural: a quote never captures the ambient frame, so
+    /// every free name of the body stays open until substituted.
+    CodeLiteral {
+        body: EmirProgram,
+        /// The template's parameter name (nested input 0).
+        param: String,
+        /// The open constant names in binding order (nested inputs
+        /// 1..=free.len(), sorted by the free-name collector).
+        free: Vec<String>,
+    },
+    /// `quote.substitute(code, name, value)`: bind one open constant
+    /// by partial application. The reference is a static string
+    /// resolved at lowering; the value is a runtime Rational. Binding
+    /// a name that is not open is a no-op (tree-substitution parity:
+    /// substituting an absent name leaves the code unchanged).
+    CodeSubstitute {
+        code: EmirValue,
+        reference: String,
+        value: EmirValue,
+    },
+    /// `quote.evaluate(code)`: the guarded executor. Open code
+    /// refuses `unbound_code` naming every remaining open constant;
+    /// closed code yields the specialized unary `Rat -> Rat` closure,
+    /// a callable value (a def bound to it is closure-valued).
+    CodeEvaluate {
+        code: EmirValue,
+    },
+
     /// Concatenate list carriers, preserving element carriers. The
     /// authored cons spelling `[head, ..tail]` lowers here; unlike
     /// [`Self::VectorConcat`] this is not a Float64 dense-lane op.

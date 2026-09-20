@@ -43,6 +43,9 @@ pub const SOURCE: &str = concat!(
     "\npub mod exact_int {\n",
     include_str!("body/exact_int.rs"),
     "\n}\npub use exact_int::{ExactError, ExactInt, exact_int_hamming, exact_int_poly_eval, exact_int_prod, exact_int_prod_from, exact_int_sum, exact_int_sum_from, exact_int_weighted_prod, exact_ratio};\n",
+    "\npub mod code {\n",
+    include_str!("body/code.rs"),
+    "\n}\n",
     "\npub mod special {\n",
     include_str!("../../emath-core/src/special.rs"),
     "\n}\n"
