@@ -58,15 +58,33 @@ The state type `T` is expected to carry the loop state contract fields
 - `repl::run_repl(host, config, input, out)` - the line-REPL core
   (`ReplConfig { default_budget, interactive }`): `help`, `step
   [budget]`, `run [n]`, `show`, `grow-case <id>`, `save/load <path>`,
-  `export-native`, `quit`. Blank lines and `#` comments are ignored.
-  `run` without a count stops on the closing verdicts
+  `export-native <dir>`, `quit`. Blank lines and `#` comments are
+  ignored. `run` without a count stops on the closing verdicts
   (`goal_attained`, `domain_exhausted`) and resumes across `plateau`
   and `budget_exhausted` per the authored vocabulary; a bare `run`
   that reaches 1000 batches without closing refuses `loop_run_cap`.
   Errors print `error <code>: <message>` and the session continues;
   only a failed session start or a broken stream ends the run.
-  `export-native` is an honest boundary notice: the epoch host bin is
-  bead emath-8k3zw's deliverable, not an emulated export.
+- `export::export_native(host, out_dir)` - the native epoch export
+  (bead emath-8k3zw): emits the artifact crate through the SHARED
+  constructor-crate emitter (`emath-rust-backend`'s
+  `constructor_crate`, the same core `emath build` uses, so the two
+  emissions are byte-identical by construction), then generates and
+  compiles a standalone std-only epoch-host bin as the artifact's
+  path sibling (the compiled-probe doctrine). The host bin drives
+  `Seed<Name>(0)` / `Step<Name>(state, budget)` over the artifact
+  ABI, projects the ledger, enforces the ledger law, and writes an
+  `emath.scratch.v1` checkpoint that MIRRORS the exec-ir interchange
+  (records alphabetical by emath field name - the inverse of the
+  backend's keyword escape orders and names them - sequences
+  comma-space, the JsonWriter envelope shape) instead of linking
+  emath-exec-ir. Cross-lane parity (native checkpoint byte-identical
+  to the VM lane's for the same schedule) is enforced by tests, not
+  by shared code; the state shape is parsed from the emitted artifact
+  itself and checked against the loop-state contract at generation
+  time. The bin's transcript mirrors the REPL's seed/batch/end lines
+  plus a measured `timing native_step_total_ns` line - timing is
+  reported, never claimed as a ratio.
 
 ## Invariants
 
@@ -84,7 +102,8 @@ with their own codes (`scratch_identity`, `scratch_ledger`,
 (`loop_read`, `loop_parse`, `loop_surface`, `loop_target`,
 `loop_ambiguous`, `loop_identity`, `loop_state_contract`,
 `loop_ledger_law`, `loop_case_duplicate`, `loop_command`,
-`loop_run_cap`, `loop_stream`). No silent guessing.
+`loop_run_cap`, `loop_stream`, `loop_export_emit`,
+`loop_export_state`, `loop_export_compile`). No silent guessing.
 
 ## Determinism class
 
@@ -115,15 +134,27 @@ straight run plus the identity and ledger refusals.
 sessions over the valley surface: the goal walk with pinned batch
 lines, byte-determinism, save/load resume, grow-case freeze and
 duplicate refusal, budget-halt resume, error continuation, and the
-export-native boundary. `tests/emath-cli/tests/loop_cmd.rs` runs the
+export-native receipt. `tests/emath-cli/tests/loop_cmd.rs` runs the
 `emath loop` binary end to end: scripted goal, default budget, auto
 target, ambiguity refusal, lift diagnostic, usage fault, and piped
 stdin sessions. Mutation probe: disabling the grow-case duplicate
 guard fails `repl-grow-case/duplicate-refused`.
+`tests/emath-tui/tests/export_native.rs` is the native-lane
+acceptance: the export emits and builds both crates, the native
+checkpoint is byte-identical to the VM lane's for the same schedule
+(cross-lane parity), the native lane is deterministic, a different
+schedule diverges, the transcript mirrors the REPL's lines with a
+measured timing line, and argument faults are typed. Mutation probe:
+swapping the rational's num/den in the generated renderer fails
+`cross-lane-parity/scratch-bytes-equal`.
 
 ## No-claim boundaries
 
 The host does not interpret case semantics, choose budgets, or
 evaluate targets. The dashboard (B4) is implemented strictly from the
 user's design spec; this crate does not design UI. Native-lane parity
-is B5's acceptance, not a claim of this crate.
+is claimed exactly as tested: same module, surface, and budget
+schedule produce byte-identical checkpoints on the valley surface;
+other surfaces carry the same contract but their parity is proven
+when their fixtures drive the export test. The epoch host's timing
+line is a measurement, not a performance claim.

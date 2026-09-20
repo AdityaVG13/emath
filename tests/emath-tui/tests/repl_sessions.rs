@@ -17,7 +17,9 @@
 //!     resumes (the replay fixture's discipline);
 //!   - unknown commands and engine faults print named errors and the
 //!     session continues; quit ends with a summary line;
-//!   - export-native is an honest boundary notice, not a fake export.
+//!   - export-native emits and builds the native epoch host (artifact
+//!     crate + sibling bin); the receipt names both crates and the
+//!     binary (cross-lane parity is export_native.rs's acceptance);
 
 use std::io::BufReader;
 
@@ -186,12 +188,28 @@ fn repl_sessions() {
         );
     });
 
-    // 7. export-native is an honest boundary notice.
-    probe.case("repl-export-native-boundary", |p| {
-        let (transcript, _) = drive(&valley_host(), "export-native\nquit\n");
+    // 7. export-native emits and builds the native epoch host
+    //    (bead emath-8k3zw): receipt lines name both crates and the
+    //    binary, and the binary exists.
+    probe.case("repl-export-native", |p| {
+        let out_dir = std::env::temp_dir().join(format!(
+            "emath_repl_export_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        let script = format!("export-native {}\nquit\n", out_dir.display());
+        let (transcript, _) = drive(&valley_host(), &script);
         p.demand(
-            "boundary-notice",
-            transcript.contains("emath-8k3zw") && transcript.contains("not emitted yet"),
+            "export-receipt",
+            transcript.contains("exported epoch-host") && transcript.contains("built "),
+            transcript.clone(),
+        );
+        let binary = std::fs::read_dir(out_dir.join("epoch-host"))
+            .map(|_| true)
+            .unwrap_or(false);
+        p.demand(
+            "host-crate-written",
+            binary && transcript.contains(&out_dir.display().to_string()),
             transcript.clone(),
         );
     });

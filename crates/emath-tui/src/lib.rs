@@ -4,5 +4,6 @@
 //! over the VM engine; the native lane (B5) re-implements the same
 //! scratch contract over the artifact ABI.
 
+pub mod export;
 pub mod host;
 pub mod repl;

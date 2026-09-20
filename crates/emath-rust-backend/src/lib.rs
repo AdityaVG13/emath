@@ -23,6 +23,7 @@ use codegen_helpers::*;
 mod codegen_render;
 use codegen_render::*;
 mod codegen_steps;
+pub mod constructor_crate;
 pub mod rust_ir;
 
 #[derive(Clone, Debug)]

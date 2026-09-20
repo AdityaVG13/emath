@@ -458,218 +458,24 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
         crate::print_diagnostics(&diagnostics);
         return Some(EXIT_ADMISSION);
     }
-    let constructor_only = tree.items.iter().all(|item| match item {
-        emath_core::tree::Item::Use { .. } => true,
-        emath_core::tree::Item::Declaration(decl) => {
-            matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+    // One emitter, two callers: `emath build` and the loop host's
+    // `export-native` share constructor_crate so their artifact
+    // crates are byte-identical by construction.
+    let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(&tree, spec)
+    {
+        Ok(emission) => emission,
+        Err(emath_rust_backend::constructor_crate::ConstructorEmitRefusal::NotConstructor(
+            message,
+        )) => {
+            return Some(refuse_coded("build", json, EXIT_ADMISSION, "E-KIND-GONE", message));
         }
-        _ => true,
-    });
-    if !constructor_only {
-        return Some(refuse_coded(
-            "build",
-            json,
-            EXIT_ADMISSION,
-            "E-KIND-GONE",
-            "`emath build` emits constructor functions. Write `emath object`, `emath function`, or `emath query`.",
-        ));
-    }
-    // Merge `use` imports into one whole-program tree (the engine's
-    // install order) so imported objects and functions lower here too.
-    // The MAIN file's functions are the crate's entries; imported
-    // declarations join as lowering context (siblings, record
-    // layouts), never as re-emitted entries.
-    let main = tree;
-    let tree = match emath_exec_ir::constructor_layer::merged_tree_with_imports(&main, Some(spec)) {
-        Ok(tree) => tree,
-        Err(error) => {
-            return Some(refuse_coded(
-                "build",
-                json,
-                EXIT_ADMISSION,
-                emath_exec_ir::constructor_layer::constructor_admit_code(&error.code),
-                &format!("{}: {}", error.code, error.message),
-            ));
+        Err(emath_rust_backend::constructor_crate::ConstructorEmitRefusal::ImportsRefused {
+            e_code,
+            detail,
+        }) => {
+            return Some(refuse_coded("build", json, EXIT_ADMISSION, &e_code, &detail));
         }
     };
-    let functions: Vec<String> = main
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            emath_core::tree::Item::Declaration(decl) if decl.as_kind == "function" => {
-                Some(decl.name.clone())
-            }
-            _ => None,
-        })
-        .collect();
-    if functions.is_empty() {
-        return Some(refuse_coded(
-            "build",
-            json,
-            EXIT_ADMISSION,
-            "E-KIND-GONE",
-            "`emath build` emits lowered Rust for `emath function` entries. Symbolic query-only files are not marked runnable.",
-        ));
-    }
-    // Authored records: every object's representation fields in the
-    // backend's carrier-signature interchange. An object with a field
-    // the interchange cannot map is left unregistered - referencing it
-    // then refuses with the named no-layout error instead of guessing.
-    use std::collections::BTreeSet;
-    let objects: BTreeSet<String> = tree
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            emath_core::tree::Item::Declaration(decl) if decl.as_kind == "object" => {
-                Some(decl.name.clone())
-            }
-            _ => None,
-        })
-        .collect();
-    let mut records = Vec::new();
-    for item in &tree.items {
-        let emath_core::tree::Item::Declaration(decl) = item else {
-            continue;
-        };
-        if decl.as_kind == "object" {
-            let mut fields = Vec::new();
-            let mut mappable = true;
-            for (field, ty) in
-                emath_exec_ir::constructor_emir::section_typed_fields(decl, "representation")
-            {
-                match emath_exec_ir::constructor_emir::constructor_type_signature(&ty, &objects) {
-                    Some(signature) => fields.push((field, signature)),
-                    None => mappable = false,
-                }
-            }
-            if mappable {
-                records.push(emath_rust_backend::AuthoredRecord {
-                    name: decl.name.clone(),
-                    fields,
-                });
-            }
-        } else if decl.as_kind == "function" {
-            // Multi-output functions pack their outputs as a record
-            // named after the function (the lowerer's output packing),
-            // so the entry's result carrier needs that layout too.
-            let outputs =
-                emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
-            if outputs.len() > 1 {
-                let mut fields = Vec::new();
-                let mut mappable = true;
-                for (output, ty) in outputs {
-                    match emath_exec_ir::constructor_emir::constructor_type_signature(
-                        &ty,
-                        &objects,
-                    ) {
-                        Some(signature) => fields.push((output, signature)),
-                        None => mappable = false,
-                    }
-                }
-                if mappable {
-                    records.push(emath_rust_backend::AuthoredRecord {
-                        name: decl.name.clone(),
-                        fields,
-                    });
-                }
-            }
-        }
-    }
-    // Generated-artifact lint policy: entry names follow authored
-    // spellings (PascalCase), the flattener parenthesizes substituted
-    // expressions defensively, and authored-but-unused parameters stay
-    // in signatures - all style-only in machine-generated code.
-    const EMITTED_HEADER: &str = "#![forbid(unsafe_code)]\n#![allow(nonstandard_style, unused_parens, unused_braces, unused_mut, unused_variables)]\n\n";
-    let mut rust = String::from(EMITTED_HEADER);
-    let mut runnable = true;
-    let mut unresolved = Vec::new();
-    match emath_rust_backend::emit_record_definitions(&records) {
-        Ok(definitions) => rust.push_str(&definitions),
-        Err(error) => {
-            runnable = false;
-            unresolved.push(error.to_string());
-        }
-    }
-    // One named entry per runnable function: sibling calls (pilot p8)
-    // need both functions in the same crate, so entries carry their
-    // function names instead of a shared `entry` symbol.
-    for name in &functions {
-        match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, name) {
-            Ok(lowered) => {
-                if !lowered.runnable {
-                    runnable = false;
-                    unresolved.extend(lowered.unresolved);
-                    rust.push_str(&format!(
-                        "// `{name}` is not marked runnable: unresolved symbolic code\n"
-                    ));
-                    continue;
-                }
-                // Declared carriers ground the entry ABI; an untyped
-                // input falls back to the numeric lane's Int.
-                let declared = main
-                    .items
-                    .iter()
-                    .find_map(|item| match item {
-                        emath_core::tree::Item::Declaration(decl) if &decl.name == name => Some(
-                            emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs"),
-                        ),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-                let inputs: Vec<(String, Option<String>)> = lowered
-                    .inputs
-                    .iter()
-                    .map(|input| {
-                        let signature = declared
-                            .iter()
-                            .find(|(declared, _)| declared == input)
-                            .and_then(|(_, ty)| {
-                                emath_exec_ir::constructor_emir::constructor_type_signature(
-                                    ty, &objects,
-                                )
-                            });
-                        (input.clone(), signature)
-                    })
-                    .collect();
-                match emath_rust_backend::emit_constructor_entry(
-                    &lowered.program,
-                    name,
-                    &inputs,
-                    &records,
-                ) {
-                    Ok(body) => {
-                        rust.push_str(&format!("// function `{name}`\n"));
-                        rust.push_str(&body);
-                        rust.push('\n');
-                    }
-                    Err(error) => {
-                        runnable = false;
-                        unresolved.push(error.to_string());
-                        rust.push_str(&format!(
-                            "// `{name}` is not marked runnable: {error}\n"
-                        ));
-                    }
-                }
-            }
-            Err(error) => {
-                runnable = false;
-                unresolved.push(error);
-            }
-        }
-    }
-    if rust.contains("emath_rt::") {
-        // Self-containment law (emath-rt's `SOURCE` embed, the same
-        // law the SIR lane followed): the runtime ships inside the
-        // artifact as `mod emath_rt`, so the emitted crate builds
-        // with zero external dependencies.
-        rust.insert_str(
-            EMITTED_HEADER.len(),
-            &format!(
-                "#[allow(dead_code)]\npub mod emath_rt {{\n{}\n}}\n\n",
-                emath_rt::SOURCE
-            ),
-        );
-    }
     if let Err(err) = std::fs::create_dir_all(out.join("src")) {
         return Some(refuse_coded(
             "build",
@@ -679,7 +485,7 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             &err.to_string(),
         ));
     }
-    if let Err(err) = std::fs::write(out.join("src/lib.rs"), rust) {
+    if let Err(err) = std::fs::write(out.join("src/lib.rs"), emission.lib) {
         return Some(refuse_coded(
             "build",
             json,
@@ -688,24 +494,7 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             &err.to_string(),
         ));
     }
-    // A buildable crate needs its manifest; the runtime is embedded,
-    // so the dependency list stays empty and the artifact compiles
-    // offline, outside this repository.
-    let stem = spec
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("emath_build");
-    let mut package_name: String = stem
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
-        .collect();
-    if package_name.is_empty() || package_name.starts_with(|c: char| c.is_ascii_digit()) {
-        package_name = format!("emath_{package_name}");
-    }
-    let manifest = format!(
-        "# Generated by `emath build`; the emath runtime is embedded\n# as `mod emath_rt` in src/lib.rs - no dependencies.\n[package]\nname = \"{package_name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n"
-    );
-    if let Err(err) = std::fs::write(out.join("Cargo.toml"), manifest) {
+    if let Err(err) = std::fs::write(out.join("Cargo.toml"), emission.manifest) {
         return Some(refuse_coded(
             "build",
             json,
@@ -714,6 +503,9 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             &err.to_string(),
         ));
     }
+    let runnable = emission.runnable;
+    let functions = emission.functions;
+    let unresolved = emission.unresolved;
     let status = if runnable { "runnable" } else { "not-runnable" };
     if json {
         let mut object = emath_artifact::JsonWriter::object();

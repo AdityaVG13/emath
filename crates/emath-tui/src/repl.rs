@@ -21,7 +21,10 @@
 //!                                  next batch re-scores the archive
 //!   - `save <path>`                write an emath.scratch.v1 checkpoint
 //!   - `load <path>`                replace the session from a checkpoint
-//!   - `export-native`              the native-export boundary notice
+//!   - `export-native <dir>`        emit + build the native epoch host
+//!                                  (artifact crate + sibling bin over
+//!                                  the artifact ABI; cross-lane
+//!                                  scratch parity is its acceptance)
 //!   - `quit`                       end the session
 //!
 //! Errors print `error <code>: <message>` and the session continues;
@@ -151,7 +154,7 @@ const HELP: &str = "commands:
   grow-case <id>       freeze one more case ordinal; the next batch re-scores
   save <path>          write an emath.scratch.v1 checkpoint
   load <path>          replace the session from a checkpoint
-  export-native        the native-export boundary notice
+  export-native <dir>  emit + build the native epoch host (cross-lane parity)
   quit                 end the session";
 
 /// Run the line-REPL over `input`, writing the deterministic
@@ -329,10 +332,34 @@ pub fn run_repl(
                 }
             }
             "export-native" => {
-                write_line(
-                    out,
-                    "native export arrives with bead emath-8k3zw: the artifact ABI is proven, the epoch host bin is not emitted yet",
-                )?;
+                let Some(dir) = words.next() else {
+                    error_line(
+                        out,
+                        &HostFault::fault("loop_command", "export-native needs an output directory"),
+                    )?;
+                    continue;
+                };
+                match super::export::export_native(host, std::path::Path::new(dir)) {
+                    Ok(report) => {
+                        write_line(
+                            out,
+                            &format!("exported artifact {}", report.artifact_dir.display()),
+                        )?;
+                        write_line(
+                            out,
+                            &format!("exported epoch-host {}", report.host_dir.display()),
+                        )?;
+                        write_line(out, &format!("built {}", report.binary_path.display()))?;
+                        write_line(
+                            out,
+                            &format!(
+                                "run {} --batches N --budget 60 --scratch out.json (its checkpoint is byte-identical to this session's save)",
+                                report.binary_path.display()
+                            ),
+                        )?;
+                    }
+                    Err(fault) => error_line(out, &fault)?,
+                }
             }
             "quit" => break,
             other => {

@@ -97,6 +97,7 @@ Frequently re-exported types (not exhaustive):
 - `CrateProfile`, `ProfileProblem` (module `profiles`): `parse_profile`.
 - `FileSet`, `Anchor`, `RenderResult` (module `render`): `render_module`, `render_file_set`, `render_file_set_partitioned`, `render_generics`, `coverage_gaps`.
 - Module `ast`: full AST item types (`Module`, `Item`, `StructDef`, `FnDef`, `ImplDef`, `EnumDef`, `Expr`, `Stmt`, `Ty`, etc.) and helpers `escape_ident`, `snake_case`, `RUST_KEYWORDS`.
+- `ConstructorCrateEmission`, `ConstructorEmitRefusal` (module `constructor_crate`, bead emath-8k3zw): `emit_constructor_crate(main_tree, spec_path)` - the `emath build` emission core (import merge, authored-record collection, one named entry per main-file function, the `mod emath_rt` self-containment embed, and the manifest), shared with the loop host's `export-native` so the two callers' artifact crates are byte-identical by construction. Pure: it returns the lib text, the manifest, the package name, and the admission facts (runnable, functions, unresolved); callers own IO, verification, and presentation. Field-name hygiene is one-directional here: the emitted Rust escapes keywords (`move` becomes `move_` via `escape_ident`); consumers that must recover the authored name invert it against `RUST_KEYWORDS`.
 
 ## Invariants
 
@@ -108,7 +109,7 @@ Frequently re-exported types (not exhaustive):
 
 ## Error model
 
-`HostBindError` (stable `E-HOST-001`/`E-HOST-002`): unknown/incompatible binding refusal, typed rather than silent stubs. `ProfileProblem` carries stable codes `E-CODEGEN-002`/`E-CODEGEN-003`/`E-CODEGEN-004`. `RenderResult` reports coverage gaps as data, not panics.
+`HostBindError` (stable `E-HOST-001`/`E-HOST-002`): unknown/incompatible binding refusal, typed rather than silent stubs. `ProfileProblem` carries stable codes `E-CODEGEN-002`/`E-CODEGEN-003`/`E-CODEGEN-004`. `RenderResult` reports coverage gaps as data, not panics. `ConstructorEmitRefusal` is `NotConstructor(&'static str)` or `ImportsRefused { e_code, detail }`; the CLI keeps its E-code presentation and the loop host maps to `loop_export_emit` - never a partial crate.
 
 ## Determinism class
 

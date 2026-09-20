@@ -11,6 +11,12 @@ emath-core = { workspace = true }
 emath-syntax = { workspace = true }
 emath-sema = { workspace = true }
 emath-exec-ir = { workspace = true }
+# Native epoch export (emath-8k3zw): emits and compiles the artifact
+# crate and its epoch-host sibling. emath-build is std-light
+# (emath-artifact + emath-core) for the timed cargo runner; the
+# backend carries the shared constructor-crate emitter. No cycles.
+emath-build = { workspace = true }
+emath-rust-backend = { workspace = true }
 
 [lints]
 workspace = true

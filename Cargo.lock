@@ -1192,8 +1192,10 @@ dependencies = [
 name = "emath-tui"
 version = "0.1.0"
 dependencies = [
+ "emath-build",
  "emath-core",
  "emath-exec-ir",
+ "emath-rust-backend",
  "emath-sema",
  "emath-syntax",
 ]
