@@ -532,7 +532,15 @@ impl Engine {
         if let ExprKind::Path { segments, .. } = &callee.kind {
             let name = segments.join(".");
             if name == "quote.open" || name == "quote.view" || name == "quote.bind" {
-                let _ = self.infer(types, domain)?;
+                // The domain slot carries what the callee family
+                // means: quote.open/view take a VALUE (the package /
+                // the code); quote.bind takes the binder's DOMAIN
+                // TYPE, embedded symbolically into the minted
+                // function literal (the VM's bind_fresh) - it is not
+                // a value expression, so it is not inferred as one.
+                if name != "quote.bind" {
+                    let _ = self.infer(types, domain)?;
+                }
                 let mut inner = types.clone();
                 let bound = if name == "quote.view" {
                     CType::Record

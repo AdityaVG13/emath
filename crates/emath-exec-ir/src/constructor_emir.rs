@@ -547,6 +547,17 @@ impl Lowerer {
                     .into(),
             );
         }
+        if called == "transformation_rule_unavailable" {
+            // The VM's opaque-operation refusal identity (call.rs):
+            // authored transformation modules name their boundary
+            // with it in the unexercised else-branches. In emission it
+            // is the same named runtime fault - a branch that actually
+            // takes it refuses identically cross-lane, and the module
+            // still lowers (the identity is not an unbound name).
+            return Ok(self.push(EmirOp::Refuse(String::from(
+                "transformation_rule_unavailable: opaque operation has no exposed transformation rule",
+            ))));
+        }
         if called.starts_with("quote.") {
             // Program-space quote calls: substitute binds one open
             // constant by partial application; evaluate is the
@@ -554,16 +565,27 @@ impl Lowerer {
             // Every other quote.* spelling or arity keeps the fence.
             return match (called.as_str(), args.len()) {
                 ("quote.substitute", 3) => {
-                    let ExprKind::Str(reference) = &args[1].kind else {
-                        return Err(
-                            "quote.substitute requires a static reference string".into()
-                        );
+                    // The reference is static (the VM's authored
+                    // spellings): a string literal or a
+                    // single-segment name path; a runtime-derived
+                    // reference (a record tag, a code value) stays
+                    // outside the static lowering.
+                    let reference = match &args[1].kind {
+                        ExprKind::Str(reference) => reference.clone(),
+                        ExprKind::Path { segments, .. } if segments.len() == 1 => {
+                            segments[0].clone()
+                        }
+                        _ => {
+                            return Err(
+                                "quote.substitute requires a static reference string".into()
+                            )
+                        }
                     };
                     let code = self.expr(&args[0])?;
                     let value = self.expr(&args[2])?;
                     Ok(self.push(EmirOp::CodeSubstitute {
                         code,
-                        reference: reference.clone(),
+                        reference,
                         value,
                     }))
                 }
@@ -591,6 +613,17 @@ impl Lowerer {
                 ("quote.body", 1) => {
                     let code = self.expr(&args[0])?;
                     Ok(self.push(EmirOp::CodeBody { code }))
+                }
+                // The binder-half call form (bead
+                // emath-quote-bind-open-consumer-6f86g): mint nested
+                // binder syntax inside a code value and re-stamp the
+                // dependencies - the identity over the distilled
+                // subset. The binder FORM refuses by name below (a
+                // fresh-tokened function literal is outside the
+                // subset).
+                ("quote.bind", 1) => {
+                    let code = self.expr(&args[0])?;
+                    Ok(self.push(EmirOp::CodeBind { code }))
                 }
                 _ => Err(format!("call is not yet emitted: {called}")),
             };
@@ -1019,6 +1052,46 @@ impl Lowerer {
                 domain,
                 body,
             } => match &callee.kind {
+                // The binder half of the tree family (bead
+                // emath-quote-bind-open-consumer-6f86g):
+                // `quote.open term in package: body` lowers as the
+                // witness-validated unwrap (CodeOpen) bound to the
+                // parameter for the body, mirroring lower_open's
+                // local-binding shape.
+                ExprKind::Path { segments, .. }
+                    if segments.len() == 2
+                        && segments[0] == "quote"
+                        && segments[1] == "open" =>
+                {
+                    let package = self.expr(domain)?;
+                    let opened = self.push(EmirOp::CodeOpen { package });
+                    let previous = self.locals.insert(param.to_string(), opened);
+                    let result = self.expr(body);
+                    match previous {
+                        Some(value) => {
+                            self.locals.insert(param.to_string(), value);
+                        }
+                        None => {
+                            self.locals.remove(param);
+                        }
+                    }
+                    result
+                }
+                // `quote.bind p in domain: body` mints a
+                // fresh-tokened function literal - a binder node
+                // outside the distilled artifact subset. The named
+                // refusal is the honest boundary (the VM lane keeps
+                // the full algorithm; the artifact tree carries no
+                // binder nodes).
+                ExprKind::Path { segments, .. }
+                    if segments.len() == 2
+                        && segments[0] == "quote"
+                        && segments[1] == "bind" =>
+                {
+                    Err(String::from(
+                        "quote.bind binder form is not emitted in artifact trees: a fresh-tokened function literal is outside the distilled subset",
+                    ))
+                }
                 ExprKind::Path { segments, .. }
                     if segments.len() == 2 && segments[1] == "open" =>
                 {
@@ -1417,7 +1490,9 @@ fn collect_unresolved(expr: &Expr, out: &mut Vec<String>) {
         } => {
             if let ExprKind::Path { segments, .. } = &callee.kind {
                 let name = segments.join(".");
-                if name.starts_with("quote.") {
+                // The quote.open binder form is emitted (CodeOpen);
+                // every other quote binder stays symbolic code.
+                if name != "quote.open" && name.starts_with("quote.") {
                     out.push("quote".into());
                 }
             }

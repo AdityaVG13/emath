@@ -1,0 +1,234 @@
+# The metaprogramming consumer session (bead
+# emath-quote-bind-open-consumer-6f86g): the authored differentiation
+# module (language/modules/calculus/diff.emath) driven end-to-end
+# through the native quote machinery. The prediction opens a minted
+# Fragment package (quote.open - the binder half of the tree family),
+# views the opened term, rebuilds the template with MADE literals
+# carrying BOTH runtime values (the key k and the case input i), then
+# differentiates it symbolically with d_wrt (view + make + substitute
+# over the distilled subset), plugs x = 1 by substitution, and
+# evaluates. The made literals consume runtime values, so the chain
+# cannot fold at compile time.
+#
+# The world wants i + 1; only k = 1 masters all five cases.
+#
+# Expected outcome: passes (1 authored test) in the VM lane; the
+# native export parity case lives in tests/emath-tui/tests/export_native.rs
+# (case 13: the artifact compiles the consumer module's session and
+# the checkpoint is byte-identical cross-lane).
+# Run: emath test tests/fixtures/constructor/diff_session.emath
+
+use calculus.diff
+use search.archive
+use search.research
+
+emath function diff_world:
+    # w(i) = i + 1.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = [1 / 1, 2 / 1, 3 / 1, 4 / 1, 5 / 1]
+
+emath function diff_pred:
+    # The consumer prediction: pred(k, i) = d/dx[(k + i) * x] at
+    # x = 1 = k + i. The template is authored closed, its constants
+    # become runtime-made literals, the derivative is the authored
+    # module's symbolic walk, and the plug-in is a substitution.
+    inputs:
+        k: Rat
+        i: Rat
+    outputs:
+        result: Rat
+    definitions:
+        base = quote((1 + 1) * x)
+        node = quote.view(base)
+        inner = quote.open part in node.children[0]: quote.view(part)
+        bump_k = quote.make(Literal: {value: k})
+        bump_i = quote.make(Literal: {value: i})
+        left = quote.make(Call: {callee: inner.callee, args: [bump_k, bump_i]})
+        term = quote.make(Call: {callee: node.callee, args: [left, node.args[1]]})
+        d = d_wrt(term, quote(x))
+        plugged = quote.substitute(d, x, 1)
+        result = quote.evaluate(plugged)
+
+emath function diff_case_error:
+    # 1 if key k mispredicts case i, else 0.
+    inputs:
+        k: Rat
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if diff_pred(k, i / 1) == diff_world(0)[i]: 0 else: 1
+
+emath function diff_errors_at:
+    # k's error count over the case ids from position j.
+    inputs:
+        k: Rat
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        one = if done: 0 else: diff_case_error(k, ids[j])
+        result = if done: 0 else: one + diff_errors_at(k, ids, j + 1)
+
+emath function diff_first_wrong:
+    # The smallest case ordinal in ids that k mispredicts (-1 = none).
+    inputs:
+        k: Rat
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        result = if done: -1 else: if diff_case_error(k, c) == 1: c else: diff_first_wrong(k, ids, j + 1)
+
+emath function MakeValueOf:
+    # The canonical parameter: the key is the constant itself.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    # The constant domain: k in 0..6.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 6
+
+emath function MakeMoves:
+    # The ladder: step the constant by one either way; admit gates
+    # the domain edges.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k - 1, k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    # Whole-domain capacity: every batch can propose the ladder.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 7
+
+emath function MakeScore:
+    # The probe and verify tier (one truth): k's error count over the
+    # frozen case set, as an exact rational.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: diff_errors_at(k / 1, cs.ids, 0) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: diff_first_wrong(k / 1, cs.ids, 0)
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    # Exact mastery of the frozen set closes the run.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: s == 0 / 1
+
+emath function MakeBetter:
+    # Fewer errors is better, strictly (better(x, y) = x beats y).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    # No curriculum: the full world is frozen from the seed.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: cs
+
+emath function SeedBody:
+    # Archive mode, seeded at the trivial constant k = 0 on the full
+    # frozen world (pred = i: all 5 cases mispredicted).
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: [0, 1, 2, 3, 4]}, MakeScore(0), MakeWitness(0), 1, 0, 1, 1)
+
+emath function StepBody:
+    # One batch of the consumer target over explicit state: the
+    # session surface a loop host steps batch by batch.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+
+emath function RunBody:
+    # The straight walk: the seed at k = 0 (score 5), then the ladder
+    # proposes k = 1 - pred(i) = (k + i) with k = 1 (the derivative at
+    # x = 1) masters the whole world. The run closes goal_attained and
+    # stays closed.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+        errors: Int
+    definitions:
+        s0 = SeedBody(0)
+        s1 = StepBody(s0, 60)
+        s2 = StepBody(s1, 60)
+        winner = s2.archive[s2.incumbent].key
+        verdict = s2.verdict
+        errors = diff_errors_at(winner / 1, [0, 1, 2, 3, 4], 0)
+    tests:
+        example <consumer_session_master>:
+            given unused = 0
+            expect winner == 1
+            expect verdict == 1
+            expect errors == 0

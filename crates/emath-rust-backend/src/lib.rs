@@ -345,6 +345,11 @@ pub(crate) fn contains_tree_ops(program: &emath_exec_ir::EmirProgram) -> bool {
     use emath_exec_ir::EmirOp;
     program.ops.iter().any(|(op, _)| match op {
         EmirOp::CodeView { .. } | EmirOp::CodeMake { .. } => true,
+        // The binder half (bead emath-quote-bind-open-consumer-6f86g):
+        // open consumes the per-run minted-ids state (the witness
+        // check), and the call-form bind re-stamps against the module
+        // table.
+        EmirOp::CodeOpen { .. } | EmirOp::CodeBind { .. } => true,
         EmirOp::CodeLiteral { param, body, .. } => {
             param.is_none() || contains_tree_ops(body)
         }

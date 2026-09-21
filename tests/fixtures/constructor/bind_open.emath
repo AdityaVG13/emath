@@ -1,0 +1,70 @@
+# Binder laws over the quote family (bead
+# emath-quote-bind-open-consumer-6f86g): quote.bind mints hygienic
+# fresh tokens (a nested rebinding of the SAME spelling stays
+# distinct - binding must not capture ambient spellings), and
+# quote.open validates a Fragment's minted Scope witness before
+# unwrapping its term (a forged witness refuses by the VM's name -
+# pinned at the shared-tree seam in tests/emath-rt/tests/code_tree.rs,
+# since authored tests observe values, not faults).
+#
+# Normative source: bind_fresh/fresh_token, fresh.rs; the binder
+# forms, pattern.rs; check_fragment_scope, apply.rs; open_fragment,
+# expr.rs.
+#
+# Expected outcome: passes (3 authored tests) in the VM lane. The
+# binder-form bind result is a function literal (outside the
+# distilled artifact subset), so these laws are VM-lane evidence; the
+# artifact's native surface is the quote.open unwrap (the consumer
+# session exercises it) and the call-form bind identity over
+# distilled trees (pinned in the rt tests).
+# Run: emath test tests/fixtures/constructor/bind_open.emath
+
+emath function rebound:
+    # Hygiene: binding the SAME spelling twice mints two distinct
+    # fresh tokens - the inner binder never captures the outer's (or
+    # any ambient) spelling.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        form = quote.bind x in Int: quote.bind x in Int: x
+        outer = quote.view(form)
+        inner = quote.view(outer.body)
+        result = if outer.param == inner.param: 0 else: 1
+    tests:
+        example <nested_binds_mint_distinct_tokens>:
+            given unused = 0
+            expect result == 1
+
+emath function opened_package:
+    # open over a REAL minted package: the view minted the Fragment
+    # context (a Scope witness); open validates it and unwraps the
+    # term, and the opened code computes.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        packed = quote.view(quote(2 + 1)).children[0]
+        result = quote.open term in packed: quote.evaluate(term)
+    tests:
+        example <open_minted_package>:
+            given unused = 0
+            expect result == 2
+
+emath function opened_through_make:
+    # The binder chain inside an ordinary walk: open the minted
+    # package, view the opened term, rebuild it with a MADE literal,
+    # and evaluate.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        packed = quote.view(quote(5 + 1)).children[0]
+        result = quote.open term in packed: quote.evaluate(quote.make(Literal: {value: 9 / 1}))
+    tests:
+        example <open_then_make_then_evaluate>:
+            given unused = 0
+            expect result == 9

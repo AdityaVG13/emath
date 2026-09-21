@@ -290,6 +290,44 @@ them; the fixture pins own-module callees only. The `to_node` vector
 fold (a list of made codes as one family sequence) is the backend's
 concern, recorded in its contract.
 
+## The binder half - CodeOpen and CodeBind (emath-quote-bind-open-consumer-6f86g)
+
+Two more quote ops join the emission set. `CodeOpen`
+(`quote.open`, the BINDER form only): the package lowers as an
+operand, the op validates the minted Scope witness and unwraps the
+term (rt `open_node`), and the binder parameter binds the opened
+code as an ordinary local for the body's lowering - the same
+local-binding shape as the generic `Obj.open` binder. The fence
+admits exactly the binder form; quote.open has no call form.
+`CodeBind` (`quote.bind`, the CALL form only): the mint walk over
+a code value - the identity over the distilled subset with the
+dependency snapshot re-stamped. The BINDER form of quote.bind (a
+fresh-tokened function literal, the VM's `bind_fresh`) refuses at
+lowering by name: `quote.bind binder form is not emitted in
+artifact trees` - a binder node is outside the distilled subset,
+an honest no-claim (the VM lane keeps the full algorithm; the
+authored binder-hygiene fixture is VM-lane evidence).
+
+The unresolved walk exempts the quote.open binder form (it is
+emitted); every other quote binder form stays symbolic. Two
+lowering-narrowing fixes landed with the consumer proof, both
+VM-law mirrors: `quote.substitute`'s static reference accepts the
+single-segment name path (the VM's authored spelling) beside the
+string literal, and `transformation_rule_unavailable()` - the
+VM's opaque-operation refusal identity - lowers as a named
+runtime Refuse (the same fault the VM raises when a branch takes
+it), so authored transformation modules that name their boundary
+in unexercised else-branches still lower.
+
+Consumer boundary (named, honest): mutually recursive sibling
+functions refuse lowering (`recursive sibling ... is not
+emitted`) - the emission model inlines acyclic siblings and
+self-recursion only; entry-call emission for cycles is a future
+bead, not scope creep here. The consumer module
+(`language/modules/calculus/diff.emath`, local-only like every
+language/ file) folds its helper rules into one self-recursive
+walk for exactly this reason - the mathematics is unchanged.
+
 ## Kernel boundary
 
 Native kernels are immutable implementations keyed by domain-neutral kernel IDs and carrier signatures. `install_language_distribution` derives FeatureID bindings exclusively from capsule-active Language Image rows and starts from an empty binding map. There are no built-in FeatureID aliases or legacy bindings.

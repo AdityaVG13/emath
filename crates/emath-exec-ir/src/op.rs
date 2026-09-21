@@ -335,6 +335,25 @@ pub enum EmirOp {
     CodeBody {
         code: EmirValue,
     },
+    /// `quote.open term in package: body` (the binder form): validate
+    /// the Fragment package's minted Scope witness (a forged witness
+    /// refuses by the VM's name) and unwrap the term as a
+    /// dependency-free Code, bound to the binder parameter for the
+    /// body's lowering (bead emath-quote-bind-open-consumer-6f86g).
+    /// The artifact value is the shared lane's opened `ExprCode`.
+    CodeOpen {
+        package: EmirValue,
+    },
+    /// `quote.bind(code)` (the call form): mint nested binder syntax
+    /// inside a code value and re-stamp its dependencies - over the
+    /// distilled subset (no binder nodes) the mint walk is the
+    /// identity and the snapshot re-stamps exactly as the VM's does
+    /// (bead emath-quote-bind-open-consumer-6f86g). The binder FORM
+    /// of quote.bind (a fresh-tokened function literal) is outside
+    /// the distilled subset and refuses at lowering by name.
+    CodeBind {
+        code: EmirValue,
+    },
 
     /// Concatenate list carriers, preserving element carriers. The
     /// authored cons spelling `[head, ..tail]` lowers here; unlike

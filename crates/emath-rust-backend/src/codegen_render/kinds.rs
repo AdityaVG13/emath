@@ -221,12 +221,22 @@ pub(super) fn kind_is_degenerate(kind: &ValueKind) -> bool {
 /// declaration when the argument's own kind is degenerate (an empty
 /// `[]` literal carries no element kind of its own). The declaration
 /// wins only over degenerate kinds, never over a concrete inferred
-/// one.
+/// one - except the node-lane code wrapper: the view's args/children
+/// fields wrap codes as Code nodes, so a node value crossing into a
+/// declared Code parameter converts through the shared bridge (the
+/// declared carrier wins there, exactly as it does for a degenerate
+/// argument).
 pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> ValueKind {
     let Some(signature) = declared else { return kind };
     if kind_is_degenerate(&kind) {
         let declared_kind = ValueKind::from_signature(signature);
         if !matches!(declared_kind, ValueKind::Other) {
+            return declared_kind;
+        }
+    }
+    if kind == ValueKind::Node {
+        let declared_kind = ValueKind::from_signature(signature);
+        if declared_kind == ValueKind::ExprCode {
             return declared_kind;
         }
     }
@@ -490,6 +500,13 @@ pub(super) fn kind_of_op(
         // quote.body: the definition-table unfold yields the
         // Available/Opaque body record (the node family).
         EmirOp::CodeBody { .. } => ValueKind::Node,
+        // quote.open: the witness-validated unwrap yields the opened
+        // term as the dual-representation Code value.
+        EmirOp::CodeOpen { .. } => ValueKind::ExprCode,
+        // quote.bind (call form): the mint walk (identity over the
+        // distilled subset) with the snapshot re-stamped - still the
+        // dual-representation Code value.
+        EmirOp::CodeBind { .. } => ValueKind::ExprCode,
         // quote.evaluate: closed code yields the specialized unary
         // closure over the template's carrier (a def bound to it is
         // callable), or - for an expression template - the computed

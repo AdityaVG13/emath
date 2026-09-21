@@ -397,6 +397,41 @@ pub fn substitute_expr(
     }
 }
 
+/// The opened term of a plain Code value (the VM's `open_fragment`
+/// over a Code): the same tree with the compiled factory and the
+/// capture-time snapshot dropped - an opened term claims nothing.
+pub fn open_code(code: impl std::borrow::Borrow<ExprCode>) -> ExprCode {
+    let code = code.borrow();
+    open_expr(
+        super::code_tree::free_names_tree(&code.tree),
+        code.tree.clone(),
+        None,
+        std::collections::BTreeMap::new(),
+    )
+}
+
+/// `quote.bind` over a code value (the call form; the VM's
+/// `mint_binds` + `dependency_snapshot`): nested binder syntax mints
+/// fresh tokens and the dependencies re-stamp. The distilled subset
+/// carries no binder nodes, so the mint walk is the identity there -
+/// the tree and the compiled factory are preserved, and the snapshot
+/// re-derives exactly (a stale snapshot heals; a true one is
+/// unchanged). The binder FORM of quote.bind (a fresh-tokened
+/// function literal) is outside the distilled subset; the lowering
+/// refuses it by name and this surface makes no claim about it.
+pub fn bind_code(
+    code: impl std::borrow::Borrow<ExprCode>,
+    module: &super::code_tree::ModuleTable,
+) -> ExprCode {
+    let code = code.borrow();
+    open_expr(
+        code.free.clone(),
+        code.tree.clone(),
+        code.make.clone(),
+        super::code_tree::dependency_snapshot_tree(&code.tree, module),
+    )
+}
+
 /// The guarded executor: stamped dependencies verify against the
 /// module table first (the `stale_dependency` refusal), open code
 /// refuses `unbound_code` naming every remaining free name in binding
@@ -450,5 +485,16 @@ impl ExprCode {
         defs: &super::code_tree::DefinitionTable,
     ) -> Result<super::code_tree::NodeValue, String> {
         super::code_tree::quote_body_node(self, defs)
+    }
+    /// `quote.open` over a plain Code value: the opened term, factory
+    /// and snapshot dropped (the VM's `open_fragment` law).
+    pub fn open(&self) -> ExprCode {
+        open_code(self)
+    }
+    /// `quote.bind` over a Code value (the call form): the mint walk
+    /// (identity over the distilled subset) with the dependency
+    /// snapshot re-stamped.
+    pub fn bind(&self, module: &super::code_tree::ModuleTable) -> ExprCode {
+        bind_code(self, module)
     }
 }

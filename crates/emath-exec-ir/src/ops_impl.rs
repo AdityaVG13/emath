@@ -104,6 +104,8 @@ impl EmirOp {
             Self::CodeView { .. } => "code-view",
             Self::CodeMake { .. } => "code-make",
             Self::CodeBody { .. } => "code-body",
+            Self::CodeOpen { .. } => "code-open",
+            Self::CodeBind { .. } => "code-bind",
             Self::CallProgram { .. } => "call-program",
             Self::CallScalarProgram { .. } => "call-scalar-program",
             Self::CallRealProgram { .. } => "call-real-program",

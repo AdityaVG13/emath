@@ -287,3 +287,41 @@ hand-written), built once at first use. Conformance: the
 fragment computation, the unbound record, the named boundary
 refusal) with a signature-swap mutation probe killing.
 
+## The binder half - quote.open and the call-form quote.bind (emath-quote-bind-open-consumer-6f86g)
+
+`open_node` is the arm-for-arm port of the VM's
+`check_fragment_scope` + `open_fragment`: a Fragment package
+validates its minted Scope witness FIRST (a forged witness refuses
+by the VM's `invalid_code_construction: forged Scope witness`
+name), then unwraps - a Code term opens to its own tree with the
+compiled factory and the capture snapshot dropped (an opened term
+claims nothing), any other node value rebuilds over the distilled
+subset, a missing term refuses `Fragment missing term`, and
+anything but a Code or a Fragment refuses `quote expects Code or
+Fragment`. A plain Code input opens through `open_code` (same
+drop law). `node_as_code` is the call-marshal bridge: the node
+lane wraps codes as Code nodes (the view's `args`/`children`
+fields), so a node value crossing into a Code position unwraps
+unchanged (the VM's call arguments ARE codes) or rebuilds - the
+VM's `rebuild_expr` law for a value in a code slot.
+
+`bind_code` is the call-form port (the VM's `mint_binds` +
+`dependency_snapshot`): nested binder syntax mints fresh tokens,
+and over the distilled subset (no binder nodes) the mint walk is
+the IDENTITY - the tree and the compiled factory are preserved and
+the dependency snapshot re-derives exactly (a stale snapshot
+heals; a true one is unchanged). No-claim boundary: the binder
+FORM of quote.bind (a fresh-tokened function literal, the VM's
+`bind_fresh` with its `#{spelling}.{id}` tokens) is OUTSIDE the
+distilled subset - the lowering refuses it by name and this
+substrate makes no claim about it; binder hygiene and token
+distinctness are VM-lane laws (pinned by the authored
+`bind_open.emath` fixture and the exec-ir cutover probes).
+Conformance: the `bind-open-laws` case in `code_tree.rs` (the
+minted token scheme, the opened term computing, the forged/
+termless/ non-package refusals by name, the stale-snapshot heal,
+tree preservation under per-run mint resets) with three mutation
+probes killing: a perturbed `#scope.{id}` token scheme, a dropped
+witness check in the open, and a dropped dependency re-stamp in
+the bind.
+

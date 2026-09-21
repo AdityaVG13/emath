@@ -380,5 +380,40 @@ fn export_native_sessions() {
         );
     });
 
+    // 13. The metaprogramming consumer proof: the authored
+    //     differentiation module (language/modules/calculus/
+    //     diff.emath) runs natively end-to-end. The session's
+    //     prediction opens a minted Fragment package (quote.open -
+    //     the binder half of the tree family, witness-validated),
+    //     views the opened term, rebuilds the template with made
+    //     literals carrying both runtime values, differentiates
+    //     symbolically with d_wrt (view + make + substitute), plugs
+    //     x = 1 by substitution, and evaluates - all inside the
+    //     batch loop, checkpoint byte-identical cross-lane (bead
+    //     emath-quote-bind-open-consumer-6f86g).
+    probe.case("diff-consumer-session-exports", |p| {
+        let host = LoopHost::open(
+            &fixture_path("diff_session.emath"),
+            Some("StepBody"),
+        )
+        .expect("open diff-consumer");
+        let report = export_native(&host, &temp_path("diffc")).expect("export diff-consumer");
+        let native_path = temp_path("diffc_native.json");
+        let (code, stdout, stderr, native) = native_lane_run(&report, 2, 60, &native_path);
+        p.demand(
+            "native-run-ok",
+            code == Some(0) && stdout.contains("end batches 2 verdict goal_attained"),
+            format!("exit {code:?}\n{stdout}\n{stderr}"),
+        );
+        let vm_path = temp_path("diffc_vm.json");
+        vm_lane_scratch(&host, 2, 60, &vm_path);
+        let vm = std::fs::read_to_string(&vm_path).expect("vm scratch");
+        p.demand(
+            "scratch-bytes-equal",
+            native == vm,
+            format!("--- native ---\n{native}\n--- vm ---\n{vm}"),
+        );
+    });
+
     probe.finish();
 }

@@ -293,6 +293,12 @@ impl NodeValue {
     pub fn make(&self, module: &ModuleTable) -> Result<ExprCode, String> {
         make_quoted(self, module)
     }
+    /// `quote.open` over a package value (the binder half, bead
+    /// emath-quote-bind-open-consumer-6f86g): the witness-validated
+    /// unwrap, same law as the free function.
+    pub fn open(&self) -> Result<ExprCode, String> {
+        open_node(self)
+    }
     pub fn equals(&self, other: impl std::borrow::Borrow<NodeValue>) -> Result<bool, String> {
         node_eq(self, other)
     }
@@ -766,6 +772,59 @@ fn rebuild_call(fields: &BTreeMap<String, NodeValue>) -> Result<CodeTree, String
         function: Box::new(rebuild_node(callee)?),
         args,
     })
+}
+
+/// The opened term of a package (the VM's `check_fragment_scope` +
+/// `open_fragment`, arm for arm): a Code opens to its own tree with
+/// the compiled factory and the capture snapshot dropped; a Fragment
+/// validates its minted Scope witness FIRST (a forged witness
+/// refuses by the VM's name) and unwraps its term (a Code term
+/// opens; any other node value rebuilds; a missing term refuses);
+/// anything else refuses by the VM's message.
+pub fn open_node(package: impl std::borrow::Borrow<NodeValue>) -> Result<ExprCode, String> {
+    let package = package.borrow();
+    match package {
+        NodeValue::Code(code) => Ok(super::code::open_code(code.as_ref())),
+        NodeValue::Record(type_name, fields) if type_name == "Fragment" => {
+            check_scope(package)?;
+            match fields.get("term") {
+                Some(NodeValue::Code(code)) => Ok(super::code::open_code(code.as_ref())),
+                Some(other) => {
+                    let tree = rebuild_node(other)?;
+                    Ok(super::code::open_expr(
+                        free_names_tree(&tree),
+                        tree,
+                        None,
+                        BTreeMap::new(),
+                    ))
+                }
+                None => Err(String::from("Fragment missing term")),
+            }
+        }
+        _ => Err(String::from("quote expects Code or Fragment")),
+    }
+}
+
+/// A node value in a Code position (the call-marshal bridge): a Code
+/// node unwraps to its own ExprCode unchanged (the VM's call arguments
+/// ARE codes); any other node value rebuilds into a factory-free,
+/// dependency-free code over the distilled subset (refusing by name
+/// outside it) - the VM's `rebuild_expr` law for a value in a code
+/// slot.
+pub fn node_as_code(node: impl std::borrow::Borrow<NodeValue>) -> Result<ExprCode, String> {
+    let node = node.borrow();
+    match node {
+        NodeValue::Code(code) => Ok((**code).clone()),
+        other => {
+            let tree = rebuild_node(other)?;
+            Ok(super::code::open_expr(
+                free_names_tree(&tree),
+                tree,
+                None,
+                BTreeMap::new(),
+            ))
+        }
+    }
 }
 
 /// Rebuild a tree from node records (the VM's `rebuild_expr`, arm for

@@ -13,7 +13,7 @@
 use std::rc::Rc;
 
 use emath_rt::code::{
-    code_mul, evaluate_expr, open_expr, substitute_expr, CodeValue,
+    code_mul, evaluate_expr, free_names_expr, open_expr, substitute_expr, CodeValue,
 };
 use emath_rt::code_tree::{
     check_scope, dependency_snapshot_tree, evaluate_tree, free_names_tree, make_quoted, node_eq,
@@ -724,6 +724,183 @@ fn probe() {
                 );
             }
         }
+    });
+
+    // 11. The binder half of the tree family (bead
+    //     emath-quote-bind-open-consumer-6f86g): quote.open validates
+    //     a minted package's Scope witness and unwraps its term, and
+    //     the call-form quote.bind is the mint walk (the identity over
+    //     the distilled subset) with the dependency snapshot
+    //     re-stamped - a stale snapshot heals. The binder FORM of
+    //     quote.bind is a fresh-tokened function literal outside the
+    //     distilled subset (the lowering refuses it by name; the VM
+    //     lane keeps the full algorithm).
+    p.case("bind-open-laws", |p| {
+        reset_mint();
+        let closed = |left: i64, right: i64| {
+            open_expr(
+                Vec::new(),
+                CodeTree::Binary {
+                    op: TreeBinary::Add,
+                    left: Box::new(CodeTree::Literal(CodeValue::Int(left))),
+                    right: Box::new(CodeTree::Literal(CodeValue::Int(right))),
+                },
+                None,
+                std::collections::BTreeMap::new(),
+            )
+        };
+        // Open over a REAL minted package: the view minted the
+        // Fragment context (the first mint of this run is id 1, the
+        // token scheme `#scope.{id}`), and the opened term computes.
+        let code = closed(2, 1);
+        let node = view_quoted(&code, &ModuleTable::EMPTY);
+        let children = node_field(&node, "children").expect("children");
+        let package = node_index(&children, 0).expect("child 0");
+        let context = node_field(&package, "context").expect("context");
+        let token = node_field(&context, "token").expect("token");
+        p.eq(
+            "minted-token-scheme",
+            node_eq(&token, &node_tag("#scope.1")),
+            Ok(true),
+        );
+        let opened = emath_rt::code_tree::open_node(&package).expect("minted package opens");
+        p.eq(
+            "opened-term-computes",
+            evaluate_expr(&opened, &ModuleTable::EMPTY),
+            Ok(CodeValue::Int(2)),
+        );
+        // Open over a plain Code: the same tree, factory and
+        // snapshot dropped - the opened term still computes.
+        let plain = emath_rt::code::open_code(&code);
+        p.eq(
+            "opened-plain-computes",
+            evaluate_expr(&plain, &ModuleTable::EMPTY),
+            Ok(CodeValue::Int(3)),
+        );
+        p.eq(
+            "opened-plain-free-preserved",
+            free_names_expr(&plain).to_vec(),
+            Vec::<String>::new(),
+        );
+        // A forged witness refuses by the VM's name (an id this run
+        // never minted).
+        let forged = node_record(
+            "Fragment",
+            vec![
+                (
+                    "term".into(),
+                    NodeValue::Code(Box::new(closed(2, 1))),
+                ),
+                (
+                    "context".into(),
+                    node_record(
+                        "Scope",
+                        vec![
+                            ("id".into(), NodeValue::Scalar(CodeValue::Int(999))),
+                            ("binder".into(), node_tag("closed")),
+                            ("token".into(), node_tag("#scope.999")),
+                        ],
+                    ),
+                ),
+            ],
+        );
+        match emath_rt::code_tree::open_node(&forged) {
+            Ok(_) => {
+                p.fail("forged-refuses", "a forged witness must refuse");
+            }
+            Err(fault) => {
+                p.demand(
+                    "forged-named",
+                    fault.contains("forged Scope witness"),
+                    &format!("the forged-witness refusal must be named: {fault}"),
+                );
+            }
+        }
+        // A Fragment without a term refuses by the VM's message.
+        let termless = node_record(
+            "Fragment",
+            vec![(
+                "context".into(),
+                node_record(
+                    "Scope",
+                    vec![
+                        ("id".into(), NodeValue::Scalar(CodeValue::Int(1))),
+                        ("binder".into(), node_tag("closed")),
+                        ("token".into(), node_tag("#scope.1")),
+                    ],
+                ),
+            )],
+        );
+        match emath_rt::code_tree::open_node(&termless) {
+            Ok(_) => {
+                p.fail("termless-refuses", "a termless Fragment must refuse");
+            }
+            Err(fault) => {
+                p.demand(
+                    "termless-named",
+                    fault == "Fragment missing term",
+                    &format!("the missing-term refusal must be named: {fault}"),
+                );
+            }
+        }
+        // Anything but a Code or a Fragment refuses by the VM's
+        // message.
+        match emath_rt::code_tree::open_node(&node_tag("Literal")) {
+            Ok(_) => {
+                p.fail("non-package-refuses", "a tag is not a package");
+            }
+            Err(fault) => {
+                p.demand(
+                    "non-package-named",
+                    fault == "quote expects Code or Fragment",
+                    &format!("the non-package refusal must be named: {fault}"),
+                );
+            }
+        }
+        // The call-form bind: the mint walk is the identity over the
+        // distilled subset (the view is unchanged, the value
+        // computes), and a STALE dependency snapshot heals to the
+        // true one (the VM's re-stamp law).
+        let stale = open_expr(
+            Vec::new(),
+            CodeTree::Binary {
+                op: TreeBinary::Add,
+                left: Box::new(CodeTree::Literal(CodeValue::Int(2))),
+                right: Box::new(CodeTree::Literal(CodeValue::Int(1))),
+            },
+            None,
+            std::collections::BTreeMap::from([("zz".to_string(), 7)]),
+        );
+        match evaluate_expr(&stale, &ModuleTable::EMPTY) {
+            Ok(_) => {
+                p.fail("stale-refuses-first", "the stale snapshot must refuse first");
+            }
+            Err(fault) => {
+                p.demand(
+                    "stale-named",
+                    fault.contains("stale_dependency"),
+                    &format!("the stale refusal must be named: {fault}"),
+                );
+            }
+        }
+        let bound = emath_rt::code::bind_code(&stale, &ModuleTable::EMPTY);
+        p.eq(
+            "bind-heals-stale-snapshot",
+            evaluate_expr(&bound, &ModuleTable::EMPTY),
+            Ok(CodeValue::Int(3)),
+        );
+        // The views mint Scope witnesses, so each view gets a fresh
+        // per-run state (the T1 determinism law): identical trees
+        // mint identical tokens.
+        reset_mint();
+        let bound_view = view_quoted(&bound, &ModuleTable::EMPTY);
+        reset_mint();
+        let original_view = view_quoted(&closed(2, 1), &ModuleTable::EMPTY);
+        p.eq(
+            "bind-preserves-tree",
+            node_eq(&bound_view, &original_view),
+            Ok(true),
+        );
     });
 
     p.finish();

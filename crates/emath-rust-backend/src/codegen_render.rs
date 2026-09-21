@@ -208,8 +208,23 @@ pub(crate) fn op_expr(
             let kinds = value_kinds(program, names, states, input_kinds);
             let args = inputs
                 .iter()
-                .map(|value| {
+                .enumerate()
+                .map(|(position, value)| {
                     let kind = kind_at(&kinds, *value);
+                    // A node value crossing into the recursive target's
+                    // declared Code parameter (the input at this
+                    // position) unwraps/rebuilds through the shared
+                    // bridge - the VM's call arguments are codes, and
+                    // the node lane wraps them as Code nodes.
+                    let param_kind = names
+                        .get(position)
+                        .and_then(|name| input_kinds.get(name).cloned());
+                    if kind == ValueKind::Node && param_kind == Some(ValueKind::ExprCode) {
+                        return format!(
+                            "emath_rt::code_tree::node_as_code(&{})?",
+                            render_expr(&operand(program, *value))
+                        );
+                    }
                     if matches!(kind, ValueKind::Closure { .. }) {
                         // Closure carriers are shared `Rc` handles:
                         // clone into the `Rc<dyn Fn>` parameter.
@@ -672,13 +687,27 @@ pub(crate) fn op_expr(
                 for name in free {
                     inputs.insert(name.clone(), ValueKind::CodeValue);
                 }
-                if program_kind(body, free, &[], &inputs) != ValueKind::CodeValue {
+                let body_kind = program_kind(body, free, &[], &inputs);
+                // A closed scalar body (a bare literal, e.g. `quote(0)`
+                // in an authored transformation rule) still computes
+                // the union - the atom wraps into it; the free-name
+                // arithmetic path stays CodeValue-typed throughout.
+                // Everything else the union lane cannot compute
+                // refuses named.
+                let body_value = if body_kind == ValueKind::CodeValue {
+                    value_expr(body, free, &[], &inputs)?
+                } else if matches!(
+                    body_kind,
+                    ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
+                ) {
+                    to_code_value(value_expr(body, free, &[], &inputs)?, &body_kind)
+                } else {
                     return Err(BackendError::UnsupportedType(
                         "quote expression template body must compute the scalar union (Int/Rat/Bool arithmetic, comparisons, and boolean combinators over its free names)".into(),
                     ));
-                }
+                };
                 let _reference = ReferenceScope::enter();
-                let body_code = render_expr(&value_expr(body, free, &[], &inputs)?);
+                let body_code = render_expr(&body_value);
                 let bindings = free
                     .iter()
                     .enumerate()
@@ -928,6 +957,52 @@ pub(crate) fn op_expr(
                 )),
                 _ => Err(BackendError::UnsupportedType(
                     "quote.body requires a Code value".into(),
+                )),
+            }
+        }
+        EmirOp::CodeOpen { package } => {
+            // quote.open (the binder form's unwrap): a Fragment node
+            // package validates its minted Scope witness and unwraps
+            // its term; a plain Code opens to its tree with the
+            // factory and snapshot dropped (the VM's
+            // check_fragment_scope + open_fragment laws, bead
+            // emath-quote-bind-open-consumer-6f86g).
+            let kinds = value_kinds(program, names, states, input_kinds);
+            match kind_at(&kinds, *package) {
+                ValueKind::Node => Ok(Expr::Raw(format!(
+                    "({}).open()?",
+                    render_expr(&operand(program, *package))
+                ))),
+                ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                    "({}).open()",
+                    render_expr(&operand(program, *package))
+                ))),
+                ValueKind::Code(_) => Err(BackendError::UnsupportedType(
+                    "quote.open is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
+                )),
+                _ => Err(BackendError::UnsupportedType(
+                    "quote.open requires a Code or Fragment package value".into(),
+                )),
+            }
+        }
+        EmirOp::CodeBind { code } => {
+            // quote.bind (the call form): the mint walk - the
+            // identity over the distilled subset - with the
+            // dependency snapshot re-stamped against the module
+            // table (the VM's mint_binds + dependency_snapshot laws).
+            // The binder FORM (a fresh-tokened function literal) is
+            // outside the distilled subset and refuses at lowering.
+            let kinds = value_kinds(program, names, states, input_kinds);
+            match kind_at(&kinds, *code) {
+                ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                    "({}).bind(&__EMATH_MODULE_TABLE)",
+                    render_expr(&operand(program, *code))
+                ))),
+                ValueKind::Code(_) => Err(BackendError::UnsupportedType(
+                    "quote.bind is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
+                )),
+                _ => Err(BackendError::UnsupportedType(
+                    "quote.bind requires a Code value".into(),
                 )),
             }
         }
@@ -1215,6 +1290,18 @@ fn literal_frame_expr(
             continue;
         }
         let borrow = if kind.is_copy() { "" } else { "&" };
+        // A node value whose frame kind resolved to the declared Code
+        // carrier (the view's args/children wrap codes as Code nodes)
+        // crosses through the shared bridge: unwrap or rebuild, never
+        // a silent type change.
+        if kind == ValueKind::ExprCode && kind_at(kinds, *value) == ValueKind::Node {
+            code.push_str(&format!(
+                "let {name} = &emath_rt::code_tree::node_as_code({})?; ",
+                render_expr(&operand(outer, *value))
+            ));
+            frame_kinds.insert(name.clone(), kind);
+            continue;
+        }
         code.push_str(&format!("let {name} = {borrow}{}; ", render_expr(&operand(outer, *value))));
         frame_kinds.insert(name.clone(), kind);
     }
