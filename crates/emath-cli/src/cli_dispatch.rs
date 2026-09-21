@@ -22,6 +22,21 @@ fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>
 }
 
 pub(crate) fn locate_language_root(anchor: Option<&Path>) -> Result<PathBuf, String> {
+    // EMATH_ROOT: explicit override for external consumers that run `emath`
+    // from their own project directories. Wins over the ancestor walk, and
+    // a set-but-wrong root is a NAMED refusal — never a silent fallback to
+    // walking, which would hide the misconfiguration from the consumer.
+    if let Ok(root) = std::env::var("EMATH_ROOT") {
+        if !root.is_empty() {
+            let language = std::path::Path::new(&root).join("language");
+            if language.join("spec").is_dir() {
+                return Ok(language);
+            }
+            return Err(format!(
+                "EMATH_ROOT is set to `{root}` but no language/spec directory exists under it"
+            ));
+        }
+    }
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     let mut starts = Vec::new();
     if let Some(anchor) = anchor {
@@ -42,7 +57,7 @@ pub(crate) fn locate_language_root(anchor: Option<&Path>) -> Result<PathBuf, Str
         }
     }
     Err(
-        "no project language/spec directory found from source path or working directory"
+        "no project language/spec directory found from source path or working directory (set EMATH_ROOT to a directory containing language/spec)"
             .to_string(),
     )
 }
