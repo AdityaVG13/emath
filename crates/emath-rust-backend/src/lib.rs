@@ -293,15 +293,25 @@ pub fn emit_constructor_entry(
         (result_ty, body)
     };
     let entry_name = escape_ident(function_name);
+    // The shared-tree prologue: a tree-lane entry resets the per-run
+    // mint state at its start, so every run of the same entry mints
+    // identical `#scope.{id}` tokens (deterministic per run; the
+    // entry is the artifact's counterpart of the VM's per-query
+    // engine state).
+    let prologue = if contains_tree_ops(program) {
+        "    emath_rt::code_tree::reset_mint();\n"
+    } else {
+        ""
+    };
     if contains_call_self(program) {
         let self_params = self_params.join(", ");
         let call_args = self_args.join(", ");
         Ok(format!(
-            "pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        Ok({body})\n    }}\n    Ok(__self({call_args})?)\n}}\n"
+            "pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{prologue}    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        Ok({body})\n    }}\n    Ok(__self({call_args})?)\n}}\n"
         ))
     } else {
         Ok(format!(
-            "pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    Ok({body})\n}}\n"
+            "pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{prologue}    Ok({body})\n}}\n"
         ))
     }
 }
@@ -321,6 +331,34 @@ pub(crate) fn contains_call_self(program: &emath_exec_ir::EmirProgram) -> bool {
         | EmirOp::Collect { body, .. } => contains_call_self(body),
         EmirOp::Iterate { body, stop, .. } => {
             contains_call_self(body) || stop.as_ref().is_some_and(contains_call_self)
+        }
+        _ => false,
+    })
+}
+
+/// Whether a program carries the shared-tree lane (a union-lane
+/// template literal, a view, or a make): such entries reference the
+/// crate-level module table and reset the per-run mint state at
+/// their prologue, so every run mints identical `#scope.{id}`
+/// tokens.
+pub(crate) fn contains_tree_ops(program: &emath_exec_ir::EmirProgram) -> bool {
+    use emath_exec_ir::EmirOp;
+    program.ops.iter().any(|(op, _)| match op {
+        EmirOp::CodeView { .. } | EmirOp::CodeMake { .. } => true,
+        EmirOp::CodeLiteral { param, body, .. } => {
+            param.is_none() || contains_tree_ops(body)
+        }
+        EmirOp::Branch {
+            then_body,
+            else_body,
+            ..
+        } => contains_tree_ops(then_body) || contains_tree_ops(else_body),
+        EmirOp::CallFrame { body, .. }
+        | EmirOp::ProgramLiteral { body, .. }
+        | EmirOp::Fold { body, .. }
+        | EmirOp::Collect { body, .. } => contains_tree_ops(body),
+        EmirOp::Iterate { body, stop, .. } => {
+            contains_tree_ops(body) || stop.as_ref().is_some_and(contains_tree_ops)
         }
         _ => false,
     })

@@ -24,3 +24,6 @@ pub use exact_int::{
 pub mod code {
     include!("body/code.rs");
 }
+pub mod code_tree {
+    include!("body/code_tree.rs");
+}

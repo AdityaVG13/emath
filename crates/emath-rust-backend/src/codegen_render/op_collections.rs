@@ -163,6 +163,15 @@ pub(super) fn op_collection_exprs(
             })
         }
         EmirOp::VectorLength(value) => {
+            // A node sequence's length is the family's read-only
+            // projection (the VM's `length` arm over CValue
+            // sequences); everything else keeps the storage lane.
+            if kind_at(kinds, *value) == ValueKind::Node {
+                let value_code = render_expr(&operand(program, *value));
+                return Ok(Expr::Raw(format!(
+                    "match ({value_code}).field(\"length\")? {{ emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Int(length)) => length, _ => return Err(String::from(\"type: length expects a sequence\")) }}"
+                )));
+            }
             let value_code = render_expr(&operand(program, *value));
             let storage = match kind_at(kinds, *value) {
                 ValueKind::Matrix(_) => format!("({value_code}).as_slice()"),
@@ -243,6 +252,16 @@ pub(super) fn op_collection_exprs(
             )))
         }
         EmirOp::VectorIndex { vector, index } => {
+            // Indexing a node sequence (the walk's `node.args[0]`)
+            // stays in the family: the checked index law and message
+            // mirror the VM's `index_seq`.
+            if kind_at(kinds, *vector) == ValueKind::Node {
+                let sequence = render_expr(&operand(program, *vector));
+                let index = render_expr(&operand(program, *index));
+                return Ok(Expr::Raw(format!(
+                    "({sequence}).index({index})?"
+                )));
+            }
             let collection = render_expr(&operand(program, *vector));
             let materialize = match kind_at(kinds, *vector) {
                 ValueKind::Vector(element) if *element == ValueKind::ExactInt => ".cloned()",

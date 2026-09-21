@@ -178,6 +178,12 @@ fn lower_named(
             .filter(|(_, ty)| matches!(ty.kind, TypeKind::Fn { .. }))
             .map(|(input, _)| input.clone())
             .collect(),
+        // The module callable stamps: quote captures stamp free names
+        // against this table (the shared-tree lane's dependency law).
+        module_stamps: crate::constructor_layer::module_callable_table(tree)
+            .into_iter()
+            .map(|(callable, _, stamp)| (callable, stamp))
+            .collect(),
     };
     if !unresolved.is_empty() {
         visiting.remove(name);
@@ -308,6 +314,10 @@ struct Lowerer {
     /// (`base.field` parses as `Call { Path[field], [base] }`), so
     /// this set is what disambiguates closure calls from projections.
     arrow_names: BTreeSet<String>,
+    /// The module callable table's stamps (name -> declaration
+    /// identity): the quote capture stamps free names that resolve
+    /// against it, exactly as the VM's `dependency_snapshot` does.
+    module_stamps: BTreeMap<String, u64>,
 }
 
 impl Lowerer {
@@ -354,6 +364,7 @@ impl Lowerer {
             self_name: self.self_name.clone(),
             self_result: self.self_result.clone(),
             arrow_names: self.arrow_names.clone(),
+            module_stamps: self.module_stamps.clone(),
         }
     }
 
@@ -425,6 +436,7 @@ impl Lowerer {
             self_name: None,
             self_result: String::new(),
             arrow_names,
+            module_stamps: self.module_stamps.clone(),
         };
         let result = child.expr(body)?;
         let program = child.finish(result);
@@ -478,6 +490,18 @@ impl Lowerer {
             return Ok(self.push(EmirOp::RecordField {
                 record,
                 field: segments[segments.len() - 1].clone(),
+            }));
+        }
+        // A bare schema-tag name (`Call`, `Add`, `transparent`) is a
+        // node-family tag VALUE - the same resolution the VM's path
+        // eval performs (`is_schema_tag` -> `schema_tag`). It lowers
+        // as a node record with no fields, so the structural walk's
+        // `node.kind == Call` comparisons admit identically in both
+        // lanes.
+        if segments.len() == 1 && crate::constructor_layer::is_node_tag(&name) {
+            return Ok(self.push(EmirOp::RecordCreate {
+                type_name: name,
+                fields: Vec::new(),
             }));
         }
         Err(format!("unbound `{name}` in emission"))
@@ -546,6 +570,19 @@ impl Lowerer {
                 ("quote.evaluate", 1) => {
                     let code = self.expr(&args[0])?;
                     Ok(self.push(EmirOp::CodeEvaluate { code }))
+                }
+                // The shared-tree pair (bead
+                // emath-shared-tree-view-make-bp8nu): view opens a
+                // Code (or Fragment) into node records over the
+                // embedded tree; make rebuilds a (possibly modified)
+                // node-record tree back into Code.
+                ("quote.view", 1) => {
+                    let code = self.expr(&args[0])?;
+                    Ok(self.push(EmirOp::CodeView { code }))
+                }
+                ("quote.make", 1) => {
+                    let node = self.expr(&args[0])?;
+                    Ok(self.push(EmirOp::CodeMake { node }))
                 }
                 _ => Err(format!("call is not yet emitted: {called}")),
             };
@@ -819,7 +856,14 @@ impl Lowerer {
                 // no parameter, every free name a runtime input, the
                 // carrier dynamic (`Union`) - the body compiles over
                 // the value union and `evaluate` yields a scalar
-                // projected at typed boundaries.
+                // projected at typed boundaries. The union lane also
+                // distills the SAME authored body into the shared
+                // tree (bead emath-shared-tree-view-make-bp8nu): the
+                // dual representation - compiled factory plus data
+                // tree - emitted by this one pass, and the capture
+                // stamps free names that resolve against the module
+                // callable table exactly as the VM's quote capture
+                // does (`dependency_snapshot`).
                 let Some(carrier) = emitted_quote_carrier(body) else {
                     return Err(
                         "quote emission supports unary Int/Rat/Bool function templates and scalar expression templates in this cut"
@@ -845,22 +889,37 @@ impl Lowerer {
                         // data inputs, not callables, and the
                         // parameter is the template's only binder.
                         arrow_names: BTreeSet::new(),
+                        module_stamps: self.module_stamps.clone(),
                     };
                     let lowered = child.expr(inner)?;
                     let program = child.finish(lowered);
+                    // The function lane carries no tree (its rt value
+                    // is the monomorphic factory); dependency
+                    // stamping stays a union-lane fact in this cut.
                     Ok(self.push(EmirOp::CodeLiteral {
                         body: program,
                         param: Some(param.clone()),
                         free,
                         carrier: carrier.to_string(),
+                        tree: None,
+                        deps: BTreeMap::new(),
                     }))
                 } else {
                     // The expression template: all free names are
                     // runtime inputs (no parameter to exclude), the
-                    // carrier is the dynamic union.
+                    // carrier is the dynamic union. The distillation
+                    // and the factory lower over the same body in
+                    // this same arm - the dual-representation law.
                     let mut free = BTreeSet::new();
                     collect_free_names(body, "", &mut free);
                     let free: Vec<String> = free.into_iter().collect();
+                    let tree = crate::tree_distill::distill_tree(body)?;
+                    let deps: BTreeMap<String, u64> = free
+                        .iter()
+                        .filter_map(|name| {
+                            self.module_stamps.get(name).map(|stamp| (name.clone(), *stamp))
+                        })
+                        .collect();
                     let mut child = Lowerer {
                         inputs: free.clone(),
                         locals: BTreeMap::new(),
@@ -871,6 +930,7 @@ impl Lowerer {
                         self_name: None,
                         self_result: String::new(),
                         arrow_names: BTreeSet::new(),
+                        module_stamps: self.module_stamps.clone(),
                     };
                     let lowered = child.expr(body)?;
                     let program = child.finish(lowered);
@@ -879,6 +939,8 @@ impl Lowerer {
                         param: None,
                         free,
                         carrier: carrier.to_string(),
+                        tree: Some(tree),
+                        deps,
                     }))
                 }
             }
@@ -899,10 +961,23 @@ impl Lowerer {
             ExprKind::Record { type_path, fields } => {
                 // Authored record literal: the type name is the final
                 // path segment (module-qualified spellings install the
-                // bare name), fields stay in authored order.
+                // bare name), fields stay in authored order. An
+                // authored OBJECT admits as the typed record lane; a
+                // node-family tag (the engine's schema-tag family:
+                // `Call`, `Literal`, ...) admits as the dynamic node
+                // record the structural walk constructs - the same
+                // names the VM's `finish_record` accepts as plain
+                // records. Anything else refuses by name.
                 let type_name = type_path.last().cloned().ok_or_else(|| {
                     "record literal requires a type path".to_string()
                 })?;
+                if !self.objects.contains_key(&type_name)
+                    && !crate::constructor_layer::is_node_tag(&type_name)
+                {
+                    return Err(format!(
+                        "record `{type_name}` is not an authored object or a node tag"
+                    ));
+                }
                 let mut values = Vec::with_capacity(fields.len());
                 for (name, field) in fields {
                     values.push((name.clone(), self.expr(field)?));
@@ -984,6 +1059,7 @@ fn lower_closed(
         self_name,
         self_result: String::new(),
         arrow_names: BTreeSet::new(),
+        module_stamps: BTreeMap::new(),
     };
     let result = lowerer.expr(body)?;
     Ok(lowerer.finish(result))
@@ -1486,10 +1562,11 @@ pub fn section_typed_fields(decl: &Declaration, name: &str) -> Vec<(String, Type
 /// Declared type → carrier signature string, the interchange between
 /// the constructor lane and the Rust backend's kind parser:
 /// `Int`/`Nat` → "Int", `Rat` → "Rat", `Bool` → "Bool", `Float64` →
-/// "Float64", `Text` → "Text", an object name → "Record<name>",
-/// `sequence(T)` → "Vector<T>", `A -> B` → "Fn<A,B>". Unmapped forms
-/// return None - the caller refuses emission rather than guessing a
-/// carrier.
+/// "Float64", `Text` → "Text", `Code` → "Code" (the union-lane
+/// expression-template value: the dual tree/factory Code), an object
+/// name → "Record<name>", `sequence(T)` → "Vector<T>", `A -> B` →
+/// "Fn<A,B>". Unmapped forms return None - the caller refuses
+/// emission rather than guessing a carrier.
 pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> Option<String> {
     match &ty.kind {
         TypeKind::Path { segments, generic_args } => {
@@ -1500,6 +1577,7 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
                 "Bool" => Some("Bool".into()),
                 "Float64" => Some("Float64".into()),
                 "Text" => Some("Text".into()),
+                "Code" => Some("Code".into()),
                 "sequence" => {
                     let GenericArg::Type(element) = generic_args.first()? else {
                         return None;
@@ -1882,6 +1960,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         self_name: None,
         self_result: String::new(),
         arrow_names: BTreeSet::new(),
+        module_stamps: BTreeMap::new(),
     };
     let acc = step.push(EmirOp::LoadInput(1));
     let coeff = if contains_path(coeff, param) {
@@ -1911,6 +1990,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         self_name: None,
         self_result: String::new(),
         arrow_names: BTreeSet::new(),
+        module_stamps: BTreeMap::new(),
     };
     let count = outer.push(EmirOp::LoadInput(0));
     let init = outer.expr(then_value).ok()?;

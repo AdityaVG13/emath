@@ -14,6 +14,7 @@ use emath_rt::code::{
     evaluate, evaluate_expr, free_names, free_names_expr, open, open_expr, project_bool,
     project_i64, project_ratio, substitute, substitute_expr, Code, CodeValue,
 };
+use emath_rt::code_tree::{CodeTree, ModuleTable, TreeBinary};
 use emath_rt::{ratio_add, ratio_mul, ExactRatio};
 use emath_test_harness::{Probe, boot};
 
@@ -241,17 +242,31 @@ fn probe_union_kernels() {
 
     // 7. The expression carrier obeys the same laws as the function
     //    carrier: by-name binding, absent no-op, guarded evaluate.
+    //    The dual representation (bead emath-shared-tree-view-make-bp8nu)
+    //    carries the distilled tree beside the factory; this case
+    //    exercises the FACTORY lane (a static template literal's
+    //    shape), with the tree lane's laws pinned in code_tree.rs.
     let expression = || {
         open_expr(
             vec!["x".to_string(), "c".to_string()],
-            Rc::new(|values: &[CodeValue]| code_mul(&values[0], &values[1])),
+            CodeTree::Binary {
+                op: TreeBinary::Mul,
+                left: Box::new(CodeTree::Path(vec!["x".to_string()])),
+                right: Box::new(CodeTree::Path(vec!["c".to_string()])),
+            },
+            Some(Rc::new(|values: &[CodeValue]| code_mul(&values[0], &values[1]))),
+            std::collections::BTreeMap::new(),
         )
     };
     p.case("expression-carrier-laws", |p| {
         // Substitute the LATER name first: by-name, not position.
         let bound_c = substitute_expr(&expression(), "c", CodeValue::Int(3));
         let closed = substitute_expr(&bound_c, "x", CodeValue::Int(5));
-        p.eq("closed-computes", evaluate_expr(&closed), Ok(CodeValue::Int(15)));
+        p.eq(
+            "closed-computes",
+            evaluate_expr(&closed, &ModuleTable::EMPTY),
+            Ok(CodeValue::Int(15)),
+        );
         // An absent reference is a no-op.
         let untouched = substitute_expr(&expression(), "zz", CodeValue::Int(1));
         p.demand(
@@ -260,7 +275,7 @@ fn probe_union_kernels() {
             "substituting an absent name must not open or close anything",
         );
         // Open code refuses `unbound_code` naming the remaining names.
-        match evaluate_expr(&bound_c) {
+        match evaluate_expr(&bound_c, &ModuleTable::EMPTY) {
             Ok(_) => {
                 p.fail("open-refuses", "a one-name-open expression must refuse");
             }

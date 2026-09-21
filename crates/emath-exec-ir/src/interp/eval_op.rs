@@ -41,7 +41,11 @@ pub(super) fn eval_op(
         // quotes through its own Code machinery (the reference VM's
         // CValue::Code); the E-MIR interpreter refuses them by name
         // instead of guessing a carrier.
-        EmirOp::CodeLiteral { .. } | EmirOp::CodeSubstitute { .. } | EmirOp::CodeEvaluate { .. } => {
+        EmirOp::CodeLiteral { .. }
+        | EmirOp::CodeSubstitute { .. }
+        | EmirOp::CodeEvaluate { .. }
+        | EmirOp::CodeView { .. }
+        | EmirOp::CodeMake { .. } => {
             Err(EvalFault::CarrierRefused {
                 op: op.name(),
                 detail: String::from(

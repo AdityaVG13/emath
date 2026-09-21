@@ -202,6 +202,68 @@ mapping, the union fast path, the Rat-lock, the projection refusal,
 the mixed Int/Rational render, and the union factory render each
 kill their suite.
 
+## Shared tree view/make (emath-shared-tree-view-make-bp8nu)
+
+The union lane is now dual-representational: the `CodeLiteral` for
+an expression template carries BOTH the compiled factory lane inputs
+and a distilled std-only `CodeTree` (`src/tree_distill.rs`,
+`tree_distill`) plus stamped dependencies
+(`dependency_snapshot_tree` over `module_callable_table` - every
+FnDecl's identity stamp, built once per lowered module and threaded
+through the `Lowerer`). One lowering pass emits both (the
+dual-representation law: same pass, same body). The FUNCTION
+template lane carries no tree and no deps in this cut - its
+candidates execute as compiled closures, and the tree lane has no
+closure arm.
+
+Two new ops: `CodeView` (a code register views as the node-family
+record; `quote.view`) and `CodeMake` (a node-family value makes back
+into a code register; `quote.make`). Both refuse in the E-MIR
+interpreter by the same `CarrierRefused` law. The lowering quote
+fence admits exactly `("quote.view", 1)` and `("quote.make", 1)`;
+every other spelling or arity keeps the named refusal.
+
+`quote.view`/`quote.make` consumer shapes: a node-tag path (`Call`,
+`Literal`, ...) may appear bare (an empty record create) and as a
+record literal type name; `RecordField` over a node is the walk's
+field access (`kind`, `callee`, `args`, `children`, `value`,
+`name`, ...); list indexing over a node sequence is checked
+`node_index`. The node family (tag records, Code args, minted
+Fragment children, `#scope.{id}` tokens) is the rt substrate's -
+the lowering only routes carriers into it. `is_node_tag`
+(re-export of the constructor schema-tag family) and
+`module_callable_table` are the layer's public surface for the
+backend's `__EMATH_MODULE_TABLE` static.
+
+Parity decision recorded: the VM keeps its own CValue view/make
+machinery (`constructor_layer` quote arms); it is NOT rewired onto
+`emath_rt::code_tree`. Parity holds because the rt substrate is an
+arm-for-arm port of the same algorithms, pinned by
+`tests/emath-rt/tests/code_tree.rs` (mint order, token format,
+forged-scope refusal, view layouts, round trips, node laws, and
+verbatim refusal spellings) and by the export parity case over
+`tests/fixtures/constructor/tree_view.emath` (byte-identical
+cross-lane checkpoint).
+
+Determinism class: distillation and stamping are pure functions of
+the authored tree. No-claim: node kinds outside the emitted subset
+(Closure, Cases, Match, Recur, Record, ...) refuse by name on the
+MAKE side - the walk consumer can view them only after a future
+distill arm exists.
+
+Residual-lane boundary: the compile-time quote-elimination lane
+(residual.rs) still runs FIRST for every function, and a walk whose
+every input is compile-time evaluable folds to residual arithmetic
+through the reference VM (the ops never reach the artifact). The
+tree lane is exercised only when a walk consumes a RUNTIME value -
+the fixture's prediction makes its modified literal from the runtime
+key, so the emitted artifact runs view -> make -> substitute ->
+evaluate as ops. The static-tree embed mutation probe kills on
+exactly that seam: a stubbed tree diverges the native session from
+the VM lane's checkpoint (native-run-ok and scratch-bytes-equal both
+fail), which is how the probe caught the original session shape
+folding to arithmetic before the fixture was strengthened.
+
 ## Kernel boundary
 
 Native kernels are immutable implementations keyed by domain-neutral kernel IDs and carrier signatures. `install_language_distribution` derives FeatureID bindings exclusively from capsule-active Language Image rows and starts from an empty binding map. There are no built-in FeatureID aliases or legacy bindings.

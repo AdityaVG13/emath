@@ -117,9 +117,15 @@ pub fn free_names<V: Clone + 'static>(code: &Code<V>) -> &[String] {
 // distinction). Parity holds in the i64-shared domain; beyond-i64
 // values refuse here exactly as the Int emission lane always has.
 //
-// No tree is carried and no interpreter runs here either: the body is
-// the compiled arithmetic the backend emitted, expressed as these
-// kernel calls over the union.
+// Dual representation (bead emath-shared-tree-view-make-bp8nu): the
+// value additionally carries the DISTILLED TREE of the quoted
+// expression plus its stamped dependencies, and the compiled factory
+// becomes optional (a made tree has no compiled body). Both halves
+// are emitted by the same lowering pass from the same authored
+// quote, so they cannot drift; neither is hand-written. The tree is
+// what `quote.view` walks and `quote.make` rebuilds; a made (or
+// factory-less) code evaluates through the shared scalar tree
+// evaluator over the same kernels below.
 
 /// The dynamic scalar union: the carrier of a free name in an
 /// expression template, and of its computed result.
@@ -297,60 +303,142 @@ pub fn project_bool(value: &CodeValue, output: &str) -> Result<bool, String> {
 /// `free` order) and computes the union-valued expression.
 pub type ExprFactory = Rc<dyn Fn(&[CodeValue]) -> Result<CodeValue, String>>;
 
-/// An open expression template with its free names.
+/// An open expression template with its free names. The dual
+/// representation: the distilled tree (data - what view walks and
+/// make rebuilds) plus the compiled factory (the fast path a static
+/// template literal carries; a made tree has none), with the
+/// capture-time dependency snapshot.
 pub struct ExprCode {
     free: Vec<String>,
-    make: ExprFactory,
+    pub(crate) tree: super::code_tree::CodeTree,
+    pub(crate) make: Option<ExprFactory>,
+    pub(crate) deps: std::collections::BTreeMap<String, u64>,
 }
 
 impl Clone for ExprCode {
     fn clone(&self) -> Self {
         ExprCode {
             free: self.free.clone(),
-            make: Rc::clone(&self.make),
+            tree: self.tree.clone(),
+            make: self.make.clone(),
+            deps: self.deps.clone(),
         }
     }
 }
 
-/// Open a compiled expression template: `free` names the expression's
-/// free names in the order the factory consumes their values.
-pub fn open_expr(free: Vec<String>, make: ExprFactory) -> ExprCode {
-    ExprCode { free, make }
+impl core::fmt::Debug for ExprCode {
+    /// The diagnostic shape: the open names, the distilled tree, and
+    /// the stamped dependencies (the compiled factory is a function
+    /// value - it reports its presence, never its body).
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ExprCode")
+            .field("free", &self.free)
+            .field("tree", &self.tree)
+            .field("make", &self.make.is_some())
+            .field("deps", &self.deps)
+            .finish()
+    }
+}
+
+/// Open an expression template: `free` names the expression's free
+/// names in the order the factory consumes their values, `tree` is
+/// the distilled tree, `make` the compiled factory when one exists,
+/// `deps` the capture-time dependency snapshot.
+pub fn open_expr(
+    free: Vec<String>,
+    tree: super::code_tree::CodeTree,
+    make: Option<ExprFactory>,
+    deps: std::collections::BTreeMap<String, u64>,
+) -> ExprCode {
+    ExprCode {
+        free,
+        tree,
+        make,
+        deps,
+    }
 }
 
 /// Bind one free name by partial application (the same law as the
 /// function-template `substitute`: by-name splice at the position,
-/// an absent reference is a no-op).
-pub fn substitute_expr(code: &ExprCode, reference: &str, value: CodeValue) -> ExprCode {
+/// an absent reference is a no-op). The binding is authoritative on
+/// the TREE (a later view sees the substituted tree, exactly as the
+/// VM's tree substitution does) and splices the compiled factory in
+/// lock step when one exists.
+pub fn substitute_expr(
+    code: impl std::borrow::Borrow<ExprCode>,
+    reference: &str,
+    value: CodeValue,
+) -> ExprCode {
+    let code = code.borrow();
     let Some(position) = code.free.iter().position(|name| name == reference) else {
         return code.clone();
     };
     let mut free = code.free.clone();
     free.remove(position);
-    let inner = Rc::clone(&code.make);
-    let make = Rc::new(move |rest: &[CodeValue]| {
-        let mut all = rest[..position].to_vec();
-        all.push(value);
-        all.extend_from_slice(&rest[position..]);
-        inner(&all)
+    let tree = super::code_tree::substitute_tree(
+        &code.tree,
+        reference,
+        &super::code_tree::CodeTree::Literal(value),
+    );
+    let make: Option<ExprFactory> = code.make.clone().map(|inner| {
+        let spliced: ExprFactory = Rc::new(move |rest: &[CodeValue]| {
+            let mut all = rest[..position].to_vec();
+            all.push(value);
+            all.extend_from_slice(&rest[position..]);
+            inner(&all)
+        });
+        spliced
     });
-    ExprCode { free, make }
+    ExprCode {
+        free,
+        tree,
+        make,
+        deps: code.deps.clone(),
+    }
 }
 
-/// The guarded executor: closed code computes the expression; open
-/// code refuses `unbound_code`, naming every remaining free name in
-/// binding order.
-pub fn evaluate_expr(code: &ExprCode) -> Result<CodeValue, String> {
+/// The guarded executor: stamped dependencies verify against the
+/// module table first (the `stale_dependency` refusal), open code
+/// refuses `unbound_code` naming every remaining free name in binding
+/// order, and closed code computes through the compiled factory when
+/// one exists - the made-tree lane evaluates the distilled tree over
+/// the shared scalar kernels instead (same carrier rules, same
+/// refusal names).
+pub fn evaluate_expr(
+    code: impl std::borrow::Borrow<ExprCode>,
+    module: &super::code_tree::ModuleTable,
+) -> Result<CodeValue, String> {
+    let code = code.borrow();
+    super::code_tree::verify_deps(&code.deps, module)?;
     if !code.free.is_empty() {
         return Err(format!(
             "unbound_code: quoted code is open; unbound name(s): {}",
             code.free.join(", ")
         ));
     }
-    (code.make)(&[])
+    if let Some(make) = &code.make {
+        return make(&[]);
+    }
+    super::code_tree::evaluate_tree(&code.tree, &std::collections::BTreeMap::new())
 }
 
 /// The free names in binding order.
 pub fn free_names_expr(code: &ExprCode) -> &[String] {
     &code.free
+}
+
+impl ExprCode {
+    /// The artifact-side walk surface (method syntax: emitted
+    /// registers hold this value owned, borrowed, or inlined, and a
+    /// read must never move a multi-use register). Each method is
+    /// the same law as its free function.
+    pub fn view(&self, module: &super::code_tree::ModuleTable) -> super::code_tree::NodeValue {
+        super::code_tree::view_quoted(self, module)
+    }
+    pub fn substitute(&self, reference: &str, value: CodeValue) -> ExprCode {
+        substitute_expr(self, reference, value)
+    }
+    pub fn evaluate(&self, module: &super::code_tree::ModuleTable) -> Result<CodeValue, String> {
+        evaluate_expr(self, module)
+    }
 }

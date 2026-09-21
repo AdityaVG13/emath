@@ -58,6 +58,113 @@ pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
     }
 }
 
+/// Wrap an operand expression into the node-record family by its
+/// kind. Total over the family-joinable kinds (node, the dual Code,
+/// the union, Int, Rat, Bool): the node-lane kind rules fold exactly
+/// those into the family, mirroring the VM's heterogeneous CValue
+/// sequences (a walk's `[made_code, node.args[1]]` list mixes Code
+/// and node values).
+pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
+    match kind {
+        // Both family carriers are non-copy: an operand may render as
+        // an owning register or a borrow block, so the fold clones
+        // through method-call auto-deref (one spelling, both shapes).
+        ValueKind::Node => Expr::Raw(format!("({}).clone()", render_expr(&expr))),
+        ValueKind::ExprCode => Expr::Raw(format!(
+            "emath_rt::code_tree::NodeValue::Code(Box::new(({}).clone()))",
+            render_expr(&expr)
+        )),
+        ValueKind::CodeValue => Expr::Raw(format!(
+            "emath_rt::code_tree::NodeValue::Scalar({})",
+            render_expr(&expr)
+        )),
+        ValueKind::I64 => Expr::Raw(format!(
+            "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Int({}))",
+            render_expr(&expr)
+        )),
+        ValueKind::Rational => Expr::Raw(format!(
+            "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Rat({}))",
+            render_expr(&expr)
+        )),
+        ValueKind::Bool => Expr::Raw(format!(
+            "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Bool({}))",
+            render_expr(&expr)
+        )),
+        other => unreachable!(
+            "the node-lane kind rules admit only node/Code/union/Int/Rat/Bool into the family, found {other:?}"
+        ),
+    }
+}
+
+/// Render a shared tree as a Rust value expression (the static-tree
+/// embed): every distillable shape renders as its constructing
+/// expression, deterministic and allocation-minimal.
+pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
+    use emath_rt::code_tree::{CodeTree, TreeBinary, TreeUnary};
+    fn binary(op: TreeBinary) -> String {
+        format!("emath_rt::code_tree::TreeBinary::{op:?}")
+    }
+    fn unary(op: TreeUnary) -> String {
+        format!("emath_rt::code_tree::TreeUnary::{op:?}")
+    }
+    fn code_value(value: &emath_rt::code::CodeValue) -> String {
+        match value {
+            emath_rt::code::CodeValue::Int(n) => {
+                format!("emath_rt::code::CodeValue::Int({n}i64)")
+            }
+            emath_rt::code::CodeValue::Rat((num, den)) => {
+                format!("emath_rt::code::CodeValue::Rat(({num}i128, {den}i128))")
+            }
+            emath_rt::code::CodeValue::Bool(b) => {
+                format!("emath_rt::code::CodeValue::Bool({b})")
+            }
+        }
+    }
+    match tree {
+        CodeTree::Literal(value) => {
+            format!("emath_rt::code_tree::CodeTree::Literal({})", code_value(value))
+        }
+        CodeTree::Path(segments) => format!(
+            "emath_rt::code_tree::CodeTree::Path(vec![{}])",
+            segments
+                .iter()
+                .map(|segment| format!("String::from({segment:?})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        CodeTree::Call { function, args } => format!(
+            "emath_rt::code_tree::CodeTree::Call {{ function: Box::new({}), args: vec![{}] }}",
+            tree_expr(function),
+            args.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
+        ),
+        CodeTree::Binary { op, left, right } => format!(
+            "emath_rt::code_tree::CodeTree::Binary {{ op: {}, left: Box::new({}), right: Box::new({}) }}",
+            binary(*op),
+            tree_expr(left),
+            tree_expr(right)
+        ),
+        CodeTree::Unary { op, value } => format!(
+            "emath_rt::code_tree::CodeTree::Unary {{ op: {}, value: Box::new({}) }}",
+            unary(*op),
+            tree_expr(value)
+        ),
+        CodeTree::Tuple(items) => format!(
+            "emath_rt::code_tree::CodeTree::Tuple(vec![{}])",
+            items.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
+        ),
+        CodeTree::If {
+            condition,
+            then_value,
+            else_value,
+        } => format!(
+            "emath_rt::code_tree::CodeTree::If {{ condition: Box::new({}), then_value: Box::new({}), else_value: Box::new({}) }}",
+            tree_expr(condition),
+            tree_expr(then_value),
+            tree_expr(else_value)
+        ),
+    }
+}
+
 pub(crate) fn op_expr(
     op: &EmirOp,
     program: &EmirProgram,
@@ -104,9 +211,40 @@ pub(crate) fn op_expr(
         EmirOp::Branch { .. } | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) => authored_control_expr(op, program, names, states, input_kinds),
         EmirOp::ListCreate(elements) => {
             let kinds = value_kinds(program, names, states, input_kinds);
+            // A list with any node-family element joins the family's
+            // dynamic sequence (the walk's mixed `[made, arg]`
+            // argument lists); element values fold via `to_node`.
+            if elements
+                .iter()
+                .any(|value| kind_at(&kinds, *value) == ValueKind::Node)
+            {
+                let items = elements
+                    .iter()
+                    .map(|value| {
+                        let kind = kind_at(&kinds, *value);
+                        render_expr(&to_node(operand(program, *value), &kind))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Ok(Expr::Raw(format!(
+                    "emath_rt::code_tree::node_list(vec![{items}])"
+                )));
+            }
             Ok(Expr::Macro { name: "vec".into(), args: elements.iter().map(|value| owned_operand(program, *value, &kinds)).collect() })
         }
         EmirOp::RecordField { record, field } => {
+            // A field off a node value is the family's dynamic
+            // projection - a typed refusal on a missing field, never
+            // a silent default (the VM's `project_field` law).
+            {
+                let kinds = value_kinds(program, names, states, input_kinds);
+                if kind_at(&kinds, *record) == ValueKind::Node {
+                    let record_code = render_expr(&operand(program, *record));
+                    return Ok(Expr::Raw(format!(
+                        "({record_code}).field({field:?})?"
+                    )));
+                }
+            }
             let value = Expr::Field { receiver: Box::new(operand(program, *record)), field: escape_ident(field) };
             let kinds = value_kinds(program, names, states, input_kinds);
             if kind_of_op(op, &kinds, names, states, input_kinds).is_copy() { Ok(value) } else { Ok(Expr::Raw(format!("&{}", render_expr(&value)))) }
@@ -485,21 +623,30 @@ pub(crate) fn op_expr(
             Ok(Expr::Raw(format!("{{ {capture_bindings} let __program: std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>> = std::sync::Arc::new(move |__program_inputs: &[f64]| {{ {arity_guard} {bindings} Ok({result}) }}); __program }}")))
             }
         }
-        EmirOp::CodeLiteral { body, param, free, carrier } => {
+        EmirOp::CodeLiteral { body, param, free, carrier, tree, deps } => {
             if param.is_none() {
                 // The compiled EXPRESSION template (bead
                 // emath-expression-quotes-324y0): the quoted
                 // expression lowers once over the value union - every
                 // scalar op of the body renders as a dynamic rt kernel
-                // call implementing the VM's exact carrier rules, no
-                // tree carried and no interpreter run. All free names
-                // are runtime inputs (the hygiene law keeps them
-                // open); the factory computes the union-valued
-                // expression directly - no parameter, no inner
-                // closure. The body-kind check is the named gate:
-                // anything the union lane cannot compute (structured
-                // values, floats, non-scalar ops, a closed body with
-                // no free name to carry the union) refuses here.
+                // call implementing the VM's exact carrier rules. All
+                // free names are runtime inputs (the hygiene law
+                // keeps them open); the factory computes the
+                // union-valued expression directly - no parameter, no
+                // inner closure. The body-kind check is the named
+                // gate: anything the union lane cannot compute
+                // (structured values, floats, non-scalar ops, a
+                // closed body with no free name to carry the union)
+                // refuses here.
+                //
+                // The dual representation (bead
+                // emath-shared-tree-view-make-bp8nu): the SAME
+                // lowering emits the distilled tree and the
+                // capture-time dependency snapshot beside the
+                // factory, so `quote.view`/`quote.make` operate on
+                // exactly the program this factory computes - the two
+                // halves cannot drift because neither is written
+                // separately.
                 let mut inputs = InputKinds::new();
                 for name in free {
                     inputs.insert(name.clone(), ValueKind::CodeValue);
@@ -521,8 +668,21 @@ pub(crate) fn op_expr(
                     .map(|name| format!("String::from({name:?})"))
                     .collect::<Vec<_>>()
                     .join(", ");
+                let tree_code =
+                    tree_expr(tree.as_ref().expect("union lane carries the distilled tree"));
+                let deps_code = if deps.is_empty() {
+                    "std::collections::BTreeMap::new()".to_string()
+                } else {
+                    format!(
+                        "vec![{}].into_iter().collect::<std::collections::BTreeMap<String, u64>>()",
+                        deps.iter()
+                            .map(|(name, stamp)| format!("(String::from({name:?}), {stamp}u64)"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
                 return Ok(Expr::Raw(format!(
-                    "{{ emath_rt::code::open_expr(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[emath_rt::code::CodeValue]| -> Result<emath_rt::code::CodeValue, String> {{ {bindings} Ok({body_code}) }})) }}"
+                    "{{ emath_rt::code::open_expr(vec![{free_list}], {tree_code}, Some(std::rc::Rc::new(move |__code_free: &[emath_rt::code::CodeValue]| -> Result<emath_rt::code::CodeValue, String> {{ {bindings} Ok({body_code}) }})), {deps_code}) }}"
                 )));
             }
             // The compiled FUNCTION template: the nested program lowers once
@@ -647,7 +807,7 @@ pub(crate) fn op_expr(
                     }
                     let converted = to_code_value(operand(program, *value), &value_kind);
                     Ok(Expr::Raw(format!(
-                        "emath_rt::code::substitute_expr(&{}, {:?}, {})",
+                        "({}).substitute({:?}, {})",
                         render_expr(&operand(program, *code)),
                         reference,
                         render_expr(&converted)
@@ -664,7 +824,11 @@ pub(crate) fn op_expr(
             // yields the specialized closure for a function template
             // (kind Closure) or the computed union scalar for an
             // expression template (kind CodeValue, projected at the
-            // typed boundary).
+            // typed boundary) - through the compiled factory when the
+            // tree came from a static template literal, through the
+            // shared scalar tree evaluator when it was made from
+            // node records. Stamped dependencies verify against the
+            // module table first (the `stale_dependency` refusal).
             let kinds = value_kinds(program, names, states, input_kinds);
             match kind_at(&kinds, *code) {
                 ValueKind::Code(_) => Ok(Expr::Raw(format!(
@@ -672,11 +836,57 @@ pub(crate) fn op_expr(
                     render_expr(&operand(program, *code))
                 ))),
                 ValueKind::ExprCode => Ok(Expr::Raw(format!(
-                    "emath_rt::code::evaluate_expr(&{})?",
+                    "({}).evaluate(&__EMATH_MODULE_TABLE)?",
                     render_expr(&operand(program, *code))
                 ))),
                 _ => Err(BackendError::UnsupportedType(
                     "code-evaluate requires a Code value".into(),
+                )),
+            }
+        }
+        EmirOp::CodeView { code } => {
+            // quote.view: the shared tree walked into node records -
+            // minted Scope witnesses included - over the module
+            // table's Global layouts. A Code value views its own
+            // tree; a Fragment node value views its term.
+            let kinds = value_kinds(program, names, states, input_kinds);
+            match kind_at(&kinds, *code) {
+                ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                    "({}).view(&__EMATH_MODULE_TABLE)",
+                    render_expr(&operand(program, *code))
+                ))),
+                ValueKind::Node => Ok(Expr::Raw(format!(
+                    "({}).view(&__EMATH_MODULE_TABLE)?",
+                    render_expr(&operand(program, *code))
+                ))),
+                ValueKind::Code(_) => Err(BackendError::UnsupportedType(
+                    "quote.view is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
+                )),
+                _ => Err(BackendError::UnsupportedType(
+                    "quote.view requires a Code or Fragment value".into(),
+                )),
+            }
+        }
+        EmirOp::CodeMake { node } => {
+            // quote.make: rebuild a (possibly modified) node-record
+            // tree back into the dual Code value; a Code passthrough
+            // stays itself. The rebuilt open names and dependency
+            // stamps follow the VM's quote_make laws.
+            let kinds = value_kinds(program, names, states, input_kinds);
+            match kind_at(&kinds, *node) {
+                ValueKind::Node => Ok(Expr::Raw(format!(
+                    "({}).make(&__EMATH_MODULE_TABLE)?",
+                    render_expr(&operand(program, *node))
+                ))),
+                ValueKind::ExprCode => {
+                    let value = to_node(operand(program, *node), &ValueKind::ExprCode);
+                    Ok(Expr::Raw(format!(
+                        "({}).make(&__EMATH_MODULE_TABLE)?",
+                        render_expr(&value)
+                    )))
+                }
+                _ => Err(BackendError::UnsupportedType(
+                    "quote.make requires a node record or Code value".into(),
                 )),
             }
         }

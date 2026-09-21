@@ -46,6 +46,9 @@ pub const SOURCE: &str = concat!(
     "\npub mod code {\n",
     include_str!("body/code.rs"),
     "\n}\n",
+    "\npub mod code_tree {\n",
+    include_str!("body/code_tree.rs"),
+    "\n}\n",
     "\npub mod special {\n",
     include_str!("../../emath-core/src/special.rs"),
     "\n}\n"

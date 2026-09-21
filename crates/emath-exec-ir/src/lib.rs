@@ -22,6 +22,7 @@ pub mod reference_views;
 pub mod exact_int;
 pub mod constructor_layer;
 pub mod constructor_emir;
+mod tree_distill;
 pub mod runner;
 pub mod shake;
 pub mod term_compile;

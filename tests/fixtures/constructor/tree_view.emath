@@ -1,0 +1,314 @@
+# The shared tree (bead emath-shared-tree-view-make-bp8nu): a quoted
+# expression is inspectable STRUCTURE. quote.view opens a Code into
+# node records (Call/Literal/... layouts with minted Scope witnesses
+# in the packaged children); authored code pattern-walks those records
+# by kind tag and field; quote.make rebuilds a (possibly modified)
+# node record tree back into Code; quote.evaluate computes the result.
+#
+# Laws pinned here (normative source: the constructor layer's
+# view_of/rebuild_expr, expr.rs and call.rs):
+#   - a Binary node views as Call with the scalar op's TAG as callee
+#     (2 + 1 views as Call{callee: Add, ...}) and makes back as the
+#     same Binary;
+#   - the round trip is semantics-preserving: view -> make -> evaluate
+#     equals direct evaluation;
+#   - a made tree may be MODIFIED (a rebuilt Literal replaces a
+#     template constant) and the modification changes the value;
+#   - subterms travel as Code values (node.args holds Code, not
+#     records), so make consumes them directly.
+#
+# Expected outcome: passes (4 authored tests) in the VM lane; the
+# native export parity case lives in tests/emath-tui/tests/export_native.rs.
+# Run: emath check tests/fixtures/constructor/tree_view.emath
+
+emath function TreeTemplate:
+    # The shared template: free names x and c, no parameter. The
+    # session's prediction runs through the structural round trip.
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote((x + c) * 4)
+
+emath function tree_mirror:
+    # The identity walk: view the root, view the left child, rebuild
+    # both levels from node records. Every def is total (the guards
+    # keep field access on the admitted kind), and the result must
+    # evaluate to exactly the original tree's value.
+    inputs:
+        q: Code
+    outputs:
+        result: Code
+    definitions:
+        node = quote.view(q)
+        inner = if node.kind == Call: quote.view(node.args[0]) else: quote.view(q)
+        left = if node.kind == Call: if inner.kind == Call: quote.make(Call: {callee: inner.callee, args: [inner.args[0], inner.args[1]]}) else: quote.make(inner) else: quote.make(node)
+        top = if node.kind == Call: quote.make(Call: {callee: node.callee, args: [left, node.args[1]]}) else: quote.make(node)
+        result = if node.kind == Call: if inner.kind == Call: top else: quote.make(node) else: quote.make(node)
+    tests:
+        example <mirror_round_trip>:
+            given q = quote((2 + 1) * 4)
+            expect quote.evaluate(result) == 12
+        example <mirror_of_a_literal>:
+            given q = quote(7)
+            expect quote.evaluate(result) == 7
+
+emath function tree_bump:
+    # The modified walk: the same two-level rebuild, but the inner
+    # right operand is replaced by a MADE literal (5). The template
+    # constant 1 becomes 5, so (2 + 1) * 4 = 12 becomes (2 + 5) * 4
+    # = 28: the modification is real, not a re-rendering.
+    inputs:
+        q: Code
+    outputs:
+        result: Code
+    definitions:
+        node = quote.view(q)
+        inner = if node.kind == Call: quote.view(node.args[0]) else: quote.view(q)
+        bump = quote.make(Literal: {value: 5})
+        left = if node.kind == Call: if inner.kind == Call: quote.make(Call: {callee: inner.callee, args: [inner.args[0], bump]}) else: quote.make(inner) else: quote.make(node)
+        top = if node.kind == Call: quote.make(Call: {callee: node.callee, args: [left, node.args[1]]}) else: quote.make(node)
+        result = if node.kind == Call: if inner.kind == Call: top else: quote.make(node) else: quote.make(node)
+    tests:
+        example <bump_changes_the_value>:
+            given q = quote((2 + 1) * 4)
+            expect quote.evaluate(result) == 28
+
+emath function tree_layout:
+    # The layout pin: a Binary views as a Call node whose callee is
+    # the scalar op TAG, and the root of a product is that Call.
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        root = quote.view(quote((2 + 1) * 4))
+        result = root.kind == Call
+    tests:
+        example <binary_views_as_call>:
+            given unused = 0
+            expect result == true
+
+# --- The session surface (the export seam) ---
+#
+# The same search as the expression-quote dream, but the prediction
+# runs through the STRUCTURAL lane: every probe mirrors the template
+# through view -> make before substituting and evaluating, so the
+# whole round trip executes inside the batch loop and the checkpoint
+# values are produced by the tree machinery. The world wants
+# (i + 1) * 4; only k = 1 masters all five cases.
+
+use search.archive
+use search.research
+
+emath function tree_world:
+    # w(i) = (i + 1) * 4.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = [4 / 1, 8 / 1, 12 / 1, 16 / 1, 20 / 1]
+
+emath function tree_pred:
+    # The structural-lane prediction. The template's inner constant
+    # is REPLACED by a made literal carrying the RUNTIME key k, so
+    # the view -> make -> substitute -> evaluate chain cannot fold at
+    # compile time (the made node consumes a runtime value): the
+    # emitted artifact runs the whole structural walk, and the
+    # checkpoint values are produced by the tree machinery.
+    inputs:
+        k: Rat
+        i: Rat
+    outputs:
+        result: Rat
+    definitions:
+        node = quote.view(TreeTemplate(0))
+        inner = if node.kind == Call: quote.view(node.args[0]) else: quote.view(TreeTemplate(0))
+        bump = quote.make(Literal: {value: k})
+        left = if node.kind == Call: if inner.kind == Call: quote.make(Call: {callee: inner.callee, args: [inner.args[0], bump]}) else: quote.make(inner) else: quote.make(node)
+        top = if node.kind == Call: quote.make(Call: {callee: node.callee, args: [left, node.args[1]]}) else: quote.make(node)
+        mirrored = if node.kind == Call: if inner.kind == Call: top else: quote.make(node) else: quote.make(node)
+        closed = quote.substitute(mirrored, "x", i)
+        result = quote.evaluate(closed)
+
+emath function tree_case_error:
+    # 1 if key k mispredicts case i, else 0.
+    inputs:
+        k: Rat
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if tree_pred(k, i / 1) == tree_world(0)[i]: 0 else: 1
+
+emath function tree_errors_at:
+    # k's error count over the case ids from position j.
+    inputs:
+        k: Rat
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        one = if done: 0 else: tree_case_error(k, ids[j])
+        result = if done: 0 else: one + tree_errors_at(k, ids, j + 1)
+
+emath function tree_first_wrong:
+    # The smallest case ordinal in ids that k mispredicts (-1 = none).
+    inputs:
+        k: Rat
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        result = if done: -1 else: if tree_case_error(k, c) == 1: c else: tree_first_wrong(k, ids, j + 1)
+
+emath function MakeValueOf:
+    # The canonical parameter: the key is the constant itself.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    # The constant domain: k in 0..6.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 6
+
+emath function MakeMoves:
+    # The ladder: step the constant by one either way; admit gates
+    # the domain edges.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k - 1, k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    # Whole-domain capacity: every batch can propose the ladder.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 7
+
+emath function MakeScore:
+    # The probe and verify tier (one truth): k's error count over the
+    # frozen case set, as an exact rational - through the structural
+    # lane's only scorer.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: tree_errors_at(k / 1, cs.ids, 0) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: tree_first_wrong(k / 1, cs.ids, 0)
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    # Exact mastery of the frozen set closes the run.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: s == 0 / 1
+
+emath function MakeBetter:
+    # Fewer errors is better, strictly (better(x, y) = x beats y).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    # No curriculum: the full world is frozen from the seed.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: cs
+
+emath function SeedTree:
+    # Archive mode, seeded at the trivial constant k = 0 on the full
+    # frozen world (pred = i*4: all 5 cases mispredicted).
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: [0, 1, 2, 3, 4]}, MakeScore(0), MakeWitness(0), 1, 0, 1, 1)
+
+emath function StepTree:
+    # One batch of the structural-lane target over explicit state: the
+    # session surface a loop host steps batch by batch.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+
+emath function RunTree:
+    # The straight walk: the seed at k = 0 (score 5), then the ladder
+    # proposes k = 1 - pred(i) = (i + 1)*4 masters the whole world.
+    # The run closes goal_attained and stays closed.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+        errors: Int
+    definitions:
+        s0 = SeedTree(0)
+        s1 = StepTree(s0, 60)
+        s2 = StepTree(s1, 60)
+        winner = s2.archive[s2.incumbent].key
+        verdict = s2.verdict
+        errors = tree_errors_at(winner / 1, [0, 1, 2, 3, 4], 0)
+    tests:
+        example <structural_lane_session_master>:
+            given unused = 0
+            expect winner == 1
+            expect verdict == 1
+            expect errors == 0

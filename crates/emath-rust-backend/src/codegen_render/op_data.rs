@@ -97,8 +97,30 @@ pub(super) fn op_data_exprs(
         ))),
         EmirOp::RecordCreate { type_name, fields } => {
             if record_layout(type_name).is_none() {
-                return Err(BackendError::UnsupportedType(format!(
-                    "record {type_name} has no authored layout"
+                // A node-family record (the structural walk's
+                // `Call: {callee: .., args: ..}` construction): the
+                // dynamic node value over the shared tree family.
+                // Field values fold into the family - scalars and
+                // Code values wrap, node values pass through.
+                if !emath_exec_ir::constructor_layer::is_node_tag(type_name) {
+                    return Err(BackendError::UnsupportedType(format!(
+                        "record {type_name} has no authored layout"
+                    )));
+                }
+                let kinds = value_kinds(program, names, states, input_kinds);
+                let members = fields
+                    .iter()
+                    .map(|(name, value)| {
+                        let kind = kind_at(&kinds, *value);
+                        format!(
+                            "(String::from({name:?}), {})",
+                            render_expr(&to_node(operand(program, *value), &kind))
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Ok(Expr::Raw(format!(
+                    "emath_rt::code_tree::node_record({type_name:?}, vec![{members}])"
                 )));
             }
             let layout = record_layout(type_name)

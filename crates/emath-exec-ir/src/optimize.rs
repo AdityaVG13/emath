@@ -148,6 +148,8 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         EmirOp::CodeLiteral { .. } => {}
         EmirOp::CodeSubstitute { code, value, .. } => out.extend([*code, *value]),
         EmirOp::CodeEvaluate { code } => out.push(*code),
+        EmirOp::CodeView { code } => out.push(*code),
+        EmirOp::CodeMake { node } => out.push(*node),
     }
 }
 

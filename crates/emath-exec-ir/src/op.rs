@@ -242,19 +242,24 @@ pub enum EmirOp {
     /// A quoted unary program template as compiled code: the lambda
     /// body lowered once, with the open (free) constant names as
     /// trailing runtime inputs after the parameter. The artifact
-    /// value is the compiled closure factory - no tree is carried and
-    /// no interpreter runs. Two template shapes are admitted. A
-    /// FUNCTION template (`quote(function x in Rat: ...)`) carries
-    /// `param: Some(x)`: the declared domain governs the parameter
-    /// AND the open constants, so the compiled factory is
-    /// monomorphic in the carrier. An EXPRESSION template
+    /// value is the compiled closure factory - the function lane
+    /// carries no tree and runs no interpreter. Two template shapes
+    /// are admitted. A FUNCTION template (`quote(function x in Rat:
+    /// ...)`) carries `param: Some(x)`: the declared domain governs
+    /// the parameter AND the open constants, so the compiled factory
+    /// is monomorphic in the carrier. An EXPRESSION template
     /// (`quote(x + c)`, bead emath-expression-quotes-324y0) carries
     /// `param: None` and carrier `Union`: the body computes over the
     /// dynamic value union, every free name is a runtime input, and
     /// `evaluate` yields a scalar of dynamic carrier, projected at
-    /// typed boundaries. The hygiene law is structural for both: a
-    /// quote never captures the ambient frame, so every free name of
-    /// the body stays open until substituted.
+    /// typed boundaries. The union lane additionally carries the
+    /// DISTILLED TREE of the same authored body (the dual
+    /// representation, bead emath-shared-tree-view-make-bp8nu):
+    /// `quote.view` walks it and `quote.make` rebuilds into it, both
+    /// through the shared std-only algorithms in `emath-rt`. The
+    /// hygiene law is structural for all lanes: a quote never
+    /// captures the ambient frame, so every free name of the body
+    /// stays open until substituted.
     CodeLiteral {
         body: EmirProgram,
         /// The template's parameter name (nested input 0); `None` for
@@ -270,6 +275,16 @@ pub enum EmirOp {
         /// instantiates the Code factory over, or `Union` for an
         /// expression template (the dynamic value-union lane).
         carrier: String,
+        /// The distilled tree of the expression template: `None` on
+        /// the function lane, `Some` on the union lane - emitted by
+        /// this same lowering pass from the same authored body as the
+        /// compiled factory, so the two representations cannot drift.
+        tree: Option<emath_rt::code_tree::CodeTree>,
+        /// The capture-time dependency snapshot: free names that
+        /// resolve against the module's callable table, stamped with
+        /// the declaration identity (`decl_stamp`) - the same stamps
+        /// the VM's quote capture computes.
+        deps: std::collections::BTreeMap<String, u64>,
     },
     /// `quote.substitute(code, name, value)`: bind one open name by
     /// partial application. The reference is a static string resolved
@@ -288,9 +303,27 @@ pub enum EmirOp {
     /// closed code yields the specialized unary closure for a
     /// function template (a callable value, so a def bound to it is
     /// closure-valued) or the computed scalar for an expression
-    /// template.
+    /// template - through the compiled factory when the tree came
+    /// from a static template literal, through the shared scalar
+    /// tree evaluator when it was made from node records.
     CodeEvaluate {
         code: EmirValue,
+    },
+    /// `quote.view(code)`: open a Code value (or Fragment package)
+    /// into its structural node records - the shared tree walked
+    /// through the minted-scope packaging (bead
+    /// emath-shared-tree-view-make-bp8nu). The artifact value is the
+    /// dynamic node-record family over the same layouts the VM
+    /// produces.
+    CodeView {
+        code: EmirValue,
+    },
+    /// `quote.make(node)`: rebuild a Code value from node records
+    /// (possibly modified). The rebuilt tree's open names and stamped
+    /// dependencies follow the VM's `quote_make` laws; node kinds
+    /// outside the emitted tree subset refuse by name.
+    CodeMake {
+        node: EmirValue,
     },
 
     /// Concatenate list carriers, preserving element carriers. The

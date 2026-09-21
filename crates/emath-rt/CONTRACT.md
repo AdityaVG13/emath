@@ -213,3 +213,53 @@ union; no Float64 lane (a float reaching a union op refuses named);
 no Text carrier; the rt comparison kernels are pinned at the unit
 level - the authored surface's comparison-valued templates compute
 through them but the export parity case rides the arithmetic lane.
+
+## Shared code tree - view/make substrate (emath-shared-tree-view-make-bp8nu)
+
+`body/code_tree.rs` (embedded as `pub mod code_tree` in both the
+crate and `SOURCE`) is the artifact-side STRUCTURAL Code
+representation. Representation decision: embedding emath-core's
+`Expr` via `include!` was rejected (the artifact embed law is a
+std-only, zero-dependency `emath_rt`), so `CodeTree` is a distilled
+std-only tree (Literal/Path/Call/Binary over the 17 scalar ops with
+the VM's `scalar_op_name` spellings/Unary/Tuple/If) and the VM keeps
+its own CValue quote machinery - parity rests on shared-algorithm
+ports pinned at the unit level, not on rewiring the VM to this type.
+
+The node family `NodeValue` (Scalar/Record/Sequence/Tuple/Code)
+reproduces the VM's walk records arm for arm:
+
+- view (quote.view): `view_tree`/`view_quoted` mirror `view_of` -
+  Call/Binary/Unary view as Call records with op-tag callees, Code
+  args, and minted Fragment children; Tuple views as Sequence;
+  If views as Branch. Minting is per-run deterministic: one
+  thread-local `MintState`, `reset_mint()` at the entry prologue,
+  tokens `#scope.{id}` climbing in walk order. `check_scope` is the
+  forged-scope law: a Fragment package whose Scope witness carries
+  an id this run did not mint refuses
+  `invalid_code_construction: forged Scope witness`.
+- make (quote.make): `rebuild_node`/`rebuild_call`/`make_quoted`
+  mirror `rebuild_expr` - refusal spellings verbatim (`Call missing
+  callee`, `node \`{kind}\` is not yet emitted in artifact trees`
+  for kinds outside the emitted subset). Made code carries a
+  dependency snapshot; `verify_deps` refuses
+  `stale_dependency: quoted dependency \`{n}\` changed since capture`.
+- node laws: `node_eq` mirrors the VM's `eq_values` (scalar VALUE
+  equality - `2 == 2/1`; mixed kinds never equal), `node_field`
+  refuses typed (`type: record has no field \`{f}\``), `node_index`
+  refuses `invalid_index: sequence index out of range`.
+
+`ExprCode` is dual-representational: `{free, tree,
+make: Option<factory>, deps}` - one lowering pass emits the compiled
+union factory AND the distilled tree; `evaluate_expr` verifies deps,
+then runs the factory when present, else the tree evaluator.
+`evaluate_tree` computes scalar trees only; calls, globals, and
+structured bodies refuse named (`tree: ... is not emitted in the
+scalar tree evaluator`) - the compile-time resolution boundary, no
+interpreter claim. Conformance:
+`tests/emath-rt/tests/code_tree.rs` (8 cases, 35 checks) with
+token-format, forged-scope-drop, and node-kind-tag mutation probes
+all killing; `ModuleTable`/`mint_scope`/`check_scope` parity with
+the VM's `mint_scope`/`check_fragment_scope`/`dependency_snapshot`
+is pinned by the same probe.
+

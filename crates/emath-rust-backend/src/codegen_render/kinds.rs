@@ -35,6 +35,14 @@ pub(crate) enum ValueKind {
     /// value. Typed boundaries project it checked onto the declared
     /// carrier.
     CodeValue,
+    /// The node-record family (bead emath-shared-tree-view-make-bp8nu):
+    /// the dynamic values `quote.view` produces and authored
+    /// structural code consumes - node records (tag records are
+    /// empty-field records), sequences, tuples, scalars, and Code
+    /// values folded into one family (`emath_rt::code_tree::NodeValue`).
+    /// Kind rules coerce scalars and Code values into it wherever a
+    /// node value flows.
+    Node,
     /// Typed program value: a closure with explicit parameter and
     /// result kinds (the constructor lane's `Int -> CaseSet -> Rat`
     /// carriers and `CallValue` callees). It renders as a generic call
@@ -71,6 +79,7 @@ impl ValueKind {
                 "Text" => ValueKind::Text,
                 "Program" => ValueKind::Program,
                 "BigInt" => ValueKind::BigInt,
+                "Code" => ValueKind::ExprCode,
                 "Complex" | "Complex<Float64>" => ValueKind::Complex,
                 "emath_rt::Tensor" => ValueKind::Tensor,
                 text if text.starts_with("Tensor<") || text.starts_with("SameTensor<") => {
@@ -130,6 +139,7 @@ impl ValueKind {
             )),
             Self::ExprCode => Ty::Named("emath_rt::code::ExprCode".into()),
             Self::CodeValue => Ty::Named("emath_rt::code::CodeValue".into()),
+            Self::Node => Ty::Named("emath_rt::code_tree::NodeValue".into()),
             Self::DenseLayout(_) => Ty::Named("emath_rt::DenseLayout".into()),
             Self::Program => Ty::Named(
                 "std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>>"
@@ -392,8 +402,27 @@ pub(super) fn kind_of_op(
         EmirOp::ConstF64(_) => ValueKind::F64,
         EmirOp::ConstBool(_) => ValueKind::Bool,
         EmirOp::ConstText(_) | EmirOp::FormatText { .. } => ValueKind::Text,
-        EmirOp::RecordCreate { type_name, .. } => ValueKind::Record(type_name.clone()),
+        EmirOp::RecordCreate { type_name, .. } => {
+            // A node-family tag or node record (not an authored
+            // object layout) constructs a dynamic node value; the
+            // emitter's admission gate guarantees only authored
+            // objects and node tags reach here.
+            if record_layout(type_name).is_none()
+                && emath_exec_ir::constructor_layer::is_node_tag(type_name)
+            {
+                ValueKind::Node
+            } else {
+                ValueKind::Record(type_name.clone())
+            }
+        }
         EmirOp::RecordField { record, field } => {
+            // A field off a node value stays in the node family
+            // (dynamic records: the field's own kind is a runtime
+            // fact); a field off a typed record keeps the declared
+            // layout carrier.
+            if kind_at(kinds, *record) == ValueKind::Node {
+                return ValueKind::Node;
+            }
             let ValueKind::Record(name) = kind_at(kinds, *record) else {
                 return ValueKind::Other;
             };
@@ -452,6 +481,12 @@ pub(super) fn kind_of_op(
             ValueKind::ExprCode => ValueKind::ExprCode,
             _ => ValueKind::Other,
         },
+        // quote.view: a Code (or a Fragment node value) opens into
+        // the node-record family over the embedded tree.
+        EmirOp::CodeView { .. } => ValueKind::Node,
+        // quote.make: a node-record tree (or a Code passthrough)
+        // rebuilds into the dual-representation Code value.
+        EmirOp::CodeMake { .. } => ValueKind::ExprCode,
         // quote.evaluate: closed code yields the specialized unary
         // closure over the template's carrier (a def bound to it is
         // callable), or - for an expression template - the computed
@@ -626,12 +661,24 @@ pub(super) fn kind_of_op(
         EmirOp::ListCreate(values)
         | EmirOp::SetCreate {
             elements: values, ..
-        } => ValueKind::Vector(Box::new(
-            values
-                .first()
-                .map(|value| kind_at(kinds, *value))
-                .unwrap_or(ValueKind::Other),
-        )),
+        } => {
+            // A list with any node-family element joins the node
+            // family (its dynamic sequence): the walk's `[code, arg]`
+            // argument lists mix Code and node values, exactly as
+            // the VM's heterogeneous CValue sequences do.
+            if values
+                .iter()
+                .any(|value| kind_at(kinds, *value) == ValueKind::Node)
+            {
+                return ValueKind::Node;
+            }
+            ValueKind::Vector(Box::new(
+                values
+                    .first()
+                    .map(|value| kind_at(kinds, *value))
+                    .unwrap_or(ValueKind::Other),
+            ))
+        }
         EmirOp::VectorCreate(values) => ValueKind::Vector(Box::new(
             if values
                 .iter()
@@ -645,6 +692,9 @@ pub(super) fn kind_of_op(
         EmirOp::VectorIndex { vector, .. } => match kind_at(kinds, *vector) {
             ValueKind::Vector(element) => *element,
             ValueKind::Matrix(element) => ValueKind::Vector(element),
+            // Indexing a node sequence (the walk's `node.args[0]`)
+            // stays in the node family.
+            ValueKind::Node => ValueKind::Node,
             _ => ValueKind::F64,
         },
         EmirOp::ConstComplex(..) => ValueKind::Complex,
@@ -926,6 +976,43 @@ pub(super) fn cmp_expr(
     let lk = operand_kind(kinds, left);
     let rk = operand_kind(kinds, right);
     match (&lk, &rk) {
+        // The node family (bead emath-shared-tree-view-make-bp8nu):
+        // structural comparison over the dynamic records - tags by
+        // name, records by type and field set, scalars by VALUE
+        // through the union kernels (`node.kind == Call` is the
+        // walk's kind test). A scalar beside a node folds into the
+        // family (mixed shapes are never equal).
+        (ValueKind::Node, _) | (_, ValueKind::Node) => {
+            let left = to_node(operand(program, left), &lk);
+            let right = to_node(operand(program, right), &rk);
+            let raw = match op {
+                BinOp::Eq => format!(
+                    "({}).equals(&{})?",
+                    render_expr(&left),
+                    render_expr(&right)
+                ),
+                BinOp::Ne => format!(
+                    "!({}).equals(&{})?",
+                    render_expr(&left),
+                    render_expr(&right)
+                ),
+                BinOp::Lt
+                | BinOp::Gt
+                | BinOp::Le
+                | BinOp::Ge => {
+                    unreachable!("ordering over node records is not authored")
+                }
+                BinOp::Add
+                | BinOp::Sub
+                | BinOp::Mul
+                | BinOp::Div
+                | BinOp::Rem
+                | BinOp::Pow
+                | BinOp::And
+                | BinOp::Or => unreachable!("cmp_expr only emits comparison BinOps"),
+            };
+            Expr::Raw(raw)
+        }
         // The union lane: comparisons route through the dynamic
         // kernels - exact cross-multiplication ordering, VALUE
         // equality (`2 == 2/1` is true), mixed kinds never equal.

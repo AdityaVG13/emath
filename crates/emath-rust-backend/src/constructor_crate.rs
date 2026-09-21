@@ -188,6 +188,14 @@ pub fn emit_constructor_crate(
     let mut rust = String::from(EMITTED_HEADER);
     let mut runnable = true;
     let mut unresolved = Vec::new();
+    // The module callable table for the shared-tree lane (view's
+    // Global layouts, dependency stamps): emitted as one crate-level
+    // static when any lowered program carries the tree lane. The
+    // stamps are the same FNV-1a `decl_stamp` digests the VM's quote
+    // capture computes, so an artifact's stamped dependencies are
+    // byte-identical to the VM's.
+    let module_table = emath_exec_ir::constructor_layer::module_callable_table(&tree);
+    let mut needs_module_table = false;
     match emit_record_definitions(&records) {
         Ok(definitions) => rust.push_str(&definitions),
         Err(error) => {
@@ -209,6 +217,7 @@ pub fn emit_constructor_crate(
                     ));
                     continue;
                 }
+                needs_module_table |= crate::contains_tree_ops(&lowered.program);
                 // Declared carriers ground the entry ABI; an untyped
                 // input falls back to the numeric lane's Int.
                 let declared = main
@@ -275,6 +284,21 @@ pub fn emit_constructor_crate(
                 unresolved.push(error);
             }
         }
+    }
+    if needs_module_table {
+        let globals = module_table
+            .iter()
+            .map(|(name, opaque, _)| format!("({name:?}, {opaque})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let stamps = module_table
+            .iter()
+            .map(|(name, _, stamp)| format!("({name:?}, {stamp})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        rust.push_str(&format!(
+            "#[allow(dead_code)]\nstatic __EMATH_MODULE_TABLE: emath_rt::code_tree::ModuleTable = emath_rt::code_tree::ModuleTable {{ globals: &[{globals}], stamps: &[{stamps}] }};\n\n"
+        ));
     }
     if rust.contains("emath_rt::") {
         // Self-containment law (emath-rt's `SOURCE` embed, the same

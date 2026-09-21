@@ -539,3 +539,40 @@ pub use scalar::*;
 pub use scratch::*;
 pub use setup::*;
 
+
+/// The engine's schema-tag family (view-layout node kinds, scalar-op
+/// tags, and the record family's structural names). Shared with
+/// emission so bare tag paths and node-record literals admit the
+/// same names the VM's layouts produce (the shared-tree bead's
+/// no-claim: no new node kinds beyond this family).
+pub fn is_node_tag(name: &str) -> bool {
+    expr::is_schema_tag(name)
+}
+
+/// The module's callable table for artifact emission (the
+/// shared-tree lane): every function declaration in the merged tree
+/// with its opacity (view's `Global` layouts) and its declaration
+/// stamp - the same FNV-1a digest `decl_stamp` computes for the
+/// engine's dependency snapshots, so an artifact's stamped
+/// dependencies are byte-identical to the VM's.
+pub fn module_callable_table(tree: &SyntaxTree) -> Vec<(String, bool, u64)> {
+    let mut table = Vec::new();
+    for item in &tree.items {
+        let Item::Declaration(decl) = item else { continue };
+        if decl.as_kind != "function" {
+            continue;
+        }
+        let opaque = call::function_is_opaque(decl);
+        let decl_fn = FnDecl {
+            inputs: Vec::new(),
+            input_types: Vec::new(),
+            outputs: Vec::new(),
+            output_types: Vec::new(),
+            output: None,
+            defs: call::constructor_defs(decl),
+            opaque,
+        };
+        table.push((decl.name.clone(), opaque, identity::decl_stamp(&decl_fn)));
+    }
+    table
+}
