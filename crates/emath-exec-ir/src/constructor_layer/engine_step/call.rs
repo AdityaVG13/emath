@@ -56,13 +56,27 @@ impl Engine {
         if let Some(decl) = self.functions.get(&name).cloned() {
             return self.eval_fn(&name, decl, args).map(Some);
         }
+        // Postfix `.field` on a non-path receiver is parsed as
+        // `field(recv)` — indistinguishable from a call — so the field
+        // projection is tried BEFORE the leftover-name refusal below: a
+        // record field named like a reserved ordinary-method name
+        // (`total`, `sum`, ...) is a field access, never a method call.
+        // A receiver without that field still falls through to the
+        // refusal (`length` / `numer` / `denom` project here too, on
+        // their own carriers, matching `project_field`).
+        if segments.len() == 1 && args.len() == 1 {
+            let recv = self.eval(&args[0])?;
+            if let Some(field) = project_field(&recv, &segments[0]) {
+                return Ok(Some(field));
+            }
+        }
         // A name the user bound (env) is the user's; the recipe refusal is
         // for UNBOUND names, so a user closure named like a module method
         // still resolves through the ordinary callee evaluation below.
         if is_refused_recipe(&name) && !self.env.contains_key(&name) {
             return Err(fault(
                 "method_unavailable",
-                format!("`{name}` is an ordinary module method, not a constructor operation"),
+                format!("`{name}` is an ordinary module method, not a constructor operation — import it with `use`, or rename the record field: a field access `recv.{name}` resolves only when the receiver carries a field named `{name}`"),
             ));
         }
         if name == "length" {
@@ -71,12 +85,6 @@ impl Engine {
                 CValue::Tuple(xs) => Ok(Some(cint(xs.len()))),
                 _ => Err(fault("type", "length expects a sequence")),
             };
-        }
-        if segments.len() == 1 && args.len() == 1 {
-            let recv = self.eval(&args[0])?;
-            if let Some(field) = project_field(&recv, &segments[0]) {
-                return Ok(Some(field));
-            }
         }
         Ok(None)
     }

@@ -607,15 +607,14 @@ impl Engine {
                     _ => CType::Record,
                 });
             }
-            // A name the user bound (a local def, input, or prior binding)
-            // is the user's; the recipe refusal is for UNBOUND names only.
-            if is_refused_recipe(&name) && !types.contains_key(&name) {
-                return Err(fault(
-                    "method_unavailable",
-                    format!("`{name}` is an ordinary module method, not a constructor operation"),
-                ));
-            }
-            // Postfix `.field` on a non-path is parsed as `field(recv)`.
+            // Postfix `.field` on a non-path receiver is parsed as
+            // `field(recv)` — indistinguishable from a call — so the
+            // field-access lane runs BEFORE the leftover-name refusal: a
+            // record field named like a reserved ordinary-method name
+            // (`total`, `sum`, ...) is a field access, never a method
+            // call. A non-record receiver still falls through to the
+            // refusal below (the runtime mirrors this order; see
+            // `engine_step/call.rs`).
             if segments.len() == 1 && args.len() == 1 && !self.is_typed_callee(types, &name) {
                 let recv = self.infer(types, &args[0])?;
                 if matches!(
@@ -629,6 +628,14 @@ impl Engine {
                 ) {
                     return Ok(CType::Unknown);
                 }
+            }
+            // A name the user bound (a local def, input, or prior binding)
+            // is the user's; the recipe refusal is for UNBOUND names only.
+            if is_refused_recipe(&name) && !types.contains_key(&name) {
+                return Err(fault(
+                    "method_unavailable",
+                    format!("`{name}` is an ordinary module method, not a constructor operation — import it with `use`, or rename the record field: a field access `recv.{name}` resolves only when the receiver carries a field named `{name}`"),
+                ));
             }
         }
         let _ = self.infer(types, function)?;
