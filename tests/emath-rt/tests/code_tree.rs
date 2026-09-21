@@ -1,12 +1,14 @@
-//! The shared tree substrate (bead emath-shared-tree-view-make-bp8nu):
-//! the distilled tree, the node-record family `quote.view` produces,
-//! the minted Scope witnesses, the reconstruction `quote.make`
-//! consumes, and the scalar tree evaluator over the same kernels as
-//! the compiled template lane. These pins are the substrate's laws:
-//! mint format and determinism, the forged-scope refusal, view
-//! layouts matching the VM's field layouts, view -> make round trips
-//! (and a MODIFIED rebuild changing the value), and the evaluator's
-//! carrier rules.
+//! The shared tree substrate (bead emath-shared-tree-view-make-bp8nu,
+//! definition table emath-quote-body-defs-trto7): the distilled
+//! tree, the node-record family `quote.view` produces, the minted
+//! Scope witnesses, the reconstruction `quote.make` consumes, the
+//! scalar tree evaluator over the same kernels as the compiled
+//! template lane, and the `quote.body` definition-table unfold.
+//! These pins are the substrate's laws: mint format and determinism,
+//! the forged-scope refusal, view layouts matching the VM's field
+//! layouts, view -> make round trips (and a MODIFIED rebuild
+//! changing the value), the evaluator's carrier rules, and the
+//! Available/Opaque body records.
 
 use std::rc::Rc;
 
@@ -15,9 +17,9 @@ use emath_rt::code::{
 };
 use emath_rt::code_tree::{
     check_scope, dependency_snapshot_tree, evaluate_tree, free_names_tree, make_quoted, node_eq,
-    node_field, node_index, node_record, node_tag, rebuild_node, reset_mint, substitute_tree,
-    verify_deps, view_node, view_quoted, view_tree, CodeTree, ModuleTable, NodeValue, TreeBinary,
-    TreeUnary,
+    node_field, node_index, node_record, node_tag, quote_body_node, rebuild_node, reset_mint,
+    substitute_tree, verify_deps, view_node, view_quoted, view_tree, CodeTree, DefinitionRow,
+    DefinitionTable, ModuleTable, NodeValue, TreeBinary, TreeUnary,
 };
 use emath_test_harness::{Probe, boot};
 
@@ -577,6 +579,151 @@ fn probe() {
             ),
             Ok(true),
         );
+    });
+
+    // 9. Definition-table laws (the quote.body unfold, bead
+    //    emath-quote-body-defs-trto7): a transparent row yields
+    //    Available with a dependency-free fragment that COMPUTES the
+    //    body value; an opaque row yields the Opaque record with
+    //    identity and signature tags; a name the table does not
+    //    carry yields Opaque-unbound (a record, never a fault); a
+    //    non-Path code yields Available of its own tree; a
+    //    transparent row outside the distilled subset refuses by
+    //    name.
+    p.case("definition-table-laws", |p| {
+        let defs = DefinitionTable {
+            rows: vec![
+                DefinitionRow {
+                    name: "Z".to_string(),
+                    opaque: false,
+                    body: Some(CodeTree::Binary {
+                        op: TreeBinary::Mul,
+                        left: Box::new(CodeTree::Binary {
+                            op: TreeBinary::Add,
+                            left: Box::new(CodeTree::Literal(CodeValue::Int(1))),
+                            right: Box::new(CodeTree::Literal(CodeValue::Int(1))),
+                        }),
+                        right: Box::new(CodeTree::Literal(CodeValue::Int(4))),
+                    }),
+                },
+                DefinitionRow {
+                    name: "O".to_string(),
+                    opaque: true,
+                    body: None,
+                },
+                DefinitionRow {
+                    name: "U".to_string(),
+                    opaque: false,
+                    body: None,
+                },
+            ],
+        };
+        let named = |name: &str| {
+            open_expr(
+                vec![name.to_string()],
+                CodeTree::Path(vec![name.to_string()]),
+                None,
+                std::collections::BTreeMap::new(),
+            )
+        };
+        // The transparent unfold: Available with a computing fragment.
+        let z = quote_body_node(&named("Z"), &defs).expect("transparent unfolds");
+        p.eq(
+            "transparent-kind",
+            node_eq(&node_field(&z, "kind").expect("kind"), &node_tag("Available")),
+            Ok(true),
+        );
+        let fragment = match node_field(&z, "fragment") {
+            Ok(NodeValue::Code(code)) => *code,
+            _ => {
+                p.fail("transparent-fragment", "the fragment must be a Code value");
+                return;
+            }
+        };
+        p.eq(
+            "fragment-computes-body-value",
+            evaluate_expr(&fragment, &ModuleTable::EMPTY),
+            Ok(CodeValue::Int(8)),
+        );
+        // The opaque unfold: Opaque with identity and signature tags.
+        let o = quote_body_node(&named("O"), &defs).expect("opaque unfolds");
+        p.eq(
+            "opaque-kind",
+            node_eq(&node_field(&o, "kind").expect("kind"), &node_tag("Opaque")),
+            Ok(true),
+        );
+        p.eq(
+            "opaque-identity",
+            node_eq(&node_field(&o, "identity").expect("identity"), &node_tag("O")),
+            Ok(true),
+        );
+        p.eq(
+            "opaque-signature",
+            node_eq(
+                &node_field(&o, "signature").expect("signature"),
+                &node_tag("opaque"),
+            ),
+            Ok(true),
+        );
+        // The unbound name: Opaque with the `unbound` signature - a
+        // record, never a fault.
+        let u = quote_body_node(&named("zz"), &defs).expect("unbound unfolds");
+        p.eq(
+            "unbound-kind",
+            node_eq(&node_field(&u, "kind").expect("kind"), &node_tag("Opaque")),
+            Ok(true),
+        );
+        p.eq(
+            "unbound-signature",
+            node_eq(
+                &node_field(&u, "signature").expect("signature"),
+                &node_tag("unbound"),
+            ),
+            Ok(true),
+        );
+        // A non-Path code yields Available of its own tree.
+        let own = open_expr(
+            Vec::new(),
+            CodeTree::Binary {
+                op: TreeBinary::Add,
+                left: Box::new(CodeTree::Literal(CodeValue::Int(2))),
+                right: Box::new(CodeTree::Literal(CodeValue::Int(3))),
+            },
+            None,
+            std::collections::BTreeMap::new(),
+        );
+        let a = quote_body_node(&own, &defs).expect("non-path unfolds");
+        p.eq(
+            "non-path-kind",
+            node_eq(&node_field(&a, "kind").expect("kind"), &node_tag("Available")),
+            Ok(true),
+        );
+        let fragment = match node_field(&a, "fragment") {
+            Ok(NodeValue::Code(code)) => *code,
+            _ => {
+                p.fail("non-path-fragment", "the fragment must be a Code value");
+                return;
+            }
+        };
+        p.eq(
+            "non-path-fragment-computes",
+            evaluate_expr(&fragment, &ModuleTable::EMPTY),
+            Ok(CodeValue::Int(5)),
+        );
+        // A transparent row outside the distilled subset refuses by
+        // name (the no-claim boundary).
+        match quote_body_node(&named("U"), &defs) {
+            Ok(_) => {
+                p.fail("non-distilled-refuses", "an uncarried body must refuse");
+            }
+            Err(fault) => {
+                p.demand(
+                    "non-distilled-named",
+                    fault == "tree: the body of `U` is not emitted in artifact trees",
+                    &format!("the boundary refusal must be named: {fault}"),
+                );
+            }
+        }
     });
 
     p.finish();

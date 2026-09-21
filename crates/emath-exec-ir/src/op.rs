@@ -325,6 +325,16 @@ pub enum EmirOp {
     CodeMake {
         node: EmirValue,
     },
+    /// `quote.body(code)`: the definition-table unfold - a Code
+    /// naming a module function becomes the Available record with the
+    /// body fragment (transparent), the Opaque record (opaque), or
+    /// the Opaque-unbound record (a name the table does not carry);
+    /// any other Code yields Available of its own tree (bead
+    /// emath-quote-body-defs-trto7). The artifact value is the node
+    /// family over the embedded definition table.
+    CodeBody {
+        code: EmirValue,
+    },
 
     /// Concatenate list carriers, preserving element carriers. The
     /// authored cons spelling `[head, ..tail]` lowers here; unlike

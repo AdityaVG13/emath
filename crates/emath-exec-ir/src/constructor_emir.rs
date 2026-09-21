@@ -584,6 +584,14 @@ impl Lowerer {
                     let node = self.expr(&args[0])?;
                     Ok(self.push(EmirOp::CodeMake { node }))
                 }
+                // The definition-table unfold (bead
+                // emath-quote-body-defs-trto7): a Code naming a
+                // module function becomes the Available/Opaque body
+                // record over the embedded definition table.
+                ("quote.body", 1) => {
+                    let code = self.expr(&args[0])?;
+                    Ok(self.push(EmirOp::CodeBody { code }))
+                }
                 _ => Err(format!("call is not yet emitted: {called}")),
             };
         }

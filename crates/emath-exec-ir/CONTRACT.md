@@ -264,6 +264,32 @@ the VM lane's checkpoint (native-run-ok and scratch-bytes-equal both
 fail), which is how the probe caught the original session shape
 folding to arithmetic before the fixture was strengthened.
 
+## Definition table - quote.body (emath-quote-body-defs-trto7)
+
+A third quote op joins the emission set: `CodeBody` (`quote.body`,
+arity 1) - the definition-table unfold. The fence admits exactly
+`("quote.body", 1)`; every other spelling or arity keeps the named
+refusal. The E-MIR interpreter refuses it by the same
+`CarrierRefused` law as the other emission-carried quote ops.
+
+`module_definition_table(tree)` is the layer's second public table
+(besides `module_callable_table`): every function declaration with
+its opacity and - for a transparent callee - the distilled body tree
+exactly as the VM's `function_body_expr` shapes it (each input wraps
+the body in a function literal, so only binder-free bodies distill).
+Opaque rows carry no body (never exposed); a transparent body
+outside the distilled subset carries `None` and the runtime unfold
+refuses by name - the compile-time table cannot invent a body the
+artifact cannot run. The dual-representation law extends here: the
+table is distilled by the same machinery that compiles the entries,
+so an unfold and a compiled call cannot disagree.
+
+Cross-module boundary: the merged tree's functions are the table -
+imported names resolve exactly as far as the merged tree carries
+them; the fixture pins own-module callees only. The `to_node` vector
+fold (a list of made codes as one family sequence) is the backend's
+concern, recorded in its contract.
+
 ## Kernel boundary
 
 Native kernels are immutable implementations keyed by domain-neutral kernel IDs and carrier signatures. `install_language_distribution` derives FeatureID bindings exclusively from capsule-active Language Image rows and starts from an empty binding map. There are no built-in FeatureID aliases or legacy bindings.

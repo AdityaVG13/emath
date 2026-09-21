@@ -45,7 +45,8 @@ pub(super) fn eval_op(
         | EmirOp::CodeSubstitute { .. }
         | EmirOp::CodeEvaluate { .. }
         | EmirOp::CodeView { .. }
-        | EmirOp::CodeMake { .. } => {
+        | EmirOp::CodeMake { .. }
+        | EmirOp::CodeBody { .. } => {
             Err(EvalFault::CarrierRefused {
                 op: op.name(),
                 detail: String::from(

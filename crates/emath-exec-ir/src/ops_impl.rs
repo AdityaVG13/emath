@@ -103,6 +103,7 @@ impl EmirOp {
             Self::CodeEvaluate { .. } => "code-evaluate",
             Self::CodeView { .. } => "code-view",
             Self::CodeMake { .. } => "code-make",
+            Self::CodeBody { .. } => "code-body",
             Self::CallProgram { .. } => "call-program",
             Self::CallScalarProgram { .. } => "call-scalar-program",
             Self::CallRealProgram { .. } => "call-real-program",

@@ -576,3 +576,45 @@ pub fn module_callable_table(tree: &SyntaxTree) -> Vec<(String, bool, u64)> {
     }
     table
 }
+
+/// The module's definition table for artifact emission (the
+/// `quote.body` lane, bead emath-quote-body-defs-trto7): every
+/// function declaration with its opacity and - for a transparent
+/// callee - the distilled body tree exactly as the VM's
+/// `function_body_expr` shapes it (inputs wrap the body in function
+/// literals, so only binder-free bodies distill). A transparent row
+/// outside the distilled subset carries `None`: the compile-time
+/// table cannot invent a body the artifact cannot run, and the
+/// runtime unfold refuses by name instead (the no-claim boundary).
+/// Opaque rows carry no body at all - the body is never exposed.
+pub fn module_definition_table(
+    tree: &SyntaxTree,
+) -> Vec<(String, bool, Option<emath_rt::code_tree::CodeTree>)> {
+    let mut table = Vec::new();
+    for item in &tree.items {
+        let Item::Declaration(decl) = item else { continue };
+        if decl.as_kind != "function" {
+            continue;
+        }
+        let opaque = call::function_is_opaque(decl);
+        let decl_fn = FnDecl {
+            inputs: call::section_typed_fields(decl, "inputs")
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect(),
+            input_types: Vec::new(),
+            outputs: call::section_fields(decl, "outputs"),
+            output_types: Vec::new(),
+            output: call::section_fields(decl, "outputs").into_iter().next(),
+            defs: call::constructor_defs(decl),
+            opaque,
+        };
+        let body = if opaque {
+            None
+        } else {
+            crate::tree_distill::distill_tree(&call::function_body_expr(&decl_fn)).ok()
+        };
+        table.push((decl.name.clone(), opaque, body));
+    }
+    table
+}

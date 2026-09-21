@@ -1,0 +1,327 @@
+# Definition bodies as data (bead emath-quote-body-defs-trto7):
+# quote.body unfolds a Code value naming a function into the VM's
+# body records - a transparent callee yields Available with the
+# body's expression as a Code fragment, an opaque callee yields the
+# Opaque record with an `opaque` signature, and an unbound name
+# yields Opaque with an `unbound` signature (a record, never a
+# fault). A non-Path Code yields Available of its own expression.
+#
+# Laws pinned here (normative source: the constructor layer's
+# quote_body, apply.rs; body_record/available_body, expr.rs;
+# function_body_expr, call.rs):
+#   - the transparent body is INSPECTABLE: the Available fragment
+#     makes back into Code and computes the body's value (a closed
+#     body evaluates directly; a unary body wraps its input in a
+#     function literal, so evaluating the fragment yields the
+#     specialized closure, applied by ordinary call syntax);
+#   - the opaque body is HIDDEN: only the record shape escapes;
+#   - the unbound name is a record with signature `unbound`, and it
+#     differs from the opaque signature.
+#
+# Expected outcome: passes (6 authored tests) in the VM lane; the
+# native export parity case lives in tests/emath-tui/tests/export_native.rs
+# (the session unfolds the empty-inputs witness, whose binder-free
+# body is the distillable subset the artifact's definition table
+# carries).
+# Run: emath check tests/fixtures/constructor/body_view.emath
+
+emath function Z:
+    # The transparent witness (empty inputs section: the function
+    # admits, and function_body_expr wraps nothing, so the body IS
+    # the fragment - a closed expression tree the artifact carries).
+    inputs:
+    outputs:
+        result: Rat
+    definitions:
+        result = (1 + 1) * 4
+
+emath function O:
+    # The opaque witness: the same body, hidden behind exports.
+    exports:
+        result: opaque
+    inputs:
+    outputs:
+        result: Rat
+    definitions:
+        result = (1 + 1) * 4
+
+emath function U:
+    # The unary witness: its fragment wraps the input in a function
+    # literal (the VM's function_body_expr law), so the evaluated
+    # fragment is a closure the caller applies.
+    inputs:
+        n: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = (n + 1) * 4
+
+emath function body_pin:
+    # The record pins: kinds by tag, the opaque signature by tag, the
+    # unbound signature by difference (the `unbound` tag is not an
+    # authored-constructible name), the closed fragment's VALUE, and
+    # the unary fragment's closure shape. The value pins compare (a
+    # raw union scalar is not a declared record member carrier).
+    inputs:
+        unused: Int
+    outputs:
+        transparent_kind: Bool
+        opaque_kind: Bool
+        unbound_kind: Bool
+        signatures_differ: Bool
+        fragment_computes: Bool
+        unary_fragment_applies: Bool
+    definitions:
+        z = quote.body(quote(Z))
+        o = quote.body(quote(O))
+        u = quote.body(quote(zz))
+        transparent_kind = z.kind == Available
+        opaque_kind = o.kind == Opaque
+        unbound_kind = u.kind == Opaque
+        signatures_differ = u.signature != o.signature
+        fragment_computes = quote.evaluate(quote.make(z.fragment)) == 8 / 1
+        unary_fragment_applies = quote.evaluate(quote.make(quote.body(quote(U)).fragment))(3 / 1) == 16 / 1
+    tests:
+        example <transparent_body_is_available>:
+            given unused = 0
+            expect transparent_kind == true
+            expect fragment_computes == true
+        example <opaque_body_is_hidden>:
+            given unused = 0
+            expect opaque_kind == true
+            expect o.signature == opaque
+        example <unbound_name_is_opaque_unbound>:
+            given unused = 0
+            expect unbound_kind == true
+            expect signatures_differ == true
+        example <non_path_code_is_available>:
+            given unused = 0
+            expect quote.body(quote(2 + 3)).kind == Available
+        example <unary_body_wraps_its_input>:
+            given unused = 0
+            expect unary_fragment_applies == true
+
+# --- The session surface (the export seam) ---
+#
+# The same search as the tree-view dream, but the prediction unfolds
+# the transparent witness's BODY first (quote.body over the
+# definition table), walks the fragment's node records, and rebuilds
+# with MADE literals carrying BOTH runtime values (the key k and the
+# case input i) - so the definition-table unfold, the view, the
+# make, and the evaluate all run inside the batch loop and the
+# checkpoint values are produced by that machinery. The world wants
+# (i + 1) * 4; only k = 1 masters all five cases.
+
+use search.archive
+use search.research
+
+emath function body_world:
+    # w(i) = (i + 1) * 4.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = [4 / 1, 8 / 1, 12 / 1, 16 / 1, 20 / 1]
+
+emath function body_pred:
+    # The definition-lane prediction: unfold Z's body (Available
+    # fragment), view it, replace BOTH inner constants with MADE
+    # literals carrying the runtime key k and case input i, rebuild,
+    # and evaluate the closed tree. The made literals consume
+    # runtime values, so the chain cannot fold at compile time.
+    inputs:
+        k: Rat
+        i: Rat
+    outputs:
+        result: Rat
+    definitions:
+        frag = quote.body(quote(Z)).fragment
+        node = quote.view(frag)
+        inner = if node.kind == Call: quote.view(node.args[0]) else: quote.view(frag)
+        bump_k = quote.make(Literal: {value: k})
+        bump_i = quote.make(Literal: {value: i})
+        left = if node.kind == Call: if inner.kind == Call: quote.make(Call: {callee: inner.callee, args: [bump_k, bump_i]}) else: quote.make(inner) else: quote.make(node)
+        top = if node.kind == Call: quote.make(Call: {callee: node.callee, args: [left, node.args[1]]}) else: quote.make(node)
+        mirrored = if node.kind == Call: if inner.kind == Call: top else: quote.make(node) else: quote.make(node)
+        result = quote.evaluate(mirrored)
+
+emath function body_case_error:
+    # 1 if key k mispredicts case i, else 0.
+    inputs:
+        k: Rat
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if body_pred(k, i / 1) == body_world(0)[i]: 0 else: 1
+
+emath function body_errors_at:
+    # k's error count over the case ids from position j.
+    inputs:
+        k: Rat
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        one = if done: 0 else: body_case_error(k, ids[j])
+        result = if done: 0 else: one + body_errors_at(k, ids, j + 1)
+
+emath function body_first_wrong:
+    # The smallest case ordinal in ids that k mispredicts (-1 = none).
+    inputs:
+        k: Rat
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        result = if done: -1 else: if body_case_error(k, c) == 1: c else: body_first_wrong(k, ids, j + 1)
+
+emath function MakeValueOf:
+    # The canonical parameter: the key is the constant itself.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    # The constant domain: k in 0..6.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 6
+
+emath function MakeMoves:
+    # The ladder: step the constant by one either way; admit gates
+    # the domain edges.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k - 1, k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    # Whole-domain capacity: every batch can propose the ladder.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 7
+
+emath function MakeScore:
+    # The probe and verify tier (one truth): k's error count over the
+    # frozen case set, as an exact rational - through the definition
+    # lane's only scorer.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: body_errors_at(k / 1, cs.ids, 0) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: body_first_wrong(k / 1, cs.ids, 0)
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    # Exact mastery of the frozen set closes the run.
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: s == 0 / 1
+
+emath function MakeBetter:
+    # Fewer errors is better, strictly (better(x, y) = x beats y).
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    # No curriculum: the full world is frozen from the seed.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: cs
+
+emath function SeedBody:
+    # Archive mode, seeded at the trivial constant k = 0 on the full
+    # frozen world (pred = i*4: all 5 cases mispredicted).
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: [0, 1, 2, 3, 4]}, MakeScore(0), MakeWitness(0), 1, 0, 1, 1)
+
+emath function StepBody:
+    # One batch of the definition-lane target over explicit state: the
+    # session surface a loop host steps batch by batch.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)
+
+emath function RunBody:
+    # The straight walk: the seed at k = 0 (score 5), then the ladder
+    # proposes k = 1 - pred(i) = (k + i)*4 with k = 1 masters the
+    # whole world. The run closes goal_attained and stays closed.
+    inputs:
+        unused: Int
+    outputs:
+        winner: Int
+        verdict: Int
+        errors: Int
+    definitions:
+        s0 = SeedBody(0)
+        s1 = StepBody(s0, 60)
+        s2 = StepBody(s1, 60)
+        winner = s2.archive[s2.incumbent].key
+        verdict = s2.verdict
+        errors = body_errors_at(winner / 1, [0, 1, 2, 3, 4], 0)
+    tests:
+        example <definition_lane_session_master>:
+            given unused = 0
+            expect winner == 1
+            expect verdict == 1
+            expect errors == 0

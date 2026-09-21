@@ -196,6 +196,7 @@ pub fn emit_constructor_crate(
     // byte-identical to the VM's.
     let module_table = emath_exec_ir::constructor_layer::module_callable_table(&tree);
     let mut needs_module_table = false;
+    let mut needs_definition_table = false;
     match emit_record_definitions(&records) {
         Ok(definitions) => rust.push_str(&definitions),
         Err(error) => {
@@ -218,6 +219,7 @@ pub fn emit_constructor_crate(
                     continue;
                 }
                 needs_module_table |= crate::contains_tree_ops(&lowered.program);
+                needs_definition_table |= crate::contains_body_ops(&lowered.program);
                 // Declared carriers ground the entry ABI; an untyped
                 // input falls back to the numeric lane's Int.
                 let declared = main
@@ -298,6 +300,32 @@ pub fn emit_constructor_crate(
             .join(", ");
         rust.push_str(&format!(
             "#[allow(dead_code)]\nstatic __EMATH_MODULE_TABLE: emath_rt::code_tree::ModuleTable = emath_rt::code_tree::ModuleTable {{ globals: &[{globals}], stamps: &[{stamps}] }};\n\n"
+        ));
+    }
+    // The definition table (bead emath-quote-body-defs-trto7): the
+    // module's function bodies as DATA - the same bodies the
+    // compiled entries come from, distilled by the same lowering, so
+    // a `quote.body` unfold and a compiled call cannot disagree (the
+    // dual-representation law). Built once at first use; a
+    // transparent body outside the distilled subset stays `None` and
+    // the runtime unfold refuses by name.
+    if needs_definition_table {
+        let rows = emath_exec_ir::constructor_layer::module_definition_table(&tree);
+        let rows = rows
+            .iter()
+            .map(|(name, opaque, body)| {
+                let body = match body {
+                    Some(tree) => format!("Some({})", crate::codegen_render::tree_expr(tree)),
+                    None => "None".to_string(),
+                };
+                format!(
+                    "emath_rt::code_tree::DefinitionRow {{ name: String::from({name:?}), opaque: {opaque}, body: {body} }}"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        rust.push_str(&format!(
+            "#[allow(dead_code)]\nstatic __EMATH_DEFINITIONS: std::sync::LazyLock<emath_rt::code_tree::DefinitionTable> = std::sync::LazyLock::new(|| emath_rt::code_tree::DefinitionTable {{ rows: vec![{rows}] }});\n\n"
         ));
     }
     if rust.contains("emath_rt::") {

@@ -441,4 +441,14 @@ impl ExprCode {
     pub fn evaluate(&self, module: &super::code_tree::ModuleTable) -> Result<CodeValue, String> {
         evaluate_expr(self, module)
     }
+    /// The definition-table unfold (`quote.body`): the Available/
+    /// Opaque record over the embedded definition table (the VM's
+    /// `quote_body` laws; a transparent body outside the distilled
+    /// subset refuses by name).
+    pub fn body(
+        &self,
+        defs: &super::code_tree::DefinitionTable,
+    ) -> Result<super::code_tree::NodeValue, String> {
+        super::code_tree::quote_body_node(self, defs)
+    }
 }

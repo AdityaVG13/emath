@@ -364,4 +364,30 @@ pub(crate) fn contains_tree_ops(program: &emath_exec_ir::EmirProgram) -> bool {
     })
 }
 
+/// Whether a lowered program carries the definition-table lane (a
+/// `quote.body` unfold): such entries reference the crate-level
+/// definition table static (the module's function bodies as data).
+pub(crate) fn contains_body_ops(program: &emath_exec_ir::EmirProgram) -> bool {
+    use emath_exec_ir::EmirOp;
+    program.ops.iter().any(|(op, _)| match op {
+        EmirOp::CodeBody { .. } => true,
+        EmirOp::CodeLiteral { param, body, .. } => {
+            param.is_none() || contains_body_ops(body)
+        }
+        EmirOp::Branch {
+            then_body,
+            else_body,
+            ..
+        } => contains_body_ops(then_body) || contains_body_ops(else_body),
+        EmirOp::CallFrame { body, .. }
+        | EmirOp::ProgramLiteral { body, .. }
+        | EmirOp::Fold { body, .. }
+        | EmirOp::Collect { body, .. } => contains_body_ops(body),
+        EmirOp::Iterate { body, stop, .. } => {
+            contains_body_ops(body) || stop.as_ref().is_some_and(contains_body_ops)
+        }
+        _ => false,
+    })
+}
+
 // (test module relocated to tests/emath-rust-backend)

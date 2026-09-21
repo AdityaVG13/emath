@@ -74,6 +74,27 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
             "emath_rt::code_tree::NodeValue::Code(Box::new(({}).clone()))",
             render_expr(&expr)
         )),
+        // A list of family-joinable elements (the walk's all-made
+        // argument lists, `[made, made]`) folds into the family's
+        // dynamic sequence elementwise.
+        ValueKind::Vector(element)
+            if matches!(
+                **element,
+                ValueKind::Node
+                    | ValueKind::ExprCode
+                    | ValueKind::CodeValue
+                    | ValueKind::I64
+                    | ValueKind::Rational
+                    | ValueKind::Bool
+            ) =>
+        {
+            let folded = to_node(Expr::Raw(String::from("item")), element);
+            Expr::Raw(format!(
+                "emath_rt::code_tree::NodeValue::Sequence(({}).into_iter().map(|item| {}).collect::<Vec<_>>())",
+                render_expr(&expr),
+                render_expr(&folded)
+            ))
+        }
         ValueKind::CodeValue => Expr::Raw(format!(
             "emath_rt::code_tree::NodeValue::Scalar({})",
             render_expr(&expr)
@@ -887,6 +908,26 @@ pub(crate) fn op_expr(
                 }
                 _ => Err(BackendError::UnsupportedType(
                     "quote.make requires a node record or Code value".into(),
+                )),
+            }
+        }
+        EmirOp::CodeBody { code } => {
+            // quote.body: the definition-table unfold - a Code naming
+            // a module function becomes the Available/Opaque body
+            // record over the embedded definition table (the VM's
+            // quote_body laws; a transparent body outside the
+            // distilled subset refuses by name).
+            let kinds = value_kinds(program, names, states, input_kinds);
+            match kind_at(&kinds, *code) {
+                ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                    "({}).body(&__EMATH_DEFINITIONS)?",
+                    render_expr(&operand(program, *code))
+                ))),
+                ValueKind::Code(_) => Err(BackendError::UnsupportedType(
+                    "quote.body is emitted for expression templates; a unary function template has no definition-table lane in this cut".into(),
+                )),
+                _ => Err(BackendError::UnsupportedType(
+                    "quote.body requires a Code value".into(),
                 )),
             }
         }

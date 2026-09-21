@@ -339,6 +339,94 @@ impl ModuleTable {
 }
 
 // ---------------------------------------------------------------------------
+// The definition table
+
+/// One definition-table row: a module function with its opacity and
+/// - for a transparent callee - the distilled body tree the
+/// `quote.body` unfold exposes as the Available fragment. A
+/// transparent row whose body is `None` is outside the distilled
+/// subset (binders, quotes, structured bodies): unfolding it refuses
+/// by name (the no-claim boundary the VM does not share - the VM
+/// shows the raw expression).
+pub struct DefinitionRow {
+    pub name: String,
+    pub opaque: bool,
+    pub body: Option<CodeTree>,
+}
+
+/// The artifact's definition table (bead emath-quote-body-defs-trto7):
+/// the module's functions as DATA, the same bodies the compiled
+/// entries come from. The rows are built once at first use (the
+/// backend emits this as a `LazyLock` static), so a definition-table
+/// unfold and a compiled call cannot disagree.
+pub struct DefinitionTable {
+    pub rows: Vec<DefinitionRow>,
+}
+
+impl DefinitionTable {
+    /// The empty table (no definitions).
+    pub const EMPTY: DefinitionTable = DefinitionTable {
+        rows: Vec::new(),
+    };
+
+    fn row(&self, name: &str) -> Option<&DefinitionRow> {
+        self.rows.iter().find(|row| row.name == name)
+    }
+}
+
+/// The definition-table unfold (the VM's `quote_body`, arm for arm):
+/// a Code whose tree is a Path naming a table function yields
+/// `Opaque { identity, signature: "opaque" }` for an opaque callee or
+/// `Available { fragment: Code(body tree) }` for a transparent one;
+/// a name the table does not carry yields `Opaque { identity,
+/// signature: "unbound" }` (a record, never a fault); any other Code
+/// yields `Available` of its own tree. The fragment carries no
+/// dependencies (the VM's `available_body` law) and no factory - it
+/// is data, walked and made like any other tree.
+pub fn quote_body_node(code: &ExprCode, defs: &DefinitionTable) -> Result<NodeValue, String> {
+    if let CodeTree::Path(segments) = &code.tree {
+        let name = segments.join(".");
+        if let Some(row) = defs.row(&name) {
+            if row.opaque {
+                return Ok(body_record("Opaque", Some(&name), Some("opaque")));
+            }
+            let Some(body) = &row.body else {
+                return Err(format!(
+                    "tree: the body of `{name}` is not emitted in artifact trees"
+                ));
+            };
+            return Ok(available_body(body));
+        }
+        return Ok(body_record("Opaque", Some(&name), Some("unbound")));
+    }
+    Ok(available_body(&code.tree))
+}
+
+/// The `Opaque`/`Available` body records (the VM's `body_record` and
+/// `available_body`): tag fields first, identity and signature as
+/// tags, the Available fragment as a dependency-free Code value.
+fn body_record(kind: &str, identity: Option<&str>, signature: Option<&str>) -> NodeValue {
+    let mut fields = vec![("kind".to_string(), node_tag(kind))];
+    if let Some(identity) = identity {
+        fields.push(("identity".to_string(), node_tag(identity)));
+    }
+    if let Some(signature) = signature {
+        fields.push(("signature".to_string(), node_tag(signature)));
+    }
+    node_record(kind, fields)
+}
+
+fn available_body(tree: &CodeTree) -> NodeValue {
+    node_record(
+        "Available",
+        vec![
+            ("kind".to_string(), node_tag("Available")),
+            ("fragment".to_string(), code_of(tree.clone())),
+        ],
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Minted scope state
 
 /// The per-run minting state: the next witness id and the set of

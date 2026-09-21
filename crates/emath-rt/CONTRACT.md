@@ -263,3 +263,27 @@ all killing; `ModuleTable`/`mint_scope`/`check_scope` parity with
 the VM's `mint_scope`/`check_fragment_scope`/`dependency_snapshot`
 is pinned by the same probe.
 
+## Definition table - the quote.body unfold (emath-quote-body-defs-trto7)
+
+The same file carries the definition-table lane: `DefinitionTable`
+(rows of name, opacity, and - for a transparent callee - the
+distilled body tree) and `quote_body_node`/`ExprCode::body`, the
+arm-for-arm port of the VM's `quote_body`: a Path-named Code yields
+`Opaque { identity, signature: "opaque" }` for an opaque callee,
+`Available { fragment }` for a transparent one (the fragment is a
+dependency-free, factory-free Code of the body - the VM's
+`available_body` law), `Opaque { identity, signature: "unbound" }`
+for a name the table does not carry (a record, never a fault), and
+`Available` of the code's own tree for any non-Path Code. No-claim
+boundary: a transparent row outside the distilled subset (bodies
+with binders, quotes, structured shapes) carries `None` and the
+unfold refuses
+`tree: the body of \`{name}\` is not emitted in artifact trees` -
+the VM shows the raw expression there; parity holds inside the
+distillable subset. The table is emitted by the same lowering that
+compiles the entries (one lowering, two projections - neither is
+hand-written), built once at first use. Conformance: the
+`definition-table-laws` case in `code_tree.rs` (record shapes,
+fragment computation, the unbound record, the named boundary
+refusal) with a signature-swap mutation probe killing.
+

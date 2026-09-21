@@ -346,5 +346,39 @@ fn export_native_sessions() {
         );
     });
 
+    // 12. The native lane carries the definition table: quote.body
+    //     unfolds a Code naming a function into the VM's body records
+    //     (Available with the body fragment for a transparent callee,
+    //     Opaque for an opaque or unbound name), and the session's
+    //     prediction unfolds the transparent witness's body, walks
+    //     the fragment, and rebuilds with made literals carrying BOTH
+    //     runtime values, so the unfold, view, make, and evaluate all
+    //     run inside the batch loop and the checkpoint values are
+    //     produced by the definition-table machinery (bead
+    //     emath-quote-body-defs-trto7).
+    probe.case("body-view-surface-exports", |p| {
+        let host = LoopHost::open(
+            &fixture_path("body_view.emath"),
+            Some("StepBody"),
+        )
+        .expect("open body-view");
+        let report = export_native(&host, &temp_path("body")).expect("export body-view");
+        let native_path = temp_path("body_native.json");
+        let (code, stdout, stderr, native) = native_lane_run(&report, 2, 60, &native_path);
+        p.demand(
+            "native-run-ok",
+            code == Some(0) && stdout.contains("end batches 2 verdict goal_attained"),
+            format!("exit {code:?}\n{stdout}\n{stderr}"),
+        );
+        let vm_path = temp_path("body_vm.json");
+        vm_lane_scratch(&host, 2, 60, &vm_path);
+        let vm = std::fs::read_to_string(&vm_path).expect("vm scratch");
+        p.demand(
+            "scratch-bytes-equal",
+            native == vm,
+            format!("--- native ---\n{native}\n--- vm ---\n{vm}"),
+        );
+    });
+
     probe.finish();
 }

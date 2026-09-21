@@ -487,6 +487,9 @@ pub(super) fn kind_of_op(
         // quote.make: a node-record tree (or a Code passthrough)
         // rebuilds into the dual-representation Code value.
         EmirOp::CodeMake { .. } => ValueKind::ExprCode,
+        // quote.body: the definition-table unfold yields the
+        // Available/Opaque body record (the node family).
+        EmirOp::CodeBody { .. } => ValueKind::Node,
         // quote.evaluate: closed code yields the specialized unary
         // closure over the template's carrier (a def bound to it is
         // callable), or - for an expression template - the computed
