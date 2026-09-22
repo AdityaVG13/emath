@@ -191,8 +191,36 @@ pub(super) fn authored_control_expr(
         }
         EmirOp::Branch { condition, args, then_body, else_body } => {
             let argument_kinds = args.iter().map(|value| kind_at(&kinds, *value)).collect::<Vec<_>>();
-            let then_body = nested(then_body, argument_kinds.clone())?;
-            let else_body = nested(else_body, argument_kinds)?;
+            // One representation: the kind walk (`value_kinds`) joins
+            // an exact-int arm with an i64 arm to ExactInt, so the i64
+            // arm widens here through `ExactInt::from` to match — or
+            // the arms miscompile into E0308 if/else pairs.
+            let arm_kind = |body: &EmirProgram| {
+                let names = (0..argument_kinds.len())
+                    .map(|index| format!("{prefix}arg_{index}"))
+                    .collect::<Vec<_>>();
+                let inputs = names
+                    .iter()
+                    .cloned()
+                    .zip(argument_kinds.iter().cloned())
+                    .collect();
+                program_kind(body, &names, &[], &inputs)
+            };
+            let then_kind = arm_kind(then_body);
+            let else_kind = arm_kind(else_body);
+            let exact_join = then_kind == ValueKind::ExactInt || else_kind == ValueKind::ExactInt;
+            let then_text = nested(then_body, argument_kinds.clone())?;
+            let else_text = nested(else_body, argument_kinds)?;
+            let then_body = if exact_join && then_kind == ValueKind::I64 {
+                format!("emath_rt::ExactInt::from(({then_text}))")
+            } else {
+                then_text
+            };
+            let else_body = if exact_join && else_kind == ValueKind::I64 {
+                format!("emath_rt::ExactInt::from(({else_text}))")
+            } else {
+                else_text
+            };
             format!("{{ {} if {} {{ {then_body} }} else {{ {else_body} }} }}", captures(args, 0)?, render_expr(&operand(program, *condition)))
         }
         EmirOp::Collect { count, args, body } => {

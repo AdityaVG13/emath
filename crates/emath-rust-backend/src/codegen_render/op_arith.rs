@@ -22,6 +22,16 @@ fn typed_operand_or_complex(
     }
 }
 
+/// Widen an exact-integer operand to the `(i128, i128)` rational carrier
+/// (`n` becomes `n/1`, the VM's `as_rat` law). A part beyond `i128`
+/// refuses by name - the emitter's declared rational scale boundary -
+/// instead of truncating or silently switching representations.
+fn exact_int_ratio_parts(operand_expr: &str) -> String {
+    format!(
+        "((({operand_expr}).to_i128().ok_or_else(|| String::from(\"E-RAT-002: exact rational part exceeds i128\"))?), 1)"
+    )
+}
+
 pub(super) fn op_arith_exprs(
     op: &EmirOp,
     program: &EmirProgram,
@@ -108,12 +118,19 @@ pub(super) fn op_arith_exprs(
         // inputs): the VM's `as_rat` law - the Int operand widens
         // exactly (`n` becomes `n/1`), the result stays Rational (a
         // Rational operand locks the carrier, never a float join).
+        // ExactInt-backed operands (e.g. `int_binom` results) widen
+        // through the same checked i128 bridge so every mixed pair
+        // meets on ONE representation - the ratio tuple carrier -
+        // never raw tuple ops against ExactInt values.
         let ratio_of = |value: EmirValue| -> Option<Expr> {
             match kind_at(kinds, value) {
                 ValueKind::Rational => Some(operand(program, value)),
                 ValueKind::I64 => Some(Expr::Raw(format!(
                     "(i128::from({}), 1)",
                     render_expr(&operand(program, value))
+                ))),
+                ValueKind::ExactInt => Some(Expr::Raw(exact_int_ratio_parts(
+                    &render_expr(&operand(program, value)),
                 ))),
                 _ => None,
             }
@@ -148,8 +165,14 @@ pub(super) fn op_arith_exprs(
                 "ratio_add" => map_runtime_result(format!("{left_e}.add(&{right_e}).map_err(|err| err.to_string())")),
                 "ratio_sub" => map_runtime_result(format!("{left_e}.sub(&{right_e}).map_err(|err| err.to_string())")),
                 "ratio_mul" => map_runtime_result(format!("{left_e}.mul(&{right_e}).map_err(|err| err.to_string())")),
+                // One representation: both operands widen to the ratio
+                // tuple carrier. `exact_ratio` returns
+                // `(ExactInt, ExactInt)`, which is not the Rational
+                // carrier and miscompiles into raw tuple arithmetic.
                 "ratio_div" => map_runtime_result(format!(
-                    "emath_rt::exact_ratio({left_e}, {right_e}).map_err(|err| err.to_string())"
+                    "emath_rt::ratio_div({}, {})",
+                    exact_int_ratio_parts(&left_e),
+                    exact_int_ratio_parts(&right_e)
                 )),
                 "ratio_lt" => Expr::Raw(format!("{left_e}.cmp(&{right_e}) == core::cmp::Ordering::Less")),
                 _ => {
@@ -249,10 +272,12 @@ pub(super) fn op_arith_exprs(
                 && (kind_at(&kinds, *l) == ValueKind::ExactInt
                     || kind_at(&kinds, *r) == ValueKind::ExactInt)
             {
+                // Same one-representation rule as the exact lane above:
+                // widen both operands to the ratio tuple carrier.
                 return Ok(map_runtime_result(format!(
-                    "emath_rt::exact_ratio({}, {}).map_err(|err| err.to_string())",
-                    render_expr(&exact_int_operand(program, *l, &kinds)),
-                    render_expr(&exact_int_operand(program, *r, &kinds))
+                    "emath_rt::ratio_div({}, {})",
+                    exact_int_ratio_parts(&render_expr(&exact_int_operand(program, *l, &kinds))),
+                    exact_int_ratio_parts(&render_expr(&exact_int_operand(program, *r, &kinds)))
                 )));
             }
             if kind_at(&kinds, *l) == ValueKind::I64 && kind_at(&kinds, *r) == ValueKind::I64 {

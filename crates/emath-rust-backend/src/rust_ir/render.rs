@@ -728,7 +728,11 @@ pub fn render_expr(expr: &Expr) -> String {
             let text = render_expr(value);
             match op {
                 UnOp::Neg => format!("-{text}"),
-                UnOp::Not => format!("!{text}"),
+                // Parenthesized: `!` binds tighter than the comparison
+                // the operand renders to, so a bare prefix would
+                // negate the `Ordering`/left operand instead of the
+                // boolean (E0600).
+                UnOp::Not => format!("!({text})"),
                 UnOp::Method(method) => format!("({text}).{}()", escape_ident(method)),
             }
         }

@@ -272,17 +272,34 @@ pub(crate) fn op_expr(
             // A field off a node value is the family's dynamic
             // projection - a typed refusal on a missing field, never
             // a silent default (the VM's `project_field` law).
-            {
-                let kinds = value_kinds(program, names, states, input_kinds);
-                if kind_at(&kinds, *record) == ValueKind::Node {
-                    let record_code = render_expr(&operand(program, *record));
-                    return Ok(Expr::Raw(format!(
-                        "({record_code}).field({field:?})?"
-                    )));
-                }
+            let kinds = value_kinds(program, names, states, input_kinds);
+            if kind_at(&kinds, *record) == ValueKind::Node {
+                let record_code = render_expr(&operand(program, *record));
+                return Ok(Expr::Raw(format!(
+                    "({record_code}).field({field:?})?"
+                )));
+            }
+            // A part projection off the Rational carrier reads the
+            // `(i128, i128)` tuple (`numer` = `.0`, `denom` = `.1`) and
+            // widens to the exact-integer carrier, mirroring the VM's
+            // `CValue::Rat { num, den }` parts. Anything but
+            // numer/denom is a typed refusal, never a silent default.
+            if kind_at(&kinds, *record) == ValueKind::Rational {
+                let index = match field.as_str() {
+                    "numer" => "0",
+                    "denom" => "1",
+                    _ => {
+                        return Err(BackendError::UnsupportedType(format!(
+                            "Rat part projection `{field}` is not numer/denom"
+                        )))
+                    }
+                };
+                return Ok(Expr::Raw(format!(
+                    "emath_rt::ExactInt::from(({}).{index})",
+                    render_expr(&operand(program, *record))
+                )));
             }
             let value = Expr::Field { receiver: Box::new(operand(program, *record)), field: escape_ident(field) };
-            let kinds = value_kinds(program, names, states, input_kinds);
             if kind_of_op(op, &kinds, names, states, input_kinds).is_copy() { Ok(value) } else { Ok(Expr::Raw(format!("&{}", render_expr(&value)))) }
         }
         EmirOp::ToInt(value) => {

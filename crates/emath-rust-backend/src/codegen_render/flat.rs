@@ -4,7 +4,10 @@ use super::*;
 
 /// Register-inlined SSA body renderer: single-use, provably-total
 /// registers inline into their consumer; multi-use/fault-capable ops stay
-/// bound as lets, preserving strict eager fault timing.
+/// bound as lets, preserving eager fault timing — except the right arms
+/// of `and`/`or`/`==>`, whose exclusively-fed registers defer into a
+/// block (the engine short-circuits those arms; see
+/// [`defer_boolean_rights`]).
 pub(crate) struct FlatSsa {
     /// `let __eN = <src>;` lines for registers that must stay bound, in
     /// register order.
@@ -180,6 +183,7 @@ pub(crate) fn flat_ssa(
         inline_e[i] =
             !collision && !nested && e_direct[i] <= 1 && is_total(&program.ops[i].0, program);
     }
+    let deferred = defer_boolean_rights(program, &mut e_src, &inline_e);
     let mut resolver = Resolver {
         program,
         e_src: &e_src,
@@ -189,7 +193,7 @@ pub(crate) fn flat_ssa(
     let mut e_lets = Vec::new();
     let result = program.result;
     for i in 0..n {
-        if !inline_e[i] {
+        if !inline_e[i] && !deferred.contains(&(i as u32)) {
             e_lets.push((format!("__e{i}"), resolver.e(i as u32)?));
         }
     }
@@ -200,4 +204,158 @@ pub(crate) fn flat_ssa(
         format!("__e{}", result.0)
     };
     Ok(FlatSsa { e_lets, e_tail })
+}
+
+/// Boolean right-operand deferral. The engine evaluates `and`/`or`/`==>`
+/// right arms only when the left arm does not decide, so a register whose
+/// definition feeds ONLY the right arm (an authored inline subexpression,
+/// e.g. the `prev[b - cost]` read in a feasibility guard) must not fault
+/// eagerly. Each such register's let moves into a block spliced over the
+/// right-operand token:
+/// `__e_left && { let __e_k = ..; ..; __e_right }`. Registers used
+/// anywhere else stay bound eagerly: authored named definitions bind
+/// eagerly in the engine (guard-first), so eager fault timing for shared
+/// definitions is the faithful lowering. Inlining already defers
+/// single-use total registers (they substitute inside the `&&` right
+/// side), so only bound lets move.
+///
+/// Returns the moved registers; their lets are embedded in the spliced
+/// blocks and must not be emitted again at body scope.
+fn defer_boolean_rights(
+    program: &EmirProgram,
+    e_src: &mut [String],
+    inline_e: &[bool],
+) -> std::collections::HashSet<u32> {
+    let n = program.ops.len();
+    // Register operands per op (body registers only; other value indices
+    // are frame inputs, not movable definitions).
+    let mut operand_regs: Vec<Vec<u32>> = Vec::with_capacity(n);
+    let mut scratch = Vec::new();
+    for (op, _) in &program.ops {
+        scratch.clear();
+        operand_registers(op, &mut scratch);
+        operand_regs.push(
+            scratch
+                .iter()
+                .map(|value| value.0)
+                .filter(|idx| (*idx as usize) < n)
+                .collect(),
+        );
+    }
+    // Ops mentioning each register; exclusivity is decided from these.
+    let mut mentioners: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for (k, regs) in operand_regs.iter().enumerate() {
+        for j in regs {
+            mentioners[*j as usize].push(k as u32);
+        }
+    }
+    let mut moved = std::collections::HashSet::new();
+    for i in 0..n {
+        let (left, right) = match &program.ops[i].0 {
+            EmirOp::And(l, r) | EmirOp::Or(l, r) | EmirOp::Imply(l, r) => (*l, *r),
+            _ => continue,
+        };
+        let right_idx = right.0 as usize;
+        if right_idx >= n || left == right {
+            // Not a body register, or `x and x` — one token, no deferral.
+            continue;
+        }
+        // Transitive feed closure of the right operand (the authored
+        // right-arm subexpression, flattened to registers).
+        let mut in_closure = vec![false; n];
+        let mut stack = vec![right.0];
+        while let Some(j) = stack.pop() {
+            if in_closure[j as usize] {
+                continue;
+            }
+            in_closure[j as usize] = true;
+            for k in &operand_regs[j as usize] {
+                if !in_closure[*k as usize] {
+                    stack.push(*k);
+                }
+            }
+        }
+        // Movable members: the fixpoint of "every consumer is inside the
+        // block or is this op". Candidates are the closure's bound
+        // registers (not inlined, not the left operand - the condition
+        // evaluates outside the block, not the result register - the
+        // tail names it at body scope, not already embedded by a nested
+        // boolean). Then remove any register with a consumer that is not
+        // itself moving: that consumer's let stays at body scope (or in
+        // another block) and would reference a moved binding. This also
+        // drops shared subexpressions (consumed anywhere outside the
+        // right arm), which the engine evaluates eagerly anyway.
+        let left_reg = if (left.0 as usize) < n {
+            Some(left.0)
+        } else {
+            None
+        };
+        let mut member_set: std::collections::HashSet<u32> = (0..n as u32)
+            .filter(|j| in_closure[*j as usize])
+            .filter(|j| {
+                !inline_e[*j as usize]
+                    && Some(*j) != left_reg
+                    && *j != program.result.0
+                    && !moved.contains(j)
+            })
+            .collect();
+        loop {
+            let before = member_set.len();
+            let current = member_set.clone();
+            member_set.retain(|j| {
+                mentioners[*j as usize]
+                    .iter()
+                    .all(|k| *k as usize == i || current.contains(k))
+            });
+            if member_set.len() == before {
+                break;
+            }
+        }
+        let mut members: Vec<u32> = member_set.into_iter().collect();
+        // Register order keeps dependencies above uses inside the block.
+        members.sort_unstable();
+        if members.is_empty() {
+            continue;
+        }
+        // Splice the block over the right-operand token. Operands render
+        // exactly once and `left == right` was excluded, so the full token
+        // (maximal digit run) must appear exactly once; anything else is a
+        // defensive skip, never a miscompile.
+        let token = format!("__e{}", right.0);
+        let token_digits = token.as_bytes()[3..].to_vec();
+        let bytes = e_src[i].as_bytes();
+        let mut splice: Option<(usize, usize)> = None;
+        let mut count = 0usize;
+        let mut p = 0usize;
+        while p < bytes.len() {
+            if bytes[p..].starts_with(b"__e") {
+                let digits = p + 3;
+                let end = bytes[digits..]
+                    .iter()
+                    .position(|b| !b.is_ascii_digit())
+                    .map(|offset| digits + offset)
+                    .unwrap_or(bytes.len());
+                if end > digits && &bytes[digits..end] == token_digits.as_slice() {
+                    count += 1;
+                    splice = Some((p, end));
+                }
+                p = end;
+            } else {
+                p += 1;
+            }
+        }
+        if count != 1 {
+            continue;
+        }
+        let (start, end) = splice.expect("count == 1 implies a splice position");
+        let mut block = String::from("{ ");
+        for j in &members {
+            block.push_str(&format!("let __e{j} = {}; ", e_src[*j as usize]));
+        }
+        block.push_str(&token);
+        block.push_str(" }");
+        e_src[i].replace_range(start..end, &block);
+        moved.extend(members);
+    }
+    moved
 }

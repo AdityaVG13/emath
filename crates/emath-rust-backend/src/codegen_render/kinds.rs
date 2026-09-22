@@ -433,6 +433,15 @@ pub(super) fn kind_of_op(
             if kind_at(kinds, *record) == ValueKind::Node {
                 return ValueKind::Node;
             }
+            // A part projection off the Rational carrier carries the
+            // exact-integer parts (`CValue::Rat { num, den }`); the
+            // emitter's Rational carrier is the `(i128, i128)` tuple.
+            if kind_at(kinds, *record) == ValueKind::Rational {
+                return match field.as_str() {
+                    "numer" | "denom" => ValueKind::ExactInt,
+                    _ => ValueKind::Other,
+                };
+            }
             let ValueKind::Record(name) = kind_at(kinds, *record) else {
                 return ValueKind::Other;
             };
@@ -674,6 +683,15 @@ pub(super) fn kind_of_op(
                 left
             } else if left == right {
                 left
+            } else if matches!(
+                (left, right),
+                (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt)
+            ) {
+                // One representation: an exact-int arm absorbs an i64
+                // arm (the render widens the i64 side through
+                // `ExactInt::from`); a declared Int context narrows
+                // back at the checked i64 boundary (`coerce_to_ty`).
+                ValueKind::ExactInt
             } else {
                 ValueKind::Other
             }
@@ -1070,17 +1088,56 @@ pub(super) fn cmp_expr(
             Expr::Raw(raw)
         }
         (ValueKind::I64, ValueKind::I64)
-        | (ValueKind::ExactInt, ValueKind::ExactInt)
         | (ValueKind::Bool, ValueKind::Bool) => Expr::Bin {
             op,
             left: Box::new(operand(program, left)),
             right: Box::new(operand(program, right)),
+        },
+        // ExactInt operands can render in mixed borrow states (an
+        // owned machine-call result beside a borrowed capture
+        // passthrough); binary `==`/`<` need both sides in one state,
+        // so both materialize owned at this boundary (the
+        // `owned_operand` clone idiom).
+        (ValueKind::ExactInt, ValueKind::ExactInt) => Expr::Bin {
+            op,
+            left: Box::new(owned_operand(program, left, kinds)),
+            right: Box::new(owned_operand(program, right, kinds)),
         },
         (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt) => Expr::Bin {
             op,
             left: Box::new(exact_int_operand(program, left, kinds)),
             right: Box::new(exact_int_operand(program, right, kinds)),
         },
+        // One representation for mixed Rat/Int comparisons: the Int
+        // side widens to canonical ratio parts — equality compares
+        // the tuples elementwise, order cross-multiplies through
+        // `ratio_lt` (denominators are canonically positive). Never
+        // an f64 roundtrip: the blanket Int arms below would cast a
+        // Rational tuple through `as f64` (E0308 against (i128,i128),
+        // and a 2^53 lie even where it compiled).
+        (ValueKind::Rational, ValueKind::I64) | (ValueKind::I64, ValueKind::Rational) => {
+            let (rat, int) = if lk == ValueKind::Rational { (left, right) } else { (right, left) };
+            let rat_e = render_expr(&operand(program, rat));
+            let int_e = render_expr(&operand(program, int));
+            let int_ratio = format!("((({int_e}) as i128), 1i128)");
+            let raw = match op {
+                BinOp::Eq => format!("{rat_e} == {int_ratio}"),
+                BinOp::Ne => format!("{rat_e} != {int_ratio}"),
+                BinOp::Lt => format!("emath_rt::ratio_lt({rat_e}, {int_ratio})?"),
+                BinOp::Gt => format!("emath_rt::ratio_lt({int_ratio}, {rat_e})?"),
+                BinOp::Le => format!("!emath_rt::ratio_lt({int_ratio}, {rat_e})?"),
+                BinOp::Ge => format!("!emath_rt::ratio_lt({rat_e}, {int_ratio})?"),
+                BinOp::Add
+                | BinOp::Sub
+                | BinOp::Mul
+                | BinOp::Div
+                | BinOp::Rem
+                | BinOp::Pow
+                | BinOp::And
+                | BinOp::Or => unreachable!("cmp_expr only emits comparison BinOps"),
+            };
+            Expr::Raw(raw)
+        }
         (ValueKind::I64, ValueKind::F64) => mixed_i64_f64_cmp(
             op,
             operand(program, left),
@@ -1209,6 +1266,16 @@ pub(crate) fn coerce_to_ty(expr: Expr, from: ValueKind, to: &Ty) -> Expr {
     match (from, to) {
         (ValueKind::I64, Ty::F64) => as_f64(expr),
         (ValueKind::F64, Ty::I64) => as_i64(expr),
+        // An exact-int result flowing into a declared Int context
+        // narrows through the checked boundary (matching the VM's
+        // refusal beyond i64), never a truncating cast. The `?` lands
+        // in generated Result-returning functions: an ExactInt kind
+        // originates from a faulting exact call, which forces the
+        // `Ok(...)` tail shape.
+        (ValueKind::ExactInt, Ty::I64) => Expr::Raw(format!(
+            "({}).to_i64().ok_or_else(|| String::from(\"E-INT-002: exact integer result exceeds the i64 lane\"))?",
+            render_expr(&expr)
+        )),
         _ => expr,
     }
 }
