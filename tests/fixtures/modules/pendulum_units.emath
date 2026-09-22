@@ -1,0 +1,77 @@
+# Dimensioned pendulum assembly — the units consumer proof for
+# mechanics.pendulum. Fixture file (named data + gates only).
+#
+# SOFT composition: mechanics.pendulum is dimensionless by construction
+# (the stiffness k = g/L crosses the seam as an exact Rat VALUE); this
+# fixture is where the DIMENSIONS live — g in length time^-2, L in
+# length, the quotient gate-checked to time^-2 by units.dimensions
+# before the value is allowed into the pendulum accelerations. The
+# mismatched variant (g carrying velocity dimensions) is refused by
+# name at the assembly boundary — never silently divided through.
+#
+# Run: emath test tests/fixtures/modules/pendulum_units.emath
+
+use mechanics.pendulum
+use units.dimensions
+use analysis.evolution.composition
+
+emath function pu_time_squared_dims:
+    inputs:
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [0, 0, 0 - 2, 0, 0, 0, 0]
+
+emath function pu_gate:
+    # the assembly boundary: k must carry time^-2 or the build refuses
+    inputs:
+        k: Qty
+    outputs:
+        result: Rat
+    definitions:
+        result = if not dim_eq(k.dims, pu_time_squared_dims()): constructor_refuse(quote(dimension_mismatch)) else: k.value
+
+emath function pu_stiffness_matched:
+    # g = 10 (length time^-2), L = 2 (length): k = g / L = 5, time^-2
+    inputs:
+    outputs:
+        result: Rat
+    definitions:
+        g = Qty: {value: 10 / 1, dims: [1, 0, 0 - 2, 0, 0, 0, 0]}
+        len = Qty: {value: 2 / 1, dims: [1, 0, 0, 0, 0, 0, 0]}
+        result = pu_gate(qty_div(g, len))
+    tests:
+        example <five_per_square_second>:
+            expect result == 5 / 1
+
+emath function pu_stiffness_mismatched:
+    # g carrying VELOCITY dimensions: the quotient is time^-1, the gate refuses
+    inputs:
+    outputs:
+        result: Rat
+    definitions:
+        g_bad = Qty: {value: 10 / 1, dims: [1, 0, 0 - 1, 0, 0, 0, 0]}
+        len = Qty: {value: 2 / 1, dims: [1, 0, 0, 0, 0, 0, 0]}
+        result = pu_gate(qty_div(g_bad, len))
+    tests:
+        example <velocity_gravity_refuses>:
+            expect diagnostic.code == dimension_mismatch
+
+emath function pu_pendulum_step_dimensioned:
+    # the assembled pendulum: k = 5 time^-2 flows (as a value) into the
+    # pendulum composition; one verlet step pinned exactly on the
+    # harmonic lane with the dimensioned stiffness
+    inputs:
+    outputs:
+        result: Bool
+    definitions:
+        k = pu_stiffness_matched()
+        accel = function q in Rat: function p in Rat: 0 - k * q
+        v = function q in Rat: k * q * q / 2
+        s = SimState: {t: 0 / 1, y: [1 / 1, 0 / 1]}
+        stepped = verlet_step(accel, 1 / 2, s)
+        ok = stepped == SimState: {t: 0 / 1, y: [3 / 8, 0 - 55 / 32]}
+        result = ok and pend_law_symmetry_not_conservation(accel, v, 1 / 2, s)
+    tests:
+        example <dimensioned_pendulum_steps_and_drifts>:
+            expect result == true
