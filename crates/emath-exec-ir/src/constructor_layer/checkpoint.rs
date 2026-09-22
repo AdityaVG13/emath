@@ -272,6 +272,14 @@ pub(super) fn closure_memo_key(clos: &Closure, args: &[CValue]) -> Option<String
     let mut out = call_memo_key(name, args)?;
     out.push_str(":body=");
     encode_expr(&clos.body, &mut out);
+    // The recorded domain is part of the closure's identity: two
+    // closures with the same body text but different declared domains
+    // (`sequence(Rat)` vs `sequence(Int)` over the same env) must not
+    // share a memo row — the domain check is what refuses one of them,
+    // so a domain-blind key would replay the other's result past the
+    // check (fbpb6).
+    out.push_str(":domain=");
+    encode_closure_domain(&clos.domain, &mut out);
     for (key, value) in &clos.env {
         if clos.recursive.as_deref() == Some(key.as_str()) {
             continue;
@@ -298,6 +306,11 @@ pub(super) fn compact_key(value: &CValue, out: &mut String) -> Option<()> {
     match value {
         CValue::Bool(v) => {
             out.push_str(if *v { "Btrue" } else { "Bfalse" });
+            Some(())
+        }
+        CValue::Str(text) => {
+            out.push_str("S");
+            out.push_str(text);
             Some(())
         }
         CValue::Int(n) => {
@@ -903,6 +916,11 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
             out.push_str("F ");
             out.push_str(&x.to_string());
         }
+        CValue::Str(text) => {
+            out.push_str("(str ");
+            encode_quoted(text, out);
+            out.push(')');
+        }
         CValue::Unit => out.push('U'),
         CValue::Absent => out.push('A'),
         CValue::Buffer(cell) => {
@@ -957,6 +975,8 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
             }
             out.push_str(") ");
             encode_expr(&clos.body, out);
+            out.push(' ');
+            encode_closure_domain(&clos.domain, out);
             out.push(')');
         }
         CValue::Code(code) => {
@@ -1402,6 +1422,67 @@ impl<'a> Cursor<'a> {
     }
 }
 
+/// The recorded closure domain shape round-trips exactly: the shape
+/// carries no spans, so encode ∘ decode is the identity and checkpoint
+/// parity (byte-identical replay) holds for closure values.
+pub(super) fn encode_closure_domain(shape: &DomainShape, out: &mut String) {
+    match shape {
+        DomainShape::Unknown => out.push_str("(dom unknown)"),
+        DomainShape::Scalar(name) => {
+            out.push_str("(dom scalar ");
+            encode_quoted(name, out);
+            out.push(')');
+        }
+        DomainShape::Sequence(None) => out.push_str("(dom sequence)"),
+        DomainShape::Sequence(Some(element)) => {
+            out.push_str("(dom sequence ");
+            encode_closure_domain(element, out);
+            out.push(')');
+        }
+    }
+}
+
+/// Inverse of [`encode_closure_domain`]. The cursor sits at the
+/// `(dom ...)` opening (whitespace already skipped by the caller's
+/// `rest()` peek).
+pub(super) fn decode_closure_domain(cur: &mut Cursor<'_>) -> Result<DomainShape, ConstructorError> {
+    cur.eat_char('(');
+    if cur.ident()? != "dom" {
+        return Err(fault(
+            "incompatible_checkpoint",
+            "malformed closure domain segment",
+        ));
+    }
+    let shape = match cur.ident()? {
+        "unknown" => DomainShape::Unknown,
+        "scalar" => DomainShape::Scalar(cur.string()?),
+        "sequence" => {
+            let element = if {
+                cur.skip_ws();
+                cur.rest().starts_with('(')
+            } {
+                Some(Box::new(decode_closure_domain(cur)?))
+            } else {
+                None
+            };
+            DomainShape::Sequence(element)
+        }
+        other => {
+            return Err(fault(
+                "incompatible_checkpoint",
+                format!("unknown closure domain shape `{other}`"),
+            ));
+        }
+    };
+    if !cur.eat_char(')') {
+        return Err(fault(
+            "incompatible_checkpoint",
+            "closure domain segment not closed",
+        ));
+    }
+    Ok(shape)
+}
+
 pub(super) fn decode_cvalue_cur(
     cur: &mut Cursor<'_>,
     ctx: &mut DecodeCtx,
@@ -1423,11 +1504,21 @@ pub(super) fn decode_cvalue_cur(
                     env.insert(name, value);
                 }
                 let body = decode_expr_cur(cur)?;
+                // Optional recorded domain: checkpoints written before
+                // the closure-domain recording carry no shape and
+                // decode as Unknown (no claim — the pre-seam
+                // discipline). The schema bump names the difference.
+                let domain = if { cur.skip_ws(); cur.rest().starts_with("(dom") } {
+                    decode_closure_domain(cur)?
+                } else {
+                    DomainShape::Unknown
+                };
                 if !cur.eat_char(')') {
                     return Err(fault("incompatible_checkpoint", "closure not closed"));
                 }
                 CValue::Closure(Box::new(Closure {
                     param,
+                    domain,
                     body,
                     env,
                     recursive: if recursive.is_empty() {
@@ -1436,6 +1527,13 @@ pub(super) fn decode_cvalue_cur(
                         Some(recursive)
                     },
                 }))
+            }
+            "str" => {
+                let text = cur.string()?;
+                if !cur.eat_char(')') {
+                    return Err(fault("incompatible_checkpoint", "str value not closed"));
+                }
+                CValue::Str(text)
             }
             "code" => {
                 let expr = decode_expr_cur(cur)?;

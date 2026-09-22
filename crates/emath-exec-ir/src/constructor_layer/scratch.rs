@@ -110,6 +110,9 @@ fn render_value(value: &CValue, out: &mut String) -> Result<(), ConstructorError
         CValue::Float64(f) => {
             out.push_str(&format!("{{\"f64\": \"{:016x}\"}}", f.to_bits()));
         }
+        CValue::Str(text) => {
+            out.push_str(&format!("{{\"str\": {}}}", json_quote(text)));
+        }
         CValue::Sequence(items) => {
             out.push('[');
             for (index, item) in items.iter().enumerate() {
@@ -327,6 +330,15 @@ fn parse_value(json: &JsonValue) -> Result<CValue, ConstructorError> {
                 let bits = u64::from_str_radix(hex, 16)
                     .map_err(|err| fault("scratch_value", format!("`f64` bits: {err}")))?;
                 return Ok(CValue::Float64(f64::from_bits(bits)));
+            }
+            if let Ok(payload) = tagged(json, "str") {
+                let JsonValue::Str(text) = payload else {
+                    return Err(fault(
+                        "scratch_value",
+                        format!("`str` payload must be a string, found {payload:?}"),
+                    ));
+                };
+                return Ok(CValue::Str(text.clone()));
             }
             if let Ok(tuple) = tagged(json, "tuple") {
                 let JsonValue::Arr(items) = tuple else {

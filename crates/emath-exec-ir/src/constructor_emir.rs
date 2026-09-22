@@ -783,6 +783,11 @@ impl Lowerer {
         match &expr.kind {
             ExprKind::Int(text) => Ok(self.push(const_exact_int(text)?)),
             ExprKind::Bool(value) => Ok(self.push(EmirOp::ConstBool(*value))),
+            // A Str literal lowers to the text constant op (e6gvs): the
+            // carrier evaluates in the emitted program exactly as it
+            // does in the constructor VM — dropping the arm demoted
+            // every Str-bearing module to symbolic (not-runnable).
+            ExprKind::Str(text) => Ok(self.push(EmirOp::ConstText(text.clone()))),
             ExprKind::Rational { numer, denom } => {
                 let num = self.push(const_exact_int(numer)?);
                 let den = self.push(const_exact_int(denom)?);
@@ -1660,6 +1665,10 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
                 "Bool" => Some("Bool".into()),
                 "Float64" => Some("Float64".into()),
                 "Text" => Some("Text".into()),
+                // `Str` is the authored spelling of the text carrier
+                // (e6gvs): the interchange signature stays `Text`, the
+                // form the backend's kind parser already carries.
+                "Str" => Some("Text".into()),
                 "Code" => Some("Code".into()),
                 "sequence" => {
                     let GenericArg::Type(element) = generic_args.first()? else {
@@ -1743,6 +1752,7 @@ pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate:
     use crate::interp::Value;
     match value {
         CValue::Bool(v) => Ok(Value::Bool(*v)),
+        CValue::Str(text) => Ok(Value::Text(text.clone())),
         CValue::Int(v) => Ok(value_from_exact(v.clone())),
         CValue::Rat { num, den } => Ok(value_from_rat(num.clone(), den.clone())),
         CValue::Float64(v) => Ok(Value::F64(*v)),

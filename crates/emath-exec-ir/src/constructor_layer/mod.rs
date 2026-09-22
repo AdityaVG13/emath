@@ -11,8 +11,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use emath_core::tree::{
-    BinaryOp, Declaration, Expr, ExprKind, Item, StmtKind, SyntaxTree, TypeExpr, TypeKind, UnaryOp,
-    UseTree,
+    BinaryOp, Declaration, Expr, ExprKind, GenericArg, Item, StmtKind, SyntaxTree, TypeExpr,
+    TypeKind, UnaryOp, UseTree,
 };
 
 use crate::exact_int::{
@@ -28,6 +28,13 @@ pub enum CValue {
     Int(ExactInt),
     Rat { num: ExactInt, den: ExactInt },
     Float64(f64),
+    /// Text payload carrier (fbpb6 successor bead e6gvs): a Str literal
+    /// evaluates as a first-class value. Structural equality only —
+    /// the carrier exists without the string LIBRARY (no ordering,
+    /// concatenation, length, or indexing in this cut; the recorded
+    /// stance is that the carrier comes first and the library is a
+    /// deliberate boundary).
+    Str(String),
     /// Dense sequence carrier. Copy-on-write: `Clone` shares the
     /// backing storage (the CPS kont bookkeeping clones argument
     /// values at every engine step, so a deep-copy clone made every
@@ -89,6 +96,7 @@ impl PartialEq for CValue {
                 },
             ) => an == bn && ad == bd,
             (Self::Float64(a), Self::Float64(b)) => a == b,
+            (Self::Str(a), Self::Str(b)) => a == b,
             (Self::Sequence(a), Self::Sequence(b)) => a == b,
             (Self::Buffer(a), Self::Buffer(b)) => Arc::ptr_eq(a, b),
             (Self::Tuple(a), Self::Tuple(b)) => a == b,
@@ -124,9 +132,44 @@ impl PartialEq for CValue {
     }
 }
 
+/// Declared domain shape of a closure value, extracted from the
+/// `function x in <domain>` spelling (or the recur binder's arrow type)
+/// at construction. Carries element information only where the tag
+/// spells it; every other form stays [`DomainShape::Unknown`] — nothing
+/// is reconstructed that the tag does not carry (the `infer_path`
+/// discipline).
+#[derive(Clone, Debug, PartialEq)]
+pub enum DomainShape {
+    /// Scalar carrier spelling: `Int`, `Rat`, `Bool`, `Float64`.
+    Scalar(String),
+    /// Sequence carrier: the element shape when the spelling carries it
+    /// (`sequence(Rat)`), element-blind otherwise.
+    Sequence(Option<Box<DomainShape>>),
+    /// Domain not reconstructible from the tag: the closure admits with
+    /// no claim (the carrier-only discipline this seam replaces for
+    /// reconstructible shapes).
+    Unknown,
+}
+
+impl fmt::Display for DomainShape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Scalar(name) => write!(f, "{name}"),
+            Self::Sequence(None) => write!(f, "sequence"),
+            Self::Sequence(Some(element)) => write!(f, "sequence({element})"),
+            Self::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub param: String,
+    /// The declared domain of the binder, recorded at construction so
+    /// the admission lane (`admit_input_type`) and the runtime lane
+    /// (`apply_closure_chain`) check the SAME shape — the two lanes can
+    /// never disagree about what the closure demands of its argument.
+    pub domain: DomainShape,
     pub body: Expr,
     pub env: BTreeMap<String, CValue>,
     pub recursive: Option<String>,
@@ -164,6 +207,7 @@ impl fmt::Display for CValue {
             Self::Int(v) => write!(f, "{v}"),
             Self::Rat { num, den } => write!(f, "{num}/{den}"),
             Self::Float64(v) => write!(f, "{v}"),
+            Self::Str(text) => write!(f, "{text}"),
             // Contents are state, not a value: display the shape only,
             // never a snapshot that invites value-style comparison.
             Self::Buffer(cell) => {
@@ -439,7 +483,7 @@ pub struct Checkpoint {
     pub next_ref: u64,
 }
 
-pub const CHECKPOINT_SCHEMA: &str = "emath.constructor-checkpoint.v1";
+pub const CHECKPOINT_SCHEMA: &str = "emath.constructor-checkpoint.v2";
 pub const CHECKPOINT_ABI: &str = "constructor-layer/continuation-abi";
 pub const ACCOUNTING_VERSION: &str = "constructor-layer/accounting.v1";
 pub const IMAGE_IDENTITY: &str = "constructor-layer";

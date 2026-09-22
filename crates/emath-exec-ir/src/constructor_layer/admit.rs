@@ -156,6 +156,7 @@ pub(super) fn ctype_from_type(ty: &TypeExpr) -> CType {
             Some("Int") | Some("Nat") => CType::Int,
             Some("Bool") => CType::Bool,
             Some("Rat") => CType::Rat,
+            Some("Str") => CType::Str,
             Some("Float64") | Some("F64") => CType::Float64,
             Some("Code") => CType::Code,
             Some("sequence") | Some("Sequence") => CType::Sequence,
@@ -360,6 +361,18 @@ impl Engine {
                     return Err(fault(
                         "buffer_equality_refused",
                         "buffer comparison is refused: a mutable carrier has no total value equality",
+                    ));
+                }
+                // Str carries structural equality only (bead e6gvs): the
+                // ordering ops refuse at admission so the admit lane
+                // agrees with the runtime's `type` fault — the carrier
+                // exists without the string library.
+                if matches!(op, BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge)
+                    && (l == CType::Str || r == CType::Str)
+                {
+                    return Err(fault(
+                        "type",
+                        "Str carries structural equality only; ordering is not part of the carrier",
                     ));
                 }
                 Ok(match op {

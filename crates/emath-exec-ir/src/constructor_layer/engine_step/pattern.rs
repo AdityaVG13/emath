@@ -1,5 +1,5 @@
 use super::super::*;
-use super::prelude::{eq_values, is_refused_recipe, open_fragment};
+use super::prelude::{domain_shape_of_expr, eq_values, is_refused_recipe, open_fragment};
 
 impl Engine {
     pub(in crate::constructor_layer) fn pattern_binds(&mut self, scrutinee: &CValue, pattern: &Expr) -> Result<bool, ConstructorError> {
@@ -99,6 +99,7 @@ impl Engine {
         let dom = self.eval(domain)?;
         let clos = CValue::Closure(Box::new(Closure {
             param: param.to_string(),
+            domain: domain_shape_of_expr(domain),
             body: body.clone(),
             env: self.env.clone(),
             recursive: None,

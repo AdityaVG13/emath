@@ -1,5 +1,5 @@
 use super::super::*;
-use super::prelude::{apply_unary, binary, cons_values, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag, project_field, schema_tag};
+use super::prelude::{apply_unary, arrow_domain_of_expr, binary, cons_values, domain_shape_of_expr, domain_shape_of_type, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag, project_field, schema_tag};
 
 impl Engine {
     pub(in crate::constructor_layer) fn charge(&mut self) -> Result<(), ConstructorError> {
@@ -51,6 +51,7 @@ impl Engine {
                     .map_err(|_| fault("invalid_literal", format!("not Float64: {text}")))
             }
             ExprKind::Bool(v) => Ok(CValue::Bool(*v)),
+            ExprKind::Str(text) => Ok(CValue::Str(text.clone())),
             ExprKind::Path { segments, .. } => {
                 // Single-segment paths are the interpreter's hottest
                 // lookup (every variable reference): skip the join's
@@ -171,8 +172,17 @@ impl Engine {
                             generics: None,
                         })],
                     });
+                    // The coerced closure demands what the declaration's
+                    // first input declares — the same shape the named
+                    // lane's admit_input_type checks on every call.
+                    let domain = decl
+                        .input_types
+                        .first()
+                        .map(domain_shape_of_type)
+                        .unwrap_or(DomainShape::Unknown);
                     return Ok(CValue::Closure(Box::new(Closure {
                         param,
+                        domain,
                         body,
                         env: BTreeMap::new(),
                         recursive: None,
@@ -300,12 +310,19 @@ impl Engine {
                 index_seq(seq, i)
             }
             ExprKind::Call { function, args } => self.eval_call(function, args),
-            ExprKind::FunctionAbs { param, body, .. } => Ok(CValue::Closure(Box::new(Closure {
-                param: param.clone(),
-                body: *body.clone(),
-                env: self.env.clone(),
-                recursive: None,
-            }))),
+            ExprKind::FunctionAbs { param, domain, body } => {
+                Ok(CValue::Closure(Box::new(Closure {
+                    param: param.clone(),
+                    // Record the declared domain so both check lanes see
+                    // the same shape (the admission lane compares it to
+                    // the declared input type; the runtime lane checks
+                    // arguments against it).
+                    domain: domain_shape_of_expr(domain),
+                    body: *body.clone(),
+                    env: self.env.clone(),
+                    recursive: None,
+                })))
+            }
             ExprKind::Recur { name, ty, body, .. } => {
                 if !is_fn_type(ty) {
                     return Err(fault(
@@ -319,10 +336,15 @@ impl Engine {
                         "recur body must be a function literal or a record of function literals",
                     ));
                 }
+                // The recur binder's own domain: the domain half of the
+                // declared arrow (`recur f in A -> B` demands A values),
+                // Unknown for the record-of-functions shape.
+                let recur_domain = arrow_domain_of_expr(ty);
                 if let ExprKind::FunctionAbs { param, body, .. } = &body.kind {
                     let mut env = self.env.clone();
                     let finished = Closure {
                         param: param.clone(),
+                        domain: recur_domain.clone(),
                         body: *body.clone(),
                         env: BTreeMap::new(),
                         recursive: Some(name.clone()),
@@ -330,6 +352,7 @@ impl Engine {
                     env.insert(name.clone(), CValue::Closure(Box::new(finished.clone())));
                     return Ok(CValue::Closure(Box::new(Closure {
                         param: param.clone(),
+                        domain: recur_domain,
                         body: *body.clone(),
                         env,
                         recursive: Some(name.clone()),
@@ -337,6 +360,7 @@ impl Engine {
                 }
                 Ok(CValue::Closure(Box::new(Closure {
                     param: String::new(),
+                    domain: recur_domain,
                     body: *body.clone(),
                     env: self.env.clone(),
                     recursive: Some(name.clone()),

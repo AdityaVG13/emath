@@ -475,6 +475,24 @@ pub(super) fn refuse_duplicate_fields(decl: &Declaration, section: &str) -> Resu
 pub(super) fn admit_input_type(ty: &TypeExpr, value: &CValue) -> Result<(), ConstructorError> {
     if type_admits(ty, value) {
         Ok(())
+    } else if let (
+        TypeExpr {
+            kind: TypeKind::Fn { domain, .. },
+            ..
+        },
+        CValue::Closure(clos),
+    ) = (ty, value) {
+        // Name the mismatch: the closure's recorded domain vs the
+        // declared input domain. A generic "wrong type" message here
+        // buried the element semantics the closure actually demands.
+        Err(fault(
+            "type",
+            format!(
+                "closure domain `{}` does not match the declared input domain `{}`",
+                clos.domain,
+                domain_shape_of_type(domain)
+            ),
+        ))
     } else {
         Err(fault(
             "type",
@@ -483,15 +501,160 @@ pub(super) fn admit_input_type(ty: &TypeExpr, value: &CValue) -> Result<(), Cons
     }
 }
 
+/// Carrier shape spelled by a closure-literal domain expression
+/// (`function x in <domain>`): `Rat`, `sequence(Rat)`, or
+/// [`DomainShape::Unknown`] when the tag does not carry a
+/// reconstructible shape.
+pub(in crate::constructor_layer) fn domain_shape_of_expr(expr: &Expr) -> DomainShape {
+    match &expr.kind {
+        ExprKind::Path { segments, .. } if segments.len() == 1 => match segments[0].as_str() {
+            "Int" | "Rat" | "Bool" | "Float64" => DomainShape::Scalar(segments[0].clone()),
+            _ => DomainShape::Unknown,
+        },
+        ExprKind::Call { function, args } => {
+            let ExprKind::Path { segments, .. } = &function.kind else {
+                return DomainShape::Unknown;
+            };
+            // `sequence(T)` in expression position parses as a call
+            // of the carrier name with the element argument.
+            if segments.len() == 1 && segments[0] == "sequence" && args.len() == 1 {
+                DomainShape::Sequence(Some(Box::new(domain_shape_of_expr(&args[0]))))
+            } else {
+                DomainShape::Unknown
+            }
+        }
+        _ => DomainShape::Unknown,
+    }
+}
+
+/// Domain half of a fn-type EXPRESSION (`A -> B` desugars to
+/// `Fn(A, B)`): what a recur binder's closure demands of its argument.
+/// Record-of-functions shapes stay Unknown.
+pub(in crate::constructor_layer) fn arrow_domain_of_expr(ty: &Expr) -> DomainShape {
+    match &ty.kind {
+        ExprKind::Call { function, args } => {
+            let ExprKind::Path { segments, .. } = &function.kind else {
+                return DomainShape::Unknown;
+            };
+            if segments.as_slice() == ["Fn"] && args.len() == 2 {
+                domain_shape_of_expr(&args[0])
+            } else {
+                DomainShape::Unknown
+            }
+        }
+        _ => DomainShape::Unknown,
+    }
+}
+
+/// Carrier shape spelled by a DECLARED type (`A -> B` input
+/// annotations): the same [`DomainShape`] vocabulary the closure
+/// records, so both check sites compare like against like.
+pub(in crate::constructor_layer) fn domain_shape_of_type(ty: &TypeExpr) -> DomainShape {
+    match &ty.kind {
+        TypeKind::Path {
+            segments,
+            generic_args,
+        } => {
+            if segments.len() == 1
+                && generic_args.is_empty()
+                && matches!(segments[0].as_str(), "Int" | "Rat" | "Bool" | "Float64")
+            {
+                DomainShape::Scalar(segments[0].clone())
+            } else if segments.len() == 1 && segments[0] == "sequence" {
+                match generic_args.first() {
+                    Some(GenericArg::Type(element)) => {
+                        DomainShape::Sequence(Some(Box::new(domain_shape_of_type(element))))
+                    }
+                    _ => DomainShape::Sequence(None),
+                }
+            } else {
+                DomainShape::Unknown
+            }
+        }
+        // The bracket sequence spelling (`T[n]`).
+        TypeKind::List(items) if items.len() == 1 => {
+            DomainShape::Sequence(Some(Box::new(domain_shape_of_type(&items[0]))))
+        }
+        _ => DomainShape::Unknown,
+    }
+}
+
+/// The one conformance relation for recorded vs declared domain shapes,
+/// shared by the admission lane and the runtime lane so the two can
+/// never disagree. `Unknown` on either side admits with no claim;
+/// `Int` widens to `Rat` exactly as the scalar carriers do; every
+/// carrier/element mismatch refuses.
+pub(in crate::constructor_layer) fn domain_shape_conforms(
+    recorded: &DomainShape,
+    declared: &DomainShape,
+) -> bool {
+    match (recorded, declared) {
+        (DomainShape::Unknown, _) | (_, DomainShape::Unknown) => true,
+        (DomainShape::Scalar(rec), DomainShape::Scalar(dec)) => {
+            rec == dec || (rec == "Int" && dec == "Rat")
+        }
+        (DomainShape::Sequence(rec), DomainShape::Sequence(dec)) => match (rec, dec) {
+            (Some(rec_element), Some(dec_element)) => {
+                domain_shape_conforms(rec_element, dec_element)
+            }
+            _ => true,
+        },
+        (DomainShape::Scalar(_), DomainShape::Sequence(_))
+        | (DomainShape::Sequence(_), DomainShape::Scalar(_)) => false,
+    }
+}
+
+/// The scalar widening rules of `type_admits`'s Path arm, named so the
+/// closure domain check reuses the SAME carrier discipline.
+pub(in crate::constructor_layer) fn scalar_carrier_admits(name: &str, value: &CValue) -> bool {
+    match name {
+        "Int" => matches!(value, CValue::Int(_)),
+        "Bool" => matches!(value, CValue::Bool(_)),
+        "Rat" => matches!(value, CValue::Rat { .. } | CValue::Int(_)),
+        "Float64" => matches!(value, CValue::Float64(_)),
+        _ => true,
+    }
+}
+
+/// Runtime-lane check: does the argument satisfy the closure's
+/// recorded domain shape? Sequence elements are checked item by item
+/// with the same widening rules as the admission lane.
+pub(in crate::constructor_layer) fn domain_shape_admits_value(
+    shape: &DomainShape,
+    value: &CValue,
+) -> bool {
+    match shape {
+        DomainShape::Unknown => true,
+        DomainShape::Scalar(name) => scalar_carrier_admits(name, value),
+        DomainShape::Sequence(element) => match (value, element) {
+            (CValue::Sequence(items), Some(element_shape)) => items
+                .iter()
+                .all(|item| domain_shape_admits_value(element_shape, item)),
+            (CValue::Sequence(_), None) => true,
+            _ => false,
+        },
+    }
+}
+
 pub(super) fn type_admits(ty: &TypeExpr, value: &CValue) -> bool {
     match &ty.kind {
-        TypeKind::Fn { .. } => matches!(value, CValue::Closure(_)),
+        // A closure value satisfies an arrow type only when its
+        // RECORDED domain conforms to the declared domain, element
+        // semantics included. Unknown recorded shapes admit with no
+        // claim — the carrier-only discipline this arm replaced.
+        TypeKind::Fn { domain, .. } => match value {
+            CValue::Closure(clos) => {
+                domain_shape_conforms(&clos.domain, &domain_shape_of_type(domain))
+            }
+            _ => false,
+        },
         TypeKind::List(_) => matches!(value, CValue::Sequence(_)),
         TypeKind::Tuple(_) => matches!(value, CValue::Tuple(_) | CValue::Record { .. }),
         TypeKind::Path { segments, .. } => match segments.last().map(String::as_str) {
             Some("Int") => matches!(value, CValue::Int(_)),
             Some("Bool") => matches!(value, CValue::Bool(_)),
             Some("Rat") => matches!(value, CValue::Rat { .. } | CValue::Int(_)),
+            Some("Str") => matches!(value, CValue::Str(_)),
             Some("Float64") => matches!(value, CValue::Float64(_)),
             Some("Code") => matches!(value, CValue::Code(_)),
             Some("sequence") => matches!(value, CValue::Sequence(_)),

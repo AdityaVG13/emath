@@ -4,6 +4,7 @@ use super::prelude::*;
 pub(super) fn value_to_expr(value: &CValue) -> Expr {
     let kind = match value {
         CValue::Bool(v) => ExprKind::Bool(*v),
+        CValue::Str(text) => ExprKind::Str(text.clone()),
         CValue::Int(v) => ExprKind::Int(v.to_string()),
         CValue::Rat { num, den } => ExprKind::Rational {
             numer: num.to_string(),

@@ -1,5 +1,5 @@
 use super::super::*;
-use super::prelude::{available_body, body_record, decl_stamp, fragment_term, free_path_names, function_body_expr, rebuild_expr, view_of};
+use super::prelude::{available_body, body_record, decl_stamp, domain_shape_admits_value, fragment_term, free_path_names, function_body_expr, rebuild_expr, view_of};
 
 impl Engine {
     pub(in crate::constructor_layer) fn apply_value(&mut self, callee: CValue, args: &[CValue]) -> Result<CValue, ConstructorError> {
@@ -84,6 +84,21 @@ impl Engine {
             // rebinds it in place instead of pushing another.
             self.env = saved.clone();
             self.env.extend(clos.env.clone());
+            // The runtime lane of the closure discipline (fbpb6): the
+            // argument is checked against the closure's recorded
+            // domain BEFORE it binds — the same check-then-bind
+            // ordering the named lane's admit_input_type applies.
+            // Both lanes share the DomainShape conformance relation,
+            // so they cannot disagree about what the closure demands.
+            if !domain_shape_admits_value(&clos.domain, &args[0]) {
+                return Err(fault(
+                    "type",
+                    format!(
+                        "closure domain `{}` does not admit the argument `{}`",
+                        clos.domain, args[0]
+                    ),
+                ));
+            }
             if let Some(name) = &clos.recursive {
                 self.env
                     .insert(name.clone(), CValue::Closure(clos.clone()));
