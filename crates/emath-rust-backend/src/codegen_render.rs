@@ -204,7 +204,7 @@ pub(crate) fn op_expr(
             state,
             declared,
         } => literal_frame_expr(body, inputs, state, program, kinds, declared),
-        EmirOp::CallSelf { inputs, .. } => {
+        EmirOp::CallSelf { inputs, result } => {
             // The recursive target (`__self` at entries, `__frame_self`
             // in inlined frames) declares owned parameters for
             // non-copy carriers and `&dyn Fn` for closures. Arguments
@@ -250,7 +250,37 @@ pub(crate) fn op_expr(
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            Ok(Expr::Raw(format!("__self({args})?")))
+            // The recursive wrapper's signature is the enclosing
+            // body's inferred result carrier (`program_kind` over the
+            // same context - exactly the kind the `__self` /
+            // `__frame_self` wrapper emits), while this call site's
+            // kind inference reads the authored output signature (the
+            // i64 lane for an `Int` result). The two disagree exactly
+            // when the body joins machine-op results (ExactInt), so
+            // the call site crosses with the same checked boundary as
+            // call arguments: E-INT-002 by name, never a silent
+            // narrowing, and an exact widening the other way.
+            let callee_kind = program_kind(program, names, states, input_kinds);
+            let declared =
+                if result.is_empty() { ValueKind::Other } else { ValueKind::from_signature(result) };
+            let site_kind = if !matches!(declared, ValueKind::Other) {
+                declared
+            } else {
+                inputs
+                    .first()
+                    .map_or(ValueKind::I64, |value| kind_at(kinds, *value))
+            };
+            let call = format!("__self({args})?");
+            let crossed = match (site_kind, callee_kind) {
+                (ValueKind::I64, ValueKind::ExactInt) => format!(
+                    "({call}).to_i64().ok_or_else(|| String::from(\"E-INT-002: exact integer result exceeds the i64 lane\"))?"
+                ),
+                (ValueKind::ExactInt, ValueKind::I64) => {
+                    format!("emath_rt::ExactInt::from({call})")
+                }
+                _ => call,
+            };
+            Ok(Expr::Raw(crossed))
         }
         EmirOp::SameDenseShape(..)
         | EmirOp::DenseValues(_)

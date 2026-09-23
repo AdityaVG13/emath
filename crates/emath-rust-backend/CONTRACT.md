@@ -13,8 +13,9 @@ Rust backend: universal EMIR and artifact contracts to deterministic Rust via th
 
 ## Native numeric boundaries
 
-Recursive-call arguments, closure-call arguments, and authored record fields
-share numeric representation conversion, including sequence elements. A fixed
+Recursive-call arguments and results, closure-call arguments, and authored record
+fields share numeric representation conversion, including sequence elements and
+sequence index operands. A fixed
 `i64` slot checks an `ExactInt` with `to_i64` and returns `E-INT-002` outside
 that lane. Int-to-Rat widens exactly, with `E-RAT-002` when a wide part cannot
 fit the native i128 pair. Inferred-wide sibling frames and results stay wide;
@@ -23,7 +24,10 @@ there is no blanket narrowing of the arbitrary-precision VM carrier.
 Authored lists join Int/ExactInt/Rat representations before construction or cons.
 Concatenation borrows each input once, sums lengths without cloning, allocates
 one output vector, and copies/converts each element once. Mixed borrowed/owned
-ExactInt comparisons call `Ord::cmp` by reference instead of cloning operands.
+ExactInt comparisons and exact arithmetic (`add`/`sub`/`mul`/`cmp`) pass the
+right operand by reference without cloning: a borrowed register (the non-copy
+load lane) already renders exactly one reference layer, so consumers add `&`
+only for owned operand expressions.
 `tests/emath-rust-backend/tests/numeric_boundaries.rs` compiles and executes the
 generated fixture, including named overflow refusals and wide-frame preservation.
 

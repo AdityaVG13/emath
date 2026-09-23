@@ -2,9 +2,9 @@
 
 use super::{
     BackendError, BinOp, EmirOp, EmirProgram, EmirValue, Expr, UnOp, ValueKind,
-    checked_integer_result, cmp_expr, comparison, exact_int_operand, i64_or_f64_bin, kind_at,
-    map_runtime_result, operand, operand_kind, render_expr, to_code_value, typed_operand,
-    union_pair,
+    borrowed_register, checked_integer_result, cmp_expr, comparison, exact_int_operand,
+    i64_or_f64_bin, kind_at, map_runtime_result, operand, operand_kind, render_expr, to_code_value,
+    typed_operand, union_pair,
 };
 use emath_exec_ir::BuiltinId;
 
@@ -175,15 +175,26 @@ pub(super) fn op_arith_exprs(
         {
             let left_e = render_expr(&exact_int_operand(program, left, kinds));
             let right_e = render_expr(&exact_int_operand(program, right, kinds));
+            // Method slots take `&ExactInt`; a borrowed register (the
+            // non-copy load lane) already renders as exactly one
+            // reference layer, so the `&` is added only for owned
+            // operand expressions.
+            let right_ref = if kind_at(kinds, right) == ValueKind::ExactInt
+                && borrowed_register(program, right, kinds)
+            {
+                right_e.clone()
+            } else {
+                format!("&{right_e}")
+            };
             let value = match function {
                 "ratio_add" => map_runtime_result(format!(
-                    "{left_e}.add(&{right_e}).map_err(|err| err.to_string())"
+                    "{left_e}.add({right_ref}).map_err(|err| err.to_string())"
                 )),
                 "ratio_sub" => map_runtime_result(format!(
-                    "{left_e}.sub(&{right_e}).map_err(|err| err.to_string())"
+                    "{left_e}.sub({right_ref}).map_err(|err| err.to_string())"
                 )),
                 "ratio_mul" => map_runtime_result(format!(
-                    "{left_e}.mul(&{right_e}).map_err(|err| err.to_string())"
+                    "{left_e}.mul({right_ref}).map_err(|err| err.to_string())"
                 )),
                 // One representation: both operands widen to the ratio
                 // tuple carrier. `exact_ratio` returns
@@ -195,7 +206,7 @@ pub(super) fn op_arith_exprs(
                     exact_int_ratio_parts(&right_e)
                 )),
                 "ratio_lt" => Expr::Raw(format!(
-                    "{left_e}.cmp(&{right_e}) == core::cmp::Ordering::Less"
+                    "{left_e}.cmp({right_ref}) == core::cmp::Ordering::Less"
                 )),
                 _ => {
                     return Err(BackendError::UnsupportedType(

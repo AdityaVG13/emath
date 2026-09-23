@@ -16,8 +16,10 @@
 //! The drivers are transcribed from the authored `tests:` blocks of
 //! `language/modules/optimization/allocate.emath`,
 //! `language/modules/probability/inference.emath`,
-//! `language/modules/probability/distributions.emath`, and
-//! `language/modules/analysis/powers.emath` — the same givens, the
+//! `language/modules/probability/distributions.emath`,
+//! `language/modules/analysis/powers.emath`,
+//! `language/modules/cryptology/modular.emath`, and
+//! `language/modules/exact/quadratic.emath` — the same givens, the
 //! same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
@@ -1420,6 +1422,746 @@ fn emission_conformance_float64_quote() {
     assert!(
         diffs.is_empty(),
         "emitted float64_quote disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const MODULAR_DRIVER: &str = r#"
+//! Authored pins of cryptology/modular.emath against the emitted crate.
+//!
+//! Transcription boundaries (labeled, from the module header):
+//! - The numeric lane (mod_pos .. affine_decrypt) emits
+//!   `Result<ExactInt, String>`; pins compare via `ExactInt::from`.
+//! - Bezout rows pin the IDENTITY `a*x + b*y == g`, not just g.
+//! - The affine roundtrip rows are authored as composed calls
+//!   `decrypt(encrypt(p))`; the driver composes through the i64 ABI
+//!   seam with a `to_i64` crossing (E-INT-002 named if it ever fires).
+//! - Vigenere sequence results carry ExactRatio `(i128, i128)`
+//!   elements; integer expectations compare by cross-multiplication.
+//! - The Carmichael rows are the module's honesty pins: 561 passes
+//!   Fermat for every coprime base (a probable-prime LIE, pinned).
+
+use modular::{
+    affine_decrypt, affine_encrypt, bezout, bezout_lift, carmichael_561_pseudoprime,
+    fermat_all_pass, fermat_witness, is_fermat_prime, mod_add, mod_inv, mod_mul, mod_pos,
+    mod_pow, shares_factor, vigenere_decrypt, vigenere_encrypt, vigenere_key_at,
+    EmathRecord_Bezout,
+};
+
+fn ei(n: i64) -> modular::emath_rt::ExactInt {
+    modular::emath_rt::ExactInt::from(n)
+}
+
+fn exact_ok(got: &Result<modular::emath_rt::ExactInt, String>, want: i64) -> bool {
+    matches!(got, Ok(v) if *v == ei(want))
+}
+
+fn refused<T: std::fmt::Debug>(got: &Result<T, String>, code: &str) -> bool {
+    matches!(got, Err(text) if text == code)
+}
+
+fn q_eq(a: (i128, i128), b: (i128, i128)) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+/// decrypt(encrypt(p)) through the i64 ABI seam (authored composition).
+fn affine_roundtrip(
+    p: i64,
+    a: i64,
+    b: i64,
+    m: i64,
+) -> Result<modular::emath_rt::ExactInt, String> {
+    affine_encrypt(p, a, b, m).and_then(|v| match v.to_i64() {
+        Some(c) => affine_decrypt(c, a, b, m),
+        None => Err(String::from("E-INT-002")),
+    })
+}
+
+/// mod_mul(a, inv, m) == 1 — the authored composed inverse check.
+fn inverse_roundtrip(a: i64, m: i64) -> Result<modular::emath_rt::ExactInt, String> {
+    mod_inv(a, m).and_then(|v| match v.to_i64() {
+        Some(i) => mod_mul(a, i, m),
+        None => Err(String::from("E-INT-002")),
+    })
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // --- mod_pos ---------------------------------------------------------
+    // example <positive_unchanged>: mod_pos(7, 5) == 2
+    let got = mod_pos(7, 5);
+    if !exact_ok(&got, 2) {
+        failures += 1;
+        println!("DIFF positive_unchanged EMITTED {:?}; VM = 2", got);
+    }
+
+    // example <negative_wraps_once>: mod_pos(-7, 5) == 3
+    let got = mod_pos(-7, 5);
+    if !exact_ok(&got, 3) {
+        failures += 1;
+        println!("DIFF negative_wraps_once EMITTED {:?}; VM = 3", got);
+    }
+
+    // example <exact_multiple_is_zero>: mod_pos(10, 5) == 0
+    let got = mod_pos(10, 5);
+    if !exact_ok(&got, 0) {
+        failures += 1;
+        println!("DIFF exact_multiple_is_zero EMITTED {:?}; VM = 0", got);
+    }
+
+    // example <refuses_zero_modulus>
+    let got = mod_pos(3, 0);
+    if !refused(&got, "non_positive_modulus") {
+        failures += 1;
+        println!("DIFF refuses_zero_modulus EMITTED {:?}; VM = non_positive_modulus", got);
+    }
+
+    // --- mod_add / mod_mul ------------------------------------------------
+    // example <wraps>: mod_add(3, 4, 5) == 2
+    let got = mod_add(3, 4, 5);
+    if !exact_ok(&got, 2) {
+        failures += 1;
+        println!("DIFF wraps EMITTED {:?}; VM = 2", got);
+    }
+
+    // example <three_times_four_mod_five>: mod_mul(3, 4, 5) == 2
+    let got = mod_mul(3, 4, 5);
+    if !exact_ok(&got, 2) {
+        failures += 1;
+        println!("DIFF three_times_four_mod_five EMITTED {:?}; VM = 2", got);
+    }
+
+    // example <negative_factor>: mod_mul(-3, 4, 5) == 3
+    let got = mod_mul(-3, 4, 5);
+    if !exact_ok(&got, 3) {
+        failures += 1;
+        println!("DIFF negative_factor EMITTED {:?}; VM = 3", got);
+    }
+
+    // --- bezout: the certificate is the identity, not just g -------------
+    // example <bezout_twelve_eight>: g == 4 and 12x + 8y == g
+    let got = bezout(12, 8);
+    match &got {
+        Ok(r) if r.g == 4 && 12 * r.x + 8 * r.y == r.g => {}
+        _ => {
+            failures += 1;
+            println!("DIFF bezout_twelve_eight EMITTED {:?}; VM = g 4 with 12x + 8y == g", got);
+        }
+    }
+
+    // example <bezout_seven_five>: g == 1 and 7x + 5y == g
+    let got = bezout(7, 5);
+    match &got {
+        Ok(r) if r.g == 1 && 7 * r.x + 5 * r.y == r.g => {}
+        _ => {
+            failures += 1;
+            println!("DIFF bezout_seven_five EMITTED {:?}; VM = g 1 with 7x + 5y == g", got);
+        }
+    }
+
+    // example <bezout_240_46>: g == 2 and 240x + 46y == g
+    let got = bezout(240, 46);
+    match &got {
+        Ok(r) if r.g == 2 && 240 * r.x + 46 * r.y == r.g => {}
+        _ => {
+            failures += 1;
+            println!("DIFF bezout_240_46 EMITTED {:?}; VM = g 2 with 240x + 46y == g", got);
+        }
+    }
+
+    // example <refuses_negative>
+    let got = bezout(-12, 8);
+    if !refused(&got, "negative_operand") {
+        failures += 1;
+        println!("DIFF refuses_negative EMITTED {:?}; VM = negative_operand", got);
+    }
+
+    // example <one_lift>: bezout_lift({g 4, x 0, y 1}, 12, 8) has
+    // x == 1, y == -1, and 12x + 8y == g == 4.
+    let got = bezout_lift(EmathRecord_Bezout { g: 4, x: 0, y: 1 }, 12, 8);
+    match &got {
+        Ok(r) if r.x == 1 && r.y == -1 && 12 * r.x + 8 * r.y == r.g => {}
+        _ => {
+            failures += 1;
+            println!("DIFF one_lift EMITTED {:?}; VM = x 1, y -1, 12x + 8y == 4", got);
+        }
+    }
+
+    // --- mod_inv ----------------------------------------------------------
+    // example <three_times_inverse_is_one>: mod_mul(3, inv, 5) == 1
+    let got = inverse_roundtrip(3, 5);
+    if !exact_ok(&got, 1) {
+        failures += 1;
+        println!("DIFF three_times_inverse_is_one EMITTED {:?}; VM = mod_mul(3, inv, 5) == 1", got);
+    }
+
+    // example <seven_mod_twenty_six>: inv == 15 and 7*15 == 1 (mod 26)
+    let got = mod_inv(7, 26);
+    let composed = inverse_roundtrip(7, 26);
+    if !exact_ok(&got, 15) || !exact_ok(&composed, 1) {
+        failures += 1;
+        println!("DIFF seven_mod_twenty_six EMITTED {:?} (composed {:?}); VM = 15 with 7*15 == 1 mod 26", got, composed);
+    }
+
+    // example <refuses_even_key_mod_twenty_six>
+    let got = mod_inv(2, 26);
+    if !refused(&got, "non_invertible_key") {
+        failures += 1;
+        println!("DIFF refuses_even_key_mod_twenty_six EMITTED {:?}; VM = non_invertible_key", got);
+    }
+
+    // --- mod_pow ----------------------------------------------------------
+    // example <two_to_ten_mod_seven>: 2^10 == 2 (mod 7)
+    let got = mod_pow(2, 10, 7);
+    if !exact_ok(&got, 2) {
+        failures += 1;
+        println!("DIFF two_to_ten_mod_seven EMITTED {:?}; VM = 2", got);
+    }
+
+    // example <three_to_hundred_mod_one_oh_one>: 3^100 == 1 (mod 101)
+    let got = mod_pow(3, 100, 101);
+    if !exact_ok(&got, 1) {
+        failures += 1;
+        println!("DIFF three_to_hundred_mod_one_oh_one EMITTED {:?}; VM = 1", got);
+    }
+
+    // example <zero_to_positive_is_zero>: 0^5 == 0 (mod 7)
+    let got = mod_pow(0, 5, 7);
+    if !exact_ok(&got, 0) {
+        failures += 1;
+        println!("DIFF zero_to_positive_is_zero EMITTED {:?}; VM = 0", got);
+    }
+
+    // example <refuses_negative_exponent>
+    let got = mod_pow(2, -1, 7);
+    if !refused(&got, "negative_exponent") {
+        failures += 1;
+        println!("DIFF refuses_negative_exponent EMITTED {:?}; VM = negative_exponent", got);
+    }
+
+    // --- affine cipher ----------------------------------------------------
+    // example <classic_three_five>: affine_encrypt(4, 3, 5, 26) == 17
+    let got = affine_encrypt(4, 3, 5, 26);
+    if !exact_ok(&got, 17) {
+        failures += 1;
+        println!("DIFF classic_three_five EMITTED {:?}; VM = 17", got);
+    }
+
+    // example <refuses_even_multiplier>
+    let got = affine_encrypt(4, 2, 5, 26);
+    if !refused(&got, "non_invertible_key") {
+        failures += 1;
+        println!("DIFF refuses_even_multiplier EMITTED {:?}; VM = non_invertible_key", got);
+    }
+
+    // example <classic_roundtrip_four>: affine_decrypt(17, 3, 5, 26) == 4
+    let got = affine_decrypt(17, 3, 5, 26);
+    if !exact_ok(&got, 4) {
+        failures += 1;
+        println!("DIFF classic_roundtrip_four EMITTED {:?}; VM = 4", got);
+    }
+
+    // example <roundtrip_law_everywhere>: decrypt(encrypt(p)) == p
+    // (3 and 6 shown in the module; all seven residues pinned below).
+    let got = affine_roundtrip(3, 5, 8, 7);
+    if !exact_ok(&got, 3) {
+        failures += 1;
+        println!("DIFF roundtrip_law_everywhere EMITTED {:?}; VM = 3", got);
+    }
+    let got = affine_roundtrip(6, 5, 8, 7);
+    if !exact_ok(&got, 6) {
+        failures += 1;
+        println!("DIFF roundtrip_law_everywhere_six EMITTED {:?}; VM = 6", got);
+    }
+
+    // example <roundtrip_exhaustive_all_seven>: the remaining residues
+    for p in [0, 1, 2, 4, 5] {
+        let got = affine_roundtrip(p, 5, 8, 7);
+        if !exact_ok(&got, p) {
+            failures += 1;
+            println!("DIFF roundtrip_exhaustive_all_seven EMITTED {:?}; VM = {p}", got);
+        }
+    }
+
+    // --- vigenere ---------------------------------------------------------
+    // example <cycles>: key_at([3, 1, 4], 0) == 3
+    let got = vigenere_key_at(vec![3, 1, 4], 0);
+    if got != Ok(3) {
+        failures += 1;
+        println!("DIFF cycles EMITTED {:?}; VM = 3", got);
+    }
+
+    // example <wraps_to_front>: key_at([3, 1, 4], 3) == 3
+    let got = vigenere_key_at(vec![3, 1, 4], 3);
+    if got != Ok(3) {
+        failures += 1;
+        println!("DIFF wraps_to_front EMITTED {:?}; VM = 3", got);
+    }
+
+    // example <refuses_empty_key>
+    let got = vigenere_key_at(vec![], 0);
+    if !refused(&got, "empty_sequence") {
+        failures += 1;
+        println!("DIFF refuses_empty_key EMITTED {:?}; VM = empty_sequence", got);
+    }
+
+    // example <classic_shifts>: HELLO with key CAD, m 26 -> 10 5 15 14 15.
+    // Emitted sequence elements are ExactRatio; compare by value.
+    let got = vigenere_encrypt(vec![7, 4, 11, 11, 14], vec![3, 1, 4], 26);
+    match &got {
+        Ok(v) if v.len() == 5
+            && q_eq(v[0], (10, 1))
+            && q_eq(v[1], (5, 1))
+            && q_eq(v[2], (15, 1))
+            && q_eq(v[3], (14, 1))
+            && q_eq(v[4], (15, 1)) => {}
+        _ => {
+            failures += 1;
+            println!("DIFF classic_shifts EMITTED {:?}; VM = [10, 5, 15, 14, 15]", got);
+        }
+    }
+
+    // example <roundtrip_hello>: decrypt(encrypt) recovers HELLO.
+    let got = vigenere_decrypt(vec![10, 5, 15, 14, 15], vec![3, 1, 4], 26);
+    match &got {
+        Ok(v) if v.len() == 5
+            && q_eq(v[0], (7, 1))
+            && q_eq(v[1], (4, 1))
+            && q_eq(v[2], (11, 1))
+            && q_eq(v[3], (11, 1))
+            && q_eq(v[4], (14, 1)) => {}
+        _ => {
+            failures += 1;
+            println!("DIFF roundtrip_hello EMITTED {:?}; VM = [7, 4, 11, 11, 14]", got);
+        }
+    }
+
+    // example <refuses_empty_message>
+    let got = vigenere_decrypt(vec![], vec![3, 1, 4], 26);
+    if !refused(&got, "empty_sequence") {
+        failures += 1;
+        println!("DIFF refuses_empty_message EMITTED {:?}; VM = empty_sequence", got);
+    }
+
+    // --- Fermat lane and the Carmichael honesty pins ----------------------
+    // example <three_shares_with_five_sixty_one>: gcd(3, 561) = 3 > 1
+    let got = shares_factor(3, 561);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF three_shares_with_five_sixty_one EMITTED {:?}; VM = true", got);
+    }
+
+    // example <coprime_pair>: gcd(5, 561) = 1
+    let got = shares_factor(5, 561);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF coprime_pair EMITTED {:?}; VM = false", got);
+    }
+
+    // example <two_witnesses_fifteen>: 2^14 == 4 (mod 15), witnessed
+    let got = fermat_witness(2, 15);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF two_witnesses_fifteen EMITTED {:?}; VM = true", got);
+    }
+
+    // example <no_witness_for_eleven>: 11 is prime
+    let got = fermat_witness(2, 11);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF no_witness_for_eleven EMITTED {:?}; VM = false", got);
+    }
+
+    // example <base_sharing_factor_is_not_fermat_witness>: gcd(3, 15) = 3
+    let got = fermat_witness(3, 15);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF base_sharing_factor_is_not_fermat_witness EMITTED {:?}; VM = false", got);
+    }
+
+    // example <eleven_passes>: is_fermat_prime(11, [2, 3, 5])
+    let got = is_fermat_prime(11, vec![2, 3, 5]);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF eleven_passes EMITTED {:?}; VM = true", got);
+    }
+
+    // example <fifteen_fails_on_two>: is_fermat_prime(15, [2])
+    let got = is_fermat_prime(15, vec![2]);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF fifteen_fails_on_two EMITTED {:?}; VM = false", got);
+    }
+
+    // example <two_passes_fifteen_fails>: fermat_all_pass(15, [2, 7], 0)
+    let got = fermat_all_pass(15, vec![2, 7], 0);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF two_passes_fifteen_fails EMITTED {:?}; VM = false", got);
+    }
+
+    // example <passes_fermat_falsely>: THE honesty pin — 561 = 3*11*17
+    // passes Fermat for every coprime base: probable-prime, NOT prime.
+    let got = carmichael_561_pseudoprime(0);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF passes_fermat_falsely EMITTED {:?}; VM = true (the Carmichael lie)", got);
+    }
+
+    // example <but_shares_factor_certifies_composite>: the SAME number
+    // is certified composite by the factor proof.
+    let got = shares_factor(3, 561);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF but_shares_factor_certifies_composite EMITTED {:?}; VM = true", got);
+    }
+
+    // example <each_coprime_base_alone_lies>: pinned per-base so the
+    // lie cannot hide behind the set.
+    for base in [2, 7, 13] {
+        let got = fermat_witness(base, 561);
+        if got != Ok(false) {
+            failures += 1;
+            println!("DIFF each_coprime_base_alone_lies EMITTED {:?}; VM = false (base {base})", got);
+        }
+    }
+
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all modular pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_modular() {
+    let diffs = run_lane(
+        "language/modules/cryptology/modular.emath",
+        MODULAR_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted modular disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const QUADRATIC_DRIVER: &str = r#"
+//! Authored pins of exact/quadratic.emath against the emitted crate.
+//!
+//! Transcription boundaries (labeled, from the module header):
+//! - The Tonelli-Shanks entry lane (legendre, ts_q, tonelli_sqrt,
+//!   ts_entry, ts_general) emits `Result<ExactInt, String>`; the
+//!   arithmetic-helper lane (ts_two_pow .. ts_finish) emits
+//!   `Result<i64, String>`; pins compare accordingly.
+//! - Every tonelli row pins the CERTIFICATE r*r == a (mod p) as an
+//!   exact identity alongside the root value.
+//! - Refusal inventory: non_positive_modulus, even_modulus,
+//!   not_a_quadratic_residue.
+
+use quadratic::{
+    is_quadratic_residue, legendre, legendre_of, tonelli_sqrt, ts_entry, ts_find_i, ts_find_z,
+    ts_finish, ts_general, ts_halve, ts_loop, ts_q, ts_s, ts_two_adic, ts_two_pow,
+};
+
+fn ei(n: i64) -> quadratic::emath_rt::ExactInt {
+    quadratic::emath_rt::ExactInt::from(n)
+}
+
+fn exact_ok(got: &Result<quadratic::emath_rt::ExactInt, String>, want: i64) -> bool {
+    matches!(got, Ok(v) if *v == ei(want))
+}
+
+fn refused<T: std::fmt::Debug>(got: &Result<T, String>, code: &str) -> bool {
+    matches!(got, Err(text) if text == code)
+}
+
+/// The authored certificate: mod_pos(r*r, p) == a for the emitted root.
+fn cert(root: &quadratic::emath_rt::ExactInt, p: i64, want: i64) -> bool {
+    root.to_i64().map(|r| r * r % p == want).unwrap_or(false)
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // --- legendre symbol --------------------------------------------------
+    // example <two_is_residue_mod_seven>: (2|7) == 1
+    let got = legendre(2, 7);
+    if !exact_ok(&got, 1) {
+        failures += 1;
+        println!("DIFF two_is_residue_mod_seven EMITTED {:?}; VM = 1", got);
+    }
+
+    // example <three_is_nonresidue_mod_seven>: (3|7) == -1
+    let got = legendre(3, 7);
+    if !exact_ok(&got, -1) {
+        failures += 1;
+        println!("DIFF three_is_nonresidue_mod_seven EMITTED {:?}; VM = -1", got);
+    }
+
+    // example <zero_is_zero>: (0|7) == 0
+    let got = legendre(0, 7);
+    if !exact_ok(&got, 0) {
+        failures += 1;
+        println!("DIFF zero_is_zero EMITTED {:?}; VM = 0", got);
+    }
+
+    // example <negative_reduces_first>: (-5|7) == (2|7) == 1
+    let got = legendre(-5, 7);
+    if !exact_ok(&got, 1) {
+        failures += 1;
+        println!("DIFF negative_reduces_first EMITTED {:?}; VM = 1", got);
+    }
+
+    // example <refuses_zero_modulus>
+    let got = legendre(2, 0);
+    if !refused(&got, "non_positive_modulus") {
+        failures += 1;
+        println!("DIFF refuses_zero_modulus EMITTED {:?}; VM = non_positive_modulus", got);
+    }
+
+    // --- legendre on the already-reduced residue ---------------------------
+    // example <residue_is_one>: legendre_of(2, 7) == 1
+    let got = legendre_of(2, 7);
+    if !exact_ok(&got, 1) {
+        failures += 1;
+        println!("DIFF residue_is_one EMITTED {:?}; VM = 1", got);
+    }
+
+    // example <nonresidue_is_minus_one>: legendre_of(3, 7) == -1
+    let got = legendre_of(3, 7);
+    if !exact_ok(&got, -1) {
+        failures += 1;
+        println!("DIFF nonresidue_is_minus_one EMITTED {:?}; VM = -1", got);
+    }
+
+    // example <zero_residue_is_zero>: legendre_of(0, 7) == 0
+    let got = legendre_of(0, 7);
+    if !exact_ok(&got, 0) {
+        failures += 1;
+        println!("DIFF zero_residue_is_zero EMITTED {:?}; VM = 0", got);
+    }
+
+    // --- the residue predicate --------------------------------------------
+    // example <two_mod_seven>: 2 is a QR mod 7
+    let got = is_quadratic_residue(2, 7);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF two_mod_seven EMITTED {:?}; VM = true", got);
+    }
+
+    // example <three_mod_seven>: 3 is not
+    let got = is_quadratic_residue(3, 7);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF three_mod_seven EMITTED {:?}; VM = false", got);
+    }
+
+    // --- Tonelli-Shanks arithmetic helpers --------------------------------
+    // example <three>: 2^3 == 8
+    let got = ts_two_pow(3);
+    if got != Ok(8) {
+        failures += 1;
+        println!("DIFF three EMITTED {:?}; VM = 8", got);
+    }
+
+    // example <eight_is_three>: the 2-adic valuation of 8
+    let got = ts_two_adic(8);
+    if got != Ok(3) {
+        failures += 1;
+        println!("DIFF eight_is_three EMITTED {:?}; VM = 3", got);
+    }
+
+    // example <odd_is_zero>: 5 is odd
+    let got = ts_two_adic(5);
+    if got != Ok(0) {
+        failures += 1;
+        println!("DIFF odd_is_zero EMITTED {:?}; VM = 0", got);
+    }
+
+    // example <eight_thrice>: 8 halved 3 times is 1
+    let got = ts_halve(8, 3);
+    if got != Ok(1) {
+        failures += 1;
+        println!("DIFF eight_thrice EMITTED {:?}; VM = 1", got);
+    }
+
+    // example <seventeen>: q = (17-1)/2^4 == 1
+    let got = ts_q(17);
+    if !exact_ok(&got, 1) {
+        failures += 1;
+        println!("DIFF seventeen EMITTED {:?}; VM = 1", got);
+    }
+
+    // example <forty_one>: q = 40/2^3 == 5
+    let got = ts_q(41);
+    if !exact_ok(&got, 5) {
+        failures += 1;
+        println!("DIFF forty_one EMITTED {:?}; VM = 5", got);
+    }
+
+    // example <seventeen_is_four>: s(17) == 4
+    let got = ts_s(17);
+    if got != Ok(4) {
+        failures += 1;
+        println!("DIFF seventeen_is_four EMITTED {:?}; VM = 4", got);
+    }
+
+    // example <forty_one_is_three>: s(41) == 3
+    let got = ts_s(41);
+    if got != Ok(3) {
+        failures += 1;
+        println!("DIFF forty_one_is_three EMITTED {:?}; VM = 3", got);
+    }
+
+    // example <seventeen_finds_three>: the first nonresidue from z=2
+    let got = ts_find_z(2, 17);
+    if got != Ok(3) {
+        failures += 1;
+        println!("DIFF seventeen_finds_three EMITTED {:?}; VM = 3", got);
+    }
+
+    // example <two_mod_seventeen>: the doubling index of t=2
+    let got = ts_find_i(2, 17, 0);
+    if got != Ok(3) {
+        failures += 1;
+        println!("DIFF two_mod_seventeen EMITTED {:?}; VM = 3", got);
+    }
+
+    // example <seventeen_two_full_cycle>: one full Tonelli cycle
+    let got = ts_loop(17, 4, 3, 2, 2);
+    if got != Ok(6) {
+        failures += 1;
+        println!("DIFF seventeen_two_full_cycle EMITTED {:?}; VM = 6", got);
+    }
+
+    // --- the exactness gate and tie-break ----------------------------------
+    // example <gate_passes_and_breaks_tie>: min(r, p - r)
+    let got = ts_finish(2, 4, 7);
+    if got != Ok(3) {
+        failures += 1;
+        println!("DIFF gate_passes_and_breaks_tie EMITTED {:?}; VM = 3", got);
+    }
+
+    // example <gate_refuses_fabricated_root>: 2*2 != 3 (mod 7)
+    let got = ts_finish(3, 2, 7);
+    if !refused(&got, "not_a_quadratic_residue") {
+        failures += 1;
+        println!("DIFF gate_refuses_fabricated_root EMITTED {:?}; VM = not_a_quadratic_residue", got);
+    }
+
+    // --- tonelli_sqrt: value AND certificate on every computing row --------
+    // example <fast_path_two_mod_seven>: sqrt(2, 7) == 3, 3*3 == 2 (mod 7)
+    let got = tonelli_sqrt(2, 7);
+    if !exact_ok(&got, 3) || !matches!(&got, Ok(v) if cert(v, 7, 2)) {
+        failures += 1;
+        println!("DIFF fast_path_two_mod_seven EMITTED {:?}; VM = 3 with r*r == 2 mod 7", got);
+    }
+
+    // example <fast_path_four_mod_seven>: sqrt(4, 7) == 2, 2*2 == 4
+    let got = tonelli_sqrt(4, 7);
+    if !exact_ok(&got, 2) || !matches!(&got, Ok(v) if cert(v, 7, 4)) {
+        failures += 1;
+        println!("DIFF fast_path_four_mod_seven EMITTED {:?}; VM = 2 with r*r == 4 mod 7", got);
+    }
+
+    // example <general_two_mod_seventeen>: full cycle, 6*6 == 36 == 2 (mod 17)
+    let got = tonelli_sqrt(2, 17);
+    if !exact_ok(&got, 6) || !matches!(&got, Ok(v) if cert(v, 17, 2)) {
+        failures += 1;
+        println!("DIFF general_two_mod_seventeen EMITTED {:?}; VM = 6 with r*r == 2 mod 17", got);
+    }
+
+    // example <general_eighteen_mod_forty_one>: 10*10 == 100 == 18 (mod 41)
+    let got = tonelli_sqrt(18, 41);
+    if !exact_ok(&got, 10) || !matches!(&got, Ok(v) if cert(v, 41, 18)) {
+        failures += 1;
+        println!("DIFF general_eighteen_mod_forty_one EMITTED {:?}; VM = 10 with r*r == 18 mod 41", got);
+    }
+
+    // example <zero_returns_zero>
+    let got = tonelli_sqrt(0, 7);
+    if !exact_ok(&got, 0) {
+        failures += 1;
+        println!("DIFF zero_returns_zero EMITTED {:?}; VM = 0", got);
+    }
+
+    // example <negative_reduces_to_residue>: sqrt(-5, 7) == sqrt(2, 7) == 3
+    let got = tonelli_sqrt(-5, 7);
+    if !exact_ok(&got, 3) || !matches!(&got, Ok(v) if cert(v, 7, 2)) {
+        failures += 1;
+        println!("DIFF negative_reduces_to_residue EMITTED {:?}; VM = 3 with r*r == 2 mod 7", got);
+    }
+
+    // example <refuses_nonresidue_fast_path>
+    let got = tonelli_sqrt(3, 7);
+    if !refused(&got, "not_a_quadratic_residue") {
+        failures += 1;
+        println!("DIFF refuses_nonresidue_fast_path EMITTED {:?}; VM = not_a_quadratic_residue", got);
+    }
+
+    // example <refuses_nonresidue_general_path>
+    let got = tonelli_sqrt(3, 17);
+    if !refused(&got, "not_a_quadratic_residue") {
+        failures += 1;
+        println!("DIFF refuses_nonresidue_general_path EMITTED {:?}; VM = not_a_quadratic_residue", got);
+    }
+
+    // example <refuses_even_modulus_two>
+    let got = tonelli_sqrt(1, 2);
+    if !refused(&got, "even_modulus") {
+        failures += 1;
+        println!("DIFF refuses_even_modulus_two EMITTED {:?}; VM = even_modulus", got);
+    }
+
+    // example <refuses_even_modulus_eight>
+    let got = tonelli_sqrt(1, 8);
+    if !refused(&got, "even_modulus") {
+        failures += 1;
+        println!("DIFF refuses_even_modulus_eight EMITTED {:?}; VM = even_modulus", got);
+    }
+
+    // example <refuses_nonpositive_modulus>
+    let got = tonelli_sqrt(1, 0);
+    if !refused(&got, "non_positive_modulus") {
+        failures += 1;
+        println!("DIFF refuses_nonpositive_modulus EMITTED {:?}; VM = non_positive_modulus", got);
+    }
+
+    // --- the entry dispatch -------------------------------------------------
+    // example <zero_short_circuits>: ts_entry(0, 7) == 0
+    let got = ts_entry(0, 7);
+    if !exact_ok(&got, 0) {
+        failures += 1;
+        println!("DIFF zero_short_circuits EMITTED {:?}; VM = 0", got);
+    }
+
+    // example <two_mod_seventeen>: ts_general(2, 17) == 6, 36 == 2 (mod 17)
+    let got = ts_general(2, 17);
+    if !exact_ok(&got, 6) || !matches!(&got, Ok(v) if cert(v, 17, 2)) {
+        failures += 1;
+        println!("DIFF two_mod_seventeen EMITTED {:?}; VM = 6 with r*r == 2 mod 17", got);
+    }
+
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all quadratic pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_quadratic() {
+    let diffs = run_lane(
+        "language/modules/exact/quadratic.emath",
+        QUADRATIC_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted quadratic disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

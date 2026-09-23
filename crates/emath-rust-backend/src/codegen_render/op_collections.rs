@@ -2,8 +2,8 @@
 
 use super::{
     BackendError, EmirOp, EmirProgram, EmirValue, Expr, Stmt, ValueKind, checked_integer_operand,
-    index_f64, kind_at, map_runtime_result, operand, owned_operand, render_expr, tensor_index_call,
-    tensor_slice_call, typed_operand,
+    exact_int_operand, index_f64, kind_at, map_runtime_result, operand, owned_operand, render_expr,
+    tensor_index_call, tensor_slice_call, typed_operand,
 };
 
 fn authored_list_concat(
@@ -488,6 +488,17 @@ pub(super) fn op_collection_exprs(
                 Ok(map_runtime_result(format!(
                     "usize::try_from({index}).ok().and_then(|index| ({collection}).get(index)){materialize}.ok_or(\"vector index out of bounds\")"
                 )))
+            } else if kind_at(kinds, *index) == ValueKind::ExactInt {
+                // The exact-integer index carrier narrows through the
+                // checked i64 boundary first (E-INT-002 by name - the
+                // same law as call arguments and recursive results),
+                // then runs the same bounds-checked usize lane as the
+                // i64 carrier; the f64 guard below presumes a float
+                // carrier and never fits an ExactInt register.
+                let index = render_expr(&exact_int_operand(program, *index, kinds));
+                Ok(map_runtime_result(format!(
+                    "{{ let __index = {index}.to_i64().ok_or(\"E-INT-002: exact integer result exceeds the i64 lane\"); usize::try_from(__index?).ok().and_then(|index| ({collection}).get(index)){materialize}.ok_or(\"vector index out of bounds\") }}"
+                )))
             } else {
                 let index = index_f64(program, *index, kinds);
                 Ok(map_runtime_result(format!(
@@ -496,13 +507,23 @@ pub(super) fn op_collection_exprs(
             }
         }
         EmirOp::MatrixIndex { matrix, row, col } => {
+            // Index lanes are carrier-aware: i64 goes through
+            // `usize::try_from`, an exact-integer index narrows
+            // through the checked i64 boundary (E-INT-002 by name),
+            // and only a genuine float carrier runs the finiteness
+            // guard. Every lane refuses out-of-bounds by the same
+            // name as the i64 lane.
             let checked = |value| {
                 let index = render_expr(&operand(program, value));
                 if kind_at(kinds, value) == ValueKind::I64 {
-                    format!("usize::try_from({index}).ok()")
+                    format!("usize::try_from({index}).map_err(|_| \"matrix index out of bounds\")")
+                } else if kind_at(kinds, value) == ValueKind::ExactInt {
+                    format!(
+                        "usize::try_from({index}.to_i64().ok_or(\"E-INT-002: exact integer result exceeds the i64 lane\")?).map_err(|_| \"matrix index out of bounds\")"
+                    )
                 } else {
                     format!(
-                        "{{ let index = {index}; if index.is_finite() && index >= 0.0 && index.fract() == 0.0 {{ Some(index as usize) }} else {{ None }} }}"
+                        "{{ let index = {index}; if index.is_finite() && index >= 0.0 && index.fract() == 0.0 {{ Ok(index as usize) }} else {{ Err(\"matrix index out of bounds\") }} }}"
                     )
                 }
             };
@@ -510,7 +531,7 @@ pub(super) fn op_collection_exprs(
             let row = checked(*row);
             let col = checked(*col);
             Ok(map_runtime_result(format!(
-                r#"({row}).zip({col}).and_then(|(row, col)| ({matrix}).get(row, col)).copied().ok_or("matrix index out of bounds")"#
+                r#"({row}).and_then(|row| ({col}).and_then(|col| ({matrix}).get(row, col).copied().ok_or("matrix index out of bounds")))"#
             )))
         }
         EmirOp::TensorIndex { tensor, indices } => {

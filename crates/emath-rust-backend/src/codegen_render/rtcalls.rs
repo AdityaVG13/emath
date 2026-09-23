@@ -42,6 +42,23 @@ pub(super) fn borrowed_value(value: Expr, kind: &ValueKind) -> Expr {
     }
 }
 
+/// True when a register's defining op renders as a borrowed
+/// expression: the non-copy load lane (LoadInput/LoadState) renders
+/// `{ let __borrow: &T = ..; __borrow }`, both bound to a register
+/// token and inlined at a single use. Consumers filling a `&T`
+/// method-argument slot must not add another reference layer on top.
+pub(super) fn borrowed_register(
+    program: &EmirProgram,
+    value: EmirValue,
+    kinds: &[ValueKind],
+) -> bool {
+    !kind_at(kinds, value).is_copy()
+        && matches!(
+            program.ops.get(value.0 as usize).map(|(op, _)| op),
+            Some(EmirOp::LoadInput(_) | EmirOp::LoadState(_))
+        )
+}
+
 pub(super) fn operand_ref(program: &EmirProgram, value: EmirValue) -> Expr {
     Expr::Raw(format!("&{}", render_expr(&operand(program, value))))
 }
