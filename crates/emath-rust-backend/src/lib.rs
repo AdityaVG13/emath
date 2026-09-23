@@ -243,13 +243,18 @@ pub fn emit_constructor_entry(
         let kind = signature
             .as_deref()
             .map_or(ValueKind::I64, ValueKind::from_signature);
-        params.push(format!("{name}: {}", render_ty(&kind.rust_ty()?)));
+        // The parameter identifier is the escaped name (an authored
+        // Rust keyword like `ref` becomes `ref_`); the kinds map stays
+        // keyed by the authored name - load rendering escapes the
+        // lookup the same way.
+        let ident = escape_ident(name);
+        params.push(format!("{ident}: {}", render_ty(&kind.rust_ty()?)));
         // The recursive wrapper mirrors the public parameter exactly
         // (copy carriers, shared `Rc<dyn Fn>` closure handles, and
         // owned non-copy carriers alike), and the entry call passes
         // the parameter directly.
-        self_params.push(format!("{name}: {}", render_ty(&kind.rust_ty()?)));
-        self_args.push(name.clone());
+        self_params.push(format!("{ident}: {}", render_ty(&kind.rust_ty()?)));
+        self_args.push(ident);
         kinds.insert(name.clone(), kind);
     }
     let params = params.join(", ");
@@ -284,9 +289,22 @@ pub fn emit_constructor_entry(
         };
         (render_ty(&declared.rust_ty()?), projected)
     } else {
-        let result_ty = match result_kind.rust_ty() {
-            Ok(ty) => render_ty(&ty),
-            Err(_) => "impl core::fmt::Debug".to_string(),
+        let result_ty = if result_kind == ValueKind::Never {
+            // A body whose every path refuses never produces a value
+            // (the Rust never type is experimental): the declared
+            // output carrier names the unreachable result so
+            // consumers type-check, and the body itself diverges.
+            match output.map(|(_, signature)| ValueKind::from_signature(signature)) {
+                Some(declared) if declared.rust_ty().is_ok() => {
+                    render_ty(&declared.rust_ty().expect("checked above"))
+                }
+                _ => "()".to_string(),
+            }
+        } else {
+            match result_kind.rust_ty() {
+                Ok(ty) => render_ty(&ty),
+                Err(_) => "impl core::fmt::Debug".to_string(),
+            }
         };
         let body = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
         (result_ty, body)
@@ -319,13 +337,19 @@ pub(crate) fn contains_call_self(program: &emath_exec_ir::EmirProgram) -> bool {
     use emath_exec_ir::EmirOp;
     program.ops.iter().any(|(op, _)| match op {
         EmirOp::CallSelf { .. } => true,
+        // Branch / Fold / Collect / Iterate / ProgramLiteral bodies
+        // render INLINE inside the enclosing body, so their `__self(`
+        // tokens bind the enclosing wrapper. A CallFrame renders
+        // self-contained (its own `__frame_self`), so recursion stops
+        // here: a nested sibling's self-recursion never forces a
+        // wrapper (or a `Result<!>` signature, when the frame's own
+        // tail is pure refusal) on the enclosing body.
         EmirOp::Branch {
             then_body,
             else_body,
             ..
         } => contains_call_self(then_body) || contains_call_self(else_body),
-        EmirOp::CallFrame { body, .. }
-        | EmirOp::ProgramLiteral { body, .. }
+        EmirOp::ProgramLiteral { body, .. }
         | EmirOp::Fold { body, .. }
         | EmirOp::Collect { body, .. } => contains_call_self(body),
         EmirOp::Iterate { body, stop, .. } => {

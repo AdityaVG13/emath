@@ -18,9 +18,12 @@
 //! `language/modules/probability/inference.emath`,
 //! `language/modules/probability/distributions.emath`,
 //! `language/modules/analysis/powers.emath`,
-//! `language/modules/cryptology/modular.emath`, and
-//! `language/modules/exact/quadratic.emath` — the same givens, the
-//! same expectations, executed against emitted code instead of the VM.
+//! `language/modules/cryptology/modular.emath`,
+//! `language/modules/exact/quadratic.emath`,
+//! `language/modules/numerics/bounds.emath`,
+//! `language/modules/geometry/surfaces.emath`, and
+//! `language/modules/mechanics/oscillations.emath` — the same givens,
+//! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
 //! in the driver headers (cross-module bracket rows, i64 ABI limits).
@@ -2162,6 +2165,204 @@ fn emission_conformance_quadratic() {
     assert!(
         diffs.is_empty(),
         "emitted quadratic disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+/// Bounds seam pin: the integer/rational branch join
+/// (`if measured == 0: 0 else: lower_bound / measured`) — the int arm
+/// widens to the ratio carrier exactly as the VM's Int-to-Rat join
+/// does, and the entry carries the declared Rat output.
+const BOUNDS_DRIVER: &str = r#"
+//! Authored pins of numerics/bounds.emath against the emitted crate.
+
+use bounds::frontier_efficiency;
+
+fn rat_ok(got: &Result<(i128, i128), String>, want: (i128, i128)) -> bool {
+    matches!(got, Ok(v) if *v == want)
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <exact>: 3 / 4
+    let got = frontier_efficiency(3, 4);
+    if !rat_ok(&got, (3, 4)) {
+        failures += 1;
+        println!("DIFF exact EMITTED {:?}; VM = 3/4", got);
+    }
+
+    // example <zero_measured>: the int arm joins the Rat divide — 0 / 1
+    let got = frontier_efficiency(3, 0);
+    if !rat_ok(&got, (0, 1)) {
+        failures += 1;
+        println!("DIFF zero_measured EMITTED {:?}; VM = 0/1", got);
+    }
+
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all bounds pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_bounds() {
+    let diffs = run_lane(
+        "language/modules/numerics/bounds.emath",
+        BOUNDS_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted bounds disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+/// Surfaces seam pin: the labeled Float64 tier's mixed exact/float
+/// arithmetic (`hf = hr * 1.0f64`, `result = hf * sum`) — the exact
+/// ratio operand widens through the as-f64 coercion and the float
+/// operand locks the carrier.
+const SURFACES_DRIVER: &str = r#"
+//! Authored pins of geometry/surfaces.emath against the emitted crate.
+
+use std::rc::Rc;
+
+use surfaces::{EmathRecord_Vec3, arc_len_float64};
+
+fn constant_path() -> Rc<dyn Fn(surfaces::emath_rt::ExactRatio) -> Result<EmathRecord_Vec3, String>> {
+    // speed 5 at every sample: (3, 4, 0)/1
+    Rc::new(move |_t| {
+        Ok(EmathRecord_Vec3 { x: (3, 1), y: (4, 1), z: (0, 1) })
+    })
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <constant_speed_sums_exactly>: sqrt(25) = 5, the
+    // trapezoid of a constant over [0, 2] with 4 panels = 10.0
+    let got = arc_len_float64(constant_path(), (0, 1), (2, 1), 4);
+    if !matches!(&got, Ok(v) if *v == 10.0) {
+        failures += 1;
+        println!("DIFF constant_speed_sums_exactly EMITTED {:?}; VM = 10.0", got);
+    }
+
+    // example <offset_range_sums_exactly>: a = 1 != 0: 5*(b-a) = 10.0
+    let got = arc_len_float64(constant_path(), (1, 1), (3, 1), 4);
+    if !matches!(&got, Ok(v) if *v == 10.0) {
+        failures += 1;
+        println!("DIFF offset_range_sums_exactly EMITTED {:?}; VM = 10.0", got);
+    }
+
+    // example <refuses_bad_resolution>: n = 0
+    let got = arc_len_float64(constant_path(), (0, 1), (2, 1), 0);
+    if !matches!(&got, Err(text) if text == "bad_resolution") {
+        failures += 1;
+        println!("DIFF refuses_bad_resolution EMITTED {:?}; VM = bad_resolution", got);
+    }
+
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all surfaces pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_surfaces() {
+    let diffs = run_lane(
+        "language/modules/geometry/surfaces.emath",
+        SURFACES_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted surfaces disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+/// Oscillations seam pin: the generic self-recursion instantiation
+/// (tabulate_at at an `Int -> sequence(Rat)` closure — the CallSelf
+/// result kind mirrors the render's crossing decision) through the
+/// gated A = M^-1 K entry, plus the admission refusals.
+const OSCILLATIONS_DRIVER: &str = r#"
+//! Authored pins of mechanics/oscillations.emath against the emitted crate.
+
+use oscillations::osc_mik_gated;
+
+type Rat = (i128, i128);
+type Matrix = Vec<Vec<Rat>>;
+
+fn mat(rows: &[[[i128; 2]; 2]]) -> Matrix {
+    rows.iter()
+        .map(|row| row.iter().map(|[n, d]| (*n, *d)).collect())
+        .collect()
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <adsrm_gate_passes>: M = I, A is K itself.
+    let got = osc_mik_gated(
+        mat(&[[[1, 1], [0, 1]], [[0, 1], [1, 1]]]),
+        mat(&[[[2, 1], [-1, 1]], [[-1, 1], [2, 1]]]),
+    );
+    let want = mat(&[[[2, 1], [-1, 1]], [[-1, 1], [2, 1]]]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF adsrm_gate_passes EMITTED {:?}; VM = [[2/1, -1/1], [-1/1, 2/1]]", got);
+    }
+
+    // example <refuses_bad_mass>: singular mass [[1, 2], [2, 4]]/1.
+    let got = osc_mik_gated(
+        mat(&[[[1, 1], [2, 1]], [[2, 1], [4, 1]]]),
+        mat(&[[[2, 1], [-1, 1]], [[-1, 1], [2, 1]]]),
+    );
+    if !matches!(&got, Err(text) if text == "bad_mass") {
+        failures += 1;
+        println!("DIFF refuses_bad_mass EMITTED {:?}; VM = bad_mass", got);
+    }
+
+    // example <refuses_bad_matrix>: ragged stiffness.
+    let got = osc_mik_gated(
+        mat(&[[[1, 1], [0, 1]], [[0, 1], [1, 1]]]),
+        vec![vec![(2, 1), (-1, 1)]],
+    );
+    if !matches!(&got, Err(text) if text == "bad_matrix") {
+        failures += 1;
+        println!("DIFF refuses_bad_matrix EMITTED {:?}; VM = bad_matrix", got);
+    }
+
+    // example <refuses_not_symmetric>: [[2, 1], [0, 2]].
+    let got = osc_mik_gated(
+        mat(&[[[1, 1], [0, 1]], [[0, 1], [1, 1]]]),
+        mat(&[[[2, 1], [1, 1]], [[0, 1], [2, 1]]]),
+    );
+    if !matches!(&got, Err(text) if text == "not_symmetric") {
+        failures += 1;
+        println!("DIFF refuses_not_symmetric EMITTED {:?}; VM = not_symmetric", got);
+    }
+
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all oscillations pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_oscillations() {
+    let diffs = run_lane(
+        "language/modules/mechanics/oscillations.emath",
+        OSCILLATIONS_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted oscillations disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

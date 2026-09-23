@@ -244,17 +244,37 @@ pub(super) fn authored_control_expr(
             let then_kind = arm_kind(then_body);
             let else_kind = arm_kind(else_body);
             let exact_join = then_kind == ValueKind::ExactInt || else_kind == ValueKind::ExactInt;
+            // A rational arm absorbs an integer arm (`if k == 0: 0
+            // else: a / b`): the integer side widens through the same
+            // `numeric_boundary_value` the call boundaries use, so
+            // both arms render the `(i128, i128)` ratio carrier.
+            let rational_join = (then_kind == ValueKind::Rational
+                && matches!(else_kind, ValueKind::I64 | ValueKind::ExactInt))
+                || (else_kind == ValueKind::Rational
+                    && matches!(then_kind, ValueKind::I64 | ValueKind::ExactInt));
             let then_text = nested(then_body, argument_kinds.clone())?;
             let else_text = nested(else_body, argument_kinds)?;
+            let widen = |text: String, kind: &ValueKind| -> String {
+                if rational_join && matches!(kind, ValueKind::I64 | ValueKind::ExactInt) {
+                    if let Some(converted) = super::numeric_boundary_value(
+                        &Expr::Raw(text.clone()),
+                        kind,
+                        &ValueKind::Rational,
+                    ) {
+                        return render_expr(&converted);
+                    }
+                }
+                text
+            };
             let then_body = if exact_join && then_kind == ValueKind::I64 {
                 format!("emath_rt::ExactInt::from(({then_text}))")
             } else {
-                then_text
+                widen(then_text, &then_kind)
             };
             let else_body = if exact_join && else_kind == ValueKind::I64 {
                 format!("emath_rt::ExactInt::from(({else_text}))")
             } else {
-                else_text
+                widen(else_text, &else_kind)
             };
             format!(
                 "{{ {} if {} {{ {then_body} }} else {{ {else_body} }} }}",

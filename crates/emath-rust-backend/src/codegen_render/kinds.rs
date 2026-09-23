@@ -249,6 +249,17 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
             return declared_kind;
         }
     }
+    // An Int actual into a Rat-declared parameter widens to the
+    // declared ratio carrier (the VM's Int-to-Rat admission,
+    // `sum_rs_at(xs, 0, 0)` with `acc: Rat`): the body's arithmetic
+    // and its recursive calls carry Rat registers, so the frame's
+    // carrier is the declared one and the caller's actual crosses at
+    // the binding.
+    if matches!(kind, ValueKind::I64 | ValueKind::ExactInt)
+        && ValueKind::from_signature(signature) == ValueKind::Rational
+    {
+        return ValueKind::Rational;
+    }
     kind
 }
 
@@ -357,8 +368,41 @@ pub(super) fn value_kinds(
 ) -> Vec<ValueKind> {
     let n = program.ops.len();
     let mut kinds = vec![ValueKind::Other; n];
+    // A body containing a self-recursive call resolves those sites
+    // from the body's own instantiated kind: the authored output is a
+    // template over generic inputs (tabulate_at's `sequence(Rat)` at
+    // an `Int -> sequence(Rat)` closure instantiation), wrong at
+    // every non-declared instantiation. The provisional walk treats
+    // the self-call as `Other` (join-neutral), so the body's kind
+    // comes from everything else; a degenerate provisional (an
+    // empty-literal tail) keeps the declared-carrier policy.
+    let has_call_self = program
+        .ops
+        .iter()
+        .any(|(op, _)| matches!(op, EmirOp::CallSelf { .. }));
+    let mut resolved: Option<ValueKind> = None;
+    if has_call_self {
+        let mut provisional = vec![ValueKind::Other; n];
+        for (i, (op, _)) in program.ops.iter().enumerate() {
+            provisional[i] = kind_of_op(
+                op,
+                &provisional,
+                names,
+                states,
+                input_kinds,
+                Some(&ValueKind::Other),
+            );
+        }
+        let body = provisional
+            .get(program.result.0 as usize)
+            .cloned()
+            .unwrap_or(ValueKind::Other);
+        if !kind_is_degenerate(&body) {
+            resolved = Some(body);
+        }
+    }
     for (i, (op, _)) in program.ops.iter().enumerate() {
-        kinds[i] = kind_of_op(op, &kinds, names, states, input_kinds);
+        kinds[i] = kind_of_op(op, &kinds, names, states, input_kinds, resolved.as_ref());
     }
     kinds
 }
@@ -406,6 +450,7 @@ pub(super) fn kind_of_op(
     names: &[String],
     states: &[String],
     input_kinds: &InputKinds,
+    call_self_kind: Option<&ValueKind>,
 ) -> ValueKind {
     match op {
         EmirOp::ConstI64(_)
@@ -462,6 +507,18 @@ pub(super) fn kind_of_op(
             // layout carrier.
             if kind_at(kinds, *record) == ValueKind::Node {
                 return ValueKind::Node;
+            }
+            // The authored `p.length` sugar: a `length` projection
+            // off a sequence-shaped receiver (the path lowering
+            // emits RecordField for it) is the storage length - the
+            // same Int the `length(x)` builtin computes.
+            if field == "length"
+                && matches!(
+                    kind_at(kinds, *record),
+                    ValueKind::Vector(_) | ValueKind::Matrix(_) | ValueKind::Tensor
+                )
+            {
+                return ValueKind::I64;
             }
             // A part projection off the Rational carrier carries the
             // exact-integer parts (`CValue::Rat { num, den }`); the
@@ -586,15 +643,42 @@ pub(super) fn kind_of_op(
             }
             ValueKind::Other
         }
-        // A self-recursive call's kind is the enclosing function's
-        // authored output; the first-argument fallback only serves
-        // the recur lane, whose result carrier is not declared here.
+        // A self-recursive call returns the enclosing function's OWN
+        // result, and the register's kind must mirror the render's
+        // crossing decision exactly: when the declared output and
+        // the body's instantiated carrier differ and a numeric
+        // boundary exists between them, the render crosses the call
+        // to the declared lane (`ExactInt::from` / E-INT-002), so the
+        // register carries the declared kind; when no boundary exists
+        // (a generic instantiation like tabulate_at's
+        // `sequence(Rat)` at an `Int -> sequence(Rat)` closure), the
+        // render emits the body's carrier raw and the register
+        // carries the body kind. Degenerate bodies keep the declared
+        // carrier; the first-argument fallback only serves the recur
+        // lane, whose result carrier is not declared here.
         EmirOp::CallSelf { inputs, result } => {
-            if !result.is_empty() {
-                let declared = ValueKind::from_signature(result);
-                if !matches!(declared, ValueKind::Other) {
-                    return declared;
+            let declared = if result.is_empty() {
+                ValueKind::Other
+            } else {
+                ValueKind::from_signature(result)
+            };
+            if let Some(body_kind) = call_self_kind {
+                if !matches!(body_kind, ValueKind::Other) {
+                    if !matches!(declared, ValueKind::Other)
+                        && numeric_boundary_value(
+                            &Expr::Raw(String::new()),
+                            body_kind,
+                            &declared,
+                        )
+                        .is_some()
+                    {
+                        return declared;
+                    }
+                    return body_kind.clone();
                 }
+            }
+            if !matches!(declared, ValueKind::Other) {
+                return declared;
             }
             inputs
                 .first()
@@ -711,7 +795,7 @@ pub(super) fn kind_of_op(
             } else if left == right {
                 left
             } else if matches!(
-                (left, right),
+                (&left, &right),
                 (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt)
             ) {
                 // One representation: an exact-int arm absorbs an i64
@@ -719,6 +803,17 @@ pub(super) fn kind_of_op(
                 // `ExactInt::from`); a declared Int context narrows
                 // back at the checked i64 boundary (`coerce_to_ty`).
                 ValueKind::ExactInt
+            } else if matches!(
+                (&left, &right),
+                (ValueKind::Rational, ValueKind::I64 | ValueKind::ExactInt)
+                    | (ValueKind::I64 | ValueKind::ExactInt, ValueKind::Rational)
+            ) {
+                // One representation: a rational arm absorbs an
+                // integer arm (`if k == 0: 0 else: a / b` joins to
+                // Rat exactly as the VM's Int-to-Rat widening does);
+                // the render widens the integer side through the same
+                // `numeric_boundary_value` the call boundaries use.
+                ValueKind::Rational
             } else {
                 ValueKind::Other
             }
@@ -1199,8 +1294,6 @@ pub(super) fn cmp_expr(
             right: Box::new(as_f64(operand(program, right))),
         },
         _ => {
-            let left = operand(program, left);
-            let right = operand(program, right);
             if matches!(
                 &lk,
                 ValueKind::I64
@@ -1218,8 +1311,8 @@ pub(super) fn cmp_expr(
             ) {
                 Expr::Bin {
                     op,
-                    left: Box::new(left),
-                    right: Box::new(right),
+                    left: Box::new(operand(program, left)),
+                    right: Box::new(operand(program, right)),
                 }
             } else {
                 // Non-copy carriers compare through a common view: the
@@ -1228,15 +1321,20 @@ pub(super) fn cmp_expr(
                 // (`Vec<f64>`), and `&T == T` has no `PartialEq` impl.
                 // Both sides project to the same slice/str view, which
                 // compares elementwise exactly like the interp's carrier
-                // comparison.
-                let view = |kind: &ValueKind, expr: Expr| {
-                    let rendered = render_expr(&expr);
+                // comparison. Every remaining non-copy carrier (records,
+                // closures, payloads) compares through exactly ONE
+                // reference layer: a borrowed register (the non-copy load
+                // lane) already renders as one, so the `&` is added only
+                // for owned operand expressions.
+                let view = |kind: &ValueKind, value: EmirValue| {
+                    let rendered = render_expr(&operand(program, value));
                     match kind {
                         ValueKind::Text => format!("({rendered}).as_str()"),
                         ValueKind::Tensor => format!("({rendered}).data.as_slice()"),
                         ValueKind::Vector(_) | ValueKind::Matrix(_) => {
                             format!("({rendered}).as_slice()")
                         }
+                        _ if super::rtcalls::borrowed_register(program, value, kinds) => rendered,
                         _ => format!("&({rendered})"),
                     }
                 };

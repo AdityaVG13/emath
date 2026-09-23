@@ -255,11 +255,13 @@ pub(crate) fn op_expr(
             // same context - exactly the kind the `__self` /
             // `__frame_self` wrapper emits), while this call site's
             // kind inference reads the authored output signature (the
-            // i64 lane for an `Int` result). The two disagree exactly
-            // when the body joins machine-op results (ExactInt), so
-            // the call site crosses with the same checked boundary as
-            // call arguments: E-INT-002 by name, never a silent
-            // narrowing, and an exact widening the other way.
+            // i64 lane for an `Int` result, the element it names for
+            // a sequence). The two disagree exactly when the body
+            // joins machine-op results (ExactInt), so the call result
+            // crosses through the shared numeric boundary - the same
+            // law as call arguments: E-INT-002 by name on narrowing,
+            // exact widening the other way, and sequence elements
+            // obey the same check element-wise.
             let callee_kind = program_kind(program, names, states, input_kinds);
             let declared =
                 if result.is_empty() { ValueKind::Other } else { ValueKind::from_signature(result) };
@@ -270,16 +272,10 @@ pub(crate) fn op_expr(
                     .first()
                     .map_or(ValueKind::I64, |value| kind_at(kinds, *value))
             };
-            let call = format!("__self({args})?");
-            let crossed = match (site_kind, callee_kind) {
-                (ValueKind::I64, ValueKind::ExactInt) => format!(
-                    "({call}).to_i64().ok_or_else(|| String::from(\"E-INT-002: exact integer result exceeds the i64 lane\"))?"
-                ),
-                (ValueKind::ExactInt, ValueKind::I64) => {
-                    format!("emath_rt::ExactInt::from({call})")
-                }
-                _ => call,
-            };
+            let call = Expr::Raw(format!("__self({args})?"));
+            let crossed = numeric_boundary_value(&call, &callee_kind, &site_kind)
+                .map(|converted| render_expr(&converted))
+                .unwrap_or_else(|| render_expr(&call));
             Ok(Expr::Raw(crossed))
         }
         EmirOp::SameDenseShape(..)
@@ -343,6 +339,25 @@ pub(crate) fn op_expr(
                 let record_code = render_expr(&operand(program, *record));
                 return Ok(Expr::Raw(format!("({record_code}).field({field:?})?")));
             }
+            // The authored `p.length` sugar: a `length` projection
+            // off a sequence-shaped receiver is the storage length,
+            // the same Int the `length(x)` builtin computes (the
+            // reference VM resolves it dynamically over CValue
+            // sequences); the storage lane mirrors VectorLength's.
+            if field == "length"
+                && matches!(
+                    kind_at(kinds, *record),
+                    ValueKind::Vector(_) | ValueKind::Matrix(_) | ValueKind::Tensor
+                )
+            {
+                let value_code = render_expr(&operand(program, *record));
+                let storage = match kind_at(kinds, *record) {
+                    ValueKind::Matrix(_) => format!("({value_code}).as_slice()"),
+                    ValueKind::Tensor => format!("({value_code}).data"),
+                    _ => value_code,
+                };
+                return Ok(Expr::Raw(format!("({storage}.len() as i64)")));
+            }
             // A part projection off the Rational carrier reads the
             // `(i128, i128)` tuple (`numer` = `.0`, `denom` = `.1`) and
             // widens to the exact-integer carrier, mirroring the VM's
@@ -367,7 +382,7 @@ pub(crate) fn op_expr(
                 receiver: Box::new(operand(program, *record)),
                 field: escape_ident(field),
             };
-            if kind_of_op(op, kinds, names, states, input_kinds).is_copy() {
+            if kind_of_op(op, kinds, names, states, input_kinds, None).is_copy() {
                 Ok(value)
             } else {
                 Ok(Expr::Raw(format!("&{}", render_expr(&value))))
@@ -1470,7 +1485,6 @@ fn literal_frame_expr(
             frame_kinds.insert(name.clone(), kind);
             continue;
         }
-        let borrow = if kind.is_copy() { "" } else { "&" };
         // A node value whose frame kind resolved to the declared Code
         // carrier (the view's args/children wrap codes as Code nodes)
         // crosses through the shared bridge: unwrap or rebuild, never
@@ -1483,6 +1497,19 @@ fn literal_frame_expr(
             frame_kinds.insert(name.clone(), kind);
             continue;
         }
+        // A widened frame input (an Int actual into a Rat-declared
+        // parameter) crosses through the same checked boundary the
+        // call sites use; the binding owns the converted carrier.
+        let actual = kind_at(kinds, *value);
+        if actual != kind {
+            if let Some(converted) = numeric_boundary_value(&operand(outer, *value), &actual, &kind)
+            {
+                code.push_str(&format!("let {name} = {}; ", render_expr(&converted)));
+                frame_kinds.insert(name.clone(), kind);
+                continue;
+            }
+        }
+        let borrow = if kind.is_copy() { "" } else { "&" };
         code.push_str(&format!(
             "let {name} = {borrow}{}; ",
             render_expr(&operand(outer, *value))
@@ -1534,17 +1561,28 @@ fn literal_frame_expr(
             }
         }
         let result_kind = program_kind(body, &names, &states, &frame_kinds);
-        let result_ty = match result_kind.rust_ty() {
-            Ok(ty) => crate::rust_ir::render::render_ty(&ty),
-            Err(_) => "impl core::fmt::Debug".to_string(),
+        let result_ty = if result_kind == ValueKind::Never {
+            // A frame whose every path refuses never produces a value
+            // (the Rust never type is experimental): the unit carrier
+            // names the unreachable result, and the body diverges.
+            "()".to_string()
+        } else {
+            match result_kind.rust_ty() {
+                Ok(ty) => crate::rust_ir::render::render_ty(&ty),
+                Err(_) => "impl core::fmt::Debug".to_string(),
+            }
         };
         let mut body_code = render_expr(&value_expr(body, &names, &states, &frame_kinds)?)
             .replace("__self(", "__frame_self(");
         // A frame tail that resolves to a borrowed register (a
         // LoadInput binding) must return the owned carrier the
         // recursive fn's signature promises; `owned_value` handles
-        // both owned and borrowed register shapes.
-        if !result_kind.is_copy() && !matches!(result_kind, ValueKind::Closure { .. }) {
+        // both owned and borrowed register shapes. A pure-refusal
+        // tail has no value to own - it diverges.
+        if !result_kind.is_copy()
+            && result_kind != ValueKind::Never
+            && !matches!(result_kind, ValueKind::Closure { .. })
+        {
             body_code = render_expr(&owned_value(Expr::Raw(body_code), &result_kind));
         }
         code.push_str(&format!(

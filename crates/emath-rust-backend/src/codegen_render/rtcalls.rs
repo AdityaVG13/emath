@@ -44,19 +44,50 @@ pub(super) fn borrowed_value(value: Expr, kind: &ValueKind) -> Expr {
 
 /// True when a register's defining op renders as a borrowed
 /// expression: the non-copy load lane (LoadInput/LoadState) renders
-/// `{ let __borrow: &T = ..; __borrow }`, both bound to a register
-/// token and inlined at a single use. Consumers filling a `&T`
-/// method-argument slot must not add another reference layer on top.
+/// `{ let __borrow: &T = ..; __borrow }`, a generic record
+/// projection (RecordField's fallback arm) borrows its non-copy
+/// field result, and a checked sequence index of a non-copy element
+/// (or a matrix row) keeps the `Option::get` reference - all bound
+/// to a register token and inlined at a single use. (The Node,
+/// Rational-part, and sequence-`length` projection arms render owned
+/// values; index lanes that `.cloned()`/`.copied()` render owned
+/// values.) Consumers filling a `&T` method-argument slot must not
+/// add another reference layer on top.
 pub(super) fn borrowed_register(
     program: &EmirProgram,
     value: EmirValue,
     kinds: &[ValueKind],
 ) -> bool {
-    !kind_at(kinds, value).is_copy()
-        && matches!(
-            program.ops.get(value.0 as usize).map(|(op, _)| op),
-            Some(EmirOp::LoadInput(_) | EmirOp::LoadState(_))
-        )
+    if kind_at(kinds, value).is_copy() {
+        return false;
+    }
+    match program.ops.get(value.0 as usize).map(|(op, _)| op) {
+        Some(EmirOp::LoadInput(_) | EmirOp::LoadState(_)) => true,
+        Some(EmirOp::RecordField { record, field }) => {
+            let receiver = kind_at(kinds, *record);
+            !(receiver == ValueKind::Node
+                || receiver == ValueKind::Rational
+                || (field == "length"
+                    && matches!(
+                        receiver,
+                        ValueKind::Vector(_) | ValueKind::Matrix(_) | ValueKind::Tensor
+                    )))
+        }
+        Some(EmirOp::VectorIndex { vector, .. }) => {
+            // Mirror the render's materialize lane exactly: an
+            // ExactInt element and copy elements clone out of the
+            // `Option` (owned results); non-copy elements and matrix
+            // rows keep the `Option::get` reference.
+            match kind_at(kinds, *vector) {
+                ValueKind::Vector(element) => {
+                    *element != ValueKind::ExactInt && !element.is_copy()
+                }
+                ValueKind::Matrix(_) => true,
+                _ => false,
+            }
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn operand_ref(program: &EmirProgram, value: EmirValue) -> Expr {
@@ -311,6 +342,21 @@ pub(super) fn exact_int_call_expr(
             .map(|arg| render_expr(&exact_int_operand(program, *arg, kinds)))
             .ok_or_else(|| BackendError::UnsupportedType(format!("{name} argument count")))
     };
+    // A `&ExactInt` method-argument slot: a borrowed register (the
+    // non-copy load lane, a borrowed record projection) already
+    // renders as exactly one reference layer, so the `&` is added
+    // only for owned operand expressions.
+    let as_int_ref = |index: usize| -> Result<String, BackendError> {
+        let arg = args
+            .get(index)
+            .ok_or_else(|| BackendError::UnsupportedType(format!("{name} argument count")))?;
+        let rendered = render_expr(&exact_int_operand(program, *arg, kinds));
+        Ok(if borrowed_register(program, *arg, kinds) {
+            rendered
+        } else {
+            format!("&{rendered}")
+        })
+    };
     let as_seq = |index: usize| -> Result<String, BackendError> {
         let arg = args
             .get(index)
@@ -326,31 +372,35 @@ pub(super) fn exact_int_call_expr(
         })
     };
     let code = match name {
-        "int_quot" => format!("{}.quot(&{}).map_err(|err| err.to_string())", as_int(0)?, as_int(1)?),
-        "int_rem" => format!(
-            "{}.rem_euclid(&{}).map_err(|err| err.to_string())",
+        "int_quot" => format!(
+            "{}.quot({}).map_err(|err| err.to_string())",
             as_int(0)?,
-            as_int(1)?
+            as_int_ref(1)?
+        ),
+        "int_rem" => format!(
+            "{}.rem_euclid({}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int_ref(1)?
         ),
         "int_root" => format!(
-            "{}.floor_root(&{}).map_err(|err| err.to_string())",
+            "{}.floor_root({}).map_err(|err| err.to_string())",
             as_int(0)?,
-            as_int(1)?
+            as_int_ref(1)?
         ),
         "int_gcd" => format!(
-            "emath_rt::ExactInt::gcd(&{}, &{}).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int(1)?
+            "emath_rt::ExactInt::gcd({}, {}).map_err(|err| err.to_string())",
+            as_int_ref(0)?,
+            as_int_ref(1)?
         ),
         "int_egcd" => format!(
-            "emath_rt::ExactInt::egcd(&{}, &{}).map(|(g, s, t)| vec![g, s, t]).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int(1)?
+            "emath_rt::ExactInt::egcd({}, {}).map(|(g, s, t)| vec![g, s, t]).map_err(|err| err.to_string())",
+            as_int_ref(0)?,
+            as_int_ref(1)?
         ),
         "int_binom" => format!(
-            "{}.binomial(&{}).map_err(|err| err.to_string())",
+            "{}.binomial({}).map_err(|err| err.to_string())",
             as_int(0)?,
-            as_int(1)?
+            as_int_ref(1)?
         ),
         "int_fact" => format!("{}.factorial().map_err(|err| err.to_string())", as_int(0)?),
         "int_double_fact" => format!(
@@ -359,22 +409,26 @@ pub(super) fn exact_int_call_expr(
         ),
         "int_totient" => format!("{}.totient().map_err(|err| err.to_string())", as_int(0)?),
         "int_rising" => format!(
-            "{}.rising(&{}).map_err(|err| err.to_string())",
+            "{}.rising({}).map_err(|err| err.to_string())",
             as_int(0)?,
-            as_int(1)?
+            as_int_ref(1)?
         ),
         "int_falling" => format!(
-            "{}.falling(&{}).map_err(|err| err.to_string())",
+            "{}.falling({}).map_err(|err| err.to_string())",
             as_int(0)?,
-            as_int(1)?
+            as_int_ref(1)?
         ),
         "int_powmod" => format!(
-            "{}.pow_mod(&{}, &{}).map_err(|err| err.to_string())",
+            "{}.pow_mod({}, {}).map_err(|err| err.to_string())",
             as_int(0)?,
-            as_int(1)?,
-            as_int(2)?
+            as_int_ref(1)?,
+            as_int_ref(2)?
         ),
-        "int_pow" => format!("{}.pow(&{}).map_err(|err| err.to_string())", as_int(0)?, as_int(1)?),
+        "int_pow" => format!(
+            "{}.pow({}).map_err(|err| err.to_string())",
+            as_int(0)?,
+            as_int_ref(1)?
+        ),
         "int_sum" => format!(
             "emath_rt::exact_int_sum(&{}).map_err(|err| err.to_string())",
             as_seq(0)?
@@ -384,14 +438,14 @@ pub(super) fn exact_int_call_expr(
             as_seq(0)?
         ),
         "int_sum_from" => format!(
-            "emath_rt::exact_int_sum_from(&{}, &{}).map_err(|err| err.to_string())",
+            "emath_rt::exact_int_sum_from(&{}, {}).map_err(|err| err.to_string())",
             as_seq(0)?,
-            as_int(1)?
+            as_int_ref(1)?
         ),
         "int_prod_from" => format!(
-            "emath_rt::exact_int_prod_from(&{}, &{}).map_err(|err| err.to_string())",
+            "emath_rt::exact_int_prod_from(&{}, {}).map_err(|err| err.to_string())",
             as_seq(0)?,
-            as_int(1)?
+            as_int_ref(1)?
         ),
         "int_hamming" => format!(
             "emath_rt::exact_int_hamming(&{}, &{}).map_err(|err| err.to_string())",
@@ -399,17 +453,17 @@ pub(super) fn exact_int_call_expr(
             as_seq(1)?
         ),
         "int_weighted_prod" => format!(
-            "emath_rt::exact_int_weighted_prod(&{}, &{}, &{}, &{}).map_err(|err| err.to_string())",
+            "emath_rt::exact_int_weighted_prod(&{}, &{}, {}, {}).map_err(|err| err.to_string())",
             as_seq(0)?,
             as_seq(1)?,
-            as_int(2)?,
-            as_int(3)?
+            as_int_ref(2)?,
+            as_int_ref(3)?
         ),
         "int_poly_eval" => format!(
-            "emath_rt::exact_int_poly_eval(&{}, &{}, &{}).map_err(|err| err.to_string())",
+            "emath_rt::exact_int_poly_eval(&{}, {}, {}).map_err(|err| err.to_string())",
             as_seq(0)?,
-            as_int(1)?,
-            as_int(2)?
+            as_int_ref(1)?,
+            as_int_ref(2)?
         ),
         other => {
             return Err(BackendError::UnsupportedType(format!(

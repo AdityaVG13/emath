@@ -127,6 +127,72 @@ pub(super) fn op_arith_exprs(
                 value
             });
         }
+        // Mixed Rational/Float64 (and Int/Float64) arithmetic - the
+        // labeled Float64 tier (`hr * 1.0f64`): the exact operand
+        // widens through the same as-f64 coercion the VM's
+        // Rat-to-Float / Int-to-Float join uses (`numerator as f64 /
+        // denominator as f64`, the ratio carrier is normalized so the
+        // denominator is positive); the float operand locks the
+        // carrier and the result stays F64.
+        let float_of = |value: EmirValue| -> Option<Expr> {
+            match kind_at(kinds, value) {
+                ValueKind::F64 => Some(operand(program, value)),
+                ValueKind::I64 => Some(Expr::Raw(format!(
+                    "(({}) as f64)",
+                    render_expr(&operand(program, value))
+                ))),
+                ValueKind::Rational => {
+                    let ratio = render_expr(&operand(program, value));
+                    Some(Expr::Raw(format!(
+                        "(((({ratio}).0) as f64) / ((({ratio}).1) as f64))"
+                    )))
+                }
+                _ => None,
+            }
+        };
+        let float_symbol = match function {
+            "ratio_add" => Some('+'),
+            "ratio_sub" => Some('-'),
+            "ratio_mul" => Some('*'),
+            "ratio_div" => Some('/'),
+            _ => None,
+        };
+        if let (Some(left_f64), Some(right_f64)) = (float_of(left), float_of(right)) {
+            let left_kind = kind_at(kinds, left);
+            let right_kind = kind_at(kinds, right);
+            // Exactly one float operand and one exact operand: the
+            // mixed pair meets on the float carrier. Pure int/int,
+            // rat/rat, and float/float pairs take their own lanes.
+            let mixed_float = (left_kind == ValueKind::F64
+                && matches!(right_kind, ValueKind::Rational | ValueKind::I64))
+                || (right_kind == ValueKind::F64
+                    && matches!(left_kind, ValueKind::Rational | ValueKind::I64));
+            if mixed_float {
+                if let Some(symbol) = float_symbol {
+                    return Ok(Expr::Raw(format!(
+                        "({} {} {})",
+                        render_expr(&left_f64),
+                        symbol,
+                        render_expr(&right_f64)
+                    )));
+                }
+                if function == "ratio_lt" {
+                    let value = Expr::Raw(format!(
+                        "({} < {})",
+                        render_expr(&left_f64),
+                        render_expr(&right_f64)
+                    ));
+                    return Ok(if negate {
+                        Expr::Un {
+                            op: UnOp::Not,
+                            value: Box::new(value),
+                        }
+                    } else {
+                        value
+                    });
+                }
+            }
+        }
         // Mixed Int/Rational arithmetic (the residualized
         // expression-template lane hits this: `x * c + 1/2` with Int
         // inputs): the VM's `as_rat` law - the Int operand widens

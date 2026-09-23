@@ -21,15 +21,59 @@ that lane. Int-to-Rat widens exactly, with `E-RAT-002` when a wide part cannot
 fit the native i128 pair. Inferred-wide sibling frames and results stay wide;
 there is no blanket narrowing of the arbitrary-precision VM carrier.
 
+The same boundary laws govern the kind inference, so a register's kind always
+predicts the rendered Rust type:
+
+- A self-recursive call's register kind mirrors the render's crossing decision:
+  when a numeric boundary exists between the body's instantiated carrier and
+  the authored output, the render crosses to the declared lane and the register
+  carries the declared kind; when no boundary exists (a generic instantiation
+  such as `tabulate_at`'s `sequence(Rat)` at an `Int -> sequence(Rat)`
+  closure), the render emits the body's carrier raw and the register carries
+  the body kind. A degenerate provisional body (an empty-literal tail) keeps
+  the declared carrier.
+- A frame input whose actual is an `Int`/`ExactInt` value and whose declared
+  parameter is `Rat` widens to the declared ratio carrier (`sum_rs_at(xs, 0,
+  0)` with `acc: Rat`, `rat_pow(4, m)` with `p: Rat`); the binding crosses
+  through the shared numeric boundary. Non-widenable actuals keep the actual
+  carrier (generic templates instantiate at the call site's kind).
+- Branch arms join before rendering: a rational arm absorbs an integer arm
+  (`if k == 0: 0 else: a / b`) with the integer side widened at the render,
+  exactly as an exact-int arm absorbs an i64 arm; the VM's Int-to-Rat join is
+  the law.
+- Mixed exact/float arithmetic (`hr * 1.0f64`, the labeled Float64 tier) meets
+  on the float carrier when exactly one operand is `Float64` and the other is
+  `Int`/`ExactInt`/`Rat`: the exact operand widens through the as-f64 coercion
+  (`numerator as f64 / denominator as f64`, the ratio carrier is normalized).
+  Pure int/int, rat/rat, and float/float pairs keep their own lanes.
+
 Authored lists join Int/ExactInt/Rat representations before construction or cons.
 Concatenation borrows each input once, sums lengths without cloning, allocates
 one output vector, and copies/converts each element once. Mixed borrowed/owned
 ExactInt comparisons and exact arithmetic (`add`/`sub`/`mul`/`cmp`) pass the
 right operand by reference without cloning: a borrowed register (the non-copy
-load lane) already renders exactly one reference layer, so consumers add `&`
-only for owned operand expressions.
+load lane, a generic record projection, or a checked sequence index of a
+non-copy element - the render's `Option::get` reference) already renders
+exactly one reference layer, so consumers add `&` only for owned operand
+expressions. Index lanes that `.cloned()`/`.copied()` (an `ExactInt` element,
+copy elements) render owned values and take the `&`.
 `tests/emath-rust-backend/tests/numeric_boundaries.rs` compiles and executes the
 generated fixture, including named overflow refusals and wide-frame preservation.
+
+## Authored sugar and refusal carriers
+
+- Sequence `length` sugar: authored `p.length` over a `Vector`/`Matrix`/`Tensor`
+  receiver lowers as a record-field projection whose kind is `Int` and whose
+  render is the storage length (`Vec::len`, the matrix row slice, the tensor
+  data) - never a Rust field access on a sequence carrier.
+- A body whose every path refuses (the `cycle_gate` shape) never produces a
+  value: entries emit the DECLARED output carrier as the result type (the
+  unit carrier when nothing is declared) and diverge through the refusal
+  returns; frames emit the unit carrier. The experimental Rust never type is
+  never emitted. `contains_call_self` stops at `CallFrame` edges - a frame
+  renders self-contained with its own `__frame_self`, so a nested sibling's
+  self-recursion never forces a wrapper (or a unit result type) on the
+  enclosing body.
 
 ## Rendering cost
 
