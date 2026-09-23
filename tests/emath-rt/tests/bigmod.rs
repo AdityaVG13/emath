@@ -1,14 +1,14 @@
 #![forbid(unsafe_code)]
 //! Stage-2 big-modular kernels (emath-t63iz): `UBig` primitives and the
-//! six widened number-theory builtins at |F| < 2^256.
+//! widened builtins at |F| < 2^256.
 
 use emath_rt::{
-    UBig, big_int_rem_checked, big_int_rem_i64_checked, big_mod_inv_checked,
-    big_poly_eval_mod_checked, big_pow_mod_checked, big_rs_encode_checked, big_sqrt_mod_checked,
+    UBig, big_int_rem_checked, big_int_rem_i64_checked,
+    big_poly_eval_mod_checked, big_pow_mod_checked, big_rs_encode_checked,
 };
 use emath_test_harness::Probe;
 
-/// The Curve25519 prime 2^255 - 19 (p ≡ 1 mod 4 → the full Tonelli-Shanks path).
+/// The Curve25519 prime 2^255 - 19.
 const P25519: &str =
     "57896044618658097711785492504343953926634992332820282019728792003956564819949";
 
@@ -82,44 +82,6 @@ fn bigmod_kernels() {
             big_pow_mod_checked(&UBig::from_u64(3), &m1, &prime).expect("pow"),
             UBig::one(),
         );
-    });
-    p.case("inv", |p| {
-        let inv = big_mod_inv_checked(&UBig::from_u64(3), &prime).expect("inverse");
-        p.eq("round-trip", emath_rt::UBig::mul_mod(&UBig::from_u64(3), &inv, &prime), UBig::one());
-        let m2 = prime.sub(&UBig::from_u64(2));
-        p.eq(
-            "fermat-agree",
-            inv.clone(),
-            big_pow_mod_checked(&UBig::from_u64(3), &m2, &prime).expect("pow"),
-        );
-        p.demand(
-            "non-coprime",
-            big_mod_inv_checked(&UBig::from_u64(6), &UBig::from_u64(9)).is_err(),
-            "gcd(6,9)=3 must refuse",
-        );
-    });
-    p.case("sqrt", |p| {
-        p.eq(
-            "small",
-            big_sqrt_mod_checked(&UBig::from_u64(4), &prime).expect("sqrt"),
-            UBig::from_u64(2),
-        );
-        let r = prime.sub(&UBig::one()).div_u64(2);
-        let square = emath_rt::UBig::mul_mod(&r.clone(), &r, &prime);
-        let root = big_sqrt_mod_checked(&square, &prime).expect("constructed square");
-        p.demand(
-            "tie-break",
-            root.cmp(&prime.sub(&root)) != std::cmp::Ordering::Greater,
-            "must return min(r,p-r)",
-        );
-        p.eq("square-round-trip", emath_rt::UBig::mul_mod(&root.clone(), &root, &prime), square);
-        let half = prime.sub(&UBig::one()).div_u64(2);
-        p.eq(
-            "euler-symbol",
-            big_pow_mod_checked(&UBig::from_u64(2), &half, &prime).expect("pow").to_decimal(),
-            prime.sub(&UBig::one()).to_decimal(),
-        );
-        p.demand("non-residue", big_sqrt_mod_checked(&UBig::from_u64(2), &prime).is_err(), "2 is a non-residue mod P25519");
     });
     p.case("int-rem", |p| {
         p.eq("neg", big_int_rem_i64_checked(-5, &prime).expect("rem"), prime.sub(&UBig::from_u64(5)));

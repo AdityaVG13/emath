@@ -528,6 +528,10 @@ impl ExactInt {
         Ok(acc)
     }
 
+    /// Modular inverse via the extended Euclidean algorithm. Not a machine
+    /// operation: the only caller is `pow_mod`'s negative-exponent branch;
+    /// user-facing inverses come from the authored `cryptology.modular`
+    /// lane (`mod_inv`).
     pub fn mod_inv(&self, modulus: &Self) -> Result<Self, ExactError> {
         if modulus <= &Self::one() {
             return Ok(Self::zero());
@@ -582,21 +586,6 @@ impl ExactInt {
             }
         }
         Ok(acc)
-    }
-
-    pub fn sqrt_mod(&self, prime: &Self) -> Result<Self, ExactError> {
-        if prime <= &Self::one() {
-            return Ok(Self::zero());
-        }
-        let value = self.rem_euclid(prime)?;
-        let mut trial = Self::zero();
-        while trial.cmp(prime) == Ordering::Less {
-            if trial.mul(&trial)?.rem_euclid(prime)? == value {
-                return Ok(trial);
-            }
-            trial = trial.add(&Self::one())?;
-        }
-        Ok(Self::zero())
     }
 
     pub fn div_rem(&self, other: &Self) -> Result<(Self, Self), ExactError> {

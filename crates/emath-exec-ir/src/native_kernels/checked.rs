@@ -107,30 +107,6 @@ pub const BINDINGS: &[CheckedKernel] = &[
     },
     CheckedKernel {
         native: NativeKernel {
-            kernel_id: "extended-gcd-inverse",
-            signature: "(ExactInt,PositiveExactInt)->ExactInt",
-            arity: 2,
-            handler: super::super::native_kernel::modular_inverse,
-        },
-        rust_function: "mod_inv_checked",
-        rust_result: "i64",
-        borrowed: 0,
-        semantic_hash: "sha256:0b98150fb65bc146aed8f11c49e3343c140efd3c6850ea4f2cbd196d67a0f284",
-    },
-    CheckedKernel {
-        native: NativeKernel {
-            kernel_id: "extended-gcd-inverse",
-            signature: "(ExactInt,PrimeModulus)->ExactInt",
-            arity: 2,
-            handler: super::super::native_kernel::modular_inverse,
-        },
-        rust_function: "mod_inv_checked",
-        rust_result: "i64",
-        borrowed: 0,
-        semantic_hash: "sha256:4063f6e8dc87c739bcac6c756b065ff33fddcedb2cfe3c8901aef56782d6f60d",
-    },
-    CheckedKernel {
-        native: NativeKernel {
             kernel_id: "bounded-product",
             signature: "(Int)->Int",
             arity: 1,
@@ -152,18 +128,6 @@ pub const BINDINGS: &[CheckedKernel] = &[
         rust_result: "i64",
         borrowed: 0,
         semantic_hash: "sha256:033fa3d2ffe3462e7ff28c5e30aee50f0156ce40e24c24ce9314e5ed0ceadda5",
-    },
-    CheckedKernel {
-        native: NativeKernel {
-            kernel_id: "modular-square-root",
-            signature: "(ExactInt,PrimeModulus)->ExactInt",
-            arity: 2,
-            handler: super::super::native_kernel::modular_square_root,
-        },
-        rust_function: "sqrt_mod_checked",
-        rust_result: "i64",
-        borrowed: 0,
-        semantic_hash: "sha256:45f11c89602c8e8831fd37c2d7754926590863ca9907b61d6fd53d2863da8e67",
     },
     CheckedKernel {
         native: NativeKernel {

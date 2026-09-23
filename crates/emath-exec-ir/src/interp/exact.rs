@@ -122,14 +122,6 @@ pub(super) fn eval_exact_int_call(
         "int_fact" => ints(1)?[0].factorial().map_err(fault)?,
         "int_double_fact" => ints(1)?[0].double_factorial().map_err(fault)?,
         "int_totient" => ints(1)?[0].totient().map_err(fault)?,
-        "int_modinv" => {
-            let args = ints(2)?;
-            args[0].mod_inv(&args[1]).map_err(fault)?
-        }
-        "int_sqrt_mod" => {
-            let args = ints(2)?;
-            args[0].sqrt_mod(&args[1]).map_err(fault)?
-        }
         "int_rising" => {
             let args = ints(2)?;
             args[0].rising(&args[1]).map_err(fault)?

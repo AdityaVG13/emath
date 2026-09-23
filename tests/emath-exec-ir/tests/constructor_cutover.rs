@@ -2550,7 +2550,7 @@ emath function apply_twice:
             evaluate_function(
                 &tree,
                 "mod_inv",
-                &BTreeMap::from([("value".into(), int(3)), ("modulus".into(), int(7))]),
+                &BTreeMap::from([("a".into(), int(3)), ("m".into(), int(7))]),
             )
             .unwrap(),
             int(5),

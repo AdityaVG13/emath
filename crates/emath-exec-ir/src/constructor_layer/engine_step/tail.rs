@@ -245,8 +245,6 @@ impl Engine {
                     "int_gcd" => ExactInt::gcd(&left, &right),
                     "int_binom" => left.binomial(&right),
                     "int_pow" => left.pow(&right),
-                    "int_modinv" => left.mod_inv(&right),
-                    "int_sqrt_mod" => left.sqrt_mod(&right),
                     "int_rising" => left.rising(&right),
                     "int_falling" => left.falling(&right),
                     other => {

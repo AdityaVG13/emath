@@ -64,19 +64,6 @@ pub fn factorial_checked(n: i64) -> Result<i64, &'static str> {
     Ok((1..=n).product::<i64>())
 }
 
-/// Multiplicative inverse of `a` modulo `m`; refuses typed when the
-/// modulus is non-positive or no inverse exists.
-pub fn mod_inv_checked(a: i64, m: i64) -> Result<i64, &'static str> {
-    if m <= 0 {
-        return Err("mod_inv: modulus must be positive");
-    }
-    let (g, x, _) = extended_gcd(a.rem_euclid(m), m);
-    if g != 1 {
-        return Err("mod_inv: no inverse exists (gcd != 1)");
-    }
-    Ok(x.rem_euclid(m))
-}
-
 /// Modular exponentiation `base^exp mod m` via square-and-multiply;
 /// refuses typed on `m <= 0` or a negative exponent.
 /// Square-and-multiply over i128 intermediates: with `m <= 2^63` the
@@ -103,103 +90,6 @@ pub fn pow_mod_checked(base: i64, exp: i64, m: i64) -> Result<i64, &'static str>
     Ok(result as i64)
 }
 
-/// Modular square root in F_p via Tonelli-Shanks.
-/// Returns `x` with `x² ≡ a (mod p)` for prime `p`; refuses typed when
-/// `a` is a quadratic non-residue (mirrors `mod_inv`'s refusal style),
-/// `p <= 0`, or `p` is even and > 2. Deterministic tie-break: returns
-/// `min(x, p - x)`. i128 intermediates keep products exact for `p` up
-/// to 2^63.
-pub fn sqrt_mod_checked(a: i64, p: i64) -> Result<i64, &'static str> {
-    if p <= 0 {
-        return Err("sqrt_mod: modulus must be positive");
-    }
-    if p == 2 {
-        return Ok(a.rem_euclid(2));
-    }
-    if p % 2 == 0 {
-        return Err("sqrt_mod: modulus must be an odd prime (2 handled above)");
-    }
-    let modulus: i128 = p as i128;
-    let root_candidate: i128 = (a as i128).rem_euclid(modulus);
-    if root_candidate == 0 {
-        return Ok(0);
-    }
-    // Fast path: p ≡ 3 (mod 4) → x = a^((p+1)/4).
-    let mut x: i128 = if p % 4 == 3 {
-        pow_mod_i128(root_candidate, ((p + 1) / 4) as u64, modulus)
-    } else {
-        // Legendre pre-check (found by the emath-t63iz wide-mod tests):
-        // the Tonelli-Shanks loop below assumes `a` is a residue — for a
-        // non-residue the least-i search reaches i = m and the shift
-        // m - i - 1 underflows. Refuse here; the exactness gate below
-        // still backstops non-prime p.
-        if pow_mod_i128(root_candidate, ((p - 1) / 2) as u64, modulus) != 1 {
-            return Err("sqrt_mod: no square root exists (a is a non-residue or p is not prime)");
-        }
-        // General Tonelli-Shanks: p - 1 = q·2^s with q odd.
-        let mut q = (p - 1) / 2;
-        let mut s: u32 = 1;
-        while q % 2 == 0 {
-            q /= 2;
-            s += 1;
-        }
-        // Deterministic non-residue search (smallest z whose Legendre
-        // symbol is -1; always exists for prime p).
-        let mut z = 2i64;
-        loop {
-            if pow_mod_i128((z as i128).rem_euclid(modulus), ((p - 1) / 2) as u64, modulus)
-                == modulus - 1
-            {
-                break;
-            }
-            z += 1;
-        }
-        let mut m = s as u64;
-        let mut c = pow_mod_i128(z as i128, q as u64, modulus);
-        let mut t = pow_mod_i128(root_candidate, q as u64, modulus);
-        let mut r = pow_mod_i128(root_candidate, ((q + 1) / 2) as u64, modulus);
-        while t != 1 {
-            // Least i with t^(2^i) = 1.
-            let mut i: u64 = 0;
-            let mut tt = t;
-            while tt != 1 {
-                tt = (tt * tt) % modulus;
-                i += 1;
-            }
-            let b = pow_mod_i128(c, 1u64 << (m - i - 1), modulus);
-            m = i;
-            c = (b * b) % modulus;
-            t = (t * c) % modulus;
-            r = (r * b) % modulus;
-        }
-        r
-    };
-    // Defensive exactness gate: a fabricated root must never escape
-    // (this is also the typed refusal path for quadratic non-residues).
-    if (x * x) % modulus != root_candidate {
-        return Err("sqrt_mod: no square root exists (a is a non-residue or p is not prime)");
-    }
-    if x > modulus - x {
-        x = modulus - x;
-    }
-    Ok(x as i64)
-}
-
-/// i128 square-and-multiply (shared by the sqrt_mod paths).
-fn pow_mod_i128(base: i128, exp: u64, modulus: i128) -> i128 {
-    let mut result: i128 = 1 % modulus;
-    let mut b = base;
-    let mut e = exp;
-    while e > 0 {
-        if e & 1 == 1 {
-            result = (result * b) % modulus;
-        }
-        b = (b * b) % modulus;
-        e >>= 1;
-    }
-    result
-}
-
 /// Evaluate c[0] + c[1]x + ... + c[k-1]x^(k-1) over GF(p) by Horner's
 /// method; refuses typed when the modulus is non-positive.
 pub fn poly_eval_mod_checked(coeffs: &[f64], x: i64, p: i64) -> Result<i64, &'static str> {
@@ -211,7 +101,7 @@ pub fn poly_eval_mod_checked(coeffs: &[f64], x: i64, p: i64) -> Result<i64, &'st
 
 /// Shared Horner kernel over i128 intermediates (emath-t63iz stage 1):
 /// with `p ≤ 2^63` the widest step is `result·x + c < 2^126 + 2^63`,
-/// exact in i128 — the same width contract as `pow_mod`/`sqrt_mod`.
+/// exact in i128 — the same width contract as `pow_mod`.
 /// An i64 product here silently wraps (or panics in debug) for `p` past
 /// ~3e9; the wide-modulus tests pin exactness at p = 2^61 - 1.
 fn horner_mod_i128(coeffs: &[f64], x: i64, p: i64) -> Result<i64, &'static str> {
@@ -420,18 +310,6 @@ pub fn fold_any_checked(
 // functions now) and were removed; the math lives in the language as
 // language/modules/calculus/float64_quadrature.emath and
 // language/modules/numerics/limits.emath.
-
-// ── Internal helpers ──────────────────────────────────────────────────────
-
-/// Extended GCD: returns (g, x, y) such that a*x + b*y = g = gcd(a, b).
-fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
-    if b == 0 {
-        (a, 1, 0)
-    } else {
-        let (g, x, y) = extended_gcd(b, a.rem_euclid(b));
-        (g, y, x - (a / b) * y)
-    }
-}
 
 /// Row-major storage with explicit extents, including zero-row matrices.
 #[derive(Clone, Debug, PartialEq)]

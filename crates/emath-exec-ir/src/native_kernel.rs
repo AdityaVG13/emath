@@ -185,28 +185,10 @@ static NATIVE_KERNELS: &[NativeKernel] = &[
         handler: modular_alphabet_shift,
     },
     NativeKernel {
-        kernel_id: "extended-gcd-inverse",
-        signature: "(ExactInt,PositiveExactInt)->ExactInt",
-        arity: 2,
-        handler: modular_inverse,
-    },
-    NativeKernel {
-        kernel_id: "extended-gcd-inverse",
-        signature: "(ExactInt,PrimeModulus)->ExactInt",
-        arity: 2,
-        handler: modular_inverse,
-    },
-    NativeKernel {
         kernel_id: "modular-power",
         signature: "(ExactInt,Nat,PositiveExactInt)->ExactInt",
         arity: 3,
         handler: modular_power,
-    },
-    NativeKernel {
-        kernel_id: "modular-square-root",
-        signature: "(ExactInt,PrimeModulus)->ExactInt",
-        arity: 2,
-        handler: modular_square_root,
     },
     NativeKernel {
         kernel_id: "euclidean-congruence",
@@ -706,25 +688,6 @@ pub(crate) fn integer_remainder(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-pub(crate) fn modular_inverse(args: &[Value]) -> Result<Value, String> {
-    let [value, modulus] = args else {
-        return Err("E-TYPE-012: modular-inverse arguments must be exact integers".to_string());
-    };
-    if has_bigint(args) {
-        let modulus = bigint_modulus(modulus, "mod_inv: modulus must be positive")?;
-        let value = bigint_field_element(value, &modulus)?;
-        return emath_rt::big_mod_inv_checked(&value, &modulus)
-            .map(Value::BigInt)
-            .map_err(std::string::ToString::to_string);
-    }
-    match (value, modulus) {
-        (Value::I64(value), Value::I64(modulus)) => emath_rt::mod_inv_checked(*value, *modulus)
-            .map(Value::I64)
-            .map_err(std::string::ToString::to_string),
-        _ => Err("E-TYPE-012: modular-inverse arguments must be exact integers".to_string()),
-    }
-}
-
 pub(crate) fn modular_power(args: &[Value]) -> Result<Value, String> {
     let [base, exponent, modulus] = args else {
         return Err("E-TYPE-012: modular-power arguments must be exact integers".to_string());
@@ -744,25 +707,6 @@ pub(crate) fn modular_power(args: &[Value]) -> Result<Value, String> {
                 .map_err(std::string::ToString::to_string)
         }
         _ => Err("E-TYPE-012: modular-power arguments must be exact integers".to_string()),
-    }
-}
-
-pub(crate) fn modular_square_root(args: &[Value]) -> Result<Value, String> {
-    let [value, modulus] = args else {
-        return Err("E-TYPE-012: modular-square-root arguments must be exact integers".to_string());
-    };
-    if has_bigint(args) {
-        let modulus = bigint_modulus(modulus, "sqrt_mod: modulus must be positive")?;
-        let value = bigint_field_element(value, &modulus)?;
-        return emath_rt::big_sqrt_mod_checked(&value, &modulus)
-            .map(Value::BigInt)
-            .map_err(std::string::ToString::to_string);
-    }
-    match (value, modulus) {
-        (Value::I64(value), Value::I64(modulus)) => emath_rt::sqrt_mod_checked(*value, *modulus)
-            .map(Value::I64)
-            .map_err(std::string::ToString::to_string),
-        _ => Err("E-TYPE-012: modular-square-root arguments must be exact integers".to_string()),
     }
 }
 

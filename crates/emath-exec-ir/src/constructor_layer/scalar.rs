@@ -245,9 +245,9 @@ pub(super) fn expect_ints(value: CValue, name: &str) -> Result<Vec<ExactInt>, Co
 pub(crate) fn machine_int_basename(name: &str) -> Option<&str> {
     let base = name.rsplit('.').next().unwrap_or(name);
     match base {
-        "int_quot" | "int_rem" | "int_root" | "int_gcd" | "int_fact" | "int_modinv"
+        "int_quot" | "int_rem" | "int_root" | "int_gcd" | "int_fact"
         | "int_powmod" | "int_pow" | "int_sum" | "int_prod" | "int_sum_from" | "int_prod_from"
-        |         "int_sqrt_mod" | "int_hamming" | "int_poly_eval" | "int_rising" | "int_falling"
+        |         "int_hamming" | "int_poly_eval" | "int_rising" | "int_falling"
         | "int_double_fact" | "int_weighted_prod" | "int_binom" | "int_egcd" | "int_totient" => {
             Some(base)
         }

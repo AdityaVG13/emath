@@ -217,6 +217,12 @@ assert_invalid tests/invalid/l3_definitions_shadow_input.emath "E-NAME-020"
 assert_invalid tests/invalid/exports_junk.emath "E-SYN-101"
 assert_invalid tests/invalid/compile_junk.emath "E-SYN-101"
 assert_invalid tests/invalid/function_type.emath "E-TYPE-110"
+# int_modinv / int_sqrt_mod are gone with their Rust loops: a bare
+# machine-op call is now an unbound name (E-TYPE-002). Inverses are
+# cryptology.modular's authored mod_inv; square roots are
+# exact.quadratic's authored tonelli_sqrt.
+assert_invalid tests/invalid/int_modinv_retired.emath "E-TYPE-002"
+assert_invalid tests/invalid/int_sqrt_mod_retired.emath "E-TYPE-002"
 # Unicode honesty lane: a declaration spelled with a Cyrillic lookalike
 # of an already-seen Latin name is refused (E-NAME-024), and an
 # identifier built from a combining mark (non-NFC by construction) is

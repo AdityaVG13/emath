@@ -105,7 +105,7 @@ This shared representation primitive does not widen native Int type admission.
 - `stencil_2d` panics on `Dirichlet` (unreachable from generated code;
   the backend refuses 2D Dirichlet at codegen time; the interpreter
   pre-checks and returns a typed fault instead of calling).
-- `mod_inv_checked` / `poly_eval_mod_checked` / `rs_encode_checked` /
+- `poly_eval_mod_checked` / `rs_encode_checked` /
   `hamming_distance_checked` / `factorial_checked` and the rest of the
   numeric body are checked-only; the interpreter calls
   `einsum_checked` / `*_checked` / `vec_index_checked` /

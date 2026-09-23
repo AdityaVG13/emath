@@ -341,16 +341,6 @@ pub(super) fn exact_int_call_expr(
             as_int(0)?
         ),
         "int_totient" => format!("{}.totient().map_err(|err| err.to_string())", as_int(0)?),
-        "int_modinv" => format!(
-            "{}.mod_inv(&{}).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int(1)?
-        ),
-        "int_sqrt_mod" => format!(
-            "{}.sqrt_mod(&{}).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int(1)?
-        ),
         "int_rising" => format!(
             "{}.rising(&{}).map_err(|err| err.to_string())",
             as_int(0)?,

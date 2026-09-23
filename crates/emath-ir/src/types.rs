@@ -11,9 +11,9 @@ pub enum TypeNode {
     Int,
     Rational,
     /// Stage-2 big integer (emath-t63iz): exact NON-NEGATIVE field
-    /// element with |F| < 2^256. Admitted only by the six modular
-    /// number-theory builtins (`mod_inv`, `sqrt_mod`, `pow_mod`,
-    /// `int_rem`, `poly_eval_mod`, `rs_encode`); binary IEEE-style
+    /// element with |F| < 2^256. Admitted only by the four modular
+    /// number-theory builtins (`pow_mod`, `int_rem`,
+    /// `poly_eval_mod`, `rs_encode`); binary IEEE-style
     /// arithmetic refuses (exact x approximate is type confusion).
     BigInt,
     /// Real under the selected numeric profile (default `strict-f64`).
@@ -53,8 +53,9 @@ pub enum TypeNode {
     /// distinct node from plain `Int` and from `GF<5>` — so field-typed
     /// declarations keep their modulus instead of collapsing to
     /// `TypeNode::Int`. Values are exact i64 integers; modular reduction
-    /// and inversion remain operational concerns of the builtins
-    /// (`mod_inv`, `congruence`, `poly_eval_mod`).
+    /// remains an operational concern of the builtins
+    /// (`congruence`, `poly_eval_mod`); inversion is the authored
+    /// `cryptology.modular` lane (`mod_inv` via `pow_mod`).
     FieldPrime {
         modulus: i64,
     },

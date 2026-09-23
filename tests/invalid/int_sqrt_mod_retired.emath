@@ -1,0 +1,10 @@
+# expect: E-TYPE-002 the int_sqrt_mod machine op is retired with its
+# Rust loop; square roots are exact.quadratic's authored tonelli_sqrt
+emath function retired_machine_sqrt:
+    inputs:
+        value: Int
+        prime: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_sqrt_mod(value, prime)

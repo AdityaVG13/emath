@@ -2,11 +2,11 @@
 //
 // `UBig`: an arbitrary-precision NON-NEGATIVE integer, little-endian
 // base-2^32 limbs, canonical (no high zero limbs). This is the stage-2
-// representation for the six number-theory builtins (`int_rem`,
-// `mod_inv`, `pow_mod`, `sqrt_mod`, `poly_eval_mod`, `rs_encode`):
+// representation for the four number-theory builtins (`int_rem`,
+// `pow_mod`, `poly_eval_mod`, `rs_encode`):
 // |F| < 2^256, exactly the production regime the stage-1 i64/i128 lane
 // cannot reach. The algorithms are the stage-1 algorithms
-// (square-and-multiply, Tonelli-Shanks, extended Euclid, Horner) over
+// (square-and-multiply, binary long division, Horner) over
 // the swapped representation — a representation change, not an
 // algorithm rewrite. The stage boundary stays explicit: admission
 // refuses values ≥ 2^256 (see `LIMIT_BITS`) — widening the bound later
@@ -365,37 +365,6 @@ pub fn big_int_rem_i64_checked(a: i64, m: &UBig) -> Result<UBig, BigError> {
     Ok(UBig::from_i64_rem(a, m))
 }
 
-/// Modular inverse via the iterative extended Euclidean algorithm with
-/// Bezout coefficients kept in `[0, m)` (same algorithm as the stage-1
-/// `mod_inv_checked`; the representation is all that changed).
-pub fn big_mod_inv_checked(a: &UBig, m: &UBig) -> Result<UBig, BigError> {
-    if m.is_zero() {
-        return Err("mod_inv: modulus must be positive");
-    }
-    let a = UBig::rem(a, m);
-    if a.is_zero() {
-        return Err("mod_inv: no inverse exists (gcd != 1)");
-    }
-    let mut r0 = m.clone();
-    let mut r1 = a;
-    let mut t0 = UBig::zero();
-    let mut t1 = UBig::one();
-    while !r1.is_zero() {
-        let (quotient, remainder) = big_div_rem(&r0, &r1);
-        r0 = r1;
-        r1 = remainder;
-        // t ← (t0 - q·t1) mod m, staying in [0, m).
-        let q_t = UBig::mul_mod(&quotient, &t1, m);
-        let next_t = UBig::sub_mod(&t0, &q_t, m);
-        t0 = core::mem::replace(&mut t1, next_t);
-    }
-    if r0.is_one() {
-        Ok(t0)
-    } else {
-        Err("mod_inv: no inverse exists (gcd != 1)")
-    }
-}
-
 /// Full binary long division: `(a / b, a mod b)`.
 pub fn big_div_rem(a: &UBig, b: &UBig) -> (UBig, UBig) {
     let mut quotient = UBig::zero();
@@ -421,105 +390,7 @@ pub fn big_pow_mod_checked(base: &UBig, exp: &UBig, m: &UBig) -> Result<UBig, Bi
     Ok(UBig::mod_pow(base, exp, m))
 }
 
-/// Tonelli-Shanks square root in F_p over the stage-2 representation.
-/// Same law set as stage-1 `sqrt_mod_checked`: odd prime `p` (2 handled
-/// inline), deterministic smallest non-residue, `min(x, p - x)`
-/// tie-break, and the exactness gate that doubles as the typed
-/// non-residue refusal.
-pub fn big_sqrt_mod_checked(a: &UBig, p: &UBig) -> Result<UBig, BigError> {
-    if p.is_zero() {
-        return Err("sqrt_mod: modulus must be positive");
-    }
-    let two = UBig::from_u64(2);
-    if p.cmp(&two) == core::cmp::Ordering::Equal {
-        return Ok(UBig::rem(a, p));
-    }
-    if !p.bit(0) {
-        return Err("sqrt_mod: modulus must be an odd prime (2 handled above)");
-    }
-    let modulus = UBig::rem(a, p);
-    if modulus.is_zero() {
-        return Ok(UBig::zero());
-    }
-    // Fast path: p ≡ 3 (mod 4) → x = a^((p+1)/4).
-    let one = UBig::one();
-    let four = UBig::from_u64(4);
-    let p_mod_4 = UBig::rem(p, &four);
-    let mut x = if p_mod_4 == UBig::from_u64(3) {
-        let exp = p.add(&one).div_u64(4);
-        UBig::mod_pow(&modulus, &exp, p)
-    } else {
-        // Legendre pre-check (emath-t63iz, found by the wide-mod tests):
-        // the Tonelli-Shanks loop below assumes `a` is a residue — for a
-        // non-residue the least-i search reaches i = m and the shift
-        // m - i - 1 underflows. Refuse here; the exactness gate below
-        // still backstops non-prime p.
-        let p_minus_1 = p.sub(&one);
-        if UBig::mod_pow(&modulus, &p_minus_1.div_u64(2), p) != one {
-            return Err("sqrt_mod: no square root exists (a is a non-residue or p is not prime)");
-        }
-        // General Tonelli-Shanks: p - 1 = q·2^s with q odd.
-        let p_minus_1 = p.sub(&one);
-        let mut q = p_minus_1.clone();
-        let mut s: u64 = 0;
-        while !q.bit(0) {
-            q = q.div_u64(2);
-            s += 1;
-        }
-        // Deterministic non-residue search (smallest z with
-        // Legendre symbol -1; always exists for prime p).
-        let half = p_minus_1.div_u64(2);
-        let mut z = UBig::from_u64(2);
-        let pm1 = p.sub(&one);
-        loop {
-            if UBig::mod_pow(&z, &half, p) == pm1 {
-                break;
-            }
-            z = z.add(&one);
-        }
-        let mut m = s;
-        let mut c = UBig::mod_pow(&z, &q, p);
-        let mut t = UBig::mod_pow(&modulus, &q, p);
-        let mut r = UBig::mod_pow(&modulus, &q.add(&one).div_u64(2), p);
-        while !(t.is_one()) {
-            // Least i with t^(2^i) = 1.
-            let mut i: u64 = 0;
-            let mut tt = t.clone();
-            while !(tt.is_one()) {
-                tt = UBig::mul_mod(&tt, &tt, p);
-                i += 1;
-            }
-            // b = c^(2^(m-i-1)).
-            let shift = m - i - 1;
-            let mut b = c.clone();
-            for _ in 0..shift {
-                b = UBig::mul_mod(&b, &b, p);
-            }
-            m = i;
-            c = UBig::mul_mod(&b, &b, p);
-            t = UBig::mul_mod(&t, &c, p);
-            r = UBig::mul_mod(&r, &b, p);
-        }
-        r
-    };
-    // Defensive exactness gate: a fabricated root must never escape
-    // (this is also the typed refusal path for quadratic non-residues).
-    if UBig::mul_mod(&x, &x, p) != modulus {
-        return Err("sqrt_mod: no square root exists (a is a non-residue or p is not prime)");
-    }
-    let mirror = p.sub(&x);
-    if x.cmp(&mirror) == core::cmp::Ordering::Greater {
-        x = mirror;
-    }
-    Ok(x)
-}
-
 impl UBig {
-    /// Divide by a small u64 (helper for the Tonelli-Shanks shifts).
-    pub fn div_u64(&self, divisor: u64) -> UBig {
-        UBig::div_small(&self.limbs, divisor).0
-    }
-
     /// Integer value when the big value fits `i64` (result-side
     /// narrowing for callers that stay in the stage-1 lane).
     pub fn to_i64(&self) -> Option<i64> {
@@ -603,21 +474,9 @@ pub fn big_int_rem(a: &UBig, m: &UBig) -> UBig {
     big_int_rem_checked(a, m).expect("int_rem refusal leaked past admission")
 }
 
-/// Panicking `mod_inv` for generated Rust (admission guarantees
-/// invertibility or an interpreter-visible fault).
-pub fn big_mod_inv(a: &UBig, m: &UBig) -> UBig {
-    big_mod_inv_checked(a, m).expect("mod_inv refusal leaked past admission")
-}
-
 /// Panicking `pow_mod` for generated Rust.
 pub fn big_pow_mod(base: &UBig, exp: &UBig, m: &UBig) -> UBig {
     big_pow_mod_checked(base, exp, m).expect("pow_mod refusal leaked past admission")
-}
-
-/// Panicking `sqrt_mod` for generated Rust (admission guarantees a
-/// residue base and an odd prime modulus).
-pub fn big_sqrt_mod(a: &UBig, p: &UBig) -> UBig {
-    big_sqrt_mod_checked(a, p).expect("sqrt_mod refusal leaked past admission")
 }
 
 /// Panicking `poly_eval_mod` for generated Rust.
