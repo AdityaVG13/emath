@@ -179,8 +179,9 @@ fi
 echo "no fork-type identifiers in native crates or durable schemas (census identity strings exempt by design)"
 
 # Cut with tests/valid/affine_scorer.emath (dead-lane cut a9b5c3d) and the
-# `build --verify` flag (fit-goal surface cut bb38f0d). Generated-crate
-# behavior stays gated by the demo-host-independent lane below.
+# `build --verify` flag (fit-goal surface cut bb38f0d). The generated-crate
+# host lane (demo-host-independent) went with the affine-scorer artifact
+# (2026-09-23).
 
 # Cut: the `emath-lab provider` command was removed by the constructor
 # cutover; the provider census (constellation.rs) is pinned by
@@ -646,27 +647,12 @@ echo "language examples: admitted or refused with documented codes"
 
 # Cut: both xtask capstone demos drive fixtures and flags that were
 # removed (affine_scorer.emath, `build --verify`, `compile --parametric`).
-# Host promotion stays gated by demo-host-independent below.
 
-echo "== independent host consumer =="
-# The fingerprint-free host consumer runs real behavioral asserts against
-# the committed generated crate (constructor invariants + a known score);
-# it is gated here, not just documented.
-lane_begin
-if ! IND_OUT="$(cargo run -q -p demo-host-independent 2>&1)"; then
-    echo "FAIL: demo-host-independent did not pass its behavioral asserts" >&2
-    printf '%s\n' "$IND_OUT" >&2
-    lane_done "demo-host-independent" "run" "failed" "independent host consumer failed"
-    exit 1
-fi
-if ! printf '%s\n' "$IND_OUT" | grep -q "independent host ok"; then
-    echo "FAIL: demo-host-independent did not print its ok line" >&2
-    printf '%s\n' "$IND_OUT" >&2
-    lane_done "demo-host-independent" "run" "failed" "independent host ok line missing"
-    exit 1
-fi
-lane_done "demo-host-independent" "run" "passed" "behavioral asserts on committed generated crate"
-echo "demo-host-independent: behavioral asserts gated"
+# Cut: the demo-host-independent host consumer was removed with its
+# committed generated crate (affine-scorer, 2026-09-23) - the crate was
+# orphaned once its source fixture and the byte-identical regeneration
+# lane went with the a9b5c3d dead-lane cut. No generated-crate host
+# lane remains.
 
 # Cut: the semantic-genesis capstone family (`compile --parametric`, `genesis`,
 # arbitrary-glyphs.emath) was removed by the constructor cutover and the
