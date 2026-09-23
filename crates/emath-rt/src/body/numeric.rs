@@ -415,70 +415,11 @@ pub fn fold_any_checked(
     Ok(acc)
 }
 
-/// Composite Simpson's rule quadrature over an even positive panel
-/// count; anything else refuses typed (never a panic — the runtime
-/// error model is typed refusals). Mirrors the historical inline
-/// order: h = (b-a)/n, weights 1/4/2.../4/1, acc * h / 3.
-pub fn simpson(
-    f: &impl Fn(f64) -> f64,
-    a: f64,
-    b: f64,
-    n: i64,
-) -> Result<f64, &'static str> {
-    if n <= 0 || n % 2 != 0 {
-        return Err("simpson: integral steps must be positive and even");
-    }
-    let h = (b - a) / n as f64;
-    let mut acc = 0.0;
-    for i in 0..=n {
-        let x = a + i as f64 * h;
-        let weight = if i == 0 || i == n {
-            1.0
-        } else if i % 2 == 0 {
-            2.0
-        } else {
-            4.0
-        };
-        acc += weight * f(x);
-    }
-    Ok(acc * h / 3.0)
-}
-
-/// Numerical limit: sample f at target ± h for geometrically decreasing h
-/// (1e-1..1e-12), returning on 1% agreement between successive finite
-/// samples; otherwise the last finite sample. Direction: > 0.5 approaches
-/// from above, < -0.5 from below, otherwise two-sided. Refuses typed when
-/// no sample in the progression is finite (never a panic).
-pub fn sample_limit(f: &impl Fn(f64) -> f64, target: f64, direction: f64) -> Result<f64, &'static str> {
-    let dirs: &[f64] = if direction > 0.5 {
-        &[1.0]
-    } else if direction < -0.5 {
-        &[-1.0]
-    } else {
-        &[1.0, -1.0]
-    };
-    let mut best = f64::NAN;
-    let mut prev = f64::NAN;
-    for exp in 1u32..=12 {
-        let h = 10f64.powi(-(exp as i32));
-        for &dd in dirs {
-            let x = target + dd * h;
-            let fx = f(x);
-            if fx.is_finite() {
-                if prev.is_finite() && (fx - prev).abs() <= fx.abs() * 0.01 + 1e-14 {
-                    return Ok(fx);
-                }
-                prev = fx;
-                best = fx;
-            }
-        }
-    }
-    if best.is_finite() {
-        Ok(best)
-    } else {
-        Err("sample_limit produced no finite values")
-    }
-}
+// The former `simpson` and `sample_limit` bodies had no callers after
+// their constructor lowering arms retired (they are ordinary imported
+// functions now) and were removed; the math lives in the language as
+// language/modules/calculus/float64_quadrature.emath and
+// language/modules/numerics/limits.emath.
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 

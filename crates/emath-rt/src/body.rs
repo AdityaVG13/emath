@@ -11,7 +11,7 @@ include!("body/einsum.rs");
 include!("body/bigmod.rs");
 include!("body/numeric.rs");
 include!("body/graphs.rs");
-include!("body/poly.rs");
+include!("body/unit_interval.rs");
 include!("body/control.rs");
 include!("body/exact.rs");
 pub mod exact_int {

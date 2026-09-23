@@ -38,10 +38,16 @@ This shared representation primitive does not widen native Int type admission.
   version.
 - `body.rs` kernels are re-exported at the crate root. The permitted machine
   layer includes storage, checked indexing, and primitive numeric representation
-  operations. Mathematical methods such as quadrature and decomposition are
-  still present, but they are migration debt, not an unavoidable substrate.
+  operations. Mathematical methods that remain (modular/coding kernels, dense
+  linear helpers, stencils) are migration debt, not an unavoidable substrate.
   Direct interpreter or generated-code callers do not justify retaining a
   mathematical method in Rust. Migrate the method and its callers together.
+  Quadrature, limit sampling, and the polynomial/series bodies were removed
+  2026-09-23 after their authored language twins landed
+  (`language/modules/calculus/float64_quadrature.emath`,
+  `language/modules/numerics/limits.emath`,
+  `language/modules/algebra/float64_polynomials.emath`);
+  `body/poly.rs` retains only the unit-interval counter-stream leaf.
 - `rat.rs` and `stochastic.rs` were unlinked and later deleted (no
   production adapter used them); the same orphan cleanup, user-authorized,
   removed `category.rs`, `dynamics.rs`, `linalg.rs`, `pde.rs`, and
@@ -49,7 +55,7 @@ This shared representation primitive does not widen native Int type admission.
   calls on `emath_rt` are `body::*` kernels and `unit_interval_stream`).
 - Neutral `KernelId` names do not establish the language/compiler boundary.
   Inspect the implementation: what remains of mathematical method Rust
-  lives in `body` (quadrature, stencils, decomposition, graphs, control)
+  lives in `body` (stencils, decomposition, graphs, control)
   and is migration debt, not an unavoidable substrate.
 - `body`'s mathematical kernels are linked (glob-re-exported and embedded
   via `SOURCE`). Their methods must move into executable language
@@ -89,9 +95,10 @@ This shared representation primitive does not widen native Int type admission.
   slice: those are typed `IndexError` faults (negative / non-whole / OOB),
   never panicking `[]`. Rank-3+ values are `Tensor { shape, data }` so a
   flat buffer does not lose rank. Where the interpreter historically
-  diverged from codegen (e.g. `sample_limit` direction thresholds), the
-  runtime follows the codegen behavior; the interpreter keeps its own
-  tested path.
+  diverged from codegen (the former `sample_limit` direction
+  thresholds, removed with the function's migration into
+  `language/modules/numerics/limits.emath`), the runtime follows the
+  codegen behavior; the interpreter keeps its own tested path.
 
 ## Error model
 
@@ -107,9 +114,6 @@ This shared representation primitive does not widen native Int type admission.
   Dimension-mismatched einsum is `EinsumError::Arithmetic`. Index/slice
   OOB is `IndexError::OutOfBounds` (mapped to `EvalFault::IndexOutOfBounds`
   in interp; generated evaluate methods return `Result<_, String>`).
-- `simpson` refuses typed on a non-positive or odd panel count `n`.
-- `sample_limit` refuses typed when no sample in the geometric
-  progression is finite (`sample_limit produced no finite values`).
 - `mat_mul_mat` panics on ragged operands (direct `a[i][k]` / `b[k][j]`
   indexing, mirroring the historical inline semantics).
 - All remaining kernels are total on arbitrary input.

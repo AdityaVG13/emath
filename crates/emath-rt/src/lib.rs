@@ -37,7 +37,7 @@ pub const SOURCE: &str = concat!(
     include_str!("body/bigmod.rs"),
     include_str!("body/numeric.rs"),
     include_str!("body/graphs.rs"),
-    include_str!("body/poly.rs"),
+    include_str!("body/unit_interval.rs"),
     include_str!("body/control.rs"),
     include_str!("body/exact.rs"),
     "\npub mod exact_int {\n",
