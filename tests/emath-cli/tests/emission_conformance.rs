@@ -1357,3 +1357,69 @@ fn emission_conformance_distributions() {
         diffs.join("\n")
     );
 }
+
+const FLOAT64_QUOTE_DRIVER: &str = r#"
+//! Authored pins of the Float64 quote lane against the emitted crate:
+//! a unary Float64 function template (one open constant) through
+//! substitute, evaluate, and the application seam, plus the
+//! open-code guard. The compiled factory is `emath_rt::code::open`
+//! monomorphized over f64; no interpreter runs.
+
+use float64_quote::{open_refuses, scaled_shift};
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <two_x_plus_one>: scaled_shift(2.0, 3.0) == 7.0
+    let got = scaled_shift(2.0, 3.0);
+    if !matches!(&got, Ok(value) if *value == 7.0) {
+        failures += 1;
+        println!("DIFF two_x_plus_one EMITTED {:?}; VM = 7.0", got);
+    }
+
+    // example <zero_scale_shifts_to_one>: scaled_shift(0.0, 5.0) == 1.0
+    let got = scaled_shift(0.0, 5.0);
+    if !matches!(&got, Ok(value) if *value == 1.0) {
+        failures += 1;
+        println!("DIFF zero_scale_shifts_to_one EMITTED {:?}; VM = 1.0", got);
+    }
+
+    // example <negative_scale>: scaled_shift(-1.5, 2.0) == -2.0
+    let got = scaled_shift(-1.5, 2.0);
+    if !matches!(&got, Ok(value) if *value == -2.0) {
+        failures += 1;
+        println!("DIFF negative_scale EMITTED {:?}; VM = -2.0", got);
+    }
+
+    // example <unbound_open_code_refuses>: evaluate of open code
+    // refuses `unbound_code`, naming the remaining open constant.
+    let got = open_refuses(0.0);
+    match &got {
+        Err(text) if text.contains("unbound_code") => {}
+        other => {
+            failures += 1;
+            println!(
+                "DIFF unbound_open_code_refuses EMITTED {:?}; VM = unbound_code refusal",
+                other
+            );
+        }
+    }
+
+    if failures == 0 {
+        println!("float64_quote: all pins hold");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_float64_quote() {
+    let diffs = run_lane(
+        "tests/fixtures/constructor/float64_quote.emath",
+        FLOAT64_QUOTE_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted float64_quote disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}

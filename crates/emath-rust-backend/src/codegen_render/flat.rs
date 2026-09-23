@@ -149,6 +149,16 @@ pub(super) fn has_nested_body(op: &EmirOp) -> bool {
             | EmirOp::Collect { .. }
             | EmirOp::ProgramLiteral { .. }
             | EmirOp::CallFrame { .. }
+            // Both quote lanes embed a nested flat block whose `__eN`
+            // tokens belong to the inner program: the function lane
+            // (param Some) renders the template body's flat, the
+            // expression lane renders the union body's flat beside
+            // the distilled tree. Outer token substitution would
+            // rewrite those inner names as outer registers (observed
+            // as `let (1.0f64) = t * k;` garbage when an outer
+            // single-use register shared the index), so a body
+            // embedding either lane never inlines outward.
+            | EmirOp::CodeLiteral { .. }
     )
 }
 

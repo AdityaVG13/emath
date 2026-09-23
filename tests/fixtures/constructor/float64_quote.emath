@@ -1,0 +1,46 @@
+# Float64 program-space quote lane. This file installed no topic identity.
+# A unary Float64 function template with one open constant: substitute
+# binds the constant from the function's input (the hygiene law keeps
+# it open inside the quote), evaluate closes it to a specialized unary
+# closure, and the function calls the closure - the program-space
+# application seam. Pins the native Float64 carrier: the compiled
+# factory is emath_rt::code::open monomorphized over f64.
+
+emath function scaled_shift:
+    inputs:
+        k: Float64
+        x: Float64
+    outputs:
+        result: Float64
+    definitions:
+        tmpl = quote(function t in Float64: t * k + 1.0f64)
+        closed = quote.substitute(tmpl, k, k)
+        f = quote.evaluate(closed)
+        result = f(x)
+    tests:
+        example <two_x_plus_one>:
+            given k = 2.0f64
+            given x = 3.0f64
+            expect result == 7.0f64
+        example <zero_scale_shifts_to_one>:
+            given k = 0.0f64
+            given x = 5.0f64
+            expect result == 1.0f64
+        example <negative_scale>:
+            given k = -1.5f64
+            given x = 2.0f64
+            expect result == -2.0f64
+
+emath function open_refuses:
+    inputs:
+        unused: Float64
+    outputs:
+        result: Float64
+    definitions:
+        tmpl = quote(function t in Float64: t * k)
+        f = quote.evaluate(tmpl)
+        result = f(1.0f64)
+    tests:
+        example <unbound_open_code_refuses>:
+            given unused = 0.0f64
+            expect diagnostic.code == unbound_code

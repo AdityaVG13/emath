@@ -783,6 +783,18 @@ impl Lowerer {
         match &expr.kind {
             ExprKind::Int(text) => Ok(self.push(const_exact_int(text)?)),
             ExprKind::Bool(value) => Ok(self.push(EmirOp::ConstBool(*value))),
+            // A Float64 literal lowers to the f64 constant op
+            // (bit-exact through the whole emitted lane). The suffix
+            // strip and parse are the constructor VM's literal law
+            // (engine_step/core.rs) verbatim: both lanes must read
+            // the same text the same way.
+            ExprKind::Float(text) => {
+                let cleaned = text.trim_end_matches("f64").trim_end_matches("Float64");
+                let value = cleaned
+                    .parse::<f64>()
+                    .map_err(|_| format!("float literal is not Float64: {text}"))?;
+                Ok(self.push(EmirOp::ConstF64(value.to_bits())))
+            }
             // A Str literal lowers to the text constant op (e6gvs): the
             // carrier evaluates in the emitted program exactly as it
             // does in the constructor VM — dropping the arm demoted
@@ -912,7 +924,7 @@ impl Lowerer {
                 // does (`dependency_snapshot`).
                 let Some(carrier) = emitted_quote_carrier(body) else {
                     return Err(
-                        "quote emission supports unary Int/Rat/Bool function templates and scalar expression templates in this cut"
+                        "quote emission supports unary Int/Rat/Bool/Float64 function templates and scalar expression templates in this cut"
                             .into(),
                     );
                 };
@@ -1247,6 +1259,7 @@ fn emitted_quote_carrier(body: &Expr) -> Option<&'static str> {
             "Int" => Some("Int"),
             "Rat" => Some("Rat"),
             "Bool" => Some("Bool"),
+            "Float64" => Some("Float64"),
             _ => None,
         },
         _ => None,

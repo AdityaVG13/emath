@@ -271,9 +271,10 @@ pub enum EmirOp {
         /// `0..free.len()`, sorted by the free-name collector).
         free: Vec<String>,
         /// The carrier signature: a function template's declared
-        /// scalar carrier (`Rat`, `Int`, or `Bool`) that the backend
-        /// instantiates the Code factory over, or `Union` for an
-        /// expression template (the dynamic value-union lane).
+        /// scalar carrier (`Rat`, `Int`, `Bool`, or `Float64`) that
+        /// the backend instantiates the Code factory over, or
+        /// `Union` for an expression template (the dynamic
+        /// value-union lane).
         carrier: String,
         /// The distilled tree of the expression template: `None` on
         /// the function lane, `Some` on the union lane - emitted by
