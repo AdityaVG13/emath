@@ -4,7 +4,7 @@
 //! This module deliberately does not register itself. `native_kernel.rs` can
 //! integrate [`KERNELS`] into its immutable table without matching on a
 //! mathematical feature name. The descriptor key and signature are the entire
-//! ABI; aliases and FeatureIDs remain language data.
+//! ABI; aliases and `FeatureIDs` remain language data.
 //!
 //! Carrier semantics (ported from the orphaned interpreter AD machinery
 //! `interp/dual.rs` and `interp/reverse.rs`, trimmed to the universal op
@@ -34,7 +34,7 @@ use crate::native_kernel::NativeKernel;
 use crate::{BuiltinId, EmirOp, EmirProgram, EmirValue};
 
 /// Capsule-backed kernels in stable descriptor order. Binding is by
-/// `(kernel_id, signature)`; the FeatureID spelling lives in capsule data.
+/// `(kernel_id, signature)`; the `FeatureID` spelling lives in capsule data.
 pub static KERNELS: &[NativeKernel] = &[
     NativeKernel {
         kernel_id: "program-forward-difference",
@@ -143,7 +143,7 @@ fn gradient_slots(value: &Value, program: &EmirProgram) -> Result<Vec<u16>, Stri
 }
 
 fn slot_in_range(index: i64, program: &EmirProgram, point_len: usize) -> Result<u16, String> {
-    if index < 0 || index > u16::MAX as i64 {
+    if index < 0 || index > i64::from(u16::MAX) {
         return Err(format!(
             "E-TYPE-012: differentiation slot {index} is not a u16 input slot"
         ));
@@ -190,8 +190,7 @@ fn evaluate_dual(program: &EmirProgram, point: &[f64], var_index: u16) -> Result
             },
             EmirOp::ConstExactInt(text) => Dual {
                 primal: emath_rt::ExactInt::parse(text)
-                    .map(|value| value.to_f64())
-                    .unwrap_or(f64::NAN),
+                    .map_or(f64::NAN, |value| value.to_f64()),
                 tangent: 0.0,
             },
             // Bool constants encode as 1.0/0.0, like the dual-space bool ops.
@@ -306,15 +305,15 @@ fn evaluate_dual(program: &EmirProgram, point: &[f64], var_index: u16) -> Result
                 let c = dual_of(&registers, c)?;
                 let t = dual_of(&registers, t)?;
                 let e = dual_of(&registers, e)?;
-                if c.primal != 0.0 {
-                    Dual {
-                        primal: t.primal,
-                        tangent: t.tangent,
-                    }
-                } else {
+                if c.primal == 0.0 {
                     Dual {
                         primal: e.primal,
                         tangent: e.tangent,
+                    }
+                } else {
+                    Dual {
+                        primal: t.primal,
+                        tangent: t.tangent,
                     }
                 }
             }
@@ -364,7 +363,7 @@ fn evaluate_dual(program: &EmirProgram, point: &[f64], var_index: u16) -> Result
                     return Err(
                         "E-TYPE-012: nested capability has no forward dual rule".to_string()
                     );
-                };
+                }
                 match args.as_slice() {
                     [left, right] => {
                         let left = dual_vec_of(&vec_regs, left)?;
@@ -743,10 +742,10 @@ fn backward_step(
                 Some(value) => value.as_real_f64().unwrap_or(0.0),
                 None => 0.0,
             };
-            if cv != 0.0 {
-                push_adj(adjoints, t, adj);
-            } else {
+            if cv == 0.0 {
                 push_adj(adjoints, e, adj);
+            } else {
+                push_adj(adjoints, t, adj);
             }
         }
         EmirOp::VectorCreate(elems) => {
@@ -763,7 +762,7 @@ fn backward_step(
                 return Err(
                     "E-TYPE-012: nested capability has no reverse-mode adjoint rule".to_string(),
                 );
-            };
+            }
             match args.as_slice() {
                 [left, right] => {
                     let left_primal = primals

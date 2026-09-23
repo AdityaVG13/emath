@@ -1,6 +1,6 @@
 //! Intent-verb lowering (L1) and L2 rewrites; hole bookkeeping.
 
-use super::*;
+use super::{ScratchNote, SYNTH_RESULT, split_keyword_tail, ExactnessStatus, split_equation, goal_target, Diagnostics, ScratchExpansion, split_top_level, HoleRecord, TopPiece, split_declaration_text, is_section_head, is_comment, classify_line, span_of_source, Pedagogy, LineKind, apply_scratch_kinds, free_names, header_args, call_position_names, is_builtin, declaration_name, SYNTH_DECL, render_from_header, expansion, ExpansionOutcome, ScratchLevel, ScratchRewriteLevel, Span, HoleContinuation, HoleRejection, HoleCandidate, HoleKind};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_intent(
@@ -153,8 +153,7 @@ pub(super) fn lower_intent(
         IntentVerb::Compile => {
             let target = payload
                 .rsplit_once(" to ")
-                .map(|(_, rest)| rest.trim())
-                .unwrap_or(payload.trim());
+                .map_or(payload.trim(), |(_, rest)| rest.trim());
             let (lang, profile) = target.split_once('.').unwrap_or((target, "library"));
             *compile_target = Some((lang.to_string(), profile.to_string()));
             if defs.is_empty() {

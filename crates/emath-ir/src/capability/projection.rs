@@ -1,6 +1,6 @@
 //! Projection planning and closure checks.
 
-use super::*;
+use super::{CellClass, fmt, CellSchema};
 
 /// Closed set of closure projections for an admitted cell. A cell is not
 /// done because it compiles: each projection is a required artifact with a

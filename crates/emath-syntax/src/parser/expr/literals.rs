@@ -1,7 +1,7 @@
 //! Literal primaries (numeric, string, booleans, parens, lists), table and
 //! nabla literals, and string validation.
 
-use super::*;
+use super::{Expr, TokenKind, ExprKind, Span, BinaryOp, Keyword};
 
 impl super::super::Parser {
     /// Table literal: `|x y| 1, 2 | 3, 4 |`. Reached only when a pipe
@@ -184,7 +184,7 @@ impl super::super::Parser {
             && path
                 .chars()
                 .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
-            && !path.split('.').any(|segment| segment.is_empty());
+            && !path.split('.').any(str::is_empty);
         if !pure {
             self.error_here(
                 "E-SYN-101",
@@ -201,7 +201,7 @@ impl super::super::Parser {
                 && bytes[0] == b'.'
                 && bytes[1..bytes.len() - 1]
                     .iter()
-                    .all(|byte| byte.is_ascii_digit())
+                    .all(u8::is_ascii_digit)
                 && bytes[bytes.len() - 1] == b'f';
             if !spec_ok {
                 self.error_here(

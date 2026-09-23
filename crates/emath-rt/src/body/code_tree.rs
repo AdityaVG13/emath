@@ -250,7 +250,7 @@ pub fn node_field(value: impl std::borrow::Borrow<NodeValue>, field: &str) -> Re
             items
                 .get(index)
                 .cloned()
-                .ok_or_else(|| format!("invalid_index: sequence index out of range"))
+                .ok_or_else(|| "invalid_index: sequence index out of range".to_string())
         }
         NodeValue::Sequence(items) if field == "length" => {
             Ok(NodeValue::Scalar(CodeValue::Int(items.len() as i64)))

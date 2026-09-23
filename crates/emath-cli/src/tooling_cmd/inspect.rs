@@ -1,6 +1,6 @@
 //! Artifact inspection: verify, inspect, diff, fingerprinting.
 
-use super::*;
+use super::{Path, CliExit, artifact_check, EXIT_USAGE, EXIT_REFUSED, JsonWriter, EXIT_OK, EXIT_IO, CompilerSession, print_diagnostics};
 
 /// `verify <dir>`: independent artifact re-verification.
 pub(crate) fn verify_cmd(dir: &Path) -> CliExit {

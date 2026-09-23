@@ -249,18 +249,15 @@ pub fn read_request_line(reader: impl BufRead) -> Option<String> {
 fn handle_connection(mut stream: TcpStream, dist: &Path) {
     let request_line = {
         let reader = BufReader::new(&stream);
-        match read_request_line(reader) {
-            Some(line) => line,
-            None => {
-                write_response(
-                    &mut stream,
-                    400,
-                    "Bad Request",
-                    "text/plain; charset=utf-8",
-                    b"Bad Request\n",
-                );
-                return;
-            }
+        if let Some(line) = read_request_line(reader) { line } else {
+            write_response(
+                &mut stream,
+                400,
+                "Bad Request",
+                "text/plain; charset=utf-8",
+                b"Bad Request\n",
+            );
+            return;
         }
     };
     let mut parts = request_line.split_whitespace();

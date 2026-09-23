@@ -7,7 +7,7 @@
 //! parser and re-exports this module at its root.
 //!
 //! Facade SPI note: each family module carries its own
-//! `check_version` (analogue/binder/meaning_provider/morphism/synth/
+//! `check_version` (`analogue/binder/meaning_provider/morphism/synth`/
 //! tuning) with its OWN error type — six deliberate homonyms, not an
 //! incomplete facade. A root export would either collide six times or
 //! need six aliases; the module path IS the family address. Documented

@@ -1,6 +1,6 @@
 //! Series/policy suffixes and segment statements.
 
-use super::*;
+use super::{Expr, Span, TokenKind, Keyword, SeriesInterpolation, SeriesExtrapolation, ExprKind, Stmt, StmtKind, Place, CommandArgument};
 
 impl super::super::Parser {
     /// optional series-policy suffix

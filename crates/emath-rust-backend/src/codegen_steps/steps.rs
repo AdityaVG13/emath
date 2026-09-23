@@ -1,6 +1,6 @@
 //! Explicit-stepper code generation (Euler, RK4).
 
-use super::*;
+use super::{SemanticPackage, Item, FnDef, BackendError, definition_order, field_value_kinds, BTreeSet, collect_var_names, expand_host_inputs, lower_definition, add_obligations, value_expr_rate, Stmt, escape_ident, Param, Ty, Block, Visibility, Expr};
 
 impl super::super::BackendInput<'_> {
     pub(crate) fn emit_model_step_methods(

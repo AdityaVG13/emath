@@ -1,6 +1,6 @@
 //! Typed deserialization of manifests and records from JSON.
 
-use super::*;
+use super::{ArtifactManifest, ArtifactError, parse_json_document, ArtifactClass, EvidenceLevel, JsonValue, ContentId, BTreeMap, SchemaId, TargetProfile, SourceMap, SourceMapEntry, PlanRecord, OperationRecord, EvidenceBundleRecord, ClaimVerdict, EvidenceClaim};
 
 /// Parse a manifest per `emath.artifact` (field shape of
 /// [`write_artifact_manifest`]).

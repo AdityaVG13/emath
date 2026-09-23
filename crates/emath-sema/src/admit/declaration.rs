@@ -152,10 +152,10 @@ fn constructor_type_node(ty: &emath_core::tree::TypeExpr) -> TypeNode {
     use emath_core::tree::TypeKind;
     match &ty.kind {
         TypeKind::Path { segments, .. } => match segments.last().map(String::as_str) {
-            Some("Int") | Some("Nat") => TypeNode::Int,
+            Some("Int" | "Nat") => TypeNode::Int,
             Some("Bool") => TypeNode::Bool,
-            Some("Rat") | Some("Rational") => TypeNode::Rational,
-            Some("Float64") | Some("F64") => TypeNode::Float64,
+            Some("Rat" | "Rational") => TypeNode::Rational,
+            Some("Float64" | "F64") => TypeNode::Float64,
             Some(name) => TypeNode::Other(QualifiedName::single(name)),
             None => TypeNode::Other(QualifiedName::single("Unknown")),
         },

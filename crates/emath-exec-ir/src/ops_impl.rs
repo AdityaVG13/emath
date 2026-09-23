@@ -1,6 +1,6 @@
 //! Universal instruction metadata.
 
-use super::*;
+use super::EmirOp;
 
 impl EmirOp {
     #[must_use]

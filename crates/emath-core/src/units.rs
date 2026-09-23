@@ -103,7 +103,7 @@ impl UnitSpec {
             "unit:{}:{:e}:{:e}:{}",
             self.dims
                 .iter()
-                .map(|e| e.to_string())
+                .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(","),
             self.scale,
@@ -239,7 +239,7 @@ impl UnitTable {
 }
 
 /// Named unit catalogs are leftover leftover. Constructor surface has no
-/// SI/element FeatureID. Callers that need a table declare units locally.
+/// SI/element `FeatureID`. Callers that need a table declare units locally.
 #[must_use]
 pub fn seed_table() -> UnitTable {
     UnitTable::new()

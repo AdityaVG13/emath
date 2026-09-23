@@ -1,4 +1,4 @@
-use super::*;
+use super::{SavedRun, Path, CliExit, parse_json_document, diagnostic, EXIT_USAGE, case_computed, JsonWriter, SCHEMA, ENGINE, DEFAULT_WORK, text, JsonValue, EXIT_OK, EXIT_REFUSED};
 
 pub(super) fn emit(
     state: &SavedRun,
@@ -169,7 +169,7 @@ pub(super) fn emit(
             println!("measurement: {measurement}");
         }
         if state.completed.len() < state.total {
-            println!("next: emath inspect {:?} --json", path);
+            println!("next: emath inspect {path:?} --json");
         }
     }
     if let Some((exit, _, _)) = issue {

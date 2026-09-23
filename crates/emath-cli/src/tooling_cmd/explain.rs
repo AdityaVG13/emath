@@ -1,6 +1,6 @@
 //! The `emath explain` diagnostic browser.
 
-use super::*;
+use super::{ExplainRequest, CliExit, JsonWriter, EXIT_OK, EXIT_USAGE, EXIT_REFUSED};
 
 /// `explain <file> [<symbol>]` or `explain E-LAW-001`: plan-level or checker witness.
 pub(crate) fn explain_cmd(request: ExplainRequest) -> CliExit {

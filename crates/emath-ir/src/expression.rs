@@ -82,8 +82,8 @@ pub enum ExprNode {
         arguments: Vec<ExprId>,
     },
     /// Nested executable program carrier. Universal machinery matching
-    /// `EmirOp::ProgramLiteral`: `inputs` are the body's LoadInput names
-    /// in order. Domain meaning stays in FeatureID applications that
+    /// `EmirOp::ProgramLiteral`: `inputs` are the body's `LoadInput` names
+    /// in order. Domain meaning stays in `FeatureID` applications that
     /// consume the carrier.
     Program {
         body: ExprId,

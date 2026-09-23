@@ -1,6 +1,6 @@
 //! Equation-tail parsing.
 
-use super::*;
+use super::{Expr, Span, Stmt, TokenKind, StmtKind};
 
 impl super::super::Parser {
     /// After an expression, accept an equation tail: `= rhs` on the same

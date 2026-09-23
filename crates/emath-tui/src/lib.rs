@@ -5,6 +5,7 @@
 //! scratch contract over the artifact ABI.
 
 pub mod dream;
+pub mod experiment;
 pub mod export;
 pub mod host;
 pub mod repl;

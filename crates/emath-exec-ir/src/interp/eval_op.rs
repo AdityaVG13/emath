@@ -1,4 +1,4 @@
-use super::*;
+use super::{EmirProgram, EmirOp, Value, ValueFrame, EvalBudget, EvalFault, eval_control, eval_const, eval_scalar_arith, eval_structure, eval_math, eval_option_result, eval_aggregate, eval_calls};
 
 pub(super) fn eval_op(
     self_program: &EmirProgram,

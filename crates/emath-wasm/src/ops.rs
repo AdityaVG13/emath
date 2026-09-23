@@ -1,6 +1,6 @@
 //! Individual wasm operations: check, plan, mig, generate, run.
 
-use super::*;
+use super::{prepare_source, session_from_source, JsonWriter, put_pipeline_status, diagnostic_objects, declaration_names, maybe_desugared, Mig, error_json, parse_run_payload, BTreeMap, serialize_constructor_report, Value, Cow, parse_json_document, JsonValue, first_duplicate_key};
 
 pub(super) fn op_check(source: &str) -> String {
     let prepared = prepare_source(source);
@@ -157,7 +157,7 @@ pub(super) fn op_generate(source: &str) -> String {
     object.bool("ok", true);
     object.bool("admitted", true);
     object.string("schema_version", "emath.constructor.v1");
-    object.string("crate_name", functions.first().map(String::as_str).unwrap_or("package"));
+    object.string("crate_name", functions.first().map_or("package", String::as_str));
     object.objects("files", &[file.finish().trim_end().to_string()]);
     object.finish()
 }

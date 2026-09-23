@@ -17,4 +17,4 @@ mod template;
 
 pub use model::*;
 pub use render::*;
-use template::*;
+use template::LIB_TEMPLATE;

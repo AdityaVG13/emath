@@ -1,4 +1,4 @@
-use super::*;
+use super::{Value, EmirValue, EvalFault, i64_of, ValueFrame, FoldCombine, EmirProgram, register, evaluate_frames, EvalBudget, value_as_f64, value_as_bool};
 
 pub(super) fn checked_index(
     registers: &[Value],

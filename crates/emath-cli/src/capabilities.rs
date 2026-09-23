@@ -55,7 +55,7 @@ pub fn capabilities_json() -> String {
         obj.string("usage", usage);
         let aliases = crate::catalog::command_aliases(name);
         if !aliases.is_empty() {
-            let alias_strings: Vec<String> = aliases.iter().map(|s| s.to_string()).collect();
+            let alias_strings: Vec<String> = aliases.iter().map(std::string::ToString::to_string).collect();
             obj.strings("aliases", &alias_strings);
         }
         command_objects.push(obj.finish());

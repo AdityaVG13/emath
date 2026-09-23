@@ -1,6 +1,6 @@
 //! The Lexer state machine (moved verbatim).
 
-use super::*;
+use super::{Lexer, Span, TokenKind, Token, Comment, NablaForm, Keyword};
 
 impl Lexer<'_> {
     fn peek(&self) -> Option<u8> {
@@ -260,7 +260,7 @@ impl Lexer<'_> {
                     self.push(TokenKind::Nabla(form), start);
                 } else if byte == 0xE2
                     && self.bytes.get(self.pos + 1) == Some(&0x9F)
-                    && matches!(self.bytes.get(self.pos + 2), Some(&0xA8) | Some(&0xA9))
+                    && matches!(self.bytes.get(self.pos + 2), Some(&0xA8 | &0xA9))
                 {
                     // `⟨` (U+27E8, E2 9F A8) / `⟩` (U+27E9, E2 9F A9) —
                     // braket pack angles. Claimed before the
@@ -643,7 +643,7 @@ impl Lexer<'_> {
                     }
                     if self.bytes.get(look).is_some_and(u8::is_ascii_digit) {
                         end = look;
-                        while self.bytes.get(end).is_some_and(|b| b.is_ascii_digit()) {
+                        while self.bytes.get(end).is_some_and(u8::is_ascii_digit) {
                             end += 1;
                         }
                     }

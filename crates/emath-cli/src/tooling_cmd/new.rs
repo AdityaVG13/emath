@@ -1,6 +1,6 @@
 //! Scaffold and provider metadata for `emath new`.
 
-use super::*;
+use super::{PathBuf, Path, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_SAFETY, JsonWriter, EXIT_OK, EXIT_IO, content_id_of_str};
 
 /// Relative path of the committed upstream lock file (repo layout).
 pub const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";

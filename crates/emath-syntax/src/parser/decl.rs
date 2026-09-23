@@ -214,19 +214,16 @@ impl super::Parser {
     fn parse_attributes(&mut self) -> Vec<Attribute> {
         let mut attributes = Vec::new();
         while matches!(self.peek(), TokenKind::AtSign) {
-            match self.parse_attribute() {
-                Some(attribute) => {
-                    if !matches!(self.peek(), TokenKind::Newline | TokenKind::Eof) {
-                        self.error_here("E-SYN-101", "expected end of line after attribute");
-                        self.skip_to_line_end();
-                        return attributes;
-                    }
-                    attributes.push(attribute);
-                }
-                None => {
+            if let Some(attribute) = self.parse_attribute() {
+                if !matches!(self.peek(), TokenKind::Newline | TokenKind::Eof) {
+                    self.error_here("E-SYN-101", "expected end of line after attribute");
                     self.skip_to_line_end();
                     return attributes;
                 }
+                attributes.push(attribute);
+            } else {
+                self.skip_to_line_end();
+                return attributes;
             }
             self.skip_newlines();
         }
@@ -237,30 +234,24 @@ impl super::Parser {
         let start = self.current_span();
         self.advance(); // `@`
         let mut name_parts = Vec::new();
-        match self.peek() {
-            TokenKind::Ident(name) => {
-                name_parts.push(name.clone());
-                self.advance();
-            }
-            _ => {
-                self.error_here("E-SYN-101", "expected an attribute name after `@`");
-                return None;
-            }
+        if let TokenKind::Ident(name) = self.peek() {
+            name_parts.push(name.clone());
+            self.advance();
+        } else {
+            self.error_here("E-SYN-101", "expected an attribute name after `@`");
+            return None;
         }
         while matches!(self.peek(), TokenKind::PathSep) {
             self.advance();
-            match self.peek() {
-                TokenKind::Ident(segment) => {
-                    name_parts.push(segment.clone());
-                    self.advance();
-                }
-                _ => {
-                    self.error_here(
-                        "E-SYN-101",
-                        "expected an identifier after `::` in attribute path",
-                    );
-                    return None;
-                }
+            if let TokenKind::Ident(segment) = self.peek() {
+                name_parts.push(segment.clone());
+                self.advance();
+            } else {
+                self.error_here(
+                    "E-SYN-101",
+                    "expected an identifier after `::` in attribute path",
+                );
+                return None;
             }
         }
         let mut args = Vec::new();
@@ -521,32 +512,26 @@ impl super::Parser {
         self.advance();
 
         // Precedence: integer
-        let precedence = match self.peek() {
-            TokenKind::Int(n) => {
-                let n = n.clone();
-                self.advance();
-                n.parse::<u32>().unwrap_or(0)
-            }
-            _ => {
-                self.error_here(
-                    "E-SYN-101",
-                    "expected precedence integer in notation declaration",
-                );
-                return None;
-            }
+        let precedence = if let TokenKind::Int(n) = self.peek() {
+            let n = n.clone();
+            self.advance();
+            n.parse::<u32>().unwrap_or(0)
+        } else {
+            self.error_here(
+                "E-SYN-101",
+                "expected precedence integer in notation declaration",
+            );
+            return None;
         };
 
         // Glyph: string literal
-        let glyph = match self.peek() {
-            TokenKind::Str(s) => {
-                let s = s.clone();
-                self.advance();
-                s
-            }
-            _ => {
-                self.error_here("E-SYN-101", "expected glyph string in notation declaration");
-                return None;
-            }
+        let glyph = if let TokenKind::Str(s) = self.peek() {
+            let s = s.clone();
+            self.advance();
+            s
+        } else {
+            self.error_here("E-SYN-101", "expected glyph string in notation declaration");
+            return None;
         };
 
         // Arrow: => (lexed as TokenKind::Arrow, same as ->)
@@ -590,16 +575,13 @@ impl super::Parser {
         // Optional alias clause: `alias "*"`
         let alias = if self.peek() == &TokenKind::Ident("alias".to_string()) {
             self.advance();
-            match self.peek() {
-                TokenKind::Str(s) => {
-                    let s = s.clone();
-                    self.advance();
-                    Some(s)
-                }
-                _ => {
-                    self.error_here("E-SYN-101", "expected alias string after `alias`");
-                    return None;
-                }
+            if let TokenKind::Str(s) = self.peek() {
+                let s = s.clone();
+                self.advance();
+                Some(s)
+            } else {
+                self.error_here("E-SYN-101", "expected alias string after `alias`");
+                return None;
             }
         } else {
             None

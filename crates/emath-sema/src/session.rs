@@ -392,13 +392,7 @@ impl CompilerSession {
                                     Some(emath_ir::TypeNode::Int | emath_ir::TypeNode::Nat)
                                 )
                         });
-                        if !integer_contract {
-                            diagnostics.error(
-                                "E-SYM-003",
-                                "`simplify` native v1 requires Int/Nat inputs and target output",
-                                goal.source,
-                            );
-                        } else {
+                        if integer_contract {
                             match simplify_integer_expression(&mut package, expression) {
                                 Ok(simplified) => {
                                     goal.expression = Some(simplified.expression);
@@ -410,6 +404,12 @@ impl CompilerSession {
                                     diagnostics.error(error.code, error.message, goal.source);
                                 }
                             }
+                        } else {
+                            diagnostics.error(
+                                "E-SYM-003",
+                                "`simplify` native v1 requires Int/Nat inputs and target output",
+                                goal.source,
+                            );
                         }
                     }
                 }

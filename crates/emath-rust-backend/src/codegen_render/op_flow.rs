@@ -1,6 +1,11 @@
 //! Universal fold and native Rust carrier lowering.
 
-use super::*;
+use super::{
+    BackendError, EmirOp, EmirProgram, EmirValue, Expr, FoldCombine, InputKinds, ValueKind,
+    callable_ty, carrier_payload_types, checked_integer_operand, expect_carrier, fold_context,
+    fold_is_i64, kind_at, op_self_index, operand, owned_operand, program_kind, render_expr,
+    set_fold_context, value_expr,
+};
 
 pub(super) fn op_flow_exprs(
     op: &EmirOp,
@@ -64,7 +69,7 @@ pub(super) fn op_flow_exprs(
             )))
         }
         EmirOp::OptionSome(payload) => {
-            let tys = carrier_payload_types(program, names, states, input_kinds)?;
+            let tys = carrier_payload_types(program, names, states, input_kinds, kinds)?;
             let idx = op_self_index(program, op).unwrap_or(u32::MAX);
             Ok(Expr::Raw(format!(
                 "Option::<{}>::Some({})",
@@ -73,19 +78,19 @@ pub(super) fn op_flow_exprs(
             )))
         }
         EmirOp::OptionNone => {
-            let tys = carrier_payload_types(program, names, states, input_kinds)?;
+            let tys = carrier_payload_types(program, names, states, input_kinds, kinds)?;
             let idx = op_self_index(program, op).unwrap_or(u32::MAX);
             Ok(Expr::Raw(format!("Option::<{}>::None", tys.option(idx))))
         }
         EmirOp::OptionIsSome(carrier) => {
-            expect_carrier(program, *carrier, false, op.name(), &kinds)?;
+            expect_carrier(program, *carrier, false, op.name(), kinds)?;
             Ok(Expr::Raw(format!(
                 "{}.is_some()",
                 render_expr(&operand(program, *carrier))
             )))
         }
         EmirOp::OptionUnwrapOr(carrier, default) => {
-            expect_carrier(program, *carrier, false, op.name(), &kinds)?;
+            expect_carrier(program, *carrier, false, op.name(), kinds)?;
             Ok(Expr::Raw(format!(
                 "{}.unwrap_or({})",
                 render_expr(&operand(program, *carrier)),
@@ -93,7 +98,7 @@ pub(super) fn op_flow_exprs(
             )))
         }
         EmirOp::ResultOk(payload) => {
-            let tys = carrier_payload_types(program, names, states, input_kinds)?;
+            let tys = carrier_payload_types(program, names, states, input_kinds, kinds)?;
             let idx = op_self_index(program, op).unwrap_or(u32::MAX);
             Ok(Expr::Raw(format!(
                 "Result::<{}, {}>::Ok({})",
@@ -103,7 +108,7 @@ pub(super) fn op_flow_exprs(
             )))
         }
         EmirOp::ResultErr(payload) => {
-            let tys = carrier_payload_types(program, names, states, input_kinds)?;
+            let tys = carrier_payload_types(program, names, states, input_kinds, kinds)?;
             let idx = op_self_index(program, op).unwrap_or(u32::MAX);
             Ok(Expr::Raw(format!(
                 "Result::<{}, {}>::Err({})",
@@ -113,14 +118,14 @@ pub(super) fn op_flow_exprs(
             )))
         }
         EmirOp::ResultIsOk(carrier) => {
-            expect_carrier(program, *carrier, true, op.name(), &kinds)?;
+            expect_carrier(program, *carrier, true, op.name(), kinds)?;
             Ok(Expr::Raw(format!(
                 "{}.is_ok()",
                 render_expr(&operand(program, *carrier))
             )))
         }
         EmirOp::ResultUnwrapOr(carrier, default) => {
-            expect_carrier(program, *carrier, true, op.name(), &kinds)?;
+            expect_carrier(program, *carrier, true, op.name(), kinds)?;
             Ok(Expr::Raw(format!(
                 "{}.as_ref().map(|__value| (*__value).clone()).unwrap_or({})",
                 render_expr(&operand(program, *carrier)),
@@ -128,8 +133,8 @@ pub(super) fn op_flow_exprs(
             )))
         }
         EmirOp::ResultErrorOf(carrier) => {
-            expect_carrier(program, *carrier, true, op.name(), &kinds)?;
-            let tys = carrier_payload_types(program, names, states, input_kinds)?;
+            expect_carrier(program, *carrier, true, op.name(), kinds)?;
+            let tys = carrier_payload_types(program, names, states, input_kinds, kinds)?;
             let err_ty = tys.result_err(carrier.0);
             Ok(Expr::Raw(format!(
                 "match {} {{ Ok(_) => Option::<{err_ty}>::None, Err(__opt_err) => Option::<{err_ty}>::Some(__opt_err) }}",
@@ -140,37 +145,45 @@ pub(super) fn op_flow_exprs(
     }
 }
 
-
 thread_local! { static CONTROL_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 struct ControlScope(usize);
 impl Drop for ControlScope {
-    fn drop(&mut self) { CONTROL_DEPTH.with(|depth| depth.set(self.0)); }
+    fn drop(&mut self) {
+        CONTROL_DEPTH.with(|depth| depth.set(self.0));
+    }
 }
 
 /// Lazy source control retains error returns in the enclosing generated function.
 pub(super) fn authored_control_expr(
     op: &EmirOp,
     program: &EmirProgram,
-    names: &[String],
-    states: &[String],
-    inputs: &InputKinds,
+    kinds: &[ValueKind],
 ) -> Result<Expr, BackendError> {
-    let scope = ControlScope(CONTROL_DEPTH.with(|depth| { let previous = depth.get(); depth.set(previous + 1); previous }));
+    let scope = ControlScope(CONTROL_DEPTH.with(|depth| {
+        let previous = depth.get();
+        depth.set(previous + 1);
+        previous
+    }));
     let prefix = format!("__control{}_", scope.0);
-    let kinds = value_kinds(program, names, states, inputs);
-    let nested = |body: &EmirProgram, argument_kinds: Vec<ValueKind>| -> Result<String, BackendError> {
-        let names = (0..argument_kinds.len()).map(|index| format!("{prefix}arg_{index}")).collect::<Vec<_>>();
-        let inputs = names.iter().cloned().zip(argument_kinds).collect();
-        Ok(render_expr(&value_expr(body, &names, &[], &inputs)?).replace("__e", &format!("{prefix}e")))
-    };
+
+    let nested =
+        |body: &EmirProgram, argument_kinds: Vec<ValueKind>| -> Result<String, BackendError> {
+            let names = (0..argument_kinds.len())
+                .map(|index| format!("{prefix}arg_{index}"))
+                .collect::<Vec<_>>();
+            let inputs = names.iter().cloned().zip(argument_kinds).collect();
+            Ok(render_expr(&value_expr(body, &names, &[], &inputs)?)
+                .replace("__e", &format!("{prefix}e")))
+        };
     let captures = |args: &[EmirValue], start: usize| -> Result<String, BackendError> {
         let mut source = String::new();
         for (index, value) in args.iter().enumerate() {
             let name = format!("{prefix}arg_{}", start + index);
             let expression = render_expr(&operand(program, *value));
-            let kind = kind_at(&kinds, *value);
-            if kind.is_copy() { source.push_str(&format!("let {name} = {expression};")); }
-            else if let ValueKind::Closure { params, result } = &kind {
+            let kind = kind_at(kinds, *value);
+            if kind.is_copy() {
+                source.push_str(&format!("let {name} = {expression};"));
+            } else if let ValueKind::Closure { params, result } = &kind {
                 // A closure capture clones the shared `Rc<dyn Fn>`
                 // handle; every closure carrier (register or scope
                 // binding) is an `Rc`.
@@ -178,19 +191,41 @@ pub(super) fn authored_control_expr(
                     "let {name}: std::rc::Rc<{}> = {expression}.clone();",
                     callable_ty(params, result)?
                 ));
+            } else {
+                source.push_str(&format!(
+                    "let {name}: &{} = &{expression};",
+                    crate::rust_ir::render::render_ty(&kind.borrowed_rust_ty()?)
+                ));
             }
-            else { source.push_str(&format!("let {name}: &{} = &{expression};", crate::rust_ir::render::render_ty(&kind.borrowed_rust_ty()?))); }
         }
         Ok(source)
     };
     Ok(Expr::Raw(match op {
-        EmirOp::Refuse(detail) => format!("return Err({}.to_string())", render_expr(&Expr::Str(detail.clone()))),
+        EmirOp::Refuse(detail) => format!(
+            "return Err({}.to_string())",
+            render_expr(&Expr::Str(detail.clone()))
+        ),
         EmirOp::RefuseValue(value) => {
-            if kind_at(&kinds, *value) != ValueKind::Text { return Err(BackendError::UnsupportedType("refusal detail must be Text".into())); }
-            format!("return Err({}.to_string())", render_expr(&operand(program, *value)))
+            if kind_at(kinds, *value) != ValueKind::Text {
+                return Err(BackendError::UnsupportedType(
+                    "refusal detail must be Text".into(),
+                ));
+            }
+            format!(
+                "return Err({}.to_string())",
+                render_expr(&operand(program, *value))
+            )
         }
-        EmirOp::Branch { condition, args, then_body, else_body } => {
-            let argument_kinds = args.iter().map(|value| kind_at(&kinds, *value)).collect::<Vec<_>>();
+        EmirOp::Branch {
+            condition,
+            args,
+            then_body,
+            else_body,
+        } => {
+            let argument_kinds = args
+                .iter()
+                .map(|value| kind_at(kinds, *value))
+                .collect::<Vec<_>>();
             // One representation: the kind walk (`value_kinds`) joins
             // an exact-int arm with an i64 arm to ExactInt, so the i64
             // arm widens here through `ExactInt::from` to match — or
@@ -221,22 +256,47 @@ pub(super) fn authored_control_expr(
             } else {
                 else_text
             };
-            format!("{{ {} if {} {{ {then_body} }} else {{ {else_body} }} }}", captures(args, 0)?, render_expr(&operand(program, *condition)))
+            format!(
+                "{{ {} if {} {{ {then_body} }} else {{ {else_body} }} }}",
+                captures(args, 0)?,
+                render_expr(&operand(program, *condition))
+            )
         }
         EmirOp::Collect { count, args, body } => {
-            let argument_kinds = std::iter::once(ValueKind::I64).chain(args.iter().map(|value| kind_at(&kinds, *value))).collect();
+            let argument_kinds = std::iter::once(ValueKind::I64)
+                .chain(args.iter().map(|value| kind_at(kinds, *value)))
+                .collect();
             let body = nested(body, argument_kinds)?;
-            format!("{{ let __collect_count = {}; let __collect_size = usize::try_from(__collect_count).map_err(|_| String::from(\"collection count must be nonnegative and fit usize\"))?; let mut __collect_values = Vec::new(); __collect_values.try_reserve_exact(__collect_size).map_err(|_| String::from(\"collection allocation exceeds available capacity\"))?; {} for {prefix}arg_0 in 0..__collect_count {{ __collect_values.push({body}); }} __collect_values }}", render_expr(&checked_integer_operand(program, *count, &kinds)?), captures(args, 1)?)
+            format!(
+                "{{ let __collect_count = {}; let __collect_size = usize::try_from(__collect_count).map_err(|_| String::from(\"collection count must be nonnegative and fit usize\"))?; let mut __collect_values = Vec::new(); __collect_values.try_reserve_exact(__collect_size).map_err(|_| String::from(\"collection allocation exceeds available capacity\"))?; {} for {prefix}arg_0 in 0..__collect_count {{ __collect_values.push({body}); }} __collect_values }}",
+                render_expr(&checked_integer_operand(program, *count, kinds)?),
+                captures(args, 1)?
+            )
         }
-        EmirOp::Iterate { count, init, args, stop, body } => {
-            let state_kind = kind_at(&kinds, *init);
+        EmirOp::Iterate {
+            count,
+            init,
+            args,
+            stop,
+            body,
+        } => {
+            let state_kind = kind_at(kinds, *init);
             let mut argument_kinds = vec![ValueKind::I64, state_kind.clone()];
-            argument_kinds.extend(args.iter().map(|value| kind_at(&kinds, *value)));
-            let stop = stop.as_ref().map(|stop| nested(stop, argument_kinds.clone())).transpose()?
-                .map(|stop| format!("if {stop} {{ break; }}")).unwrap_or_default();
+            argument_kinds.extend(args.iter().map(|value| kind_at(kinds, *value)));
+            let stop = stop
+                .as_ref()
+                .map(|stop| nested(stop, argument_kinds.clone()))
+                .transpose()?
+                .map(|stop| format!("if {stop} {{ break; }}"))
+                .unwrap_or_default();
             let body = nested(body, argument_kinds)?;
             let borrow = if state_kind.is_copy() { "" } else { "&" };
-            format!("{{ let __control_count = {}; if __control_count < 0 {{ return Err(String::from(\"iteration count must be nonnegative\")); }} let mut __control_state = {}; for __control_index in 0..__control_count {{ let {prefix}arg_0 = __control_index; let {prefix}arg_1 = {borrow}__control_state; {} {stop} __control_state = {body}; }} __control_state }}", render_expr(&checked_integer_operand(program, *count, &kinds)?), render_expr(&owned_operand(program, *init, &kinds)), captures(args, 2)?)
+            format!(
+                "{{ let __control_count = {}; if __control_count < 0 {{ return Err(String::from(\"iteration count must be nonnegative\")); }} let mut __control_state = {}; for __control_index in 0..__control_count {{ let {prefix}arg_0 = __control_index; let {prefix}arg_1 = {borrow}__control_state; {} {stop} __control_state = {body}; }} __control_state }}",
+                render_expr(&checked_integer_operand(program, *count, kinds)?),
+                render_expr(&owned_operand(program, *init, kinds)),
+                captures(args, 2)?
+            )
         }
         _ => unreachable!("authored control route"),
     }))

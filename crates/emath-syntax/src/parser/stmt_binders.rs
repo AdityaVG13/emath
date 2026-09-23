@@ -153,9 +153,7 @@ impl super::Parser {
             let body = self.parse_expr()?;
             let _guard = guard;
             let param = binders
-                .first()
-                .map(|binder| binder.name.clone())
-                .unwrap_or_else(|| "_".to_string());
+                .first().map_or_else(|| "_".to_string(), |binder| binder.name.clone());
             let domain = binders
                 .first()
                 .and_then(|binder| binder.domain.clone())

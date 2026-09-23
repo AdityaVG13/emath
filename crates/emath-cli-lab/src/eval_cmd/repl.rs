@@ -1,6 +1,6 @@
 //! World-name resolution for the eval lane.
 
-use super::*;
+use super::{Path, CliExit, refuse_eval_coded, genesis_cmd, refuse_eval, evaluate_named, emit_receipt, EXIT_OK, evaluate_world, DEFAULT_WORLD, ADMITTED_WORLDS, WORLD_IR_WORLD_NAMES};
 
 /// The genesis lane (unchanged surface): evaluate a genesis-format
 /// reference file on the semantic VM. `--world` selects one admitted

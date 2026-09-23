@@ -1,6 +1,6 @@
 //! Simulation configuration and result types.
 
-use super::*;
+use super::{StructuralModel, Budget, Outcome, DaePlan, LowerError, EvidenceHandle, SchemaId, ContentId, UnresolvedReason, ContinuationHandle, BTreeMap, simulate, artifact_canonical, derivatives_canonical};
 
 /// Provides a causal DAE plan for a structural model within a budget.
 pub fn provide_dae_plan(model: &StructuralModel, budget: &Budget) -> Outcome<DaePlan, LowerError> {

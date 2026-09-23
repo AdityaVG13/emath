@@ -1,0 +1,189 @@
+# Representation crossings: recursive calls, closures, records, and sequences.
+emath function PrependInput:
+    inputs:
+        head: Int
+        tail: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [head, ..tail]
+
+emath function MixedVectorRecord:
+    inputs:
+        n: Int
+    outputs:
+        values: sequence(Int)
+        marker: Int
+    definitions:
+        values = [1, int_quot(n, 3)]
+        marker = 1
+
+emath function ConsVectorRecord:
+    inputs:
+        n: Int
+    outputs:
+        values: sequence(Int)
+        marker: Int
+    definitions:
+        values = [1, ..[int_quot(n, 3)]]
+        marker = 1
+
+emath function ApplyVector:
+    inputs:
+        f: sequence(Int) -> Int
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = f([int_quot(n, 3), int_rem(n, 3)])
+
+emath function VectorClosure:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = ApplyVector(function xs in sequence(Int): xs[0] + xs[1], n)
+
+emath function Reset:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n == 0: n else: Reset(0)
+
+emath function WideThenSmall:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = Reset(9223372036854775808)
+
+emath function Pair:
+    inputs:
+        n: Int
+        d: Int
+    outputs:
+        quotient: Int
+        remainder: Int
+    definitions:
+        quotient = int_quot(n, d)
+        remainder = int_rem(n, d)
+    tests:
+        example <signed_euclidean>:
+            given n = -10
+            given d = 3
+            expect quotient == -4
+            expect remainder == 2
+
+emath function Countdown:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 0: 0 else: 1 + Countdown(int_quot(n, 2))
+    tests:
+        example <recursive_argument>:
+            given n = 10
+            expect result == 4
+
+emath function ApplyQuotient:
+    inputs:
+        f: Int -> Int
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = f(int_quot(n, 3))
+
+emath function ClosureBoundary:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = ApplyQuotient(function x in Int: x + 1, n)
+    tests:
+        example <closure_argument>:
+            given n = 12
+            expect result == 5
+
+emath function VectorRecord:
+    inputs:
+        n: Int
+    outputs:
+        values: sequence(Int)
+        marker: Int
+    definitions:
+        values = [int_quot(n, 3), int_rem(n, 3)]
+        marker = 1
+    tests:
+        example <sequence_elements>:
+            given n = 10
+            expect values == [3, 1]
+
+emath function RatRecord:
+    inputs:
+        n: Int
+    outputs:
+        value: Rat
+        marker: Int
+    definitions:
+        value = int_quot(n, 3)
+        marker = 1
+    tests:
+        example <exact_widening>:
+            given n = 10
+            expect value == 3 / 1
+
+emath function LiteralRatRecord:
+    inputs:
+        unused: Int
+    outputs:
+        value: Rat
+        marker: Int
+    definitions:
+        value = 3
+        marker = 1
+
+emath function OverflowRecord:
+    inputs:
+        unused: Int
+    outputs:
+        value: Int
+        marker: Int
+    definitions:
+        value = int_quot(9223372036854775808, 1)
+        marker = 1
+
+emath function ClosureOverflow:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        f = function x in Int: x
+        result = f(int_quot(9223372036854775808, 1))
+
+emath function Forward:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n
+
+emath function WideThroughFrame:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = Forward(int_quot(9223372036854775808, 1))
+    tests:
+        example <preserve_wide_frame>:
+            given unused = 0
+            expect result == 9223372036854775808

@@ -14,8 +14,8 @@
 //!                                  the config)
 //!   - `run [n]`                    run up to n batches; without n, run
 //!                                  until the session closes
-//!                                  (goal_attained or
-//!                                  domain_exhausted; cap 1000 batches)
+//!                                  (`goal_attained` or
+//!                                  `domain_exhausted`; cap 1000 batches)
 //!   - `show`                       the state and incumbent summary
 //!   - `grow-case <id>`             freeze one more case ordinal; the
 //!                                  next batch re-scores the archive
@@ -67,12 +67,12 @@ pub struct ReplOutcome {
 
 fn write_line(out: &mut dyn Write, line: &str) -> Result<(), HostFault> {
     out.write_all(line.as_bytes())
-        .and_then(|_| out.write_all(b"\n"))
+        .and_then(|()| out.write_all(b"\n"))
         .map_err(|err| HostFault::fault("loop_stream", format!("cannot write transcript: {err}")))
 }
 
 fn i128_list(items: &[i128]) -> String {
-    let parts: Vec<String> = items.iter().map(|n| n.to_string()).collect();
+    let parts: Vec<String> = items.iter().map(std::string::ToString::to_string).collect();
     format!("[{}]", parts.join(", "))
 }
 
@@ -212,18 +212,15 @@ pub fn run_repl(
             }
             "step" => {
                 let budget = match words.next() {
-                    Some(raw) => match raw.parse::<i128>() {
-                        Ok(value) => value,
-                        Err(_) => {
-                            error_line(
-                                out,
-                                &HostFault::fault(
-                                    "loop_command",
-                                    format!("`{raw}` is not a budget (integer)"),
-                                ),
-                            )?;
-                            continue;
-                        }
+                    Some(raw) => if let Ok(value) = raw.parse::<i128>() { value } else {
+                        error_line(
+                            out,
+                            &HostFault::fault(
+                                "loop_command",
+                                format!("`{raw}` is not a budget (integer)"),
+                            ),
+                        )?;
+                        continue;
                     },
                     None => config.default_budget,
                 };
@@ -234,18 +231,15 @@ pub fn run_repl(
             }
             "run" => {
                 let count = match words.next() {
-                    Some(raw) => match raw.parse::<u64>() {
-                        Ok(value) => Some(value),
-                        Err(_) => {
-                            error_line(
-                                out,
-                                &HostFault::fault(
-                                    "loop_command",
-                                    format!("`{raw}` is not a batch count"),
-                                ),
-                            )?;
-                            continue;
-                        }
+                    Some(raw) => if let Ok(value) = raw.parse::<u64>() { Some(value) } else {
+                        error_line(
+                            out,
+                            &HostFault::fault(
+                                "loop_command",
+                                format!("`{raw}` is not a batch count"),
+                            ),
+                        )?;
+                        continue;
                     },
                     None => None,
                 };

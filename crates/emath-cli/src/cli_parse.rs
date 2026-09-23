@@ -1,6 +1,6 @@
 //! CLI entry (`run`), argument parsing, and the command grammar.
 
-use super::*;
+use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, PlannerRequest, BuildRequest, simulate_cmd, execution, loop_cmd, experiment_cmd, compiled_search, language_cmd, parse_check_request, parse_file_json_request, parse_planner_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
 
 /// Entry used by main; keeps the CLI testable.
 pub fn run(args: &[String]) -> CliExit {
@@ -40,7 +40,7 @@ pub fn run(args: &[String]) -> CliExit {
         ParsedCli::UnknownFlag { code } => code,
         ParsedCli::Pedagogic(err) => err.emit(catalog::wants_json(&cleaned_args)),
         ParsedCli::Usage(message) => {
-            let cmd = cleaned_args.first().map(String::as_str).unwrap_or("help");
+            let cmd = cleaned_args.first().map_or("help", String::as_str);
             let canonical = catalog::resolve_alias(cmd).unwrap_or(cmd);
             let err = PedagogicError::new(
                 "E-CLI-USAGE",
@@ -106,6 +106,7 @@ pub(super) enum Command {
     Explain(ExplainRequest),
     Run(execution::RunRequest),
     Loop(loop_cmd::LoopRequest),
+    Experiment(experiment_cmd::ExperimentRequest),
     Search(compiled_search::SearchRequest),
     Step(execution::RunRequest),
     Api(language_cmd::ApiRequest),
@@ -422,6 +423,13 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         },
         "loop" => require_single_file("loop", loop_cmd::USAGE, rest, loop_cmd::LoopRequest::parse)
             .map(Command::Loop),
+        "experiment" => require_single_file(
+            "experiment",
+            experiment_cmd::USAGE,
+            rest,
+            experiment_cmd::ExperimentRequest::parse,
+        )
+        .map(Command::Experiment),
         "run" => require_single_file(
             "run",
             "run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]",
@@ -446,7 +454,7 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
             "test",
             "test <file.emath> [--work N] [--out <dir>]",
             rest,
-            |r| parse_path_out_request(r).map(|(path, out, work)| (path, out, work)),
+            parse_path_out_request,
         )
         .map(|(path, out, work)| Command::Test { path, out, work }),
         "verify" => match parse_required_path(rest) {
@@ -478,42 +486,39 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                 .with_usage("emath inspect <artifact-dir> [--json]"),
             )),
         },
-        "diff" => match parse_diff_request(rest) {
-            Some((a, b, json)) => Ok(Command::Diff { a, b, json }),
-            None => {
-                let positionals: Vec<&str> = rest
-                    .iter()
-                    .filter(|arg| !arg.starts_with('-') || *arg == "-")
-                    .map(String::as_str)
-                    .collect();
-                let err = match positionals.len() {
-                    0 => PedagogicError::new(
-                        "E-CLI-USAGE",
-                        "missing required arguments `<a.emath>` and `<b.emath>` for `emath diff`",
-                        "positional arguments 1 and 2 (expected two file paths to compare)",
-                        "emath diff <a.emath> <b.emath> [--json]",
+        "diff" => if let Some((a, b, json)) = parse_diff_request(rest) { Ok(Command::Diff { a, b, json }) } else {
+            let positionals: Vec<&str> = rest
+                .iter()
+                .filter(|arg| !arg.starts_with('-') || *arg == "-")
+                .map(String::as_str)
+                .collect();
+            let err = match positionals.len() {
+                0 => PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "missing required arguments `<a.emath>` and `<b.emath>` for `emath diff`",
+                    "positional arguments 1 and 2 (expected two file paths to compare)",
+                    "emath diff <a.emath> <b.emath> [--json]",
+                ),
+                1 => PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "missing second comparison file `<b.emath>` for `emath diff`",
+                    "positional argument 2 (expected second file path)",
+                    format!("emath diff {} <b.emath> [--json]", positionals[0]),
+                ),
+                _ => PedagogicError::new(
+                    "E-CLI-USAGE",
+                    format!(
+                        "unexpected extra positional argument `{}` for `emath diff`",
+                        positionals[2]
                     ),
-                    1 => PedagogicError::new(
-                        "E-CLI-USAGE",
-                        "missing second comparison file `<b.emath>` for `emath diff`",
-                        "positional argument 2 (expected second file path)",
-                        format!("emath diff {} <b.emath> [--json]", positionals[0]),
-                    ),
-                    _ => PedagogicError::new(
-                        "E-CLI-USAGE",
-                        format!(
-                            "unexpected extra positional argument `{}` for `emath diff`",
-                            positionals[2]
-                        ),
-                        "positional arguments (expected exactly two files to compare)",
-                        format!("emath diff {} {} [--json]", positionals[0], positionals[1]),
-                    ),
-                };
-                Err(ParseKnownError::Pedagogic(
-                    err.with_command("diff")
-                        .with_usage("emath diff <a.emath> <b.emath> [--json]"),
-                ))
-            }
+                    "positional arguments (expected exactly two files to compare)",
+                    format!("emath diff {} {} [--json]", positionals[0], positionals[1]),
+                ),
+            };
+            Err(ParseKnownError::Pedagogic(
+                err.with_command("diff")
+                    .with_usage("emath diff <a.emath> <b.emath> [--json]"),
+            ))
         },
         "doctor" => {
             if no_extra_positionals(rest) {
@@ -551,7 +556,7 @@ pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownEr
         match rest[i].as_str() {
             "--value" => {
                 i += 1;
-                value = rest.get(i).map(|s| s.to_string());
+                value = rest.get(i).cloned();
                 if value.is_none() {
                     return Err(ParseKnownError::Pedagogic(
                         PedagogicError::new(
@@ -587,7 +592,7 @@ pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownEr
             }
             "--from" => {
                 i += 1;
-                from = rest.get(i).map(|s| s.to_string());
+                from = rest.get(i).cloned();
                 if from.is_none() {
                     return Err(ParseKnownError::Pedagogic(
                         PedagogicError::new(

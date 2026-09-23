@@ -1,4 +1,4 @@
-//! core::statistics — descriptive statistics and estimator contracts.
+//! `core::statistics` — descriptive statistics and estimator contracts.
 //!
 //! Honesty doctrine of this package:
 //!
@@ -25,7 +25,7 @@
 //!
 //! Leaves are selected by capsule kernel ids (`finite-average`,
 //! `type7-middle-order-statistic`, `centered-square-n-minus-one`,
-//! `centered-square-n`, `type7-order-statistic`). Meaning and FeatureIDs
+//! `centered-square-n`, `type7-order-statistic`). Meaning and `FeatureIDs`
 //! live in `language/spec/capabilities/probability/probability-statistics.emath`.
 
 /// A labeled estimate: the number PLUS the method that produced it and

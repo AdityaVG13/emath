@@ -1,4 +1,4 @@
-//! WorldResultBundle envelope: every execution labels world,
+//! `WorldResultBundle` envelope: every execution labels world,
 //! method, inputs, assumptions, answer-or-disposition, evidence, and
 //! cost. The World ABI ([`crate::evaluate_bounded`]) is the
 //! producer; this module is the envelope — a bare scalar never escapes a

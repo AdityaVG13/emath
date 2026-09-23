@@ -19,9 +19,9 @@ use emath_ir::{ConstructionReceipt, GoalKind, SemanticPackage, TypeId, TypeNode}
 use std::collections::{BTreeMap, BTreeSet};
 
 mod codegen_helpers;
-use codegen_helpers::*;
+use codegen_helpers::{collect_var_names, emit_host_structs, field_value_kinds, add_obligations, expand_host_inputs, refine_capability_result_kind, type_is_i64, sanitize_crate_name, sanitize_version};
 mod codegen_render;
-use codegen_render::*;
+use codegen_render::{value_expr, coerce_to_ty, program_kind, program_may_fault, ValueKind};
 mod codegen_steps;
 pub mod constructor_crate;
 pub mod rust_ir;
@@ -212,7 +212,7 @@ pub fn emit_record_definitions(records: &[AuthoredRecord]) -> Result<String, Bac
 /// kind (kinds without a concrete carrier keep the `impl Debug`
 /// fallback of the numeric shim). The declared `output` (authored
 /// name + carrier signature, single-output functions) is the carrier
-/// authority at the expression-template boundary: a CodeValue result
+/// authority at the expression-template boundary: a `CodeValue` result
 /// projects checked onto it - the engine's `type_admits` law (Rat
 /// widens Int exactly; Int refuses a Rational by name; Bool admits
 /// Bool only). Reference context is on for the whole entry, so
@@ -242,8 +242,7 @@ pub fn emit_constructor_entry(
     for (name, signature) in inputs {
         let kind = signature
             .as_deref()
-            .map(ValueKind::from_signature)
-            .unwrap_or(ValueKind::I64);
+            .map_or(ValueKind::I64, ValueKind::from_signature);
         params.push(format!("{name}: {}", render_ty(&kind.rust_ty()?)));
         // The recursive wrapper mirrors the public parameter exactly
         // (copy carriers, shared `Rc<dyn Fn>` closure handles, and

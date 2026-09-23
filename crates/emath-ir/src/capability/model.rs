@@ -1,6 +1,6 @@
 //! Capability cells: classes, schemas, admission.
 
-use super::*;
+use super::{fmt, QualifiedName};
 
 /// Canonical schema id for capability-cell descriptors.
 pub const CAPABILITY_CELL_SCHEMA_V1: &str = "emath.capability-cell.v1";

@@ -1,8 +1,8 @@
 //! Arena id remapping from admitter-local to package-global index space.
 
-use super::*;
+use super::{ExprNode, ExprId, TypeId, SliceAxis};
 
-/// Offset all child ExprIds and TypeIds in one node from the admitter's
+/// Offset all child `ExprIds` and `TypeIds` in one node from the admitter's
 /// local arena into the package's global index space.
 pub(super) fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset: u32) {
     let remap_e = |id: &mut ExprId| {
@@ -37,7 +37,7 @@ pub(super) fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset
         }
         ExprNode::Record { ty, fields } => {
             remap_t(ty);
-            for (_, id) in fields {
+            for id in fields.values_mut() {
                 remap_e(id);
             }
         }
@@ -104,7 +104,7 @@ pub(super) fn remap_expr_node(node: &mut ExprNode, expr_offset: u32, type_offset
     }
 }
 
-/// Offset all ExprIds and TypeIds in a declaration and its test cases into
+/// Offset all `ExprIds` and `TypeIds` in a declaration and its test cases into
 /// the package's global index space.
 pub(super) fn remap_ids(
     declaration: &mut emath_ir::Declaration,
@@ -120,7 +120,7 @@ pub(super) fn remap_ids(
     };
 
     // Definitions
-    for (_, id) in &mut declaration.definitions {
+    for id in declaration.definitions.values_mut() {
         remap_expr(id);
     }
     // Invariants
@@ -142,13 +142,13 @@ pub(super) fn remap_ids(
         for id in &mut ctor.preconditions {
             remap_expr(id);
         }
-        for (_, id) in &mut ctor.assignments {
+        for id in ctor.assignments.values_mut() {
             remap_expr(id);
         }
         for id in &mut ctor.postconditions {
             remap_expr(id);
         }
-        for (_, id) in &mut ctor.defaults {
+        for id in ctor.defaults.values_mut() {
             remap_expr(id);
         }
         if let Some(id) = &mut ctor.error_type {
@@ -157,7 +157,7 @@ pub(super) fn remap_ids(
     }
     // Test cases: given bindings and the expected value.
     for test in tests.iter_mut() {
-        for (_, id) in &mut test.given {
+        for id in test.given.values_mut() {
             remap_expr(id);
         }
         if let Some(id) = &mut test.expect {

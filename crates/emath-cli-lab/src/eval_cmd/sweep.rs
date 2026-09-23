@@ -9,7 +9,7 @@
 //! per-cell results with no wall-clock field, so byte-identical
 //! invocations produce byte-identical output.
 
-use super::*;
+use super::{PathBuf, assign_once, JsonWriter, value_map_json, CliExit, refuse_eval_coded, has_declaration_content, CompilerSession, Limits, print_diagnostics, print_json_diagnostics, json_diagnostics_entries, EXIT_REFUSED, EvalArgs, select_entrypoint, TypeNode, Value, parse_set_value_for, BTreeMap, eval_definitions_values, EXIT_OK};
 
 /// One parsed `emath sweep` invocation.
 pub(crate) struct SweepArgs {
@@ -148,7 +148,7 @@ struct CellRecord {
 
 impl CellRecord {
     fn human_line(&self, function: &str, expects: &[(String, String)]) -> String {
-        let mut line = format!("{function}");
+        let mut line = function.to_string();
         for (name, value) in &self.bindings {
             line.push_str(&format!(" {name}={value}"));
         }
@@ -449,9 +449,7 @@ pub(crate) fn dispatch_sweep(args: SweepArgs) -> CliExit {
                     for (name, want) in &args.expects {
                         let got = outputs
                             .iter()
-                            .find(|(out_name, _)| out_name == name)
-                            .map(|(_, value)| value.clone())
-                            .unwrap_or_else(|| "<absent>".to_string());
+                            .find(|(out_name, _)| out_name == name).map_or_else(|| "<absent>".to_string(), |(_, value)| value.clone());
                         if got != *want {
                             failures.push((name.clone(), want.clone(), got));
                         }
@@ -470,8 +468,7 @@ pub(crate) fn dispatch_sweep(args: SweepArgs) -> CliExit {
                         code: "E-EVAL-007".to_string(),
                         message: verdict
                             .reason_text()
-                            .unwrap_or_else(|| verdict.to_string())
-                            .to_string(),
+                            .unwrap_or_else(|| verdict.to_string()).clone(),
                     },
                 ),
             };

@@ -21,7 +21,8 @@ pub use deps::{
 };
 pub use edition::{ManifestEditionError, manifest_edition, parse_edition_field};
 pub use first_cutover::{
-    CutoverError, FIRST_CUTOVER_CONFORMANCE_CASES, FIRST_CUTOVER_IDS, activate_first_cutover, rollback_feature,
+    CutoverError, FIRST_CUTOVER_CONFORMANCE_CASES, FIRST_CUTOVER_IDS, activate_first_cutover,
+    rollback_feature,
 };
 pub use metrics::{BENCHMARK_RECEIPT_SCHEMA, BENCHMARK_RECEIPT_VERSION, MetricsCollector};
 pub use publication::{
@@ -55,6 +56,18 @@ pub fn generated_crate_target_dir(key: &str) -> PathBuf {
     dir.push("emath-cargo");
     dir.push(key.replace(['/', ':'], "-"));
     dir
+}
+/// Write a generated source or manifest without invalidating unchanged Cargo inputs.
+pub fn write_generated_file(
+    path: impl AsRef<Path>,
+    contents: impl AsRef<[u8]>,
+) -> std::io::Result<()> {
+    let path = path.as_ref();
+    let contents = contents.as_ref();
+    if std::fs::read(path).is_ok_and(|existing| existing == contents) {
+        return Ok(());
+    }
+    std::fs::write(path, contents)
 }
 
 pub const COMPILER_DESCRIPTOR: &str = concat!("emath-phase1/", env!("CARGO_PKG_VERSION"));
@@ -278,8 +291,10 @@ fn build_constructor_text(
     for function in &functions {
         match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, function) {
             Ok(lowered) if lowered.runnable => {
-                match emath_rust_backend::emit_constructor_program(&lowered.program, &lowered.inputs)
-                {
+                match emath_rust_backend::emit_constructor_program(
+                    &lowered.program,
+                    &lowered.inputs,
+                ) {
                     Ok(body) => {
                         rust.push_str(&format!("// function `{function}`\n"));
                         rust.push_str(&body);

@@ -1,0 +1,19 @@
+{
+  "schema": "emath.experiment.v1",
+  "experiment_id": "prime-count-sieve",
+  "baseline": {"crate": "baseline"},
+  "candidate": {"crate": "candidate"},
+  "workload": "workload.txt",
+  "evaluator": {
+    "module": "../../language/templates/research_targets/rust_hotpath.emath",
+    "function": "HotpathEvaluation"
+  },
+  "measurement": {"pairs": 8, "warmup": 1, "seed": 7},
+  "budget": {
+    "experiment_ms": 300000,
+    "build_ms": 120000,
+    "trial_ms": 10000,
+    "output_bytes": 65536
+  },
+  "access": {"network": false, "filesystem_write": false, "require_isolation": true}
+}

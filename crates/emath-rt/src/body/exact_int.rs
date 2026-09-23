@@ -47,13 +47,24 @@ impl PartialOrd for ExactInt {
 
 impl Ord for ExactInt {
     fn cmp(&self, other: &Self) -> Ordering {
-        match (self.signum(), other.signum()) {
-            (a, b) if a < b => Ordering::Less,
-            (a, b) if a > b => Ordering::Greater,
-            (0, 0) => Ordering::Equal,
-            (-1, -1) => cmp_limbs(&other.abs_limbs(), &self.abs_limbs()),
-            _ => cmp_limbs(&self.abs_limbs(), &other.abs_limbs()),
+        if let (Self::Small(a), Self::Small(b)) = (self, other) {
+            return a.cmp(b);
         }
+        let sign = self.signum();
+        let other_sign = other.signum();
+        if sign != other_sign {
+            return sign.cmp(&other_sign);
+        }
+        if sign == 0 {
+            return Ordering::Equal;
+        }
+        let mut left_small = [0_u32; 4];
+        let mut right_small = [0_u32; 4];
+        let order = cmp_limbs(
+            self.magnitude_slice(&mut left_small),
+            other.magnitude_slice(&mut right_small),
+        );
+        if sign < 0 { order.reverse() } else { order }
     }
 }
 
@@ -239,13 +250,10 @@ impl ExactInt {
     }
 
     pub fn add(&self, other: &Self) -> Result<Self, ExactError> {
-        match (self, other) {
-            (Self::Small(a), Self::Small(b)) => {
-                if let Some(sum) = a.checked_add(*b) {
-                    return Ok(Self::Small(sum));
-                }
+        if let (Self::Small(a), Self::Small(b)) = (self, other) {
+            if let Some(sum) = a.checked_add(*b) {
+                return Ok(Self::Small(sum));
             }
-            _ => {}
         }
         signed_add(self.neg_limbs(), other.neg_limbs())
     }
@@ -255,13 +263,10 @@ impl ExactInt {
     }
 
     pub fn mul(&self, other: &Self) -> Result<Self, ExactError> {
-        match (self, other) {
-            (Self::Small(a), Self::Small(b)) => {
-                if let Some(prod) = a.checked_mul(*b) {
-                    return Ok(Self::Small(prod));
-                }
+        if let (Self::Small(a), Self::Small(b)) = (self, other) {
+            if let Some(prod) = a.checked_mul(*b) {
+                return Ok(Self::Small(prod));
             }
-            _ => {}
         }
         if self.is_zero() || other.is_zero() {
             return Ok(Self::zero());
@@ -645,8 +650,20 @@ impl ExactInt {
         Ok(Self::Big { neg, limbs })
     }
 
-    fn abs_limbs(&self) -> Vec<u32> {
-        self.neg_limbs().1
+    fn magnitude_slice<'a>(&'a self, small: &'a mut [u32; 4]) -> &'a [u32] {
+        match self {
+            Self::Big { limbs, .. } => limbs,
+            Self::Small(value) => {
+                let mut magnitude = value.unsigned_abs();
+                let mut len = 0;
+                while magnitude != 0 {
+                    small[len] = magnitude as u32;
+                    magnitude >>= 32;
+                    len += 1;
+                }
+                &small[..len]
+            }
+        }
     }
 
     fn neg_limbs(&self) -> (bool, Vec<u32>) {
@@ -870,7 +887,9 @@ fn mul_small_add(limbs: &mut Vec<u32>, scale: u64, add: u64) {
 fn bit(limbs: &[u32], index: usize) -> bool {
     let limb = index / 32;
     let offset = index % 32;
-    limbs.get(limb).is_some_and(|value| (value >> offset) & 1 == 1)
+    limbs
+        .get(limb)
+        .is_some_and(|value| (value >> offset) & 1 == 1)
 }
 
 fn set_bit(limbs: &mut Vec<u32>, index: usize) {
@@ -904,6 +923,26 @@ fn shl1(limbs: &mut Vec<u32>) {
 fn div_rem_limbs(num: &[u32], den: &[u32]) -> (Vec<u32>, Vec<u32>) {
     if cmp_limbs(num, den) == Ordering::Less {
         return (Vec::new(), num.to_vec());
+    }
+    if den.len() == 1 && den[0] != 0 {
+        let divisor = u64::from(den[0]);
+        let mut quot = num.to_vec();
+        let mut rem = 0_u64;
+        for limb in quot.iter_mut().rev() {
+            // rem < divisor <= u32::MAX, so the joined word fits in u64.
+            let current = (rem << 32) | u64::from(*limb);
+            *limb = (current / divisor) as u32;
+            rem = current % divisor;
+        }
+        while quot.last() == Some(&0) {
+            quot.pop();
+        }
+        let rem = if rem == 0 {
+            Vec::new()
+        } else {
+            vec![rem as u32]
+        };
+        return (quot, rem);
     }
     let mut rem = Vec::new();
     let mut quot = vec![0u32; num.len()];

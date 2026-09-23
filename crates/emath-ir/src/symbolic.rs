@@ -160,8 +160,7 @@ pub fn expression_from_package(
         } if arguments.len() == 2 => {
             let name = package
                 .capability(*capability)
-                .map(|cell| cell.name.0.as_str())
-                .unwrap_or("");
+                .map_or("", |cell| cell.name.0.as_str());
             let leaf = name.rsplit(['.', ':']).next().unwrap_or(name);
             let operation = match leaf {
                 "add" | "checked-add" => BinaryOp::StrictFloatAdd,
@@ -170,9 +169,7 @@ pub fn expression_from_package(
                 _ => {
                     return Err(symbolic_error(
                         "E-SYM-003",
-                        format!(
-                            "native symbolic v1 supports exact integer scalar expressions, not `capability application`"
-                        ),
+                        "native symbolic v1 supports exact integer scalar expressions, not `capability application`".to_string(),
                     ));
                 }
             };
@@ -428,12 +425,9 @@ fn matches_pattern(
     captures: &mut BTreeMap<String, SymbolicExpr>,
 ) -> bool {
     match (pattern, expression) {
-        (RewritePattern::Capture(name), expression) => match captures.get(name) {
-            Some(prior) => prior == expression,
-            None => {
-                captures.insert(name.clone(), expression.clone());
-                true
-            }
+        (RewritePattern::Capture(name), expression) => if let Some(prior) = captures.get(name) { prior == expression } else {
+            captures.insert(name.clone(), expression.clone());
+            true
         },
         (RewritePattern::Integer(left), SymbolicExpr::Integer(right)) => left == right,
         (RewritePattern::Variable(left), SymbolicExpr::Variable(right)) => left == right,

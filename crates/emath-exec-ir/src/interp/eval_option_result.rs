@@ -1,4 +1,4 @@
-use super::*;
+use super::{EmirProgram, EmirOp, Value, ValueFrame, EvalBudget, EvalFault, eval_tensor_slice, register};
 
 pub(super) fn eval_option_result(
     _self_program: &EmirProgram,

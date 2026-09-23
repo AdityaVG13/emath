@@ -12,7 +12,7 @@
 //! meaning id, language image id, and target name in, and loading
 //! against different values refuses by name. The module-semantic law
 //! that the revision must equal the loop state's own batch count
-//! belongs to the host (it knows LoopState's shape); this contract
+//! belongs to the host (it knows `LoopState`'s shape); this contract
 //! enforces the file-internal version of it - the ledger length and
 //! the 1-based entry ordinals must match the declared revision.
 //!
@@ -29,7 +29,7 @@
 //! Ledger projections are machine-scale (`i128`); a loop whose keys or
 //! scores exceed that scale cannot keep a scratch ledger.
 
-use super::*;
+use super::{CValue, ConstructorError, BTreeSet, ExactInt, Arc, BTreeMap, Path};
 use super::prelude::*;
 
 use emath_artifact::{parse_json_document, JsonValue};
@@ -56,8 +56,8 @@ pub struct ScratchIdentity {
 pub struct BatchLedgerEntry {
     /// 1-based committed batch ordinal; must match its ledger position.
     pub batch: u64,
-    /// The loop's verdict vocabulary (0 running, 1 goal_attained,
-    /// 2 domain_exhausted, 3 plateau, 4 budget_exhausted).
+    /// The loop's verdict vocabulary (0 running, 1 `goal_attained`,
+    /// 2 `domain_exhausted`, 3 plateau, 4 `budget_exhausted`).
     pub verdict: i128,
     /// Cumulative logical units charged after the batch (X4).
     pub used: i128,
@@ -105,7 +105,7 @@ fn render_value(value: &CValue, out: &mut String) -> Result<(), ConstructorError
                     "a rational with zero denominator is not a value",
                 ));
             }
-            out.push_str(&format!("{{\"rat\": [{}, {}]}}", num, den));
+            out.push_str(&format!("{{\"rat\": [{num}, {den}]}}"));
         }
         CValue::Float64(f) => {
             out.push_str(&format!("{{\"f64\": \"{:016x}\"}}", f.to_bits()));
@@ -219,9 +219,9 @@ fn parse_i128(json: &JsonValue, what: &str) -> Result<i128, ConstructorError> {
 
 /// Unique-key object view: duplicate keys are malformed (they would
 /// silently drop state on decode).
-fn unique_fields<'a>(
-    json: &'a JsonValue,
-) -> Result<&'a [(String, JsonValue)], ConstructorError> {
+fn unique_fields(
+    json: &JsonValue,
+) -> Result<&[(String, JsonValue)], ConstructorError> {
     let JsonValue::Obj(entries) = json else {
         return Err(fault("scratch_value", format!("expected an object, found {json:?}")));
     };
@@ -441,7 +441,7 @@ fn parse_value(json: &JsonValue) -> Result<CValue, ConstructorError> {
 // ---- ledger entries ---------------------------------------------------
 
 fn render_i128_array(items: &[i128]) -> String {
-    let parts: Vec<String> = items.iter().map(|n| n.to_string()).collect();
+    let parts: Vec<String> = items.iter().map(std::string::ToString::to_string).collect();
     format!("[{}]", parts.join(", "))
 }
 

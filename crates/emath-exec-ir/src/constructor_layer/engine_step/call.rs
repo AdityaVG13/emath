@@ -1,4 +1,4 @@
-use super::super::*;
+use super::super::{Engine, Expr, CValue, ConstructorError, ExprKind, Rc, Kont, fault, machine_int_basename, machine_buffer_basename, cint, Code, FnDecl, MAX_CALL_DEPTH, EvalTail};
 use super::prelude::{admit_input_type, code_identity, is_refused_recipe, project_field, rebuild_expr};
 
 impl Engine {
@@ -399,10 +399,9 @@ impl Engine {
                     self.set_frame_next("__done");
                     self.remember_call(&name, &vals, last.clone());
                     return Ok(last);
-                } else {
-                    last = self.eval(expr)?;
-                    self.env.insert(dname.clone(), last.clone());
                 }
+                last = self.eval(expr)?;
+                self.env.insert(dname.clone(), last.clone());
             }
         }
     }

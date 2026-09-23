@@ -1,16 +1,17 @@
 //! Arithmetic, boolean, and comparison op lowering.
 
-use super::*;
+use super::{
+    BackendError, BinOp, EmirOp, EmirProgram, EmirValue, Expr, UnOp, ValueKind,
+    checked_integer_result, cmp_expr, comparison, exact_int_operand, i64_or_f64_bin, kind_at,
+    map_runtime_result, operand, operand_kind, render_expr, to_code_value, typed_operand,
+    union_pair,
+};
 use emath_exec_ir::BuiltinId;
 
 /// Complex binop operand: complex carriers pass through; scalars widen
 /// to the tuple carrier exactly as the VM's `complex_parts` does
 /// (`(x, 0.0)`); anything else refuses typed.
-fn typed_operand_or_complex(
-    program: &EmirProgram,
-    value: EmirValue,
-    kinds: &[ValueKind],
-) -> Expr {
+fn typed_operand_or_complex(program: &EmirProgram, value: EmirValue, kinds: &[ValueKind]) -> Expr {
     let expr = operand(program, value);
     match kind_at(kinds, value) {
         ValueKind::Complex => expr,
@@ -26,7 +27,7 @@ fn typed_operand_or_complex(
 /// (`n` becomes `n/1`, the VM's `as_rat` law). A part beyond `i128`
 /// refuses by name - the emitter's declared rational scale boundary -
 /// instead of truncating or silently switching representations.
-fn exact_int_ratio_parts(operand_expr: &str) -> String {
+pub(super) fn exact_int_ratio_parts(operand_expr: &str) -> String {
     format!(
         "((({operand_expr}).to_i128().ok_or_else(|| String::from(\"E-RAT-002: exact rational part exceeds i128\"))?), 1)"
     )
@@ -109,9 +110,22 @@ pub(super) fn op_arith_exprs(
         _ => None,
     };
     if let Some((function, left, right, negate)) = exact {
-        if kind_at(kinds, left) == ValueKind::Rational && kind_at(kinds, right) == ValueKind::Rational {
-            let value = map_runtime_result(format!("emath_rt::{function}({}, {})", render_expr(&operand(program, left)), render_expr(&operand(program, right))));
-            return Ok(if negate { Expr::Un { op: UnOp::Not, value: Box::new(value) } } else { value });
+        if kind_at(kinds, left) == ValueKind::Rational
+            && kind_at(kinds, right) == ValueKind::Rational
+        {
+            let value = map_runtime_result(format!(
+                "emath_rt::{function}({}, {})",
+                render_expr(&operand(program, left)),
+                render_expr(&operand(program, right))
+            ));
+            return Ok(if negate {
+                Expr::Un {
+                    op: UnOp::Not,
+                    value: Box::new(value),
+                }
+            } else {
+                value
+            });
         }
         // Mixed Int/Rational arithmetic (the residualized
         // expression-template lane hits this: `x * c + 1/2` with Int
@@ -129,9 +143,9 @@ pub(super) fn op_arith_exprs(
                     "(i128::from({}), 1)",
                     render_expr(&operand(program, value))
                 ))),
-                ValueKind::ExactInt => Some(Expr::Raw(exact_int_ratio_parts(
-                    &render_expr(&operand(program, value)),
-                ))),
+                ValueKind::ExactInt => Some(Expr::Raw(exact_int_ratio_parts(&render_expr(
+                    &operand(program, value),
+                )))),
                 _ => None,
             }
         };
@@ -162,9 +176,15 @@ pub(super) fn op_arith_exprs(
             let left_e = render_expr(&exact_int_operand(program, left, kinds));
             let right_e = render_expr(&exact_int_operand(program, right, kinds));
             let value = match function {
-                "ratio_add" => map_runtime_result(format!("{left_e}.add(&{right_e}).map_err(|err| err.to_string())")),
-                "ratio_sub" => map_runtime_result(format!("{left_e}.sub(&{right_e}).map_err(|err| err.to_string())")),
-                "ratio_mul" => map_runtime_result(format!("{left_e}.mul(&{right_e}).map_err(|err| err.to_string())")),
+                "ratio_add" => map_runtime_result(format!(
+                    "{left_e}.add(&{right_e}).map_err(|err| err.to_string())"
+                )),
+                "ratio_sub" => map_runtime_result(format!(
+                    "{left_e}.sub(&{right_e}).map_err(|err| err.to_string())"
+                )),
+                "ratio_mul" => map_runtime_result(format!(
+                    "{left_e}.mul(&{right_e}).map_err(|err| err.to_string())"
+                )),
                 // One representation: both operands widen to the ratio
                 // tuple carrier. `exact_ratio` returns
                 // `(ExactInt, ExactInt)`, which is not the Rational
@@ -174,7 +194,9 @@ pub(super) fn op_arith_exprs(
                     exact_int_ratio_parts(&left_e),
                     exact_int_ratio_parts(&right_e)
                 )),
-                "ratio_lt" => Expr::Raw(format!("{left_e}.cmp(&{right_e}) == core::cmp::Ordering::Less")),
+                "ratio_lt" => Expr::Raw(format!(
+                    "{left_e}.cmp(&{right_e}) == core::cmp::Ordering::Less"
+                )),
                 _ => {
                     return Err(BackendError::UnsupportedType(
                         "exact integer comparison is ordered".into(),
@@ -193,7 +215,10 @@ pub(super) fn op_arith_exprs(
     }
     if let EmirOp::Neg(value) = op {
         if kind_at(kinds, *value) == ValueKind::Rational {
-            return Ok(map_runtime_result(format!("emath_rt::ratio_sub((0, 1), {})", render_expr(&operand(program, *value)))));
+            return Ok(map_runtime_result(format!(
+                "emath_rt::ratio_sub((0, 1), {})",
+                render_expr(&operand(program, *value))
+            )));
         }
     }
     // Complex-carrier arithmetic: the same EMIR ops the VM's complex arm
@@ -206,13 +231,12 @@ pub(super) fn op_arith_exprs(
         _ => None,
     };
     if let Some((function, left, right)) = complex_bin {
-        if kind_at(kinds, left) == ValueKind::Complex
-            || kind_at(kinds, right) == ValueKind::Complex
+        if kind_at(kinds, left) == ValueKind::Complex || kind_at(kinds, right) == ValueKind::Complex
         {
             return Ok(Expr::Raw(format!(
                 "emath_rt::{function}({}, {})",
-                render_expr(&typed_operand_or_complex(program, left, &kinds)),
-                render_expr(&typed_operand_or_complex(program, right, &kinds))
+                render_expr(&typed_operand_or_complex(program, left, kinds)),
+                render_expr(&typed_operand_or_complex(program, right, kinds))
             )));
         }
     }
@@ -248,7 +272,7 @@ pub(super) fn op_arith_exprs(
             program,
             *l,
             *r,
-            &kinds,
+            kinds,
         )),
         EmirOp::F64Sub(l, r) => Ok(i64_or_f64_bin(
             BinOp::Sub,
@@ -256,7 +280,7 @@ pub(super) fn op_arith_exprs(
             program,
             *l,
             *r,
-            &kinds,
+            kinds,
         )),
         EmirOp::F64Mul(l, r) => Ok(i64_or_f64_bin(
             BinOp::Mul,
@@ -264,23 +288,23 @@ pub(super) fn op_arith_exprs(
             program,
             *l,
             *r,
-            &kinds,
+            kinds,
         )),
         EmirOp::F64Div(l, r) => {
-            if matches!(kind_at(&kinds, *l), ValueKind::I64 | ValueKind::ExactInt)
-                && matches!(kind_at(&kinds, *r), ValueKind::I64 | ValueKind::ExactInt)
-                && (kind_at(&kinds, *l) == ValueKind::ExactInt
-                    || kind_at(&kinds, *r) == ValueKind::ExactInt)
+            if matches!(kind_at(kinds, *l), ValueKind::I64 | ValueKind::ExactInt)
+                && matches!(kind_at(kinds, *r), ValueKind::I64 | ValueKind::ExactInt)
+                && (kind_at(kinds, *l) == ValueKind::ExactInt
+                    || kind_at(kinds, *r) == ValueKind::ExactInt)
             {
                 // Same one-representation rule as the exact lane above:
                 // widen both operands to the ratio tuple carrier.
                 return Ok(map_runtime_result(format!(
                     "emath_rt::ratio_div({}, {})",
-                    exact_int_ratio_parts(&render_expr(&exact_int_operand(program, *l, &kinds))),
-                    exact_int_ratio_parts(&render_expr(&exact_int_operand(program, *r, &kinds)))
+                    exact_int_ratio_parts(&render_expr(&exact_int_operand(program, *l, kinds))),
+                    exact_int_ratio_parts(&render_expr(&exact_int_operand(program, *r, kinds)))
                 )));
             }
-            if kind_at(&kinds, *l) == ValueKind::I64 && kind_at(&kinds, *r) == ValueKind::I64 {
+            if kind_at(kinds, *l) == ValueKind::I64 && kind_at(kinds, *r) == ValueKind::I64 {
                 return Ok(map_runtime_result(format!(
                     "emath_rt::ratio_div((i128::from({}), 1), (i128::from({}), 1))",
                     render_expr(&operand(program, *l)),
@@ -289,23 +313,23 @@ pub(super) fn op_arith_exprs(
             }
             Ok(Expr::Bin {
                 op: BinOp::Div,
-                left: Box::new(typed_operand(program, *l, ValueKind::F64, &kinds)),
-                right: Box::new(typed_operand(program, *r, ValueKind::F64, &kinds)),
+                left: Box::new(typed_operand(program, *l, ValueKind::F64, kinds)),
+                right: Box::new(typed_operand(program, *r, ValueKind::F64, kinds)),
             })
         }
         EmirOp::F64Pow(l, r) => Ok(Expr::Bin {
             op: BinOp::Pow,
-            left: Box::new(typed_operand(program, *l, ValueKind::F64, &kinds)),
-            right: Box::new(typed_operand(program, *r, ValueKind::F64, &kinds)),
+            left: Box::new(typed_operand(program, *l, ValueKind::F64, kinds)),
+            right: Box::new(typed_operand(program, *r, ValueKind::F64, kinds)),
         }),
         EmirOp::Neg(value) => {
-            if operand_kind(&kinds, *value) == ValueKind::I64 {
+            if operand_kind(kinds, *value) == ValueKind::I64 {
                 Ok(checked_integer_result(Expr::MethodCall {
                     receiver: Box::new(operand(program, *value)),
                     method: "checked_neg".to_string(),
                     args: Vec::new(),
                 }))
-            } else if operand_kind(&kinds, *value) == ValueKind::ExactInt {
+            } else if operand_kind(kinds, *value) == ValueKind::ExactInt {
                 Ok(map_runtime_result(format!(
                     "{}.checked_neg().map_err(|err| err.to_string())",
                     render_expr(&operand(program, *value))
@@ -313,7 +337,7 @@ pub(super) fn op_arith_exprs(
             } else {
                 Ok(Expr::Un {
                     op: UnOp::Neg,
-                    value: Box::new(typed_operand(program, *value, ValueKind::F64, &kinds)),
+                    value: Box::new(typed_operand(program, *value, ValueKind::F64, kinds)),
                 })
             }
         }
@@ -322,25 +346,25 @@ pub(super) fn op_arith_exprs(
             value: Box::new(operand(program, *value)),
         }),
         EmirOp::UnaryBuiltin(id, value) => {
-            let arg = render_expr(&typed_operand(program, *value, ValueKind::F64, &kinds));
+            let arg = render_expr(&typed_operand(program, *value, ValueKind::F64, kinds));
             Ok(Expr::Raw(unary_builtin(*id, &arg)?))
         }
         EmirOp::BinaryBuiltin(id, left, right) => {
-            let left = render_expr(&typed_operand(program, *left, ValueKind::F64, &kinds));
-            let right = render_expr(&typed_operand(program, *right, ValueKind::F64, &kinds));
+            let left = render_expr(&typed_operand(program, *left, ValueKind::F64, kinds));
+            let right = render_expr(&typed_operand(program, *right, ValueKind::F64, kinds));
             Ok(Expr::Raw(binary_builtin(*id, &left, &right)?))
         }
         EmirOp::IsFinite(value) => Ok(Expr::MethodCall {
-            receiver: Box::new(typed_operand(program, *value, ValueKind::F64, &kinds)),
+            receiver: Box::new(typed_operand(program, *value, ValueKind::F64, kinds)),
             method: "is_finite".to_string(),
             args: Vec::new(),
         }),
-        EmirOp::Lt(l, r) => Ok(cmp_expr(BinOp::Lt, program, *l, *r, &kinds)),
-        EmirOp::Le(l, r) => Ok(cmp_expr(BinOp::Le, program, *l, *r, &kinds)),
-        EmirOp::Gt(l, r) => Ok(cmp_expr(BinOp::Gt, program, *l, *r, &kinds)),
-        EmirOp::Ge(l, r) => Ok(cmp_expr(BinOp::Ge, program, *l, *r, &kinds)),
-        EmirOp::Eq(l, r) => Ok(cmp_expr(BinOp::Eq, program, *l, *r, &kinds)),
-        EmirOp::Ne(l, r) => Ok(cmp_expr(BinOp::Ne, program, *l, *r, &kinds)),
+        EmirOp::Lt(l, r) => Ok(cmp_expr(BinOp::Lt, program, *l, *r, kinds)),
+        EmirOp::Le(l, r) => Ok(cmp_expr(BinOp::Le, program, *l, *r, kinds)),
+        EmirOp::Gt(l, r) => Ok(cmp_expr(BinOp::Gt, program, *l, *r, kinds)),
+        EmirOp::Ge(l, r) => Ok(cmp_expr(BinOp::Ge, program, *l, *r, kinds)),
+        EmirOp::Eq(l, r) => Ok(cmp_expr(BinOp::Eq, program, *l, *r, kinds)),
+        EmirOp::Ne(l, r) => Ok(cmp_expr(BinOp::Ne, program, *l, *r, kinds)),
         EmirOp::And(l, r) => Ok(comparison(BinOp::And, *l, *r, program)),
         EmirOp::Or(l, r) => Ok(comparison(BinOp::Or, *l, *r, program)),
         // `==>` = `!l || r`

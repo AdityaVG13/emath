@@ -17,6 +17,14 @@
 - `COMPILER_DESCRIPTOR`: compiler identity string (`emath-phase1/<version>`).
 - (not exhaustive: free functions `build_file`, `build_text`, `build_package`, `run_cargo_timed`.)
 
+## Generated-file reuse
+
+`write_generated_file` preserves identical files and mtimes. Changed or absent
+contents use the ordinary write path; failed reads also fall back to writing.
+CLI emission, compiled probes, and native exports share this helper, allowing
+Cargo reuse in a stable output directory. This is not a binary cache and does
+not promise cross-directory reuse or concurrent publication isolation.
+
 ## Invariants
 - Typed refusal: any admission error (`AdmittedWithErrors`) means no artifact and no half-built crate.
 - The single artifact identity is the manifest-body hash (`manifest_identity`) frozen over the resolved manifest; the independent checker recomputes the identical value. `stage` fingerprints are never advertised as identity.
@@ -33,6 +41,7 @@
 - Admission diagnostics carry stable E-* codes (sorted, deduped) in `AdmittedWithErrors`; `compile_direct_module` maps them to a refusal string.
 - `cargo test` under budget: running past timeout kills the child and yields `E-RES-120`.
 - `run_cargo_timed` returns `Result<Output, String>` with concrete spawn/wait/kill messages.
+- Generated Cargo commands default to one build job and one libtest thread, even outside the repository. `CARGO_BUILD_JOBS` and `RUST_TEST_THREADS` inherit caller environment values; explicit per-command settings (including removal) take precedence. These are concurrency defaults, not CPU-percentage or memory quotas.
 
 ## Determinism class
 - Deterministic: content ids, plan records, source map, manifest and evidence all derive from a fixed pipeline with no wall-clock or randomness input.

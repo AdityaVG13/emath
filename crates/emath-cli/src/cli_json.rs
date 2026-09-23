@@ -1,6 +1,6 @@
 //! Diagnostic printing and JSON document helpers shared by CLI commands.
 
-use super::*;
+use super::{Diagnostics, CliExit};
 
 pub fn print_diagnostics(diagnostics: &Diagnostics) {
     for item in diagnostics.items() {

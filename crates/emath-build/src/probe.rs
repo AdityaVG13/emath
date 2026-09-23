@@ -18,7 +18,7 @@
 //! (`emath eval` refuses `--world` on function files, E-EVAL-008), so
 //! they print typed markers, never a fabricated value.
 
-use super::*;
+use super::{BuildError, Path, PathBuf, generated_crate_target_dir, run_cargo_timed};
 
 /// Input binding kind for the generated shim (mirrors `emath eval`'s
 /// binding vocabulary: Float64, Int, Nat, Vector[Float64], Vector[Int],
@@ -156,7 +156,7 @@ pub fn emit_compiled_probe(
          {crate_name} = {{ path = \"{}\" }}\n",
         artifact_dir.display()
     );
-    std::fs::write(probe_dir.join("Cargo.toml"), manifest)
+    crate::write_generated_file(probe_dir.join("Cargo.toml"), manifest)
         .map_err(|error| BuildError::Io(format!("cannot write probe Cargo.toml: {error}")))?;
     let shim = shim_source(
         crate_name,
@@ -166,7 +166,7 @@ pub fn emit_compiled_probe(
         output_kind,
         &meaning_id,
     );
-    std::fs::write(src.join("main.rs"), shim)
+    crate::write_generated_file(src.join("main.rs"), shim)
         .map_err(|error| BuildError::Io(format!("cannot write probe main.rs: {error}")))?;
 
     // Persistent incremental target dir keyed by the probe crate (the

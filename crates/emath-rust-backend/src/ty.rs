@@ -1,6 +1,6 @@
 //! Rust type/naming helpers for the backend.
 
-use super::*;
+use super::{BackendInput, sanitize_crate_name, sanitize_version, TypeId, Ty, BackendError, TypeNode, ValueKind, escape_ident, render_ty, DEFAULT_ERROR_TYPE};
 
 impl BackendInput<'_> {
     #[must_use]

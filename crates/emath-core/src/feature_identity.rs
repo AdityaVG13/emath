@@ -1,6 +1,6 @@
-//! Durable FeatureIDs and separated language hash domains.
+//! Durable `FeatureIDs` and separated language hash domains.
 //!
-//! FeatureIDs name stable language concepts. Exact meaning, distributable bytes,
+//! `FeatureIDs` name stable language concepts. Exact meaning, distributable bytes,
 //! and operational provenance are named by separate SHA-256 envelopes.
 
 use std::fmt;
@@ -117,7 +117,7 @@ fn has_numeric_suffix(value: &str) -> bool {
     })
 }
 
-/// FeatureID refusal category.
+/// `FeatureID` refusal category.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FeatureIdErrorKind {
     NotNfc,
@@ -131,7 +131,7 @@ pub enum FeatureIdErrorKind {
     ClassMismatch,
 }
 
-/// Invalid FeatureID.
+/// Invalid `FeatureID`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeatureIdError {
     kind: FeatureIdErrorKind,
@@ -387,7 +387,7 @@ impl LegacyIdKind {
     }
 }
 
-/// A legacy identifier that cannot be confused with a FeatureID.
+/// A legacy identifier that cannot be confused with a `FeatureID`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacyId {
     kind: LegacyIdKind,
@@ -408,7 +408,7 @@ impl LegacyId {
     }
 }
 
-/// Explicit, reversible legacy-ID to FeatureID mapping.
+/// Explicit, reversible legacy-ID to `FeatureID` mapping.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacyIdMapping {
     legacy_id: LegacyId,

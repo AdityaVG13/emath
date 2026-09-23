@@ -1,13 +1,16 @@
 //! Option/Result carrier payload type resolution.
 
-use super::*;
+use super::{
+    BackendError, EmirOp, EmirProgram, EmirValue, HashMap, InputKinds, ValueKind, kind_at,
+    register_rust_ty,
+};
 
 /// Payload Rust types of every Option/Result carrier register, resolved
 /// by dataflow over the SSA program: producers (the payload of
 /// `option_some`/`result_ok`/`result_err`) and consumers (the eager
 /// default of the `unwrap_or` honesty gate; the error payload composed
 /// by `result_error_of`) must agree. A conflict is a typed lowering
-/// refusal (interp TypeConfusion parity), never a panic. A payload kind
+/// refusal (interp `TypeConfusion` parity), never a panic. A payload kind
 /// the program never materializes (e.g. the Err slot of a `result_ok`
 /// that is only `is_ok`-ed) defaults to the sibling slot so every
 /// carrier register still gets one concrete Rust type.
@@ -96,8 +99,8 @@ pub(super) fn carrier_payload_types(
     names: &[String],
     states: &[String],
     input_kinds: &InputKinds,
+    kinds: &[ValueKind],
 ) -> Result<CarrierPayloadTypes, BackendError> {
-    let kinds = value_kinds(program, names, states, input_kinds);
     let mut tys = CarrierPayloadTypes {
         opt: HashMap::new(),
         ok: HashMap::new(),
@@ -121,7 +124,7 @@ pub(super) fn carrier_payload_types(
         }
     };
     let payload_ty = |register: EmirValue, op: &EmirOp| -> Result<String, BackendError> {
-        nested_operand_ty(program, register, &kinds, names, states, input_kinds).ok_or_else(|| {
+        nested_operand_ty(program, register, kinds, names, states, input_kinds).ok_or_else(|| {
             BackendError::Lowering(format!(
                 "op `{}` payload register {} out of range",
                 op.name(),
@@ -131,9 +134,19 @@ pub(super) fn carrier_payload_types(
     };
     // Producer-determined payload types.
     for (i, (op, _)) in program.ops.iter().enumerate() {
-        if let ValueKind::Result(ok, error) = kind_at(&kinds, EmirValue(i as u32)) {
-            bind(&mut tys.ok, i as u32, crate::rust_ir::render::render_ty(&ok.rust_ty()?), op)?;
-            bind(&mut tys.err, i as u32, crate::rust_ir::render::render_ty(&error.rust_ty()?), op)?;
+        if let ValueKind::Result(ok, error) = kind_at(kinds, EmirValue(i as u32)) {
+            bind(
+                &mut tys.ok,
+                i as u32,
+                crate::rust_ir::render::render_ty(&ok.rust_ty()?),
+                op,
+            )?;
+            bind(
+                &mut tys.err,
+                i as u32,
+                crate::rust_ir::render::render_ty(&error.rust_ty()?),
+                op,
+            )?;
         }
         match op {
             EmirOp::OptionSome(payload) => {
@@ -206,7 +219,7 @@ pub(super) fn op_self_index(program: &EmirProgram, op: &EmirOp) -> Option<u32> {
         .map(|i| i as u32)
 }
 
-/// Static carrier-shape check (interp TypeConfusion parity): a carrier
+/// Static carrier-shape check (interp `TypeConfusion` parity): a carrier
 /// operand must be produced by a carrier op of the matching family,
 /// otherwise the strict backend refuses typed — a `BackendError`, never
 /// a Rust panic, never a silent scalar shadow.
@@ -223,13 +236,14 @@ pub(super) fn expect_carrier(
             value.0
         )));
     };
-    let family_ok = match is_result {
-        false => matches!(
+    let family_ok = if is_result {
+        matches!(kind_at(kinds, value), ValueKind::Result(..))
+            || matches!(producer, EmirOp::ResultOk(_) | EmirOp::ResultErr(_))
+    } else {
+        matches!(
             producer,
             EmirOp::OptionSome(_) | EmirOp::OptionNone | EmirOp::ResultErrorOf(_)
-        ),
-        true => matches!(kind_at(kinds, value), ValueKind::Result(..))
-            || matches!(producer, EmirOp::ResultOk(_) | EmirOp::ResultErr(_)),
+        )
     };
     if family_ok {
         Ok(())

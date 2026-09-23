@@ -10,7 +10,7 @@
 
 #![forbid(unsafe_code)]
 
-use emath_core::{E_PKG_EDITION_UNKNOWN, Edition, EditionError};
+use emath_core::{Edition, EditionError, E_PKG_EDITION_UNKNOWN};
 use std::path::Path;
 
 /// Error reading the edition out of an `emath.toml`.

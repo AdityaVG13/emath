@@ -1,6 +1,10 @@
 //! Builder policies, boolean analysis, and helper queries.
 
-use super::*;
+use super::{
+    BTreeSet, BinaryOp, BuilderError, BuilderModel, CmpOp, ConstructorModel, ExprNode, Expression,
+    Field, Literal, ModelBuilder, QualifiedName, SemanticPackage, Span, TypeId, TypeKind, TypeNode,
+    UnaryOp, Visibility,
+};
 
 impl BuilderModel {
     /// Lower one constructor model, enforcing its admission contract

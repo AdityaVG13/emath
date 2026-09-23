@@ -1,7 +1,7 @@
-//! Terminal and environment conventions (NO_COLOR, CI, TERM=dumb, TTY detection).
+//! Terminal and environment conventions (`NO_COLOR`, CI, TERM=dumb, TTY detection).
 //!
-//! Conforms to https://no-color.org and standard Unix CLI conventions:
-//! - NO_COLOR: When set to any value, suppress all ANSI color escape sequences.
+//! Conforms to <https://no-color.org> and standard Unix CLI conventions:
+//! - `NO_COLOR`: When set to any value, suppress all ANSI color escape sequences.
 //! - TERM=dumb: Terminal lacks capabilities; suppress colors and cursor movements.
 //! - Non-TTY: When stdout or stderr is piped/redirected, suppress colors automatically.
 //! - CI: Continuous integration environment; force non-interactive behavior.
@@ -84,7 +84,7 @@ pub fn extract_color_flags(args: &[String]) -> Result<Vec<String>, PedagogicErro
         } else if arg == "--color" {
             index += 1;
             let val = args.get(index);
-            if val.is_none() || (val.map_or(false, |v| v.starts_with('-') && v != "-")) {
+            if val.is_none_or(|v| v.starts_with('-') && v != "-") {
                 return Err(PedagogicError::new(
                     "E-CLI-MISSING-VALUE",
                     "flag `--color` requires a value (`auto`, `always`, or `never`)",

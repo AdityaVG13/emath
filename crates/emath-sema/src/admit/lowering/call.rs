@@ -1,12 +1,12 @@
 //! Generic call lowering.
 //!
-//! Executable mathematical calls resolve through capsule-installed FeatureID
+//! Executable mathematical calls resolve through capsule-installed `FeatureID`
 //! bindings; the language's structural Option/Result carriers lower directly.
 
 use emath_core::tree::{Expr, ExprKind};
 use emath_ir::{ExprId, ExprNode, Extent, Literal};
 
-use super::super::infer::*;
+use super::super::infer::Infer;
 use super::super::{E_UNKNOWN_FUNCTION, E_UNSUPPORTED_TYPE};
 
 mod carriers;

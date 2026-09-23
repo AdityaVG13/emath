@@ -1,6 +1,10 @@
 //! Scalar-kind inference and typed operand/expression helpers.
 
-use super::*;
+use super::{
+    BTreeMap, BackendError, BinOp, Block, EmirOp, EmirProgram, EmirValue, Expr, FoldCombine, Stmt,
+    Ty, UnOp, checked_integer_result, escape_ident, exact_int_operand, flat_ssa, op_expr, operand,
+    owned_value, record_layout, render_expr, rt_call, to_code_value, to_node,
+};
 
 /// Scalar carrier of an EMIR register. Exact carriers never widen implicitly.
 pub(crate) type InputKinds = BTreeMap<String, ValueKind>;
@@ -13,7 +17,7 @@ pub(crate) enum ValueKind {
     F64,
     Rational,
     Bool,
-    /// Stage-2 (emath-t63iz): exact big field element (emath_rt::UBig).
+    /// Stage-2 (emath-t63iz): exact big field element (`emath_rt::UBig`).
     BigInt,
     Text,
     Program,
@@ -111,7 +115,10 @@ impl ValueKind {
                             return ValueKind::Other;
                         };
                         ValueKind::Closure {
-                            params: params.iter().map(|part| parse(part, remaining - 1)).collect(),
+                            params: params
+                                .iter()
+                                .map(|part| parse(part, remaining - 1))
+                                .collect(),
                             result: Box::new(parse(result, remaining - 1)),
                         }
                     } else {
@@ -227,7 +234,9 @@ pub(super) fn kind_is_degenerate(kind: &ValueKind) -> bool {
 /// declared carrier wins there, exactly as it does for a degenerate
 /// argument).
 pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> ValueKind {
-    let Some(signature) = declared else { return kind };
+    let Some(signature) = declared else {
+        return kind;
+    };
     if kind_is_degenerate(&kind) {
         let declared_kind = ValueKind::from_signature(signature);
         if !matches!(declared_kind, ValueKind::Other) {
@@ -370,6 +379,27 @@ fn result_is_call_self(program: &EmirProgram) -> bool {
         .is_some_and(|(op, _)| matches!(op, EmirOp::CallSelf { .. }))
 }
 
+pub(super) fn numeric_element_kind(values: &[EmirValue], kinds: &[ValueKind]) -> ValueKind {
+    fn join(left: ValueKind, right: ValueKind) -> ValueKind {
+        match (left, right) {
+            (ValueKind::Other, right) => right,
+            (ValueKind::I64, ValueKind::ExactInt) | (ValueKind::ExactInt, ValueKind::I64) => {
+                ValueKind::ExactInt
+            }
+            (ValueKind::I64 | ValueKind::ExactInt, ValueKind::Rational)
+            | (ValueKind::Rational, ValueKind::I64 | ValueKind::ExactInt) => ValueKind::Rational,
+            (ValueKind::Vector(left), ValueKind::Vector(right)) => {
+                ValueKind::Vector(Box::new(join(*left, *right)))
+            }
+            (left, _) => left,
+        }
+    }
+    values
+        .iter()
+        .map(|value| kind_at(kinds, *value))
+        .fold(ValueKind::Other, join)
+}
+
 pub(super) fn kind_of_op(
     op: &EmirOp,
     kinds: &[ValueKind],
@@ -447,15 +477,19 @@ pub(super) fn kind_of_op(
             };
             record_layout(&name)
                 .and_then(|fields| fields.into_iter().find(|(name, _)| name == field))
-                .map(|(_, ty)| ValueKind::from_signature(&ty))
-                .unwrap_or(ValueKind::Other)
+                .map_or(ValueKind::Other, |(_, ty)| ValueKind::from_signature(&ty))
         }
         EmirOp::Refuse(_) | EmirOp::RefuseValue(_) => ValueKind::Never,
         // Typed closure literal: the parameter-domain signature plus
         // the body's inferred result compose the callable kind. An
         // empty signature is the numeric/VM-converted carrier
         // (Program), which renders through the dyn-program ABI.
-        EmirOp::ProgramLiteral { body, captures, signature, .. } => {
+        EmirOp::ProgramLiteral {
+            body,
+            captures,
+            signature,
+            ..
+        } => {
             if signature.is_empty() {
                 return ValueKind::Program;
             }
@@ -564,8 +598,7 @@ pub(super) fn kind_of_op(
             }
             inputs
                 .first()
-                .map(|value| kind_at(kinds, *value))
-                .unwrap_or(ValueKind::I64)
+                .map_or(ValueKind::I64, |value| kind_at(kinds, *value))
         }
         EmirOp::CallFrame {
             body,
@@ -603,16 +636,10 @@ pub(super) fn kind_of_op(
         }
         // Authored cons preserves the element carrier (records stay
         // records), unlike the Float64 dense-lane concat above.
-        EmirOp::ListConcat(values) => ValueKind::Vector(Box::new(
-            values
-                .first()
-                .map(|value| kind_at(kinds, *value))
-                .map(|kind| match kind {
-                    ValueKind::Vector(element) => *element,
-                    other => other,
-                })
-                .unwrap_or(ValueKind::Other),
-        )),
+        EmirOp::ListConcat(values) => match numeric_element_kind(values, kinds) {
+            ValueKind::Vector(element) => ValueKind::Vector(element),
+            other => ValueKind::Vector(Box::new(other)),
+        },
         EmirOp::DenseValues(_) => ValueKind::Vector(Box::new(ValueKind::F64)),
         EmirOp::DenseRepack { template, .. } => match kind_at(kinds, *template) {
             ValueKind::DenseLayout(kind) => {
@@ -710,12 +737,13 @@ pub(super) fn kind_of_op(
             {
                 return ValueKind::Node;
             }
-            ValueKind::Vector(Box::new(
+            ValueKind::Vector(Box::new(if matches!(op, EmirOp::ListCreate(_)) {
+                numeric_element_kind(values, kinds)
+            } else {
                 values
                     .first()
-                    .map(|value| kind_at(kinds, *value))
-                    .unwrap_or(ValueKind::Other),
-            ))
+                    .map_or(ValueKind::Other, |value| kind_at(kinds, *value))
+            }))
         }
         EmirOp::VectorCreate(values) => ValueKind::Vector(Box::new(
             if values
@@ -757,9 +785,9 @@ pub(super) fn kind_of_op(
                 ValueKind::F64
             }
         }
-        EmirOp::BinaryBuiltin(..)
-        | EmirOp::MatrixIndex { .. }
-        | EmirOp::TensorIndex { .. } => ValueKind::F64,
+        EmirOp::BinaryBuiltin(..) | EmirOp::MatrixIndex { .. } | EmirOp::TensorIndex { .. } => {
+            ValueKind::F64
+        }
         EmirOp::ApplyCapability {
             capability, args, ..
         } => {
@@ -770,8 +798,9 @@ pub(super) fn kind_of_op(
                 return binding
                     .signature
                     .split_once(")->")
-                    .map(|(_, output)| ValueKind::from_signature(output))
-                    .unwrap_or(ValueKind::Other);
+                    .map_or(ValueKind::Other, |(_, output)| {
+                        ValueKind::from_signature(output)
+                    });
             }
             if let Some(cell) = emath_exec_ir::native_kernel::installed_reference_cell(capability) {
                 let names: Vec<_> = cell.params.iter().map(|(name, _)| name.clone()).collect();
@@ -817,17 +846,13 @@ pub(super) fn kind_of_op(
                 ValueKind::CodeValue
             } else if (kind_at(kinds, *left) == ValueKind::ExactInt
                 || kind_at(kinds, *right) == ValueKind::ExactInt)
-                && matches!(
-                    kind_at(kinds, *left),
-                    ValueKind::I64 | ValueKind::ExactInt
-                )
-                && matches!(
-                    kind_at(kinds, *right),
-                    ValueKind::I64 | ValueKind::ExactInt
-                )
+                && matches!(kind_at(kinds, *left), ValueKind::I64 | ValueKind::ExactInt)
+                && matches!(kind_at(kinds, *right), ValueKind::I64 | ValueKind::ExactInt)
             {
                 ValueKind::ExactInt
-            } else if kind_at(kinds, *left) == ValueKind::I64 && kind_at(kinds, *right) == ValueKind::I64 {
+            } else if kind_at(kinds, *left) == ValueKind::I64
+                && kind_at(kinds, *right) == ValueKind::I64
+            {
                 ValueKind::I64
             } else if matches!(kind_at(kinds, *left), ValueKind::Rational)
                 && matches!(
@@ -978,7 +1003,7 @@ pub(super) fn as_i64(expr: Expr) -> Expr {
     Expr::Raw(format!("({}) as i64", render_expr(&expr)))
 }
 
-pub(super) fn operand_kind<'a>(kinds: &'a [ValueKind], value: EmirValue) -> ValueKind {
+pub(super) fn operand_kind(kinds: &[ValueKind], value: EmirValue) -> ValueKind {
     kind_at(kinds, value)
 }
 
@@ -1004,6 +1029,27 @@ pub(super) fn i64_checked_bin(method: &str, left: Expr, right: Expr) -> Expr {
     })
 }
 
+fn exact_comparison(
+    op: BinOp,
+    program: &EmirProgram,
+    left: EmirValue,
+    right: EmirValue,
+    kinds: &[ValueKind],
+) -> Expr {
+    // UFCS fixes both argument types to &ExactInt, accepting owned values and
+    // borrowed captures without allocating copies or mismatching reference depth.
+    let ordering = Expr::Raw(format!(
+        "<emath_rt::ExactInt as core::cmp::Ord>::cmp(&{}, &{})",
+        render_expr(&exact_int_operand(program, left, kinds)),
+        render_expr(&exact_int_operand(program, right, kinds))
+    ));
+    Expr::Bin {
+        op,
+        left: Box::new(ordering),
+        right: Box::new(Expr::Raw("core::cmp::Ordering::Equal".into())),
+    }
+}
+
 pub(super) fn cmp_expr(
     op: BinOp,
     program: &EmirProgram,
@@ -1024,20 +1070,13 @@ pub(super) fn cmp_expr(
             let left = to_node(operand(program, left), &lk);
             let right = to_node(operand(program, right), &rk);
             let raw = match op {
-                BinOp::Eq => format!(
-                    "({}).equals(&{})?",
-                    render_expr(&left),
-                    render_expr(&right)
-                ),
+                BinOp::Eq => format!("({}).equals(&{})?", render_expr(&left), render_expr(&right)),
                 BinOp::Ne => format!(
                     "!({}).equals(&{})?",
                     render_expr(&left),
                     render_expr(&right)
                 ),
-                BinOp::Lt
-                | BinOp::Gt
-                | BinOp::Le
-                | BinOp::Ge => {
+                BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
                     unreachable!("ordering over node records is not authored")
                 }
                 BinOp::Add
@@ -1087,8 +1126,7 @@ pub(super) fn cmp_expr(
             };
             Expr::Raw(raw)
         }
-        (ValueKind::I64, ValueKind::I64)
-        | (ValueKind::Bool, ValueKind::Bool) => Expr::Bin {
+        (ValueKind::I64, ValueKind::I64) | (ValueKind::Bool, ValueKind::Bool) => Expr::Bin {
             op,
             left: Box::new(operand(program, left)),
             right: Box::new(operand(program, right)),
@@ -1098,16 +1136,12 @@ pub(super) fn cmp_expr(
         // passthrough); binary `==`/`<` need both sides in one state,
         // so both materialize owned at this boundary (the
         // `owned_operand` clone idiom).
-        (ValueKind::ExactInt, ValueKind::ExactInt) => Expr::Bin {
-            op,
-            left: Box::new(owned_operand(program, left, kinds)),
-            right: Box::new(owned_operand(program, right, kinds)),
-        },
-        (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt) => Expr::Bin {
-            op,
-            left: Box::new(exact_int_operand(program, left, kinds)),
-            right: Box::new(exact_int_operand(program, right, kinds)),
-        },
+        (ValueKind::ExactInt, ValueKind::ExactInt) => {
+            exact_comparison(op, program, left, right, kinds)
+        }
+        (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt) => {
+            exact_comparison(op, program, left, right, kinds)
+        }
         // One representation for mixed Rat/Int comparisons: the Int
         // side widens to canonical ratio parts — equality compares
         // the tuples elementwise, order cross-multiplies through
@@ -1116,7 +1150,11 @@ pub(super) fn cmp_expr(
         // Rational tuple through `as f64` (E0308 against (i128,i128),
         // and a 2^53 lie even where it compiled).
         (ValueKind::Rational, ValueKind::I64) | (ValueKind::I64, ValueKind::Rational) => {
-            let (rat, int) = if lk == ValueKind::Rational { (left, right) } else { (right, left) };
+            let (rat, int) = if lk == ValueKind::Rational {
+                (left, right)
+            } else {
+                (right, left)
+            };
             let rat_e = render_expr(&operand(program, rat));
             let int_e = render_expr(&operand(program, int));
             let int_ratio = format!("((({int_e}) as i128), 1i128)");
@@ -1165,10 +1203,18 @@ pub(super) fn cmp_expr(
             let right = operand(program, right);
             if matches!(
                 &lk,
-                ValueKind::I64 | ValueKind::Bool | ValueKind::F64 | ValueKind::Complex | ValueKind::Rational
+                ValueKind::I64
+                    | ValueKind::Bool
+                    | ValueKind::F64
+                    | ValueKind::Complex
+                    | ValueKind::Rational
             ) && matches!(
                 &rk,
-                ValueKind::I64 | ValueKind::Bool | ValueKind::F64 | ValueKind::Complex | ValueKind::Rational
+                ValueKind::I64
+                    | ValueKind::Bool
+                    | ValueKind::F64
+                    | ValueKind::Complex
+                    | ValueKind::Rational
             ) {
                 Expr::Bin {
                     op,
@@ -1262,16 +1308,56 @@ pub(super) fn i64_or_f64_bin(
     }
 }
 
+/// Reconcile different representations of admitted numeric values at a fixed
+/// native slot. None means this boundary needs no numeric representation change.
+pub(super) fn numeric_boundary_value(
+    expression: &Expr,
+    from: &ValueKind,
+    to: &ValueKind,
+) -> Option<Expr> {
+    match (from, to) {
+        (ValueKind::ExactInt, ValueKind::I64) => Some(coerce_to_ty(
+            expression.clone(),
+            ValueKind::ExactInt,
+            &Ty::I64,
+        )),
+        (ValueKind::I64, ValueKind::ExactInt) => Some(Expr::Raw(format!(
+            "emath_rt::ExactInt::from({})",
+            render_expr(expression)
+        ))),
+        (ValueKind::I64, ValueKind::Rational) => Some(Expr::Raw(format!(
+            "(i128::from({}), 1i128)",
+            render_expr(expression)
+        ))),
+        (ValueKind::ExactInt, ValueKind::Rational) => Some(Expr::Raw(
+            super::op_arith::exact_int_ratio_parts(&render_expr(expression)),
+        )),
+        (ValueKind::Vector(source), ValueKind::Vector(target)) => {
+            let item = Expr::Raw(
+                if source.is_copy() {
+                    "*__numeric"
+                } else {
+                    "__numeric"
+                }
+                .into(),
+            );
+            let converted = numeric_boundary_value(&item, source, target)?;
+            Some(Expr::Raw(format!(
+                "({}).iter().map(|__numeric| -> Result<_, String> {{ Ok({}) }}).collect::<Result<Vec<_>, String>>()?",
+                render_expr(expression),
+                render_expr(&converted)
+            )))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn coerce_to_ty(expr: Expr, from: ValueKind, to: &Ty) -> Expr {
     match (from, to) {
         (ValueKind::I64, Ty::F64) => as_f64(expr),
         (ValueKind::F64, Ty::I64) => as_i64(expr),
-        // An exact-int result flowing into a declared Int context
-        // narrows through the checked boundary (matching the VM's
-        // refusal beyond i64), never a truncating cast. The `?` lands
-        // in generated Result-returning functions: an ExactInt kind
-        // originates from a faulting exact call, which forces the
-        // `Ok(...)` tail shape.
+        // A fixed native i64 slot is narrower than the VM's arbitrary-precision
+        // Int. Refuse an out-of-lane value rather than truncating it.
         (ValueKind::ExactInt, Ty::I64) => Expr::Raw(format!(
             "({}).to_i64().ok_or_else(|| String::from(\"E-INT-002: exact integer result exceeds the i64 lane\"))?",
             render_expr(&expr)
@@ -1280,19 +1366,28 @@ pub(crate) fn coerce_to_ty(expr: Expr, from: ValueKind, to: &Ty) -> Expr {
     }
 }
 
-/// Render the program as an expression. Multi-op programs become a block
-/// `{ let __e0 = ...; ...; __eN }`; single-op programs inline directly.
 pub(crate) fn value_expr(
     program: &EmirProgram,
     names: &[String],
     states: &[String],
     input_kinds: &InputKinds,
 ) -> Result<Expr, BackendError> {
+    // Infer the register table once for this body and input context, not once
+    // per rendered operation. Nested bodies still infer their own contexts.
+    let kinds = value_kinds(program, names, states, input_kinds);
+    let result_kind = kind_at(&kinds, program.result);
     if program.ops.len() == 1 {
-        let expression = op_expr(&program.ops[0].0, program, names, states, input_kinds)?;
-        return owned_result(program, expression, names, states, input_kinds);
+        let expression = op_expr(
+            &program.ops[0].0,
+            program,
+            names,
+            states,
+            input_kinds,
+            &kinds,
+        )?;
+        return owned_result(program, expression, &result_kind);
     }
-    let flat = flat_ssa(program, names, states, input_kinds)?;
+    let flat = flat_ssa(program, names, states, input_kinds, &kinds)?;
     let mut statements: Vec<Stmt> = Vec::with_capacity(flat.e_lets.len() + 1);
     for (pattern, src) in flat.e_lets {
         statements.push(Stmt::Let {
@@ -1303,9 +1398,7 @@ pub(crate) fn value_expr(
     statements.push(Stmt::Expr(owned_result(
         program,
         Expr::Raw(flat.e_tail),
-        names,
-        states,
-        input_kinds,
+        &result_kind,
     )?));
     Ok(Expr::Block(Box::new(Stmt::Block(Block { statements }))))
 }
@@ -1313,11 +1406,8 @@ pub(crate) fn value_expr(
 fn owned_result(
     program: &EmirProgram,
     expression: Expr,
-    names: &[String],
-    states: &[String],
-    inputs: &InputKinds,
+    kind: &ValueKind,
 ) -> Result<Expr, BackendError> {
-    let kind = program_kind(program, names, states, inputs);
     let borrowed = program
         .ops
         .get(program.result.0 as usize)
@@ -1332,7 +1422,7 @@ fn owned_result(
             )
         });
     if borrowed && !kind.is_copy() {
-        Ok(owned_value(expression, &kind))
+        Ok(owned_value(expression, kind))
     } else {
         Ok(expression)
     }

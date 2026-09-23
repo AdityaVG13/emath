@@ -1,6 +1,12 @@
 //! Universal constants, storage, text, set, series, and record lowering.
 
-use super::*;
+use super::{
+    BackendError, EmirOp, EmirProgram, Expr, InputKinds, ValueKind, borrowed_value,
+    element_tensor_expr, escape_ident, input_kind, kind_at, local_state, operand, operand_ref,
+    owned_value, record_layout, render_expr, rt_call, to_node,
+};
+
+use super::numeric_boundary_value;
 
 pub(super) fn op_data_exprs(
     op: &EmirOp,
@@ -8,6 +14,7 @@ pub(super) fn op_data_exprs(
     names: &[String],
     states: &[String],
     input_kinds: &InputKinds,
+    kinds: &[ValueKind],
 ) -> Result<Expr, BackendError> {
     match op {
         EmirOp::FormatText {
@@ -44,19 +51,17 @@ pub(super) fn op_data_exprs(
             // Carrier-element sets (the packed Sequence of an einsum
             // call) render as a Vec<emath_rt::Tensor>: the scalar
             // flatten form cannot hold Vector/Matrix/Tensor elements.
-            let kinds = value_kinds(program, names, states, input_kinds);
+
             let carrier_elements = elements.iter().any(|element| {
                 matches!(
-                    kind_at(&kinds, *element),
+                    kind_at(kinds, *element),
                     ValueKind::Vector(_) | ValueKind::Matrix(_) | ValueKind::Tensor
                 )
             });
             if carrier_elements {
                 let mut entries = Vec::new();
                 for (index, element) in elements.iter().enumerate() {
-                    let Some(converted) =
-                        element_tensor_expr(*element, program, &kinds, 4)
-                    else {
+                    let Some(converted) = element_tensor_expr(*element, program, kinds, 4) else {
                         return Err(BackendError::UnsupportedType(
                             "set of mixed carrier elements has no rendering yet".into(),
                         ));
@@ -107,11 +112,11 @@ pub(super) fn op_data_exprs(
                         "record {type_name} has no authored layout"
                     )));
                 }
-                let kinds = value_kinds(program, names, states, input_kinds);
+
                 let members = fields
                     .iter()
                     .map(|(name, value)| {
-                        let kind = kind_at(&kinds, *value);
+                        let kind = kind_at(kinds, *value);
                         format!(
                             "(String::from({name:?}), {})",
                             render_expr(&to_node(operand(program, *value), &kind))
@@ -141,7 +146,12 @@ pub(super) fn op_data_exprs(
                         BackendError::UnsupportedType(format!("unknown record field {name}"))
                     })?;
                 let kind = ValueKind::from_signature(&ty.1);
-                let value = render_expr(&owned_value(operand(program, *value), &kind));
+                let expression = operand(program, *value);
+                let value =
+                    match numeric_boundary_value(&expression, &kind_at(kinds, *value), &kind) {
+                        Some(converted) => render_expr(&converted),
+                        None => render_expr(&owned_value(expression, &kind)),
+                    };
                 members.push(format!("{}: {value}", escape_ident(name)));
             }
             let fields = members.join(", ");

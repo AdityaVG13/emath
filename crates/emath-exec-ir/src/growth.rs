@@ -78,7 +78,7 @@ pub fn nucleus_class(tag: &str) -> NucleusClass {
         // The registry file is the admitted data zone.
         Some("kernel") if tag.starts_with("kernel:term_compile") => NucleusClass::DataZone,
         Some("data") => NucleusClass::DataZone,
-        Some("kernel") | Some("parser") | Some("sema") | Some("backend") => NucleusClass::Gated,
+        Some("kernel" | "parser" | "sema" | "backend") => NucleusClass::Gated,
         _ => NucleusClass::Gated,
     }
 }
@@ -225,8 +225,8 @@ pub fn kernel_generic_surface(lib_source: &str) -> usize {
             let is_variant = line.starts_with(|c: char| c.is_ascii_uppercase())
                 && (line.contains('(')
                     || line.contains('{')
-                    || line.ends_with(",")
-                    || line.ends_with("}"));
+                    || line.ends_with(',')
+                    || line.ends_with('}'));
             if is_variant && !line.starts_with("///") {
                 count += 1;
             }

@@ -232,8 +232,8 @@ pub fn code_neg(value: &CodeValue) -> Result<CodeValue, String> {
 pub fn code_cmp(left: &CodeValue, right: &CodeValue) -> Result<core::cmp::Ordering, String> {
     let (ln, ld) = as_ratio(left)?;
     let (rn, rd) = as_ratio(right)?;
-    Ok(ln.checked_mul(rd).and_then(|cross| rn.checked_mul(ld).map(|other| cross.cmp(&other)))
-        .ok_or_else(|| String::from("overflow: exact comparison cross-product"))?)
+    ln.checked_mul(rd).and_then(|cross| rn.checked_mul(ld).map(|other| cross.cmp(&other)))
+        .ok_or_else(|| String::from("overflow: exact comparison cross-product"))
 }
 
 /// Union equality: numeric pairs compare VALUES (`2 == 2/1` is

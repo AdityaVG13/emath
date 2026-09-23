@@ -1,4 +1,4 @@
-use super::*;
+use super::EmirOp;
 
 pub(super) fn write_nested_programs(out: &mut String, op: &EmirOp, indent: usize) {
     match op {

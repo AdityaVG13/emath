@@ -1,6 +1,6 @@
-//! Expression syntax: Expr, ExprKind, operators, binders, args.
+//! Expression syntax: Expr, `ExprKind`, operators, binders, args.
 
-use super::*;
+use super::{Span, GenericArg, TypeExpr};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
@@ -32,7 +32,7 @@ pub enum UnitExpr {
 }
 
 impl UnitExpr {
-    /// Flatten to (unit_name, power) pairs.
+    /// Flatten to (`unit_name`, power) pairs.
     #[must_use]
     pub fn flatten(&self) -> Vec<(String, i32)> {
         match self {

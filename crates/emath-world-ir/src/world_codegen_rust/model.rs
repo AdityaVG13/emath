@@ -1,6 +1,6 @@
 //! World codegen model: specs, refusals, package generation.
 
-use super::*;
+use super::{BTreeMap, Path, Term, Signature, render_lib, render_main};
 
 /// Version of the generated world ABI surface (generic + specialized traits
 /// and dispatcher); every generated crate embeds it so consumers can pin the

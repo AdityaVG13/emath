@@ -1,6 +1,6 @@
 //! Lookahead and collection helpers.
 
-use super::*;
+use super::{TokenKind, Expr, Argument, ArgumentValue};
 
 impl super::super::Parser {
     /// For `<name>:` section heads: scan ahead for a matching `>` that is

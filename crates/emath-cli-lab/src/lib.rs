@@ -41,7 +41,7 @@ pub use cli_scratch::*;
 pub use dispatch::run;
 pub use host_cmd::{architecture, architecture_json, artifact_battery, import_modelica_cmd};
 
-pub(crate) use cli_freeze::*;
+pub(crate) use cli_freeze::sidecar_lock_path;
 pub(crate) use emath_cli::{
     CompileRequest, FileJsonRequest, GenesisRequest, ParseRequest, SignatureRequest,
     parse_compile_request, parse_file_json_request, parse_genesis_request, parse_parse_request,

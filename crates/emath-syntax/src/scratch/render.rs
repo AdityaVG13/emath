@@ -1,6 +1,6 @@
 //! Synthesized declaration rendering and name allocation.
 
-use super::*;
+use super::{BUILTINS, skip_word};
 
 pub(super) fn render_function(
     name: &str,

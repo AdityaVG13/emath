@@ -367,9 +367,7 @@ fn unset_cmd(
     hole: Option<String>,
 ) -> CliExit {
     let dir = dir.unwrap_or_else(|| {
-        file.as_ref()
-            .map(|path| MeaningLock::discover_project_root(path))
-            .unwrap_or_else(|| PathBuf::from("."))
+        file.as_ref().map_or_else(|| PathBuf::from("."), |path| MeaningLock::discover_project_root(path))
     });
     if let Some(declaration) = declaration {
         let hole = hole.unwrap_or_else(|| WHOLE_TERM_HOLE.to_string());
@@ -428,9 +426,7 @@ fn unset_cmd(
 
 fn explain_cmd(file: Option<PathBuf>, dir: Option<PathBuf>, json: bool) -> CliExit {
     let dir = dir.unwrap_or_else(|| {
-        file.as_ref()
-            .map(|path| MeaningLock::discover_project_root(path))
-            .unwrap_or_else(|| PathBuf::from("."))
+        file.as_ref().map_or_else(|| PathBuf::from("."), |path| MeaningLock::discover_project_root(path))
     });
     let lock = match MeaningLock::load(&dir) {
         Ok(None) => {
@@ -542,8 +538,7 @@ fn hex(value: u64) -> String {
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
+        .map_or(0, |duration| duration.as_secs())
 }
 
 /// Shared lock resolution for genesis/eval/compile.

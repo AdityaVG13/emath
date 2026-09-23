@@ -1,6 +1,6 @@
 //! `emath expand` and the exactness/solve scratchpad commands.
 
-use super::*;
+use super::{json_put_opt, json_diagnostics_entries, goal_json_rows, Diagnostics, Path, CliExit, EXIT_REFUSED, read_emath_source, print_diagnostics, admitted_meaning_id, print_missing_newline, exit_from_diagnostics, PathBuf, take_nonflag_value, assign_once, sidecar_lock_path, EXIT_OK, catalog, print_json_diagnostics, json_diagnostic_entry};
 
 /// Stdout envelope for `emath expand --json`.
 pub fn expand_json_document(
@@ -183,7 +183,7 @@ pub fn expand_cmd(path: &Path, json: bool) -> CliExit {
             expand_json_document(
                 &source,
                 &expansion,
-                meaning_id.as_ref().map(|id| id.as_str()),
+                meaning_id.as_ref().map(emath_core::MeaningId::as_str),
             )
         );
     } else {
@@ -307,7 +307,7 @@ pub(crate) fn exactness_cmd(request: ExactnessRequest) -> CliExit {
     if json {
         println!(
             "{}",
-            exactness_json_document(&ledger, meaning_id.as_ref().map(|id| id.as_str()))
+            exactness_json_document(&ledger, meaning_id.as_ref().map(emath_core::MeaningId::as_str))
         );
     } else {
         println!(

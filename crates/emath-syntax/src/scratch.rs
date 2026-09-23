@@ -13,10 +13,10 @@ mod render;
 mod text;
 mod types;
 
-use intent::*;
+use intent::{IntentVerb, refuse, rewrite_l2, record_hole, constrain_last_hole, lower_intent, attach_find_continuation, finalize_holes, emit_hole_comments};
 pub use lower::*;
-use render::*;
-use text::*;
+use render::{free_names, is_builtin, render_from_header, render_function, split_assignment, is_ident};
+use text::{split_keyword_tail, split_equation, goal_target, split_top_level, TopPiece, split_declaration_text, is_section_head, is_comment, classify_line, span_of_source, LineKind, header_args, call_position_names, declaration_name, first_content_line, line_offsets, span_bytes, is_item_header, is_content_line, is_unindented, literal_class, first_word, skip_word};
 pub use types::*;
 
 const SYNTH_DECL: &str = "Scratch";

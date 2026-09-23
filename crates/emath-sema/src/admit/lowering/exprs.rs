@@ -1,6 +1,6 @@
 //! Set-comprehension, approx, and binary-operator lowering arms.
 
-use super::*;
+use super::{Expr, ExprId, Infer, ExprKind, integer_range, E_UNSUPPORTED_TYPE, restore_index_local, ExprNode, E_APPROX_TOL, combine_numeric, NumericCombine, Literal, BinaryOp, SynBinOp, Admitter, broadcast_tensor_shapes, comparable_numeric};
 
 impl super::super::Admitter {
     pub(super) fn lower_set_comprehension_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
@@ -622,7 +622,7 @@ impl super::super::Admitter {
                              use it in `require` or `invariant`",
                     expr.source,
                 );
-                return None;
+                None
             }
         }
     }

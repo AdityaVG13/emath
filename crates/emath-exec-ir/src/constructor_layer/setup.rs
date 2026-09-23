@@ -1,5 +1,5 @@
-use super::*;
 use super::prelude::*;
+use super::{SyntaxTree, Engine, ConstructorError, Path, BTreeSet, Environment, BTreeMap, DEFAULT_WORK, Cell, Item, Declaration, Rc, FnDecl, QueryDecl, ObjectSchema, PathBuf, UseTree};
 
 pub(super) fn engine_from_tree(tree: &SyntaxTree) -> Result<Engine, ConstructorError> {
     engine_from_tree_at(tree, None)
@@ -23,7 +23,7 @@ pub(super) fn engine_from_tree_at(
 
 pub(super) fn empty_engine() -> Engine {
     Engine {
-        env: BTreeMap::new(),
+        env: Environment::default(),
         functions: BTreeMap::new(),
         queries: BTreeMap::new(),
         objects: BTreeMap::new(),
@@ -45,7 +45,10 @@ pub(super) fn empty_engine() -> Engine {
     }
 }
 
-pub(super) fn install_local_items(engine: &mut Engine, tree: &SyntaxTree) -> Result<(), ConstructorError> {
+pub(super) fn install_local_items(
+    engine: &mut Engine,
+    tree: &SyntaxTree,
+) -> Result<(), ConstructorError> {
     admit_constructor_surface(tree)?;
     for item in &tree.items {
         if let Item::Declaration(decl) = item {
@@ -208,7 +211,12 @@ pub(super) fn load_imports(
 ) -> Result<(), ConstructorError> {
     let package = package_of(tree);
     for item in &tree.items {
-        let Item::Use { path, tree: use_tree, .. } = item else {
+        let Item::Use {
+            path,
+            tree: use_tree,
+            ..
+        } = item
+        else {
             continue;
         };
         let file = resolve_import(path, roots, source, package)?;
@@ -275,13 +283,13 @@ pub(super) fn install_imported(
         // user identifier (dotted), so it records provenance without
         // a refusal path.
         let prefixed = format!("{prefix}.{}", decl.name);
-        engine.name_sources.insert(prefixed.clone(), file.to_path_buf());
-        engine.functions.get(&decl.name).cloned().map(|decl_fn| {
-            engine.functions.insert(prefixed, decl_fn);
-        });
-        engine.queries.get(&decl.name).cloned().map(|decl_q| {
-            engine.queries.insert(format!("{prefix}.{}", decl.name), decl_q);
-        });
+        engine
+            .name_sources
+            .insert(prefixed.clone(), file.to_path_buf());
+        if let Some(decl_fn) = engine.functions.get(&decl.name).cloned() { engine.functions.insert(prefixed, decl_fn); }
+        if let Some(decl_q) = engine.queries.get(&decl.name).cloned() { engine
+                .queries
+                .insert(format!("{prefix}.{}", decl.name), decl_q); }
         if let UseTree::Named(names) = use_tree {
             if let Some((_, Some(alias))) = names.iter().find(|(name, _)| name == &decl.name) {
                 install_declaration(engine, decl, Some(alias.clone()), Some(file))?;
@@ -292,7 +300,10 @@ pub(super) fn install_imported(
 }
 
 /// Resolve `use fold.reduce` against `language/modules` search roots.
-pub fn resolve_module_path(path: &[String], roots: &[PathBuf]) -> Result<PathBuf, ConstructorError> {
+pub fn resolve_module_path(
+    path: &[String],
+    roots: &[PathBuf],
+) -> Result<PathBuf, ConstructorError> {
     let mut segs: Vec<String> = path.to_vec();
     if segs.first().map(String::as_str) == Some("language") {
         segs.remove(0);
@@ -361,8 +372,18 @@ pub fn merged_tree_with_imports(
     // install), while `visiting` only guards cycles on the active
     // path.
     let mut installed = BTreeSet::new();
-    merge_tree_items(tree, source, &roots, &mut visiting, &mut installed, &mut items)?;
-    Ok(SyntaxTree { source: tree.source.clone(), items })
+    merge_tree_items(
+        tree,
+        source,
+        &roots,
+        &mut visiting,
+        &mut installed,
+        &mut items,
+    )?;
+    Ok(SyntaxTree {
+        source: tree.source,
+        items,
+    })
 }
 
 /// The main file's own items push in order; each `use` expands to its
@@ -377,7 +398,12 @@ fn merge_tree_items(
 ) -> Result<(), ConstructorError> {
     let package = package_of(tree);
     for item in &tree.items {
-        let Item::Use { path, tree: use_tree, .. } = item else {
+        let Item::Use {
+            path,
+            tree: use_tree,
+            ..
+        } = item
+        else {
             items.push(item.clone());
             continue;
         };
@@ -385,7 +411,7 @@ fn merge_tree_items(
             path,
             use_tree,
             source,
-            package.as_deref(),
+            package,
             roots,
             visiting,
             installed,
@@ -433,12 +459,17 @@ fn merge_use(
         ));
     }
     for item in &imported.items {
-        if let Item::Use { path: nested_path, tree: nested_use, .. } = item {
+        if let Item::Use {
+            path: nested_path,
+            tree: nested_use,
+            ..
+        } = item
+        {
             merge_use(
                 nested_path,
                 nested_use,
                 Some(file.as_path()),
-                package_of(&imported).as_deref(),
+                package_of(&imported),
                 roots,
                 visiting,
                 installed,
@@ -462,4 +493,3 @@ fn merge_use(
     visiting.remove(&file);
     Ok(())
 }
-

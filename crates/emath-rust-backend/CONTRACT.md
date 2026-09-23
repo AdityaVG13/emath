@@ -11,6 +11,29 @@ Rust backend: universal EMIR and artifact contracts to deterministic Rust via th
 - `BackendAnchor`: byte-range anchor into generated `src/lib.rs`.
 - `BackendError`: typed backend failure (variant list below).
 
+## Native numeric boundaries
+
+Recursive-call arguments, closure-call arguments, and authored record fields
+share numeric representation conversion, including sequence elements. A fixed
+`i64` slot checks an `ExactInt` with `to_i64` and returns `E-INT-002` outside
+that lane. Int-to-Rat widens exactly, with `E-RAT-002` when a wide part cannot
+fit the native i128 pair. Inferred-wide sibling frames and results stay wide;
+there is no blanket narrowing of the arbitrary-precision VM carrier.
+
+Authored lists join Int/ExactInt/Rat representations before construction or cons.
+Concatenation borrows each input once, sums lengths without cloning, allocates
+one output vector, and copies/converts each element once. Mixed borrowed/owned
+ExactInt comparisons call `Ord::cmp` by reference instead of cloning operands.
+`tests/emath-rust-backend/tests/numeric_boundaries.rs` compiles and executes the
+generated fixture, including named overflow refusals and wide-frame preservation.
+
+## Rendering cost
+
+`value_expr` computes register kinds once per body/input context and shares the
+table with SSA, data, control, and carrier rendering. Nested bodies retain their
+own contexts. No global type cache, arithmetic reordering, or emitted-byte
+change is introduced by this reuse.
+
 ## Invariants
 
 - Generated crates are std-only, `#![forbid(unsafe_code)]`, `#![allow(dead_code)]`, and byte-deterministic.

@@ -164,8 +164,7 @@ impl FormatSpec {
         }
         let decimals = head
             .split_once('.')
-            .map(|(_, frac)| frac.len() as u32)
-            .unwrap_or(0);
+            .map_or(0, |(_, frac)| frac.len() as u32);
         let suffix = tokens.collect::<Vec<_>>().join(" ");
         Ok(FormatSpec::Pattern { decimals, suffix })
     }

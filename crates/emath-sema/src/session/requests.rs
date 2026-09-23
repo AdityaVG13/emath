@@ -1,6 +1,6 @@
 //! Goal-section extraction: `elaborate_requests` and its parsing helpers.
 
-use super::*;
+use super::{SemanticPackage, Section, Diagnostics, RequestSpec, GoalPayload, StmtKind, CommandArgument, ExprKind, Limits, source_parser, Span, FileId, Path};
 
 /// Extract the `goals:` section into request specs and validate targets
 /// against the admitted declaration (`E-GOAL-041`/`E-GOAL-042`/`E-GOAL-043`).
@@ -37,8 +37,7 @@ pub fn elaborate_requests(
         let inputs_carry_typed = declaration.inputs.iter().any(|field| {
             matches!(
                 package.ty(field.ty),
-                Some(emath_ir::TypeNode::OptionType(_))
-                    | Some(emath_ir::TypeNode::Result { .. })
+                Some(emath_ir::TypeNode::OptionType(_) | emath_ir::TypeNode::Result { .. })
             )
         });
         if inputs_carry_typed {

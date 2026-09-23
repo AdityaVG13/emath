@@ -1,21 +1,16 @@
 //! Primary dispatch (`parse_primary`) over compound keyword forms.
 
 use super::braket::BraketOperand;
-use super::*;
+use super::{Expr, TokenKind, Keyword, ExprKind, BinaryOp};
 
 impl super::super::Parser {
     pub(super) fn parse_primary(&mut self, depth: usize) -> Option<Expr> {
         let start = self.current_span();
         match self.peek().clone() {
-            TokenKind::Int(_)
-            | TokenKind::Float(_)
-            | TokenKind::FloatUncertainty { .. }
-            | TokenKind::Str(_)
-            | TokenKind::Question
-            | TokenKind::Keyword(Keyword::True)
-            | TokenKind::Keyword(Keyword::False)
-            | TokenKind::LParen
-            | TokenKind::LBracket => self.parse_primary_literal(start, depth),
+            TokenKind::Int(_) | TokenKind::Float(_) | TokenKind::FloatUncertainty { .. } |
+TokenKind::Str(_) | TokenKind::Question |
+TokenKind::Keyword(Keyword::True | Keyword::False) | TokenKind::LParen |
+TokenKind::LBracket => self.parse_primary_literal(start, depth),
             TokenKind::Pipe => {
                 // `|0⟩` — a pipe followed by an integer label and
                 // `⟩` is a braket ket (checked BEFORE the table
@@ -121,7 +116,7 @@ impl super::super::Parser {
                             "ambiguous brace: `{name: value}` without a path prefix is not an \
                              inline record; prefix it (`Point:{...}`) or write a set literal",
                         );
-                        return None;
+                        None
                     }
                     // Set literal: the first element parsed without `in`.
                     TokenKind::Comma | TokenKind::RBrace => {
@@ -251,9 +246,7 @@ impl super::super::Parser {
                 }
                 let body = self.parse_expr_depth(depth + 1)?;
                 let param = binders
-                    .first()
-                    .map(|binder| binder.name.clone())
-                    .unwrap_or_else(|| "_".to_string());
+                    .first().map_or_else(|| "_".to_string(), |binder| binder.name.clone());
                 let domain = binders
                     .first()
                     .and_then(|binder| binder.domain.clone())
@@ -431,9 +424,7 @@ impl super::super::Parser {
                         let body = self.parse_expr_depth(depth + 1)?;
                         let _guard = guard;
                         let param = binders
-                            .first()
-                            .map(|binder| binder.name.clone())
-                            .unwrap_or_else(|| "_".to_string());
+                            .first().map_or_else(|| "_".to_string(), |binder| binder.name.clone());
                         let domain = binders
                             .first()
                             .and_then(|binder| binder.domain.clone())
@@ -489,7 +480,7 @@ impl super::super::Parser {
                         if matches!(self.peek_at(1), TokenKind::Colon) {
                             self.advance(); // `cases`
                             self.advance(); // `:`
-                            return Some(self.parse_cases_body(start, None, depth)?);
+                            return self.parse_cases_body(start, None, depth);
                         }
                         if matches!(self.peek_at(1), TokenKind::Ident(_))
                             && matches!(self.peek_at(2), TokenKind::Colon)
@@ -497,11 +488,11 @@ impl super::super::Parser {
                             self.advance(); // `cases`
                             let subject = self.parse_primary(depth)?;
                             self.advance(); // `:`
-                            return Some(self.parse_cases_body(
+                            return self.parse_cases_body(
                                 start,
                                 Some(Box::new(subject)),
                                 depth,
-                            )?);
+                            );
                         }
                     }
                 }
@@ -614,7 +605,7 @@ impl super::super::Parser {
                 if matches!(other, TokenKind::Newline) {
                     let previous = self
                         .tokens
-                        .get(self.pos.checked_sub(1).unwrap_or(0))
+                        .get(self.pos.saturating_sub(1))
                         .map(|token| &token.kind);
                     if let crate::layout::LayoutExplanation::HangingInfix =
                         crate::layout::classify_line_break(previous)

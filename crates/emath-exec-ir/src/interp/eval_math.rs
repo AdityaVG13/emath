@@ -1,4 +1,4 @@
-use super::*;
+use super::{EmirProgram, EmirOp, Value, ValueFrame, EvalBudget, EvalFault, f64_of, register, checked_index, tensor_of, vector_of, matrix_of};
 
 pub(super) fn eval_math(
     _self_program: &EmirProgram,

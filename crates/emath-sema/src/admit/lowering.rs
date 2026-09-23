@@ -18,9 +18,9 @@ mod helpers;
 mod series;
 mod terms;
 
-use super::equations::*;
-use super::expr_helpers::*;
-use super::infer::*;
+use super::equations::{path_segments, unwrap_derivative, state_variable_name};
+use super::expr_helpers::{broadcast_tensor_shapes, parse_quantity_magnitude, parse_float_constant, expr_form_name, measured_digits_uncertainty};
+use super::infer::{Infer, combine_numeric, NumericCombine, comparable_numeric, is_numeric_element};
 use super::sections::{integer_range, restore_index_local};
 use super::Admitter;
 use super::{E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE};
@@ -200,8 +200,7 @@ impl super::Admitter {
                         self.error(
                             "E-TYPE-010",
                             format!(
-                                "`unit of` requires a unit-carrying operand, found {:?}",
-                                other
+                                "`unit of` requires a unit-carrying operand, found {other:?}"
                             ),
                             expr.source,
                         );
@@ -211,16 +210,13 @@ impl super::Admitter {
             }
             ExprKind::Path { segments, .. } if segments.len() == 1 => {
                 let name = &segments[0];
-                match lookup_unit(name) {
-                    Ok(unit) => Some((unit.dims, unit.family, name.clone())),
-                    Err(_) => {
-                        self.error(
-                            "E-UNIT-104",
-                            format!("unknown unit `{name}` in unit comparison"),
-                            expr.source,
-                        );
-                        None
-                    }
+                if let Ok(unit) = lookup_unit(name) { Some((unit.dims, unit.family, name.clone())) } else {
+                    self.error(
+                        "E-UNIT-104",
+                        format!("unknown unit `{name}` in unit comparison"),
+                        expr.source,
+                    );
+                    None
                 }
             }
             ExprKind::Binary {

@@ -202,15 +202,12 @@ pub(crate) fn print_command_help(command: &str) -> CliExit {
         eprintln!("write an ordinary emath function or emath query and `emath run`");
         return emath_cli::EXIT_USAGE;
     }
-    match emath_cli::catalog::command_help_text(command) {
-        Some(text) => {
-            print!("{text}");
-            EXIT_OK
-        }
-        None => {
-            eprintln!("error: unknown command `{command}`");
-            eprintln!("try: emath help");
-            emath_cli::EXIT_USAGE
-        }
+    if let Some(text) = emath_cli::catalog::command_help_text(command) {
+        print!("{text}");
+        EXIT_OK
+    } else {
+        eprintln!("error: unknown command `{command}`");
+        eprintln!("try: emath help");
+        emath_cli::EXIT_USAGE
     }
 }

@@ -4,7 +4,7 @@
 //! of the closed classes — presentation / meaning / evidence / provider
 //! — and drives rebuilds:
 //!
-//! - **Presentation-only** (SourceID changed, MeaningID stable) is
+//! - **Presentation-only** (`SourceID` changed, `MeaningID` stable) is
 //!   NEVER labeled semantic: `decide` returns a cutoff whose receipt
 //!   names the stable meaning. A formatter pass or a comment edit never
 //!   rebuilds semantics.
@@ -22,7 +22,7 @@
 //!
 //! Determinism class: pure sequence. No wall-clock, no randomness; the
 //! classification is a pure function of the two snapshots, and no math
-//! equivalence is ever guessed (MeaningID equality is the only semantic
+//! equivalence is ever guessed (`MeaningID` equality is the only semantic
 //! oracle consulted).
 
 use std::collections::BTreeSet;
@@ -80,9 +80,9 @@ impl SemanticSnapshot {
 pub enum ChangeClass {
     /// Nothing changed: skip all work.
     Unchanged,
-    /// Source spelling changed; MeaningID stable — not semantic.
+    /// Source spelling changed; `MeaningID` stable — not semantic.
     Presentation,
-    /// MeaningID changed — dependents rebuild, never a silent cutoff.
+    /// `MeaningID` changed — dependents rebuild, never a silent cutoff.
     Meaning,
     /// Generator/toolchain identity changed — dependent recipes
     /// invalidated.
@@ -173,7 +173,7 @@ pub fn decide(
             let invalidated = recipes
                 .iter()
                 .filter(|recipe| recipe.toolchain() == before.toolchain)
-                .map(|recipe| recipe.identity())
+                .map(super::materialization::MaterializationRecipe::identity)
                 .collect();
             DiffOutcome::ProviderInvalidation {
                 receipt: CutoffReceipt {

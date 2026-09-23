@@ -16,6 +16,7 @@ pub const COMMANDS: &[&str] = &[
     "explain",
     "run",
     "loop",
+    "experiment",
     "step",
     "test",
     "verify",
@@ -175,6 +176,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
             "run <file.emath> [--function NAME] [--set name=value] [--set-file path.json] [--work N] [--out dir] [--json]"
         }
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
+        "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
         }
@@ -281,6 +283,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         }
         "loop" => {
             "open a research-loop session surface and drive it with line commands (step, run, show, grow-case, save, load); `--script` replays a command file deterministically"
+        }
+        "experiment" => {
+            "build and measure an explicit baseline and candidate on one workload, then return an authored evaluator's decision; resumable with `--state`"
         }
         "step" => {
             "resume a constructor-layer continuation; incompatible checkpoints refuse"
@@ -422,6 +427,9 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--cap" => "capability identifier",
         "--dry-run" => "dry-run without modifying state",
         "--force" => "force overwrite of existing project directories or files",
+        "--state" => "experiment state directory (checkpoint and builds); reuse it to resume",
+        "--audit-ledger" => "audit ledger file shared by experiments that must not reuse audits",
+        "--stop-after-pairs" => "commit this many measured pairs, then stop resumably",
         _ => "command-specific option",
     }
 }
@@ -558,7 +566,7 @@ pub fn command_help_text(command: &str) -> Option<String> {
         out.push_str("Flags:\n");
         for flag in flags {
             let desc = flag_description(flag);
-            out.push_str(&format!("  {:<20} {}\n", flag, desc));
+            out.push_str(&format!("  {flag:<20} {desc}\n"));
         }
         if !flags.contains(&"--color") {
             out.push_str(&format!("  {:<20} {}\n", "--color", flag_description("--color")));
@@ -604,7 +612,7 @@ pub fn command_help_json(command: &str) -> Option<String> {
     obj.string("summary", summary);
 
     if !aliases.is_empty() {
-        let alias_strings: Vec<String> = aliases.iter().map(|s| s.to_string()).collect();
+        let alias_strings: Vec<String> = aliases.iter().map(std::string::ToString::to_string).collect();
         obj.strings("aliases", &alias_strings);
     }
 
@@ -625,7 +633,7 @@ pub fn command_help_json(command: &str) -> Option<String> {
     }
     obj.objects("flags", &flag_items);
 
-    let ex_strings: Vec<String> = examples.iter().map(|s| s.to_string()).collect();
+    let ex_strings: Vec<String> = examples.iter().map(std::string::ToString::to_string).collect();
     obj.strings("examples", &ex_strings);
 
     let mut exits = emath_core::JsonWriter::object();
@@ -662,7 +670,7 @@ pub fn catalog_help_json() -> String {
         c_obj.string("summary", summary);
         let aliases = command_aliases(command);
         if !aliases.is_empty() {
-            let alias_strings: Vec<String> = aliases.iter().map(|s| s.to_string()).collect();
+            let alias_strings: Vec<String> = aliases.iter().map(std::string::ToString::to_string).collect();
             c_obj.strings("aliases", &alias_strings);
         }
         cmd_items.push(c_obj.finish());
@@ -764,6 +772,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "-h",
         ],
         "loop" => &["--target", "--budget", "--script", "--help", "-h"],
+        "experiment" => &["--state", "--audit-ledger", "--stop-after-pairs", "--help", "-h"],
         "verify" => &["--json", "--help", "-h"],
         "explain" => &["--json", "--provenance", "--show-defaults", "--list-codes", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
@@ -899,15 +908,15 @@ pub fn catalog_cmd(json: bool) -> CliExit {
             }
             let aliases = command_aliases(name);
             if !aliases.is_empty() {
-                let alias_strings: Vec<String> = aliases.iter().map(|s| s.to_string()).collect();
+                let alias_strings: Vec<String> = aliases.iter().map(std::string::ToString::to_string).collect();
                 row.strings("aliases", &alias_strings);
             }
             let flags = flags_for(name);
-            let flag_strings: Vec<String> = flags.iter().map(|s| s.to_string()).collect();
+            let flag_strings: Vec<String> = flags.iter().map(std::string::ToString::to_string).collect();
             row.strings("flags", &flag_strings);
             let examples: Vec<String> = command_examples(name)
                 .iter()
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
                 .collect();
             row.strings("examples", &examples);
             rows.push(row.finish().trim_end().to_string());

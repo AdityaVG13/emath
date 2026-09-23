@@ -35,8 +35,8 @@ mod serialize;
 mod solve;
 
 pub use examples::*;
-use ops::*;
+use ops::{op_check, op_plan, op_mig, op_generate, op_run, refuse_kind_gone, parse_solve_payload};
 pub use payload::*;
-use serialize::*;
-use solve::*;
+use serialize::{serialize_constructor_report, op_format, op_inputs};
+use solve::op_solve_candidates;
 

@@ -61,7 +61,7 @@ pub fn factorial_checked(n: i64) -> Result<i64, &'static str> {
     if !(0..=20).contains(&n) {
         return Err("factorial overflow: n must be in [0, 20] for i64");
     }
-    Ok((1..=n).fold(1i64, |acc, k| acc * k))
+    Ok((1..=n).product::<i64>())
 }
 
 /// Multiplicative inverse of `a` modulo `m`; refuses typed when the

@@ -1,5 +1,5 @@
-use super::*;
 use super::prelude::*;
+use super::{BTreeMap, CValue, CHECKPOINT_SCHEMA, Checkpoint, ConstructorError, ContinuationFrame, CHECKPOINT_ABI, Closure, Kont, Rc, Expr, ExactInt, ExprKind, BinaryOp, UnaryOp, DomainShape, Code, Arc};
 
 /// Encode-side buffer identity table (the ENCODE
 /// checkpoint decision): the first occurrence of a distinct buffer
@@ -105,20 +105,23 @@ impl Checkpoint {
                 checkpoint.abi = value.to_string();
             } else if let Some(value) = line.strip_prefix("work=") {
                 checkpoint.work = value.parse().map_err(|_| {
-                    fault("incompatible_checkpoint", "checkpoint work is not an integer")
+                    fault(
+                        "incompatible_checkpoint",
+                        "checkpoint work is not an integer",
+                    )
                 })?;
             } else if let Some(value) = line.strip_prefix("function=") {
                 checkpoint.function = value.to_string();
             } else if let Some(value) = line.strip_prefix("next_ref=") {
-                checkpoint.next_ref = value.parse().map_err(|_| {
-                    fault("incompatible_checkpoint", "next_ref is not an integer")
-                })?;
+                checkpoint.next_ref = value
+                    .parse()
+                    .map_err(|_| fault("incompatible_checkpoint", "next_ref is not an integer"))?;
             } else if let Some(value) = line.strip_prefix("accounting=") {
                 checkpoint.accounting = value.to_string();
             } else if let Some(value) = line.strip_prefix("remaining=") {
-                checkpoint.remaining = value.parse().map_err(|_| {
-                    fault("incompatible_checkpoint", "remaining is not an integer")
-                })?;
+                checkpoint.remaining = value
+                    .parse()
+                    .map_err(|_| fault("incompatible_checkpoint", "remaining is not an integer"))?;
             } else if let Some(value) = line.strip_prefix("scope_count=") {
                 let count: usize = value.parse().map_err(|_| {
                     fault("incompatible_checkpoint", "scope_count is not an integer")
@@ -128,7 +131,10 @@ impl Checkpoint {
                         return Err(fault("incompatible_checkpoint", "missing checkpoint scope"));
                     };
                     let Some(id) = scope_line.strip_prefix("scope ") else {
-                        return Err(fault("incompatible_checkpoint", "malformed checkpoint scope"));
+                        return Err(fault(
+                            "incompatible_checkpoint",
+                            "malformed checkpoint scope",
+                        ));
                     };
                     let id = id.parse().map_err(|_| {
                         fault("incompatible_checkpoint", "scope id is not an integer")
@@ -201,10 +207,16 @@ impl Checkpoint {
                         return Err(fault("incompatible_checkpoint", "missing checkpoint input"));
                     };
                     let Some(rest) = input_line.strip_prefix("input ") else {
-                        return Err(fault("incompatible_checkpoint", "malformed checkpoint input"));
+                        return Err(fault(
+                            "incompatible_checkpoint",
+                            "malformed checkpoint input",
+                        ));
                     };
                     let Some((name, encoded)) = rest.split_once(' ') else {
-                        return Err(fault("incompatible_checkpoint", "malformed checkpoint input"));
+                        return Err(fault(
+                            "incompatible_checkpoint",
+                            "malformed checkpoint input",
+                        ));
                     };
                     checkpoint
                         .inputs
@@ -219,29 +231,46 @@ impl Checkpoint {
                         return Err(fault("incompatible_checkpoint", "missing checkpoint memo"));
                     };
                     let Some(rest) = memo_line.strip_prefix("memo ") else {
-                        return Err(fault("incompatible_checkpoint", "malformed checkpoint memo"));
+                        return Err(fault(
+                            "incompatible_checkpoint",
+                            "malformed checkpoint memo",
+                        ));
                     };
                     let Some((id, encoded)) = rest.split_once(' ') else {
-                        return Err(fault("incompatible_checkpoint", "malformed checkpoint memo"));
+                        return Err(fault(
+                            "incompatible_checkpoint",
+                            "malformed checkpoint memo",
+                        ));
                     };
                     if id.is_empty() || id.contains(' ') {
-                        return Err(fault("incompatible_checkpoint", "malformed checkpoint memo"));
+                        return Err(fault(
+                            "incompatible_checkpoint",
+                            "malformed checkpoint memo",
+                        ));
                     }
-                    checkpoint.memo.insert(id.to_string(), decode_cvalue(encoded, &mut ctx)?);
+                    checkpoint
+                        .memo
+                        .insert(id.to_string(), decode_cvalue(encoded, &mut ctx)?);
                 }
             } else if let Some(value) = line.strip_prefix("source_len=") {
                 let len: usize = value.parse().map_err(|_| {
                     fault("incompatible_checkpoint", "source_len is not an integer")
                 })?;
                 let Some((_, after)) = rest.split_once("source_len=") else {
-                    return Err(fault("incompatible_checkpoint", "truncated checkpoint source"));
+                    return Err(fault(
+                        "incompatible_checkpoint",
+                        "truncated checkpoint source",
+                    ));
                 };
                 let Some((_, remainder)) = after.split_once('\n') else {
                     checkpoint.source = String::new();
                     break;
                 };
                 if remainder.len() < len {
-                    return Err(fault("incompatible_checkpoint", "truncated checkpoint source"));
+                    return Err(fault(
+                        "incompatible_checkpoint",
+                        "truncated checkpoint source",
+                    ));
                 }
                 checkpoint.source = remainder[..len].to_string();
                 break;
@@ -257,7 +286,19 @@ impl Checkpoint {
     }
 }
 
+fn is_nonmemo_leaf(value: &CValue) -> bool {
+    matches!(
+        value,
+        CValue::Closure(_) | CValue::Code(_) | CValue::Receipt(_) | CValue::Buffer(_)
+    )
+}
+
 pub(super) fn call_memo_key(name: &str, args: &[CValue]) -> Option<String> {
+    // Research calls often pass a large state before a callback. Reject the
+    // callback first, rather than serializing the state into a doomed key.
+    if args.iter().any(is_nonmemo_leaf) {
+        return None;
+    }
     let mut out = String::from("call:");
     compact_ident(name, &mut out);
     for arg in args {
@@ -268,16 +309,16 @@ pub(super) fn call_memo_key(name: &str, args: &[CValue]) -> Option<String> {
 }
 
 pub(super) fn closure_memo_key(clos: &Closure, args: &[CValue]) -> Option<String> {
+    if clos.env.iter().any(|(key, value)| {
+        clos.recursive.as_deref() != Some(key.as_str()) && is_nonmemo_leaf(value)
+    }) {
+        return None;
+    }
     let name = clos.recursive.as_deref().unwrap_or(clos.param.as_str());
     let mut out = call_memo_key(name, args)?;
     out.push_str(":body=");
     encode_expr(&clos.body, &mut out);
-    // The recorded domain is part of the closure's identity: two
-    // closures with the same body text but different declared domains
-    // (`sequence(Rat)` vs `sequence(Int)` over the same env) must not
-    // share a memo row — the domain check is what refuses one of them,
-    // so a domain-blind key would replay the other's result past the
-    // check (fbpb6).
+    // Domain remains part of identity: memoization must not bypass admission.
     out.push_str(":domain=");
     encode_closure_domain(&clos.domain, &mut out);
     for (key, value) in &clos.env {
@@ -309,7 +350,7 @@ pub(super) fn compact_key(value: &CValue, out: &mut String) -> Option<()> {
             Some(())
         }
         CValue::Str(text) => {
-            out.push_str("S");
+            out.push('S');
             out.push_str(text);
             Some(())
         }
@@ -449,11 +490,7 @@ pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
             encode_expr(else_value, out);
             out.push('\n');
         }
-        Kont::CallArgs {
-            callee,
-            done,
-            rest,
-        } => {
+        Kont::CallArgs { callee, done, rest } => {
             out.push_str(&format!("kont CallArgs {} {}\n", done.len(), rest.len()));
             out.push_str("value ");
             encode_cvalue(callee, ctx, out);
@@ -470,7 +507,11 @@ pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
             }
         }
         Kont::FnCall { name, done, rest } => {
-            out.push_str(&format!("kont FnCall {name} {} {}\n", done.len(), rest.len()));
+            out.push_str(&format!(
+                "kont FnCall {name} {} {}\n",
+                done.len(),
+                rest.len()
+            ));
             for value in done {
                 out.push_str("value ");
                 encode_cvalue(value, ctx, out);
@@ -666,9 +707,8 @@ pub(super) fn decode_kont<'a>(
         .ok_or_else(|| fault("incompatible_checkpoint", "continuation tag missing"))?;
     match tag {
         "BinLeft" => {
-            let op = bin_op(parts.next().unwrap_or_default()).ok_or_else(|| {
-                fault("incompatible_checkpoint", "unknown binary continuation")
-            })?;
+            let op = bin_op(parts.next().unwrap_or_default())
+                .ok_or_else(|| fault("incompatible_checkpoint", "unknown binary continuation"))?;
             Ok(Kont::BinLeft {
                 op,
                 left: Box::new(decode_expr_line(lines)?),
@@ -676,9 +716,8 @@ pub(super) fn decode_kont<'a>(
             })
         }
         "BinRight" => {
-            let op = bin_op(parts.next().unwrap_or_default()).ok_or_else(|| {
-                fault("incompatible_checkpoint", "unknown binary continuation")
-            })?;
+            let op = bin_op(parts.next().unwrap_or_default())
+                .ok_or_else(|| fault("incompatible_checkpoint", "unknown binary continuation"))?;
             Ok(Kont::BinRight {
                 op,
                 left: decode_value_line(lines, ctx)?,
@@ -697,12 +736,16 @@ pub(super) fn decode_kont<'a>(
             else_value: Box::new(decode_expr_line(lines)?),
         }),
         "CallArgs" => {
-            let done_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "call continuation arity")
-            })?;
-            let rest_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "call continuation arity")
-            })?;
+            let done_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "call continuation arity"))?;
+            let rest_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "call continuation arity"))?;
             let callee = decode_value_line(lines, ctx)?;
             let mut done = Vec::new();
             for _ in 0..done_count {
@@ -712,23 +755,23 @@ pub(super) fn decode_kont<'a>(
             for _ in 0..rest_count {
                 rest.push(Rc::new(decode_expr_line(lines)?));
             }
-            Ok(Kont::CallArgs {
-                callee,
-                done,
-                rest,
-            })
+            Ok(Kont::CallArgs { callee, done, rest })
         }
         "FnCall" => {
             let name = parts
                 .next()
                 .ok_or_else(|| fault("incompatible_checkpoint", "fn continuation name"))?
                 .to_string();
-            let done_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "fn continuation arity")
-            })?;
-            let rest_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "fn continuation arity")
-            })?;
+            let done_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "fn continuation arity"))?;
+            let rest_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "fn continuation arity"))?;
             let mut done = Vec::new();
             for _ in 0..done_count {
                 done.push(decode_value_line(lines, ctx)?);
@@ -741,12 +784,16 @@ pub(super) fn decode_kont<'a>(
         }
         "SeqItems" => {
             let as_tuple = parts.next() == Some("tuple");
-            let done_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "seq continuation arity")
-            })?;
-            let rest_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "seq continuation arity")
-            })?;
+            let done_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "seq continuation arity"))?;
+            let rest_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "seq continuation arity"))?;
             let mut done = Vec::new();
             for _ in 0..done_count {
                 done.push(decode_value_line(lines, ctx)?);
@@ -762,12 +809,16 @@ pub(super) fn decode_kont<'a>(
             })
         }
         "RecordFields" => {
-            let done_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "record continuation arity")
-            })?;
-            let rest_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "record continuation arity")
-            })?;
+            let done_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "record continuation arity"))?;
+            let rest_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "record continuation arity"))?;
             let type_path = parts
                 .next()
                 .unwrap_or_default()
@@ -799,9 +850,8 @@ pub(super) fn decode_kont<'a>(
             index: Box::new(decode_expr_line(lines)?),
         }),
         "UnaryAfter" => {
-            let op = un_op(parts.next().unwrap_or_default()).ok_or_else(|| {
-                fault("incompatible_checkpoint", "unknown unary continuation")
-            })?;
+            let op = un_op(parts.next().unwrap_or_default())
+                .ok_or_else(|| fault("incompatible_checkpoint", "unknown unary continuation"))?;
             Ok(Kont::UnaryAfter {
                 op,
                 value: Box::new(decode_expr_line(lines)?),
@@ -816,9 +866,11 @@ pub(super) fn decode_kont<'a>(
             tail: Box::new(decode_expr_line(lines)?),
         }),
         "MatchWaiting" => {
-            let arm_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "match continuation arity")
-            })?;
+            let arm_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "match continuation arity"))?;
             let subject = decode_expr_line(lines)?;
             let mut arms = Vec::new();
             for _ in 0..arm_count {
@@ -831,9 +883,11 @@ pub(super) fn decode_kont<'a>(
             })
         }
         "CasesArm" => {
-            let rest_count: usize = parts.next().unwrap_or("0").parse().map_err(|_| {
-                fault("incompatible_checkpoint", "cases continuation arity")
-            })?;
+            let rest_count: usize = parts
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .map_err(|_| fault("incompatible_checkpoint", "cases continuation arity"))?;
             let cond = decode_expr_line(lines)?;
             let value = decode_expr_line(lines)?;
             let mut rest = Vec::new();
@@ -880,9 +934,12 @@ pub(super) fn decode_expr_line<'a>(
     let line = lines
         .next()
         .ok_or_else(|| fault("incompatible_checkpoint", "missing continuation expression"))?;
-    let encoded = line
-        .strip_prefix("expr ")
-        .ok_or_else(|| fault("incompatible_checkpoint", "malformed continuation expression"))?;
+    let encoded = line.strip_prefix("expr ").ok_or_else(|| {
+        fault(
+            "incompatible_checkpoint",
+            "malformed continuation expression",
+        )
+    })?;
     decode_expr_cur(&mut Cursor::new(encoded))
 }
 
@@ -934,9 +991,7 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
                 let id = ctx.next_id;
                 ctx.next_id += 1;
                 ctx.buffers.insert(key, id);
-                let items = cell
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let items = cell.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 out.push_str(&format!("(buf {id} {}", items.len()));
                 for item in items.iter() {
                     out.push(' ');
@@ -1004,7 +1059,7 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
             encode_quoted(type_name, out);
             out.push(' ');
             encode_quoted(tag, out);
-            for value in fields.iter() {
+            for value in fields {
                 out.push(' ');
                 encode_cvalue(value, ctx, out);
             }
@@ -1014,10 +1069,7 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
     }
 }
 
-pub(super) fn decode_cvalue(
-    text: &str,
-    ctx: &mut DecodeCtx,
-) -> Result<CValue, ConstructorError> {
+pub(super) fn decode_cvalue(text: &str, ctx: &mut DecodeCtx) -> Result<CValue, ConstructorError> {
     let text = text.trim();
     if text == "U" {
         return Ok(CValue::Unit);
@@ -1101,7 +1153,11 @@ pub(super) fn encode_expr(expr: &Expr, out: &mut String) {
             out.push(')');
         }
         ExprKind::Bool(value) => {
-            out.push_str(if *value { "(bool true)" } else { "(bool false)" });
+            out.push_str(if *value {
+                "(bool true)"
+            } else {
+                "(bool false)"
+            });
         }
         ExprKind::Path { segments, .. } => {
             out.push_str("(path ");
@@ -1247,7 +1303,7 @@ pub(super) fn encode_expr(expr: &Expr, out: &mut String) {
         ExprKind::Record { type_path, fields } => {
             out.push_str("(record ");
             encode_quoted(&type_path.join("."), out);
-            for (name, value) in fields.iter() {
+            for (name, value) in fields {
                 out.push(' ');
                 encode_quoted(name, out);
                 out.push('=');
@@ -1277,7 +1333,11 @@ pub(super) fn encode_expr(expr: &Expr, out: &mut String) {
                 Some(end) => encode_expr(end, out),
                 None => out.push_str("(none)"),
             }
-            out.push_str(if *inclusive { " inclusive)" } else { " exclusive)" });
+            out.push_str(if *inclusive {
+                " inclusive)"
+            } else {
+                " exclusive)"
+            });
         }
         // Residual kinds cannot be evaluated by the constructor layer, so
         // they can only appear inside unevaluated branches; the Debug
@@ -1285,7 +1345,7 @@ pub(super) fn encode_expr(expr: &Expr, out: &mut String) {
         // memo keys never collide on `(opaque)` alone.
         other => {
             out.push_str("(opaque ");
-            out.push_str(&format!("{:?}", other));
+            out.push_str(&format!("{other:?}"));
             out.push(')');
         }
     }
@@ -1359,7 +1419,7 @@ impl<'a> Cursor<'a> {
             .text
             .as_bytes()
             .get(self.pos)
-            .is_some_and(|b| b.is_ascii_whitespace())
+            .is_some_and(u8::is_ascii_whitespace)
         {
             self.pos += 1;
         }
@@ -1386,7 +1446,7 @@ impl<'a> Cursor<'a> {
             .text
             .as_bytes()
             .get(self.pos)
-            .is_some_and(|b| b.is_ascii_alphabetic())
+            .is_some_and(u8::is_ascii_alphabetic)
         {
             self.pos += 1;
         }
@@ -1409,9 +1469,10 @@ impl<'a> Cursor<'a> {
             match ch {
                 '"' => return Ok(out),
                 '\\' => {
-                    let next = self.text[self.pos..].chars().next().ok_or_else(|| {
-                        fault("incompatible_checkpoint", "truncated escape")
-                    })?;
+                    let next = self.text[self.pos..]
+                        .chars()
+                        .next()
+                        .ok_or_else(|| fault("incompatible_checkpoint", "truncated escape"))?;
                     self.pos += next.len_utf8();
                     out.push(next);
                 }
@@ -1508,7 +1569,10 @@ pub(super) fn decode_cvalue_cur(
                 // the closure-domain recording carry no shape and
                 // decode as Unknown (no claim — the pre-seam
                 // discipline). The schema bump names the difference.
-                let domain = if { cur.skip_ws(); cur.rest().starts_with("(dom") } {
+                let domain = if {
+                    cur.skip_ws();
+                    cur.rest().starts_with("(dom")
+                } {
                     decode_closure_domain(cur)?
                 } else {
                     DomainShape::Unknown
@@ -1540,7 +1604,10 @@ pub(super) fn decode_cvalue_cur(
                 if !cur.eat_char(')') {
                     return Err(fault("incompatible_checkpoint", "code not closed"));
                 }
-                CValue::Code(Box::new(Code { expr, deps: BTreeMap::new() }))
+                CValue::Code(Box::new(Code {
+                    expr,
+                    deps: BTreeMap::new(),
+                }))
             }
             "rec" => {
                 let type_name = cur.string()?;
@@ -1550,7 +1617,10 @@ pub(super) fn decode_cvalue_cur(
                     let value = decode_cvalue_cur(cur, ctx)?;
                     fields.insert(name, value);
                 }
-                CValue::Record { type_name, fields: Arc::new(fields) }
+                CValue::Record {
+                    type_name,
+                    fields: Arc::new(fields),
+                }
             }
             "var" => {
                 let type_name = cur.string()?;
@@ -1597,10 +1667,7 @@ pub(super) fn decode_cvalue_cur(
                 if items.len() != expected {
                     return Err(fault(
                         "incompatible_checkpoint",
-                        format!(
-                            "buffer declared {expected} items, found {}",
-                            items.len()
-                        ),
+                        format!("buffer declared {expected} items, found {}", items.len()),
                     ));
                 }
                 let cell = std::sync::Arc::new(std::sync::Mutex::new(items));
@@ -1619,7 +1686,7 @@ pub(super) fn decode_cvalue_cur(
                         return Err(fault(
                             "incompatible_checkpoint",
                             "buffer reference without a preceding definition",
-                        ))
+                        ));
                     }
                 }
             }
@@ -1687,7 +1754,10 @@ pub(super) fn decode_atom_cur(cur: &mut Cursor<'_>) -> Result<CValue, Constructo
     }
     Err(fault(
         "incompatible_checkpoint",
-        format!("unknown checkpoint value `{}`", rest.chars().take(32).collect::<String>()),
+        format!(
+            "unknown checkpoint value `{}`",
+            rest.chars().take(32).collect::<String>()
+        ),
     ))
 }
 
@@ -1728,9 +1798,8 @@ pub(super) fn decode_expr_cur(cur: &mut Cursor<'_>) -> Result<Expr, ConstructorE
             generics: None,
         },
         "bin" => {
-            let op = bin_op(cur.ident()?).ok_or_else(|| {
-                fault("incompatible_checkpoint", "unknown binary operator")
-            })?;
+            let op = bin_op(cur.ident()?)
+                .ok_or_else(|| fault("incompatible_checkpoint", "unknown binary operator"))?;
             ExprKind::Binary {
                 op,
                 left: Box::new(decode_expr_cur(cur)?),
@@ -1738,9 +1807,8 @@ pub(super) fn decode_expr_cur(cur: &mut Cursor<'_>) -> Result<Expr, ConstructorE
             }
         }
         "un" => {
-            let op = un_op(cur.ident()?).ok_or_else(|| {
-                fault("incompatible_checkpoint", "unknown unary operator")
-            })?;
+            let op = un_op(cur.ident()?)
+                .ok_or_else(|| fault("incompatible_checkpoint", "unknown unary operator"))?;
             ExprKind::Unary {
                 op,
                 value: Box::new(decode_expr_cur(cur)?),
@@ -1923,4 +1991,3 @@ pub(super) fn split_encoded(text: &str, count: usize) -> Result<Vec<String>, Con
     }
     Ok(items)
 }
-

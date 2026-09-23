@@ -12,7 +12,7 @@ use crate::{
 mod helpers;
 mod value;
 
-use helpers::*;
+use helpers::{register, bool_of, i64_of, f64_of, eq_ne, vector_of, tensor_of, matrix_of, eval_tensor_slice};
 pub use value::{EvalFault, ProgramValue, Value, format_f64};
 
 pub fn evaluate(

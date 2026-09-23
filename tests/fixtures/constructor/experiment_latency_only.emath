@@ -1,0 +1,18 @@
+# A second evaluator for the experiment host's identity tests: it scores
+# latency only and ignores outputs, so it is NOT a sound hot-path evaluator.
+# Its only purpose is to prove that swapping evaluators cannot resume
+# measurements taken under another evaluator.
+use search.evaluation
+
+emath function LatencyOnly:
+    inputs:
+        samples: sequence(PairedObs)
+        baseline_context: EvalContext
+        candidate_context: EvalContext
+        audit_id: Int
+        consumed: sequence(Int)
+    outputs:
+        result: EvaluationDecision
+    definitions:
+        partitions = PartitionIdentity: {search_id: -1, challenge_id: -2, audit_id: audit_id}
+        result = evaluate_pairs(samples, -1, baseline_context, candidate_context, partitions, consumed, true)

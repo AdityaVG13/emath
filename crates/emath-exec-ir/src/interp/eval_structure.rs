@@ -1,4 +1,4 @@
-use super::*;
+use super::{EmirProgram, EmirOp, Value, ValueFrame, EvalBudget, EvalFault, bool_of, register, format_text, sample_series, f64_of, BTreeMap, i64_of, vector_of};
 
 pub(super) fn eval_structure(
     _self_program: &EmirProgram,
@@ -106,7 +106,7 @@ pub(super) fn eval_structure(
                         op: "list-concat",
                     });
                 };
-                count = count.checked_add(items.len()).ok_or_else(|| EvalFault::Arithmetic {
+                count = count.checked_add(items.len()).ok_or(EvalFault::Arithmetic {
                     op: "list-concat",
                     detail: "concatenated length exceeds usize",
                 })?;

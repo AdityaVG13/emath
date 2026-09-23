@@ -1,4 +1,4 @@
-use super::*;
+use super::{SyntaxTree, ConstructorError, Item, Path, BTreeSet, TypeExpr, TypeKind, Engine, Declaration, BTreeMap, StmtKind, Expr, ExprKind, BinaryOp};
 use super::prelude::*;
 
 /// Type-admit a constructor module with the same environment as evaluation.
@@ -153,13 +153,13 @@ pub(super) fn ctype_from_type(ty: &TypeExpr) -> CType {
         TypeKind::List(_) => CType::Sequence,
         TypeKind::Tuple(_) => CType::Tuple,
         TypeKind::Path { segments, .. } => match segments.last().map(String::as_str) {
-            Some("Int") | Some("Nat") => CType::Int,
+            Some("Int" | "Nat") => CType::Int,
             Some("Bool") => CType::Bool,
             Some("Rat") => CType::Rat,
             Some("Str") => CType::Str,
-            Some("Float64") | Some("F64") => CType::Float64,
+            Some("Float64" | "F64") => CType::Float64,
             Some("Code") => CType::Code,
-            Some("sequence") | Some("Sequence") => CType::Sequence,
+            Some("sequence" | "Sequence") => CType::Sequence,
             Some("buffer") => CType::Buffer,
             _ => CType::Unknown,
         },
@@ -483,15 +483,11 @@ impl Engine {
                 if segments.len() == 2 {
                     return Ok(match (ty, segments[1].as_str()) {
                         (CType::Sequence, "length") => CType::Int,
-                        (CType::Rat, "numer" | "denom") | (CType::Int, "numer" | "denom") => CType::Int,
+                        (CType::Rat | CType::Int, "numer" | "denom") => CType::Int,
                         // Projection type is not reconstructed from a record tag.
                         // Unknown conforms to a declared field type; Schema does not.
-                        (CType::Receipt, _)
-                        | (CType::Record, _)
-                        | (CType::Tuple, _)
-                        | (CType::Code, _)
-                        | (CType::Schema, _)
-                        | (CType::Unknown, _) => CType::Unknown,
+                        (CType::Receipt | CType::Record | CType::Tuple | CType::Code | CType::Schema |
+CType::Unknown, _) => CType::Unknown,
                         _ => CType::Unknown,
                     });
                 }
@@ -679,7 +675,7 @@ impl Engine {
     }
 
     /// Buffer-carrier machine ops:
-    /// `buffer(size, fill)` -> CType::Buffer (unparameterized;
+    /// `buffer(size, fill)` -> `CType::Buffer` (unparameterized;
     /// elements are checked at use), `buffer_set(buf, i, v)` -> Unit
     /// (inferred Unknown). Equality on buffers refuses elsewhere.
     pub(super) fn infer_machine_buffer(
@@ -852,10 +848,10 @@ impl Engine {
 pub(super) fn ctype_from_type_expr_or_path(expr: &Expr) -> CType {
     match &expr.kind {
         ExprKind::Path { segments, .. } => match segments.last().map(String::as_str) {
-            Some("Int") | Some("Nat") => CType::Int,
+            Some("Int" | "Nat") => CType::Int,
             Some("Bool") => CType::Bool,
             Some("Rat") => CType::Rat,
-            Some("Float64") | Some("F64") => CType::Float64,
+            Some("Float64" | "F64") => CType::Float64,
             Some("Code") => CType::Code,
             _ => CType::Unknown,
         },

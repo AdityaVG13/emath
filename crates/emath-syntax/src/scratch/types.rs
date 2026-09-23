@@ -1,6 +1,6 @@
 //! Public scratch-expansion types: levels, outcomes, holes, worlds.
 
-use super::*;
+use super::{ExactnessStatus, Diagnostics};
 
 /// Progressive-exactness level of the surface that was expanded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

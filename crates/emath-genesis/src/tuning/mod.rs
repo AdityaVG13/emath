@@ -18,7 +18,7 @@ mod calibrate;
 mod codec;
 mod model;
 
-use apply::*;
+use apply::apply_or_revert;
 pub use calibrate::*;
-use codec::*;
+use codec::{apply_carrier, apply_symbol, apply_signature, apply_operator, replace_list_item, operational_payloads};
 pub use model::*;

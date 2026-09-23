@@ -185,12 +185,10 @@ impl Probe {
     #[track_caller]
     pub fn finish(mut self) {
         self.finished = true;
-        if self.checks == 0 {
-            panic!(
-                "PROBE `{}` recorded zero checks — that is fluff, not a test",
-                self.intent
-            );
-        }
+        assert!(self.checks != 0, 
+            "PROBE `{}` recorded zero checks — that is fluff, not a test",
+            self.intent
+        );
         if self.failures.is_empty() {
             return;
         }
@@ -218,13 +216,11 @@ impl Drop for Probe {
         if self.finished || std::thread::panicking() {
             return;
         }
-        if !self.failures.is_empty() {
-            panic!(
-                "PROBE `{}` dropped with {} unreported failures — call finish()",
-                self.intent,
-                self.failures.len()
-            );
-        }
+        assert!(self.failures.is_empty(), 
+            "PROBE `{}` dropped with {} unreported failures — call finish()",
+            self.intent,
+            self.failures.len()
+        );
     }
 }
 

@@ -34,14 +34,11 @@ impl AuthorityState {
     pub const fn can_transition_to(self, next: Self) -> bool {
         matches!(
             (self, next),
-            (Self::LegacyActive, Self::CapsuleCandidate)
-                | (Self::CapsuleCandidate, Self::LegacyActiveDualRun)
-                | (Self::LegacyActiveDualRun, Self::CapsuleActive)
-                | (Self::LegacyActiveDualRun, Self::LegacyActive)
-                | (Self::CapsuleActive, Self::RollbackPending)
-                | (Self::RollbackPending, Self::LegacyActive)
-                | (Self::CapsuleActive, Self::Retired)
-                | (Self::LegacyActive, Self::Retired)
+            (Self::LegacyActive, Self::CapsuleCandidate | Self::Retired) |
+(Self::CapsuleCandidate, Self::LegacyActiveDualRun) |
+(Self::LegacyActiveDualRun, Self::CapsuleActive | Self::LegacyActive) |
+(Self::CapsuleActive, Self::RollbackPending | Self::Retired) |
+(Self::RollbackPending, Self::LegacyActive)
         )
     }
 }

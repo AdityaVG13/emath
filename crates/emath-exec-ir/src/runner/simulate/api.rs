@@ -5,7 +5,7 @@
 //! event location, and implicit-DAE solving live in authored language
 //! definitions (`language/spec/capabilities/**`), not in this crate.
 
-use super::*;
+use super::{SemanticPackage, Declaration, BTreeMap, StepMethod, Value, Trajectory, SimulateOptions, DAEDisposition};
 
 /// Advance one explicit step. Rates come from admitted `der_<name>` definitions.
 pub fn step_continuous(

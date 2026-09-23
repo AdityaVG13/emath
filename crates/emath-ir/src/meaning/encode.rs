@@ -1,6 +1,6 @@
 //! Type and declaration encoding.
 
-use super::*;
+use super::{Encoder, SemanticPackage, TypeId, MeaningError, TypeNode, BTreeMap, ImportSelection, LocalSlot, Field, Visibility, ExactnessPolicy, Declaration, MeaningContext, BTreeSet, GoalKind, DeterminismPolicy, FallbackPolicy, MeaningId, ExprNode, MEANING_CANONICAL_SCHEMA_V1};
 
 pub(super) fn encode_type_id(
     out: &mut Encoder,

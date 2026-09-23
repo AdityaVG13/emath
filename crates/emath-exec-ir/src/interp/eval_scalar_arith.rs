@@ -1,4 +1,4 @@
-use super::*;
+use super::{EmirProgram, EmirOp, Value, ValueFrame, EvalBudget, EvalFault, scalar_arithmetic, ScalarOp, scalar_binary, scalar_neg, register, f64_of, exact_int_of, value_from_exact, eval_exact_int_call, scalar_unary, comparison, eq_ne, boolean_binary, bool_of};
 
 pub(super) fn eval_scalar_arith(
     _self_program: &EmirProgram,

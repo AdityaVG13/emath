@@ -1,6 +1,6 @@
 //! Cell parameter shapes, guards, errors, and the compiled-cell type.
 
-use super::*;
+use super::{fmt, EmirProgram};
 
 /// Declared shape of one cell parameter. Closed set; matrix/tensor
 /// parameter shapes are later spine work.

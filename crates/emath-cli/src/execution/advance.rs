@@ -1,4 +1,4 @@
-use super::*;
+use super::{SemanticPackage, SavedRun, RunRequest, Path, CliExit, diagnostic, EXIT_REFUSED, EXIT_USAGE, save, JsonWriter, content_id_of_str, Write, emit, save_document, execute_measured_case, progress, PathBuf, parse_json_document, text};
 
 pub(super) fn jobs(
     package: &SemanticPackage,
@@ -64,20 +64,17 @@ pub(super) fn advance(
             return diagnostic(request.json, EXIT_USAGE, "E-RUN-STATE", &error.to_string());
         }
     };
-    let mut path = match origin {
-        Some(path) => match std::fs::canonicalize(path) {
-            Ok(path) => path,
-            Err(error) => {
-                return diagnostic(request.json, EXIT_USAGE, "E-RUN-STATE", &error.to_string());
-            }
-        },
-        None => {
-            let path = checkpoint_path(state, &directory);
-            if let Err(error) = save(state, &path) {
-                return diagnostic(request.json, EXIT_USAGE, "E-RUN-STATE", &error);
-            }
-            path
+    let mut path = if let Some(path) = origin { match std::fs::canonicalize(path) {
+        Ok(path) => path,
+        Err(error) => {
+            return diagnostic(request.json, EXIT_USAGE, "E-RUN-STATE", &error.to_string());
         }
+    } } else {
+        let path = checkpoint_path(state, &directory);
+        if let Err(error) = save(state, &path) {
+            return diagnostic(request.json, EXIT_USAGE, "E-RUN-STATE", &error);
+        }
+        path
     };
     // The first durable checkpoint is discoverable even if this process
     // receives SIGKILL before it can print its final JSON response.

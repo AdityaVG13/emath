@@ -34,7 +34,7 @@ pub fn lower_constructor_function(
 }
 
 /// `f = quote.evaluate(cand)`: the def binds the specialized unary
-/// closure, so later `f(x)` calls lower as closure calls (CallValue),
+/// closure, so later `f(x)` calls lower as closure calls (`CallValue`),
 /// not field access.
 fn is_quote_evaluate_call(function: &Expr) -> bool {
     let ExprKind::Path { segments, .. } = &function.kind else {
@@ -397,7 +397,7 @@ impl Lowerer {
     /// inputs, so a nested literal like `function k in Int: function cs
     /// in CS: k / 8` closes over `k` instead of faulting unbound. The
     /// returned capture values are enclosing-frame registers; both the
-    /// value form (ProgramLiteral) and immediate application (CallFrame)
+    /// value form (`ProgramLiteral`) and immediate application (`CallFrame`)
     /// place them after the explicit arguments. The child inherits the
     /// arrow-ness of captured closure names; an arrow-domain parameter
     /// is itself callable.
@@ -864,7 +864,7 @@ impl Lowerer {
                     let mut declared = vec![
                         domain_signature(domain, &self.objects).unwrap_or_default(),
                     ];
-                    declared.extend(std::iter::repeat(String::new()).take(capture_count));
+                    declared.extend(std::iter::repeat_n(String::new(), capture_count));
                     Ok(self.push(EmirOp::CallFrame {
                         body: nested,
                         inputs,
@@ -1070,11 +1070,11 @@ impl Lowerer {
                 {
                     let package = self.expr(domain)?;
                     let opened = self.push(EmirOp::CodeOpen { package });
-                    let previous = self.locals.insert(param.to_string(), opened);
+                    let previous = self.locals.insert(param.clone(), opened);
                     let result = self.expr(body);
                     match previous {
                         Some(value) => {
-                            self.locals.insert(param.to_string(), value);
+                            self.locals.insert(param.clone(), value);
                         }
                         None => {
                             self.locals.remove(param);
@@ -1286,7 +1286,7 @@ fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>) -> Option
         ExprKind::Path { segments, .. } => {
             let name = segments.last()?;
             match name.as_str() {
-                "Int" | "Rat" | "Bool" | "Text" | "Float64" => Some(name.to_string()),
+                "Int" | "Rat" | "Bool" | "Text" | "Float64" => Some(name.clone()),
                 _ => objects.contains_key(name).then(|| format!("Record<{name}>")),
             }
         }
@@ -1633,7 +1633,7 @@ fn section_fields(decl: &Declaration, name: &str) -> Vec<String> {
 }
 
 /// Section fields with their declared types (`inputs:`/`outputs:`
-/// FieldDecls). The declared types are ground truth for the emitted
+/// `FieldDecls`). The declared types are ground truth for the emitted
 /// entry's parameter signature.
 pub fn section_typed_fields(decl: &Declaration, name: &str) -> Vec<(String, TypeExpr)> {
     let mut fields = Vec::new();
@@ -1852,10 +1852,8 @@ fn emir_values_equal(left: &crate::interp::Value, right: &crate::interp::Value) 
         (
             crate::interp::Value::ExactRat { num: an, den: ad },
             crate::interp::Value::ExactRat { num: bn, den: bd },
-        ) => an.mul(bd).ok().is_some_and(|left| {
-            bn.mul(ad)
-                .ok()
-                .is_some_and(|right| left == right)
+        ) => an.mul(bd).is_ok_and(|left| {
+            bn.mul(ad).is_ok_and(|right| left == right)
         }),
         (
             crate::interp::Value::ExactRat { num: an, den: ad },
@@ -1865,17 +1863,13 @@ fn emir_values_equal(left: &crate::interp::Value, right: &crate::interp::Value) 
             crate::interp::Value::Rat { num: bn, den: bd },
             crate::interp::Value::ExactRat { num: an, den: ad },
         ) => an
-            .mul(&ExactInt::from(*bd))
-            .ok()
-            .is_some_and(|left| ExactInt::from(*bn).mul(ad).ok().is_some_and(|right| left == right)),
+            .mul(&ExactInt::from(*bd)).is_ok_and(|left| ExactInt::from(*bn).mul(ad).is_ok_and(|right| left == right)),
         (crate::interp::Value::Rat { num: a, den: ad }, crate::interp::Value::Rat { num: b, den: bd }) => {
             a * bd == b * ad
         }
         (crate::interp::Value::ExactInt(a), crate::interp::Value::Rat { num, den })
         | (crate::interp::Value::Rat { num, den }, crate::interp::Value::ExactInt(a)) => a
-            .mul(&ExactInt::from(*den))
-            .ok()
-            .is_some_and(|left| left == ExactInt::from(*num)),
+            .mul(&ExactInt::from(*den)).is_ok_and(|left| left == ExactInt::from(*num)),
         (
             crate::interp::Value::ExactInt(a),
             crate::interp::Value::ExactRat { num, den },
@@ -1884,15 +1878,11 @@ fn emir_values_equal(left: &crate::interp::Value, right: &crate::interp::Value) 
             crate::interp::Value::ExactRat { num, den },
             crate::interp::Value::ExactInt(a),
         ) => a
-            .mul(den)
-            .ok()
-            .is_some_and(|left| left == *num),
+            .mul(den).is_ok_and(|left| left == *num),
         (crate::interp::Value::I64(a), crate::interp::Value::ExactRat { num, den })
         | (crate::interp::Value::ExactRat { num, den }, crate::interp::Value::I64(a)) => {
             ExactInt::from(*a)
-                .mul(den)
-                .ok()
-                .is_some_and(|left| left == *num)
+                .mul(den).is_ok_and(|left| left == *num)
         }
         (crate::interp::Value::I64(a), crate::interp::Value::Rat { num, den }) => {
             i128::from(*a) * *den == *num

@@ -239,7 +239,7 @@ pub fn ir_type_gate(token: &str) -> Result<(), AdapterContractError> {
 /// Gate a whole declared signature (role → IR-facing type token): every
 /// token must pass the allowlist; the refusal names the offending token.
 pub fn gate_signature(signature: &BTreeMap<String, String>) -> Result<(), AdapterContractError> {
-    for (_role, token) in signature {
+    for token in signature.values() {
         ir_type_gate(token)?;
     }
     Ok(())

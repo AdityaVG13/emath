@@ -1,6 +1,6 @@
 //! Forest analysis shared by all genesis commands.
 
-use super::*;
+use super::{genesis_syntax, forest, Term, Path, fs, Limits, fnv1a64, PathBuf};
 
 /// One analysis result reused by every subcommand.
 pub struct Analysis {

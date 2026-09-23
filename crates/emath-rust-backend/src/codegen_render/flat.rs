@@ -1,6 +1,9 @@
 //! Flat-SSA construction: register resolution and let-binding policy.
 
-use super::*;
+use super::{
+    BackendError, EmirOp, EmirProgram, HashMap, InputKinds, ValueKind, is_total, op_expr,
+    operand_registers, render_expr,
+};
 
 /// Register-inlined SSA body renderer: single-use, provably-total
 /// registers inline into their consumer; multi-use/fault-capable ops stay
@@ -64,19 +67,15 @@ impl Resolver<'_> {
         while i < src.len() {
             let token_len = if src[i..].starts_with("__e") {
                 let start = i + 3;
-                let digits_len = src[start..]
-                    .bytes()
-                    .take_while(|b| b.is_ascii_digit())
-                    .count();
+                let digits_len = src[start..].bytes().take_while(u8::is_ascii_digit).count();
                 if digits_len > 0 {
                     if let Ok(idx) = src[start..(start + digits_len)].parse::<u32>() {
                         if (idx as usize) < self.program.ops.len() {
-                            let replacement =
-                                if self.inline_e.get(idx as usize) == Some(&true) {
-                                    inline_token(self.e(idx)?)
-                                } else {
-                                    src[i..(start + digits_len)].to_string()
-                                };
+                            let replacement = if self.inline_e.get(idx as usize) == Some(&true) {
+                                inline_token(self.e(idx)?)
+                            } else {
+                                src[i..(start + digits_len)].to_string()
+                            };
                             out.push_str(&replacement);
                             start + digits_len - i
                         } else {
@@ -159,6 +158,7 @@ pub(crate) fn flat_ssa(
     names: &[String],
     states: &[String],
     input_kinds: &InputKinds,
+    kinds: &[ValueKind],
 ) -> Result<FlatSsa, BackendError> {
     let n = program.ops.len();
     // Primal sources for every register.
@@ -170,6 +170,7 @@ pub(crate) fn flat_ssa(
             names,
             states,
             input_kinds,
+            kinds,
         )?));
     }
     let e_direct = count_ssa_uses(program);
@@ -333,8 +334,7 @@ fn defer_boolean_rights(
                 let end = bytes[digits..]
                     .iter()
                     .position(|b| !b.is_ascii_digit())
-                    .map(|offset| digits + offset)
-                    .unwrap_or(bytes.len());
+                    .map_or(bytes.len(), |offset| digits + offset);
                 if end > digits && &bytes[digits..end] == token_digits.as_slice() {
                     count += 1;
                     splice = Some((p, end));

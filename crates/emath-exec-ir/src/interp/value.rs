@@ -72,7 +72,7 @@ pub enum Value {
     Result { ok: bool, payload: Box<Value> },
     /// Universal program-as-value artifact produced by
     /// `EmirOp::ProgramLiteral`. Domain-neutral: the carrier names no
-    /// FeatureID and dispatches nothing; it can flow into an
+    /// `FeatureID` and dispatches nothing; it can flow into an
     /// `ApplyCapability` argument register like any other value.
     Program(ProgramValue),
     /// Universal heterogeneous sequence: the ordinary carrier for
@@ -416,7 +416,7 @@ impl fmt::Display for Value {
                 f.write_str("]")
             }
             Self::Tensor { shape, data } => {
-                write!(f, "tensor{:?}[", shape)?;
+                write!(f, "tensor{shape:?}[")?;
                 for (i, elem) in data.iter().enumerate() {
                     if i > 0 {
                         f.write_str(", ")?;

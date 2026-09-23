@@ -1,20 +1,21 @@
-use super::super::*;
+use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, exact_int_sum_from, exact_int_prod_from, exact_int_hamming, exact_int_weighted_prod, ExactInt, exact_int_poly_eval, Rc, BTreeMap, Arc};
 
 impl Engine {
-    pub(in crate::constructor_layer) fn eval_tail(&mut self, expr: &Expr) -> Result<EvalTail, ConstructorError> {
+    pub(in crate::constructor_layer) fn eval_tail(
+        &mut self,
+        expr: &Expr,
+    ) -> Result<EvalTail, ConstructorError> {
         match &expr.kind {
             ExprKind::If {
                 condition,
                 then_value,
                 else_value,
             } => {
-                self.push_kont(Kont::IfAfterCond {
+                let cond = self.eval_with_kont(condition, || Kont::IfAfterCond {
                     condition: condition.clone(),
                     then_value: then_value.clone(),
                     else_value: else_value.clone(),
-                });
-                let cond = self.eval(condition)?;
-                self.pop_kont();
+                })?;
                 let CValue::Bool(flag) = cond else {
                     return Err(fault("type", "if condition must be Bool"));
                 };
@@ -39,14 +40,8 @@ impl Engine {
                         }
                         return Ok(EvalTail::Call { name, args: vals });
                     }
-                    // A single-segment callee resolving to a closure
-                    // VALUE (the recur self-name, or any local
-                    // closure) is a tail application of a closure:
-                    // the application chain reuses the frame, so the
-                    // call depth stays at the entry value and WORK is
-                    // the bound. Multi-segment callees and non-closure
-                    // values keep the ordinary nested path (depth
-                    // capped).
+                    // Only a local closure in tail position reuses its frame;
+                    // other callees retain the ordinary nested-call discipline.
                     if segments.len() == 1 {
                         if let Some(CValue::Closure(_)) = self.env.get(&name) {
                             let callee = self.env.get(&name).cloned().unwrap();
@@ -113,9 +108,7 @@ impl Engine {
                 let Some(slot) = index.to_usize() else {
                     return Err(fault("invalid_index", "buffer index out of range"));
                 };
-                let mut items = cell
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let mut items = cell.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 let Some(target) = items.get_mut(slot) else {
                     return Err(fault("invalid_index", "buffer index out of range"));
                 };
@@ -378,5 +371,4 @@ impl Engine {
             fields: Arc::new(map),
         })
     }
-
 }

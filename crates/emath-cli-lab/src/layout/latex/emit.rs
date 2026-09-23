@@ -1,6 +1,6 @@
 //! AST-to-layout-graph emission helpers.
 
-use super::*;
+use super::{TokKind, GraphBuilder, Ast, NodeId, AstKind, LayoutContent, SpatialRelation};
 
 pub(super) fn starts_atom(kind: &TokKind) -> bool {
     matches!(
@@ -98,25 +98,23 @@ pub(super) fn emit(builder: &mut GraphBuilder, ast: &Ast) -> NodeId {
             };
             let op = builder.add_node(LayoutContent::BigOp(kind_name.to_string()), ast.span);
             if let Some(lower) = lower {
-                if name != "lim" {
-                    if let Some(bound) = bound {
-                        let origin = lower.span.0;
-                        let bound_id =
-                            builder.add_node(LayoutContent::Glyph(bound.clone()), (origin, origin));
-                        let eq_id = builder
-                            .add_node(LayoutContent::Glyph("=".to_string()), (origin, origin));
-                        let lower_id = emit(builder, lower);
-                        for child in [bound_id, eq_id, lower_id] {
-                            builder.add_edge(op, child, SpatialRelation::Contains);
-                            builder.add_edge(op, child, SpatialRelation::SubscriptOf);
-                        }
-                        builder.add_edge(bound_id, eq_id, SpatialRelation::RightOf);
-                        builder.add_edge(eq_id, lower_id, SpatialRelation::RightOf);
-                    } else {
-                        let lower_id = emit(builder, lower);
-                        builder.add_edge(op, lower_id, SpatialRelation::Contains);
-                        builder.add_edge(op, lower_id, SpatialRelation::SubscriptOf);
+                if name == "lim" {
+                    let lower_id = emit(builder, lower);
+                    builder.add_edge(op, lower_id, SpatialRelation::Contains);
+                    builder.add_edge(op, lower_id, SpatialRelation::SubscriptOf);
+                } else if let Some(bound) = bound {
+                    let origin = lower.span.0;
+                    let bound_id =
+                        builder.add_node(LayoutContent::Glyph(bound.clone()), (origin, origin));
+                    let eq_id = builder
+                        .add_node(LayoutContent::Glyph("=".to_string()), (origin, origin));
+                    let lower_id = emit(builder, lower);
+                    for child in [bound_id, eq_id, lower_id] {
+                        builder.add_edge(op, child, SpatialRelation::Contains);
+                        builder.add_edge(op, child, SpatialRelation::SubscriptOf);
                     }
+                    builder.add_edge(bound_id, eq_id, SpatialRelation::RightOf);
+                    builder.add_edge(eq_id, lower_id, SpatialRelation::RightOf);
                 } else {
                     let lower_id = emit(builder, lower);
                     builder.add_edge(op, lower_id, SpatialRelation::Contains);

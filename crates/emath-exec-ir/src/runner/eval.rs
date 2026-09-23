@@ -103,27 +103,13 @@ pub(super) fn check_obligation(
         Ok(Value::Bool(false)) => Err(TestVerdict::ConstructorRefused {
             obligation: format!("{keyword} {}", expr_text(package, expr)),
         }),
-        Ok(Value::F64(_))
-        | Ok(Value::I64(_))
-        // Stage-2 (emath-t63iz): exact big values are not obligations.
-        | Ok(Value::BigInt(_))
-        | Ok(Value::BigVector(_))
-        | Ok(Value::Rat { .. })
-        | Ok(Value::ExactInt(_))
-        | Ok(Value::ExactRat { .. })
-        | Ok(Value::Complex { .. })
-        | Ok(Value::Vector(_))
-        | Ok(Value::Matrix { .. })
-        | Ok(Value::Tensor { .. })
-        | Ok(Value::Interval { .. })
-        | Ok(Value::Text(_))
-        | Ok(Value::Series { .. })
-        | Ok(Value::Set(_))
-        | Ok(Value::Record { .. })
-        | Ok(Value::List(_))
-        | Ok(Value::Option(_))
-        | Ok(Value::Result { .. })
-        | Ok(Value::Program(_)) | Ok(Value::DenseLayout(_)) => Err(TestVerdict::Fault {
+        Ok(Value::F64(_) | Value::I64(_) | Value::BigInt(_) | Value::BigVector(_) |
+Value::Rat { .. } | Value::ExactInt(_) | Value::ExactRat { .. } |
+Value::Complex { .. } | Value::Vector(_) | Value::Matrix { .. } |
+Value::Tensor { .. } | Value::Interval { .. } | Value::Text(_) |
+Value::Series { .. } | Value::Set(_) | Value::Record { .. } | Value::List(_) |
+Value::Option(_) | Value::Result { .. } | Value::Program(_) |
+Value::DenseLayout(_)) => Err(TestVerdict::Fault {
             fault: EvalFault::TypeConfusion {
                 register: program.result.0,
                 op: keyword,
@@ -467,9 +453,7 @@ fn expr_references(
 
 /// Declared type of a bind slot, for hole constraints (`x: Float64`).
 fn hole_type_text(package: &SemanticPackage, declaration: &Declaration, name: &str) -> String {
-    slot_ty(package, declaration, name)
-        .map(|ty| ty.display_name())
-        .unwrap_or_else(|| "unknown".to_string())
+    slot_ty(package, declaration, name).map_or_else(|| "unknown".to_string(), emath_ir::TypeNode::display_name)
 }
 
 /// Widen I64→F64 (and whole F64→I64) so a named map matches typed slots.
@@ -578,27 +562,13 @@ pub(super) fn eval_expect(
     match evaluate(&program, &expect_values, &state_values) {
         Ok(Value::Bool(true)) => TestVerdict::Passed,
         Ok(Value::Bool(false)) => TestVerdict::Failed,
-        Ok(Value::F64(_))
-        | Ok(Value::I64(_))
-        // Stage-2 (emath-t63iz): exact big values are not obligations.
-        | Ok(Value::BigInt(_))
-        | Ok(Value::BigVector(_))
-        | Ok(Value::Rat { .. })
-        | Ok(Value::ExactInt(_))
-        | Ok(Value::ExactRat { .. })
-        | Ok(Value::Complex { .. })
-        | Ok(Value::Vector(_))
-        | Ok(Value::Matrix { .. })
-        | Ok(Value::Tensor { .. })
-        | Ok(Value::Interval { .. })
-        | Ok(Value::Text(_))
-        | Ok(Value::Series { .. })
-        | Ok(Value::Set(_))
-        | Ok(Value::Record { .. })
-        | Ok(Value::List(_))
-        | Ok(Value::Option(_))
-        | Ok(Value::Result { .. })
-        | Ok(Value::Program(_)) | Ok(Value::DenseLayout(_)) => TestVerdict::Fault {
+        Ok(Value::F64(_) | Value::I64(_) | Value::BigInt(_) | Value::BigVector(_) |
+Value::Rat { .. } | Value::ExactInt(_) | Value::ExactRat { .. } |
+Value::Complex { .. } | Value::Vector(_) | Value::Matrix { .. } |
+Value::Tensor { .. } | Value::Interval { .. } | Value::Text(_) |
+Value::Series { .. } | Value::Set(_) | Value::Record { .. } | Value::List(_) |
+Value::Option(_) | Value::Result { .. } | Value::Program(_) |
+Value::DenseLayout(_)) => TestVerdict::Fault {
             fault: EvalFault::TypeConfusion {
                 register: program.result.0,
                 op: "expect",

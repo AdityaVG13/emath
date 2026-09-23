@@ -1,6 +1,6 @@
 //! Runtime calls and universal register/type helpers.
 
-use super::*;
+use super::{EmirProgram, EmirValue, Expr, ValueKind, kind_at, render_expr, EmirOp, typed_operand, InputKinds, BackendError, value_expr, EmirSliceAxis, FoldCombine};
 
 pub(crate) fn operand(_program: &EmirProgram, value: EmirValue) -> Expr {
     Expr::Var(format!("__e{}", value.0))

@@ -1,4 +1,4 @@
-use super::*;
+use super::{ConstructorError, CValue, ExactInt, Expr, ExprKind, BinaryOp, BTreeSet, Arc, BTreeMap, ExactError};
 
 pub(super) fn fault(code: &str, message: impl Into<String>) -> ConstructorError {
     ConstructorError {
@@ -82,7 +82,7 @@ pub(super) fn exact_decimal_spine(expr: &Expr) -> Expr {
         },
         ExprKind::Unary { op, value } => Expr {
             kind: ExprKind::Unary {
-                op: op.clone(),
+                op: *op,
                 value: Box::new(exact_decimal_spine(value)),
             },
             source: expr.source,
@@ -95,7 +95,7 @@ pub(super) fn exact_decimal_spine(expr: &Expr) -> Expr {
         {
             Expr {
                 kind: ExprKind::Binary {
-                    op: op.clone(),
+                    op: *op,
                     left: Box::new(exact_decimal_spine(left)),
                     right: Box::new(exact_decimal_spine(right)),
                 },

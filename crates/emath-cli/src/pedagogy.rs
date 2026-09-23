@@ -108,10 +108,10 @@ impl PedagogicError {
             }
             eprintln!("  {rem_tag} {}", self.remediation);
             if let Some(usage) = &self.usage {
-                eprintln!("  {usage_tag}       {}", usage);
+                eprintln!("  {usage_tag}       {usage}");
             }
             if let Some(help) = &self.help_cmd {
-                eprintln!("  {try_tag}         {}", help);
+                eprintln!("  {try_tag}         {help}");
             }
         }
         CliExit::Usage

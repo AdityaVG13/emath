@@ -1,4 +1,4 @@
-use super::*;
+use super::{Expr, ExprKind, BTreeSet, FnDecl};
 
 pub(super) fn fnv64(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;

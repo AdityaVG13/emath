@@ -1,4 +1,4 @@
-use super::*;
+use super::{FeatureCapsule, AuthorityLock, LanguageImageError, AuthorityState, FromStr, AuthorityEntry, Path, PathBuf, fs, LanguageImage, FeatureId};
 
 pub(super) fn authority_from_capsules(
     capsules: &[FeatureCapsule],

@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use emath_exec_ir::BuiltinId;
 use emath_exec_ir::{EmirOp, EmirProgram, EmirValue};
 
-use super::*;
+use super::{ValueKind, Expr, kind_at, render_expr, operand_ref, map_runtime_result, operand};
 
 /// Forward-mode tangent of a `ProgramLiteral` body at the caller's point,
 /// w.r.t. a constant differentiation slot. Mirrors
@@ -58,7 +58,7 @@ pub(crate) fn forward_difference_expr(
     let EmirOp::ConstI64(slot_index) = &program.ops.get(slot.0 as usize)?.0 else {
         return None;
     };
-    if *slot_index < 0 || *slot_index > u16::MAX as i64 {
+    if *slot_index < 0 || *slot_index > i64::from(u16::MAX) {
         return None;
     }
     let slot = *slot_index as u16;
@@ -76,7 +76,7 @@ pub(crate) fn forward_difference_expr(
     for (index, (op, _)) in body.ops.iter().enumerate() {
         let mut pre = String::new();
         let (primal, tangent) =
-            dual_step(op, index, &regs, &mut vecs, &mut pre, slot, &point_binding_name())?;
+            dual_step(op, index, &regs, &mut vecs, &mut pre, slot, point_binding_name())?;
         code.push_str(&pre);
         code.push_str(&format!(
             "let __fd_p{index} = {primal}; let __fd_t{index} = {tangent}; "
@@ -514,32 +514,29 @@ pub(crate) fn element_tensor_expr(
 /// `emath_rt::einsum_output_rank`: explicit mode counts the output
 /// letters after `->`; implicit mode emits the letters that appear
 /// exactly once across the spec.
-pub(crate) fn einsum_output_rank(spec: &str) -> usize {    match spec.split_once("->") {
-        Some((_, output)) => output.chars().filter(|c| c.is_alphabetic()).count(),
-        None => {
-            let mut letters: Vec<char> =
-                spec.chars().filter(|c| c.is_alphabetic()).collect();
-            letters.sort_unstable();
-            let mut rank = 0;
-            let runs = letters.len();
-            let mut index = 0;
-            while index < runs {
-                let mut run = 1;
-                while index + run < letters.len() && letters[index + run] == letters[index] {
-                    run += 1;
-                }
-                if run == 1 {
-                    rank += 1;
-                }
-                index += run;
-            }
-            rank
+pub(crate) fn einsum_output_rank(spec: &str) -> usize {    if let Some((_, output)) = spec.split_once("->") { output.chars().filter(|c| c.is_alphabetic()).count() } else {
+    let mut letters: Vec<char> =
+        spec.chars().filter(|c| c.is_alphabetic()).collect();
+    letters.sort_unstable();
+    let mut rank = 0;
+    let runs = letters.len();
+    let mut index = 0;
+    while index < runs {
+        let mut run = 1;
+        while index + run < letters.len() && letters[index + run] == letters[index] {
+            run += 1;
         }
+        if run == 1 {
+            rank += 1;
+        }
+        index += run;
     }
+    rank
+}
 }
 
 /// Reed-Solomon encode over the two width lanes the interp dispatches by
-/// value kind: a BigInt modulus rides `big_rs_encode_checked`
+/// value kind: a `BigInt` modulus rides `big_rs_encode_checked`
 /// (`Vec<UBig>` result), an i64 modulus rides `rs_encode_checked`
 /// (`Vec<f64>` result). The coefficient vector stays Float64 in both
 /// lanes (the authored polynomial's coefficients).

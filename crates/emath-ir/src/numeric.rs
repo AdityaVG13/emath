@@ -231,8 +231,10 @@ pub fn tower_rows() -> String {
 /// These are computation descriptors, never claims about real-number
 /// semantics; `Real` is not silently `f64` (default: `strict-f64`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default)]
 pub enum NumericProfile {
     /// IEEE-754 binary64, round-ties-to-even, overflow is error. default.
+    #[default]
     StrictF64,
     /// Interval enclosure over binary64 endpoints. Explicit only; never a default.
     IntervalF64,
@@ -255,11 +257,6 @@ impl NumericProfile {
     }
 }
 
-impl Default for NumericProfile {
-    fn default() -> Self {
-        Self::StrictF64
-    }
-}
 
 /// Deterministic behavior descriptor for a selected numeric model.
 #[derive(Clone, Copy, Debug, PartialEq)]

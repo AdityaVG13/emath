@@ -1,6 +1,6 @@
 //! Semantic variables, changes, world deltas, receipts.
 
-use super::*;
+use super::{SymbolId, WorldId, WorldIr, apply_or_revert};
 
 /// Separates prior and next payloads in an operational [`SemanticChange::description`].
 pub const PATCH_SEPARATOR: char = '\u{1f}';

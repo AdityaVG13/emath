@@ -7,9 +7,9 @@
 //! convergence math, the authored `model-explicit-step` capsule
 //! performs the stage formulas, and this module unpacks the returned
 //! storage into the model struct. No Newton or Gaussian math is emitted
-//! here or in newton_fns.
+//! here or in `newton_fns`.
 
-use super::*;
+use super::{SemanticPackage, Item, FnDef, BackendError, Param, Ty, escape_ident, Stmt, Block, Visibility, field_value_kinds, Expr, TypeNode, Extent};
 
 impl super::super::BackendInput<'_> {
     /// Emit `step_euler` and `step_rk4` for a causalized

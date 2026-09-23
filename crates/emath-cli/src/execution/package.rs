@@ -1,4 +1,4 @@
-use super::*;
+use super::{Path, SemanticPackage, CliExit, CompilerSession, Limits, diagnostic, EXIT_USAGE, JsonWriter, EXIT_REFUSED};
 
 pub(super) fn checked_package(path: &Path, json: bool) -> Result<SemanticPackage, CliExit> {
     let mut session = CompilerSession::new(Limits::default());

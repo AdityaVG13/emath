@@ -1192,6 +1192,7 @@ dependencies = [
 name = "emath-tui"
 version = "0.1.0"
 dependencies = [
+ "emath-artifact",
  "emath-build",
  "emath-core",
  "emath-exec-ir",

@@ -1,6 +1,6 @@
 //! Leaf-form lowering: unary, path, quantity, series policy, measured, string, graph tuple.
 
-use super::*;
+use super::{Expr, ExprId, Infer, ExprKind, SynUnOp, ExprNode, Literal, state_variable_name, QualifiedName, lookup_unit, E_UNKNOWN_VARIABLE, parse_quantity_magnitude, UnitDim, UnitFamily, parse_float_constant, measured_digits_uncertainty, DistributionKind, interpolation_paths, graph_tuple_parts, signed_numeric_literal, Extent};
 
 impl super::super::Admitter {
     pub(super) fn lower_unary_expr_arm(&mut self, expr: &Expr) -> Option<(ExprId, Infer)> {
@@ -85,8 +85,8 @@ impl super::super::Admitter {
             let id = self.push_expr(ExprNode::Variable(QualifiedName(ir_name)), expr.source);
             return Some((id, infer));
         }
-        if segments.len() >= 2 {
-            if matches!(self.lookup(&segments[0]), Some(Infer::Opaque)) {
+        if segments.len() >= 2
+            && matches!(self.lookup(&segments[0]), Some(Infer::Opaque)) {
                 self.record(
                     "sema",
                     format!("host field `{name}` deferred to the host boundary"),
@@ -95,7 +95,6 @@ impl super::super::Admitter {
                 let id = self.push_expr(ExprNode::Variable(QualifiedName(name)), expr.source);
                 return Some((id, Infer::HostDeferred));
             }
-        }
         if segments.len() == 1 {
             if let Ok(unit) = lookup_unit(&segments[0]) {
                 let si = unit.to_si(1.0);

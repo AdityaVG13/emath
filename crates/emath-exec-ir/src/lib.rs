@@ -48,7 +48,7 @@ pub use op::*;
 pub use program::*;
 pub use types::*;
 
-use format::*;
+use format::write_nested_programs;
 
 /// SIR requirement lowering is leftover. Constructor emission uses
 /// `constructor_emir::lower_constructor_function`.

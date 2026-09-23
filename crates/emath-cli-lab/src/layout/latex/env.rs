@@ -1,6 +1,6 @@
 //! LaTeX document/ math-environment scanning.
 
-use super::*;
+use super::{MathLayoutGraph, LayoutError, parse_math_str, GraphBuilder, LayoutContent, emit, SpatialRelation};
 
 pub(super) fn has_formula_delimiters(source: &str) -> bool {
     source.contains('$') || source.contains("\\[")

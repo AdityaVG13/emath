@@ -1,6 +1,6 @@
 //! Sequence climbing: precedence climbing over lowered items.
 
-use super::*;
+use super::{BinderTerm, LayoutError, Term, SymbolId, VariableId};
 
 pub(super) enum SeqItem {
     Term(BinderTerm),

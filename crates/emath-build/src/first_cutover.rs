@@ -6,7 +6,7 @@ use std::str::FromStr;
 use emath_artifact::{AuthorityEntry, AuthorityLock, AuthorityState};
 use emath_core::{FeatureId, SemanticHash};
 
-use crate::{PublicationEvidence, PublicationMode, publish_feature};
+use crate::{publish_feature, PublicationEvidence, PublicationMode};
 
 pub const FIRST_CUTOVER_CONFORMANCE_CASES: [&str; 4] = [
     "AddExact",
@@ -81,8 +81,7 @@ pub fn activate_first_cutover(
             _ => {
                 *lock = original;
                 return Err(CutoverError::Publication(format!(
-                    "{} has invalid starting state",
-                    feature
+                    "{feature} has invalid starting state"
                 )));
             }
         };

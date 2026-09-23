@@ -59,9 +59,9 @@ pub const E_DRIFT: &str = "E-COV-DRIFT";
 pub const E_BAD_RATING: &str = "E-COV-BAD-RATING";
 /// E-COV code for a ledger artifact link that does not exist under the root.
 pub const E_MISSING_ARTIFACT: &str = "E-COV-MISSING-ARTIFACT";
-/// E-COV code for a PACKAGE_CATALOG row no seed domain claims.
+/// E-COV code for a `PACKAGE_CATALOG` row no seed domain claims.
 pub const E_PACKAGE_UNCLAIMED: &str = "E-COV-PACKAGE-UNCLAIMED";
-/// E-COV code for a seed-claimed package absent from PACKAGE_CATALOG.
+/// E-COV code for a seed-claimed package absent from `PACKAGE_CATALOG`.
 pub const E_PACKAGE_UNKNOWN: &str = "E-COV-PACKAGE-UNKNOWN";
 
 /// Map one matrix rating to its support level. PARTIAL has no
@@ -96,7 +96,7 @@ pub fn resolve_levels(seed: &DomainSeed) -> Result<[usize; 6], String> {
 /// CI gate: every cited artifact must exist under `root` (the repo root when
 /// the CLI runs). A ledger entry citing a nonexistent example fails here.
 pub fn verify_artifacts(root: &Path) -> Result<(), String> {
-    for seed in coverage_seed::SEED.iter() {
+    for seed in &coverage_seed::SEED {
         for artifact in seed.artifacts.iter().flatten() {
             if !root.join(artifact).exists() {
                 return Err(format!(
@@ -111,7 +111,7 @@ pub fn verify_artifacts(root: &Path) -> Result<(), String> {
 
 /// CI gate: every `PACKAGE_CATALOG.md` row must be claimed by exactly one
 /// seed domain, and every seed-claimed package must exist in the catalog.
-/// `catalog_path` is the PACKAGE_CATALOG.md file; missing file refuses.
+/// `catalog_path` is the `PACKAGE_CATALOG.md` file; missing file refuses.
 pub fn verify_packages(catalog_path: &Path) -> Result<(), String> {
     let catalog = std::fs::read_to_string(catalog_path).map_err(|error| {
         format!(
@@ -164,7 +164,7 @@ pub fn verify_packages(catalog_path: &Path) -> Result<(), String> {
 pub fn ledger_json() -> Result<String, String> {
     let mut domain_docs: Vec<String> = Vec::new();
     let mut covered_facets = 0u64;
-    for seed in coverage_seed::SEED.iter() {
+    for seed in &coverage_seed::SEED {
         let levels = resolve_levels(seed)?;
         // Evidence gate: reference-impl+ facets must pin an artifact.
         for (facet_index, level) in levels.iter().enumerate() {
@@ -201,7 +201,7 @@ pub fn ledger_json() -> Result<String, String> {
         let packages: Vec<String> = seed
             .packages
             .iter()
-            .map(|package| package.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
         domain_obj.strings("packages", &packages);
         domain_docs.push(domain_obj.finish());
@@ -212,7 +212,7 @@ pub fn ledger_json() -> Result<String, String> {
     let overall = covered_facets * 100 / total_facets;
 
     let mut missing_by_facet: Vec<String> = Vec::new();
-    for seed in coverage_seed::SEED.iter() {
+    for seed in &coverage_seed::SEED {
         let levels = resolve_levels(seed)?;
         for (facet_index, facet) in FACETS.iter().enumerate() {
             if levels[facet_index] < COVERAGE_THRESHOLD {
@@ -349,7 +349,7 @@ fn print_markdown_table() {
     println!();
     println!("| super-domain | msc | facets covered | coverage % |");
     println!("|---|---|---|---:|");
-    for seed in coverage_seed::SEED.iter() {
+    for seed in &coverage_seed::SEED {
         let Ok(levels) = resolve_levels(seed) else {
             continue;
         };

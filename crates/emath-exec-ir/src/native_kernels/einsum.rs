@@ -4,7 +4,7 @@
 //! This module deliberately does not register itself. `native_kernel.rs`
 //! can integrate [`EINSUM_KERNELS`] into its immutable table without
 //! matching on a mathematical feature name. The descriptor key and
-//! signature are the entire ABI; aliases and FeatureIDs remain language
+//! signature are the entire ABI; aliases and `FeatureIDs` remain language
 //! data.
 //!
 //! Carrier contract: the kernel takes ONE `Text` subscript and ONE

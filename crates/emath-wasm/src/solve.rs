@@ -1,6 +1,6 @@
 //! Solve-world dispositions and candidate listing.
 
-use super::*;
+use super::{Disposition, WorldResult, BTreeMap, refuse_kind_gone, parse_solve_payload, error_json, JsonWriter, put_pipeline_status, diagnostic_objects, ResultBundle};
 
 pub(super) fn solve_disposition(source: &str, world: emath_syntax::SolveWorld) -> Disposition {
     let normalized: String = source.chars().filter(|ch| !ch.is_whitespace()).collect();

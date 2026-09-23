@@ -252,7 +252,7 @@ fn leftover_collect_expr(
     };
     match expression {
         ExprNode::Literal(Literal::Integer(_)) => {
-            features.push(FeatureId::from_str("std.type.int").unwrap())
+            features.push(FeatureId::from_str("std.type.int").unwrap());
         }
         ExprNode::Binary {
             operation: emath_ir::BinaryOp::ExactAdd | emath_ir::BinaryOp::StrictFloatAdd,
@@ -276,7 +276,7 @@ enum TinyExact {
 #[allow(dead_code)]
 fn leftover_evaluate_tiny_exact(package: &emath_ir::SemanticPackage) -> Option<String> {
     for declaration in &package.declarations {
-        for expression in declaration.definitions.values() {
+        if let Some(expression) = declaration.definitions.values().next() {
             match leftover_eval_int(package, *expression)? {
                 TinyExact::Value(value) => return Some(format!("value:{value}:exact-int")),
                 TinyExact::Overflow => return Some("diagnosis:E-INT-OVERFLOW".to_string()),
@@ -298,8 +298,7 @@ fn leftover_eval_int(package: &emath_ir::SemanticPackage, id: emath_ir::ExprId) 
             (TinyExact::Overflow, _) | (_, TinyExact::Overflow) => Some(TinyExact::Overflow),
             (TinyExact::Value(left), TinyExact::Value(right)) => Some(
                 left.checked_add(right)
-                    .map(TinyExact::Value)
-                    .unwrap_or(TinyExact::Overflow),
+                    .map_or(TinyExact::Overflow, TinyExact::Value),
             ),
         },
         ExprNode::Literal(Literal::FloatBits(bits)) => {

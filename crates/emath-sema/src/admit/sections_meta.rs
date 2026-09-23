@@ -15,7 +15,7 @@ use super::{
 
 mod remap;
 
-use remap::*;
+use remap::{remap_ids, remap_expr_node};
 
 /// Parse the whole file and admit every declaration (used by the session).
 pub fn check_tree(tree: &SyntaxTree) -> CheckResult {

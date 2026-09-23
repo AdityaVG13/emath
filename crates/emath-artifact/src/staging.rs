@@ -1,6 +1,6 @@
 //! Artifact staging, verification, and publishing.
 
-use super::*;
+use super::{BTreeMap, ContentId, PathBuf, Path, bootstrap_content_id, required_artifact_paths, content_id_of_str};
 
 /// One staged file: relative path + bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]

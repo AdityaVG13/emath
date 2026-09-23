@@ -1,6 +1,6 @@
 //! Series-pair scalar extraction and duplicate-refusal suppression.
 
-use super::*;
+use super::{Expr, ExprKind, parse_quantity_magnitude, lookup_unit, ExprId, Infer, ExprNode, Literal, parse_float_constant, graph_tuple_parts, QualifiedName, TypeNode, E_UNSUPPORTED_TYPE, expr_form_name};
 
 impl super::super::Admitter {
     /// True when an `E-NAME-023` refusal for exactly this declared

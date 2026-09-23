@@ -1,6 +1,6 @@
 //! The `emath fmt` / `emath fmt-value` formatting commands.
 
-use super::*;
+use super::{CliExit, EXIT_ADMISSION, EXIT_USAGE, EXIT_REFUSED, EXIT_OK, Path, CompilerSession, EXIT_IO, print_diagnostics};
 
 /// `fmt <file>`: canonical-form check via the lossless formatter;
 /// canonical only on byte-for-byte round-trip, else refusal + diff.

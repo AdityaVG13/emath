@@ -1,4 +1,4 @@
-use super::super::*;
+use super::super::{Engine, Checkpoint, CHECKPOINT_SCHEMA, IMAGE_IDENTITY, CHECKPOINT_ABI, ACCOUNTING_VERSION, Environment, ConstructorError, fault, CValue, ContinuationFrame, Kont, FnDecl, BTreeMap, Arc};
 use super::prelude::{apply_unary, binary, cons_values, index_seq, type_admits};
 
 impl Engine {
@@ -12,7 +12,12 @@ impl Engine {
             remaining: self.work_limit.saturating_sub(self.work),
             accounting: ACCOUNTING_VERSION.into(),
             memo: self.memo.clone(),
-            frames: self.frames.clone(),
+            frames: self
+                .frames
+                .iter()
+                .cloned()
+                .map(|frame| frame.map_environment(Environment::into_map))
+                .collect(),
             scopes: self.scopes.clone(),
             function: self.entry.clone(),
             source: self.source_text.clone(),
@@ -21,7 +26,10 @@ impl Engine {
         }
     }
 
-    pub(in crate::constructor_layer) fn restore(&mut self, checkpoint: &Checkpoint) -> Result<(), ConstructorError> {
+    pub(in crate::constructor_layer) fn restore(
+        &mut self,
+        checkpoint: &Checkpoint,
+    ) -> Result<(), ConstructorError> {
         if checkpoint.schema != CHECKPOINT_SCHEMA || checkpoint.abi != CHECKPOINT_ABI {
             return Err(fault(
                 "incompatible_checkpoint",
@@ -48,12 +56,19 @@ impl Engine {
         self.visit = 0;
         self.next_ref = checkpoint.next_ref;
         self.scopes = checkpoint.scopes.clone();
-        self.resume_frames = checkpoint.frames.clone();
+        self.resume_frames = checkpoint
+            .frames
+            .iter()
+            .cloned()
+            .map(|frame| frame.map_environment(Environment::from))
+            .collect();
         self.frames.clear();
         Ok(())
     }
 
-    pub(in crate::constructor_layer) fn finish_from_stack(&mut self) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn finish_from_stack(
+        &mut self,
+    ) -> Result<CValue, ConstructorError> {
         let frames = std::mem::take(&mut self.resume_frames);
         if frames.is_empty() {
             return Err(fault(
@@ -63,11 +78,10 @@ impl Engine {
         }
         self.frames = frames;
         self.call_depth = u32::try_from(self.frames.len()).unwrap_or(u32::MAX);
-        let innermost = self
-            .frames
-            .last()
-            .cloned()
-            .ok_or_else(|| fault("incompatible_checkpoint", "checkpoint frame stack is empty"))?;
+        let innermost =
+            self.frames.last().cloned().ok_or_else(|| {
+                fault("incompatible_checkpoint", "checkpoint frame stack is empty")
+            })?;
         self.env = innermost.env.clone();
         let mut value = self.resume_current(&innermost)?;
         while !self.frames.is_empty() {
@@ -85,7 +99,10 @@ impl Engine {
         Ok(value)
     }
 
-    pub(in crate::constructor_layer) fn resume_current(&mut self, frame: &ContinuationFrame) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn resume_current(
+        &mut self,
+        frame: &ContinuationFrame<Environment>,
+    ) -> Result<CValue, ConstructorError> {
         if !frame.kont.is_empty() {
             return self.drain_kont_resume();
         }
@@ -119,11 +136,16 @@ impl Engine {
         }
         Err(fault(
             "incompatible_checkpoint",
-            format!("frame `{}` has no remaining-work instruction", frame.function),
+            format!(
+                "frame `{}` has no remaining-work instruction",
+                frame.function
+            ),
         ))
     }
 
-    pub(in crate::constructor_layer) fn drain_kont_resume(&mut self) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn drain_kont_resume(
+        &mut self,
+    ) -> Result<CValue, ConstructorError> {
         let Some(top) = self.pop_kont() else {
             return Err(fault(
                 "incompatible_checkpoint",
@@ -171,11 +193,9 @@ impl Engine {
             },
             Kont::IfThen { then_value } => self.eval(then_value)?,
             Kont::IfElse { else_value } => self.eval(else_value)?,
-            Kont::CallArgs {
-                callee,
-                done,
-                rest,
-            } => self.finish_call_args(callee.clone(), done.clone(), rest.clone(), None)?,
+            Kont::CallArgs { callee, done, rest } => {
+                self.finish_call_args(callee.clone(), done.clone(), rest.clone(), None)?
+            }
             Kont::FnCall { name, done, rest } => {
                 self.finish_fn_call(name.clone(), done.clone(), rest.clone(), None)?
             }
@@ -252,7 +272,10 @@ impl Engine {
         self.return_into_kont(value)
     }
 
-    pub(in crate::constructor_layer) fn return_into_kont(&mut self, incoming: CValue) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn return_into_kont(
+        &mut self,
+        incoming: CValue,
+    ) -> Result<CValue, ConstructorError> {
         let Some(top) = self.pop_kont() else {
             return self.finish_after_value(incoming);
         };
@@ -292,11 +315,9 @@ impl Engine {
                 _ => return Err(fault("type", "if condition must be Bool")),
             },
             Kont::IfThen { .. } | Kont::IfElse { .. } | Kont::EvalExpr { .. } => incoming,
-            Kont::CallArgs {
-                callee,
-                done,
-                rest,
-            } => self.finish_call_args(callee.clone(), done.clone(), rest.clone(), Some(incoming))?,
+            Kont::CallArgs { callee, done, rest } => {
+                self.finish_call_args(callee.clone(), done.clone(), rest.clone(), Some(incoming))?
+            }
             Kont::FnCall { name, done, rest } => {
                 self.finish_fn_call(name.clone(), done.clone(), rest.clone(), Some(incoming))?
             }
@@ -357,7 +378,10 @@ impl Engine {
         self.return_into_kont(value)
     }
 
-    pub(in crate::constructor_layer) fn finish_after_value(&mut self, incoming: CValue) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn finish_after_value(
+        &mut self,
+        incoming: CValue,
+    ) -> Result<CValue, ConstructorError> {
         let Some(frame) = self.frames.last().cloned() else {
             return Ok(incoming);
         };
@@ -395,9 +419,11 @@ impl Engine {
         if decl.outputs.len() > 1 {
             let mut fields = BTreeMap::new();
             for output in &decl.outputs {
-                let value = self.env.get(output).cloned().ok_or_else(|| {
-                    fault("unbound", format!("missing output `{output}`"))
-                })?;
+                let value = self
+                    .env
+                    .get(output)
+                    .cloned()
+                    .ok_or_else(|| fault("unbound", format!("missing output `{output}`")))?;
                 fields.insert(output.clone(), value);
             }
             return Ok(CValue::Record {
@@ -423,5 +449,4 @@ impl Engine {
         }
         Ok(last)
     }
-
 }

@@ -1,6 +1,6 @@
 //! Content identity and required-path computation.
 
-use super::*;
+use super::{ArtifactClass, ArtifactManifest, ContentId, fnv1a64_bytes};
 
 /// The four metadata documents every artifact package carries regardless
 /// of class: the durable manifest, source map, resolution plan and

@@ -1,6 +1,6 @@
 //! Run-payload parsing, session setup, and JSON value conversion.
 
-use super::*;
+use super::{install_source_parser, op_check, op_plan, op_mig, op_generate, op_format, op_run, op_inputs, op_solve_candidates, JsonWriter, ABI_VERSION, OnceLock, curated_examples, CompilerSession, Limits, Diagnostics, Cow, BTreeMap, Value, parse_json_document, JsonValue, Severity};
 
 /// Dispatch one engine op; `payload` is `.emath` source unless the op ignores
 /// it, and the reply is one JSON object with deterministic field order.
@@ -88,7 +88,7 @@ pub(super) struct RunPayload<'a> {
     pub(super) given: Option<BTreeMap<String, Value>>,
 }
 
-pub(super) fn parse_run_payload<'a>(payload: &'a str) -> Result<RunPayload<'a>, String> {
+pub(super) fn parse_run_payload(payload: &str) -> Result<RunPayload<'_>, String> {
     let trimmed = payload.trim_start();
     if !trimmed.starts_with('{') {
         return Ok(RunPayload {

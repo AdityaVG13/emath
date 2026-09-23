@@ -40,7 +40,7 @@ mod spec;
 mod sweep;
 
 pub(crate) use args::*;
-use eval::*;
-use repl::*;
-use spec::*;
+use eval::{evaluate_named, emit_receipt, evaluate_world};
+use repl::{eval_genesis, resolve_world_name, unknown_world_error};
+use spec::{eval_function_spec, value_map_json, select_entrypoint};
 pub(crate) use sweep::*;

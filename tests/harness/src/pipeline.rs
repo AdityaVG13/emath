@@ -105,7 +105,7 @@ impl Source {
         for code in codes {
             probe.demand(
                 format!("{}:code:{code}", self.name),
-                errors.iter().any(|got| *got == *code),
+                errors.contains(code),
                 format!("must emit {code}, got {errors:?}"),
             );
         }

@@ -1,6 +1,6 @@
 //! Postfix chain: unary, power, postfix calls/indexing, index axes, call arguments.
 
-use super::*;
+use super::{Expr, TokenKind, NotationFixity, ExprKind, UnaryOp, Keyword, BinaryOp, UnitExpr};
 
 impl super::super::Parser {
     pub(super) fn parse_unary(&mut self, depth: usize) -> Option<Expr> {
@@ -314,8 +314,8 @@ impl super::super::Parser {
                 | ExprKind::Float(_)
                 | ExprKind::Rational { .. }
                 | ExprKind::Quantity { .. }
-        ) {
-            if matches!(self.peek(), TokenKind::LBracket) {
+        )
+            && matches!(self.peek(), TokenKind::LBracket) {
                 if let Some(unit_expr) = self.parse_unit_bracket(depth) {
                     // Extract the inner numeric value (strip any prior unit).
                     let inner_value = match &value.kind {
@@ -332,7 +332,6 @@ impl super::super::Parser {
                     };
                 }
             }
-        }
         Some(value)
     }
 

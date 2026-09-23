@@ -1,6 +1,6 @@
 //! Dirac braket parsing: bras, kets, operands, inner products, sandwiches, projectors.
 
-use super::*;
+use super::{Span, Expr, TokenKind, ExprKind, BinaryOp};
 
 impl super::super::Parser {
     /// parse a bra-led braket form after `⟨` is consumed:

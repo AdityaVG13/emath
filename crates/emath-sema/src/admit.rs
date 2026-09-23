@@ -10,9 +10,9 @@ mod declaration;
 use declaration::admit_constructor_declaration;
 mod attributes;
 pub(crate) mod expr_helpers;
-use expr_helpers::*;
+use expr_helpers::parse_float_constant;
 mod infer;
-use infer::*;
+use infer::Infer;
 mod equations;
 mod lowering;
 mod sections;
@@ -378,7 +378,7 @@ impl Admitter {
                 mut variables,
                 body,
             } => {
-                for variable in variables.iter_mut() {
+                for variable in &mut variables {
                     variable.domain = self.inline_defs(variable.domain);
                 }
                 let shadowed = variables
@@ -453,7 +453,7 @@ impl Admitter {
     }
 
     /// Build a penalty expression for a single constraint.
-    /// Returns None for non-comparison constraints (e.g. NotEqual).
+    /// Returns None for non-comparison constraints (e.g. `NotEqual`).
     fn constraint_penalty(&mut self, constraint_id: ExprId, span: Span) -> Option<ExprId> {
         let (node, _) = self.exprs.get(constraint_id.0 as usize)?.clone();
         let ExprNode::Binary {

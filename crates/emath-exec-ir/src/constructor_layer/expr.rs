@@ -1,4 +1,4 @@
-use super::*;
+use super::{CValue, Expr, ExprKind, BTreeSet, Arc, BTreeMap, Code, ConstructorError, Rc, FnDecl};
 use super::prelude::*;
 
 pub(super) fn value_to_expr(value: &CValue) -> Expr {
@@ -408,7 +408,7 @@ pub(super) fn mint_scope(next_ref: &mut u64, scopes: &mut BTreeSet<u64>, binder:
     CValue::Record {
         type_name: "Scope".into(),
         fields: Arc::new(BTreeMap::from([
-            ("id".into(), cint(id as u64)),
+            ("id".into(), cint(id)),
             ("binder".into(), schema_tag(binder.unwrap_or("closed"))),
             ("token".into(), schema_tag(&format!("#scope.{id}"))),
         ])),
@@ -552,9 +552,7 @@ pub(super) fn view_of(
             )
         }
         ExprKind::Binary { op, left, right } => {
-            let callee = scalar_op_name(*op)
-                .map(schema_tag)
-                .unwrap_or_else(|| schema_tag(&format!("{op:?}")));
+            let callee = scalar_op_name(*op).map_or_else(|| schema_tag(&format!("{op:?}")), schema_tag);
             view_record(
                 "Call",
                 BTreeMap::from([

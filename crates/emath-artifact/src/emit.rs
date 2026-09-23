@@ -1,6 +1,6 @@
 //! Canonical JSON serialization of artifacts and records.
 
-use super::*;
+use super::{TargetProfile, quote, JsonWriter, ArtifactManifest, content_id_or_empty, SourceMap, GENERATED_CRATE_SOURCE_MAP_SCHEMA, SchemaId, ArtifactError, parse_json_document, JsonValue, ResolutionPlan, PlanRecord, OperationRecord, RESOLUTION_PLAN_SCHEMA, PlanNodeDef, PlanOperation, EvidenceClaim, EvidenceBundleRecord};
 
 pub(super) fn target_json(target: &TargetProfile) -> String {
     let triple = match &target.triple {

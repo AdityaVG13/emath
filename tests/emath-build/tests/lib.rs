@@ -5,6 +5,60 @@ mod run_cargo_timed_tests {
     use std::time::Duration;
 
     #[test]
+    fn child_resource_defaults_and_overrides() {
+        for (jobs, threads) in [(None, None), (Some("3"), Some("2"))] {
+            let mut command = Command::new("sh");
+            command.env_clear().args([
+                "-c",
+                "printf '%s:%s' \"$CARGO_BUILD_JOBS\" \"$RUST_TEST_THREADS\"",
+            ]);
+            if let Some(jobs) = jobs {
+                command.env("CARGO_BUILD_JOBS", jobs);
+            }
+            if let Some(threads) = threads {
+                command.env("RUST_TEST_THREADS", threads);
+            }
+            let output = run_cargo_timed(command, Duration::from_secs(5)).unwrap();
+            assert!(output.status.success());
+            let expected_jobs = jobs.map(str::to_owned).unwrap_or_else(|| {
+                std::env::var("CARGO_BUILD_JOBS").unwrap_or_else(|_| "1".into())
+            });
+            let expected_threads = threads.map(str::to_owned).unwrap_or_else(|| {
+                std::env::var("RUST_TEST_THREADS").unwrap_or_else(|_| "1".into())
+            });
+            let expected = format!("{expected_jobs}:{expected_threads}");
+            assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn unchanged_generated_source_preserves_mtime() {
+        let path =
+            std::env::temp_dir().join(format!("emath-generated-write-{}", std::process::id()));
+        emath_build::write_generated_file(&path, b"first").unwrap();
+        let old_time = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(old_time)
+            .unwrap();
+        let before = std::fs::metadata(&path).unwrap().modified().unwrap();
+        emath_build::write_generated_file(&path, b"first").unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            before,
+            "identical generated content must not dirty Cargo's input fingerprint"
+        );
+        emath_build::write_generated_file(&path, b"second").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"second");
+        assert_ne!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            before
+        );
+    }
+
+    #[test]
     fn probe() {
         let mut p = Probe::new(
             "run_cargo_timed kills live children with E-RES-120 and never reports a finished child as timeout",
@@ -42,7 +96,10 @@ mod run_cargo_timed_tests {
                 Ok(output) => {
                     p.fail(
                         "timeout",
-                        format!("process group must time out, got status {:?}", output.status),
+                        format!(
+                            "process group must time out, got status {:?}",
+                            output.status
+                        ),
                     );
                 }
             }

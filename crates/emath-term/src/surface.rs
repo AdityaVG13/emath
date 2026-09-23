@@ -46,7 +46,7 @@ impl SurfaceParser<'_> {
     }
 
     fn skip_ws(&mut self) {
-        while self.peek().is_some_and(|ch| ch.is_whitespace()) {
+        while self.peek().is_some_and(char::is_whitespace) {
             self.bump();
         }
     }
@@ -462,7 +462,7 @@ impl SurfaceParser<'_> {
                 chars = saved;
             }
         }
-        let end = chars.peek().map(|(index, _)| start + *index).unwrap_or(start + rest.len());
+        let end = chars.peek().map_or(start + rest.len(), |(index, _)| start + *index);
         if end == start {
             return None;
         }

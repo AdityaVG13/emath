@@ -1,6 +1,6 @@
 //! The meaning encoder context and slot allocation.
 
-use super::*;
+use super::{SemanticPackage, BTreeMap, ExprId, BTreeSet, MeaningError, ExprNode, Literal, encode_type_id, SliceAxis, BinderKind};
 
 #[derive(Default)]
 pub(super) struct Encoder {

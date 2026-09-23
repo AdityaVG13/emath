@@ -1,6 +1,6 @@
 //! Argument parsing and receipt types for `emath eval`.
 
-use super::*;
+use super::{CliExit, genesis_cmd, eval_genesis, eval_function_spec, Path, PathBuf, split_error_code, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED};
 
 /// Admitted world labels (same roster as genesis built-in worlds).
 pub(super) const ADMITTED_WORLDS: [&str; 5] = [

@@ -1,6 +1,6 @@
 //! Simulation configuration and result types.
 
-use super::*;
+use super::{BTreeMap, Value};
 
 /// Explicit first-order stepper for `emath model` rates stored as `der_<state>`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,6 +29,7 @@ pub enum StepMethod {
 
 /// Optional adaptive / event controls. Absent tolerances keep fixed `dt`.
 #[derive(Clone, Debug, PartialEq)]
+#[derive(Default)]
 pub struct SimulateOptions {
     pub atol: Option<f64>,
     pub rtol: Option<f64>,
@@ -37,16 +38,6 @@ pub struct SimulateOptions {
     pub event: Option<(String, f64)>,
 }
 
-impl Default for SimulateOptions {
-    fn default() -> Self {
-        Self {
-            atol: None,
-            rtol: None,
-            dt_max: None,
-            event: None,
-        }
-    }
-}
 
 /// One sample on a simulated trajectory.
 ///

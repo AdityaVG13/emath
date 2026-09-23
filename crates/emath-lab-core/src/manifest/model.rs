@@ -1,6 +1,6 @@
 //! Lab manifest data model: partitions, metrics, kill/fallback plans.
 
-use super::*;
+use super::ContentId;
 
 /// Workload partition role.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

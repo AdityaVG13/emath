@@ -1,6 +1,6 @@
 //! World-IR synthesis: declared and builtin worlds.
 
-use super::*;
+use super::{Signature, WorldIr, SymbolDef, Fixity, OperatorDef, OperatorSemantics, MeaningOrigin, free_symbolic_world};
 
 /// Canonical declared-expression semantics for the built-in worlds.
 pub(super) fn declared_world(

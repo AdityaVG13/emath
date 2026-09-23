@@ -1,6 +1,6 @@
 //! Expansion entry points: `expand_scratch`, `apply_solve_candidate`, wrapping and refusals.
 
-use super::*;
+use super::{ExpansionOutcome, ScratchNote, Diagnostics, HoleRecord, ScratchExpansion, SolveIntent, classify_line, LineKind, IntentVerb, split_keyword_tail, SolveWorld, span_of_source, ScratchLevel, refuse, Pedagogy, first_content_line, rewrite_l2, line_offsets, span_bytes, is_item_header, is_content_line, is_unindented, literal_class, ExactnessStatus, record_hole, constrain_last_hole, SYNTH_RESULT, lower_intent, attach_find_continuation, first_word, finalize_holes, emit_hole_comments, free_names, SYNTH_DECL, render_function, ScratchRewriteLevel};
 
 pub(super) fn expansion(
     expanded: impl Into<String>,
@@ -48,15 +48,14 @@ pub(super) fn extract_solve_intent(source: &str) -> SolveIntent {
         return SolveIntent::Absent;
     };
     let (_, domain) = split_keyword_tail(&payload, "over");
-    labeled_solve_menu(domain.as_deref())
+    labeled_solve_menu(domain)
 }
 
 pub(super) fn labeled_solve_menu(domain: Option<&str>) -> SolveIntent {
     match domain.map(str::trim).filter(|d| !d.is_empty()) {
         None => SolveIntent::Unlabeled,
         Some(d) => SolveWorld::parse_label(&d.to_ascii_lowercase())
-            .map(SolveIntent::Over)
-            .unwrap_or(SolveIntent::Unlabeled),
+            .map_or(SolveIntent::Unlabeled, SolveIntent::Over),
     }
 }
 

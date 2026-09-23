@@ -1,6 +1,6 @@
 //! Answer evaluation and portfolio assembly.
 
-use super::*;
+use super::{Analysis, WorldIr, Environment, Term, VariableId, VmBudget, vm_run, FreeTermWorld, VmOutcome, BooleanAlienWorld, ModularAlienWorld, OnePointWorld, SeededCsaWorld, InterpretationPortfolio, BTreeMap, InterpretationCandidate, Authority, ScoreVector};
 
 /// Evaluate `analysis.term` in `world` with the parametric lane's fixtures.
 /// Returns `(answer, valuation_label, vm_steps)`; suspensions/unbound vars

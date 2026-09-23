@@ -4,9 +4,9 @@
 use emath_core::tree::{BinderKind, Expr, ExprKind};
 use emath_ir::{ExprId, ExprNode, Extent, Literal};
 
-use super::super::expr_helpers::*;
-use super::super::infer::*;
-use super::super::sections::*;
+use super::super::expr_helpers::{collect_tensor_literal, lower_index_axis, IndexAxis};
+use super::super::infer::{Infer, is_numeric_element, infer_from_shape};
+use super::super::sections::{integer_range, restore_index_local, restore_input};
 use super::super::E_UNSUPPORTED_TYPE;
 
 impl super::super::Admitter {
@@ -218,24 +218,18 @@ impl super::super::Admitter {
             Infer::Nat
         };
         let prev = self.inputs.insert(binder.name.clone(), binder_infer);
-        let (body_id, body_infer) = match self.lower_expr(body) {
-            Some(result) => result,
-            None => {
-                restore_index_local(&mut self.index_locals, &binder.name, prev_index);
-                restore_input(&mut self.inputs, &binder.name, prev);
-                return None;
-            }
+        let (body_id, body_infer) = if let Some(result) = self.lower_expr(body) { result } else {
+            restore_index_local(&mut self.index_locals, &binder.name, prev_index);
+            restore_input(&mut self.inputs, &binder.name, prev);
+            return None;
         };
         // if a guard is present, wrap the body in a conditional:
         // if guard then body else identity.
         let body_id = if let Some(guard_expr) = guard {
-            let (guard_id, guard_infer) = match self.lower_expr(guard_expr) {
-                Some(result) => result,
-                None => {
-                    restore_index_local(&mut self.index_locals, &binder.name, prev_index);
-                    restore_input(&mut self.inputs, &binder.name, prev);
-                    return None;
-                }
+            let (guard_id, guard_infer) = if let Some(result) = self.lower_expr(guard_expr) { result } else {
+                restore_index_local(&mut self.index_locals, &binder.name, prev_index);
+                restore_input(&mut self.inputs, &binder.name, prev);
+                return None;
             };
             if !matches!(guard_infer, Infer::Bool) {
                 self.error(
@@ -680,7 +674,7 @@ impl super::super::Admitter {
         let mut slice_axes = Vec::new();
         let mut index_ids = Vec::new();
         let mut saw_slice = false;
-        for (axis, (index, extent)) in indices.iter().zip(axes.into_iter()).enumerate() {
+        for (axis, (index, extent)) in indices.iter().zip(axes).enumerate() {
             match lower_index_axis(self, index, extent.as_ref(), axis)? {
                 IndexAxis::Point(id) => {
                     index_ids.push(id);

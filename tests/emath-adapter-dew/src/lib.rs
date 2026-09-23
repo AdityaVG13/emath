@@ -64,7 +64,7 @@ pub fn canonical_lines(text: &str) -> String {
         .join("\n")
 }
 
-/// Tolerance bucket for a scalar comparison: Exact, Loose, or OutOfRange.
+/// Tolerance bucket for a scalar comparison: Exact, Loose, or `OutOfRange`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToleranceClass {
     Exact,
@@ -72,7 +72,7 @@ pub enum ToleranceClass {
     OutOfRange,
 }
 
-/// Classify `actual` vs `expected`: Exact within `tight`, Loose within `loose`, else OutOfRange.
+/// Classify `actual` vs `expected`: Exact within `tight`, Loose within `loose`, else `OutOfRange`.
 #[must_use]
 pub fn classify_tolerance(actual: f64, expected: f64, tight: f64, loose: f64) -> ToleranceClass {
     let delta = (actual - expected).abs();

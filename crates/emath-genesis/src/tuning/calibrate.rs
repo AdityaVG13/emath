@@ -1,6 +1,6 @@
 //! Execution deltas, joint candidates, confidence calibration.
 
-use super::*;
+use super::WorldDelta;
 
 /// An implementation delta: lowering, precision, provider, target, schedule.
 #[derive(Debug, Clone, PartialEq, Eq)]

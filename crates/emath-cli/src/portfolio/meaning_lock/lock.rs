@@ -1,6 +1,6 @@
 //! Lock persistence, verification, and portfolio capping.
 
-use super::*;
+use super::{MeaningLock, DEFAULT_PORTFOLIO_CAP, BTreeMap, Path, PathBuf, LOCK_DIR, LOCK_FILE_NAME, LockError, fs, io, parse_json, refuse_unknown_keys, required_str, LOCK_SCHEMA, required_u32, LOCK_SCHEMA_VERSION, parse_hex, quote, hex, fnv1a64, LockKey, LockEntry, PortfolioReceipt, WorldCandidate, MetricAxis, SelectionMethod, InterpretationPolicy, evaluate, PortfolioError, Json, parse_decimal};
 
 impl MeaningLock {
     /// Empty lock with the default cap.
@@ -35,9 +35,7 @@ impl MeaningLock {
     pub fn discover_project_root(start: &Path) -> PathBuf {
         let mut current = if start.is_file() {
             start
-                .parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| start.to_path_buf())
+                .parent().map_or_else(|| start.to_path_buf(), Path::to_path_buf)
         } else if start.as_os_str().is_empty() {
             PathBuf::from(".")
         } else {
@@ -154,7 +152,7 @@ impl MeaningLock {
         Ok(lock)
     }
 
-    /// Deterministic JSON (BTreeMap order, two-space indent, trailing newline).
+    /// Deterministic JSON (`BTreeMap` order, two-space indent, trailing newline).
     #[must_use]
     pub fn encode(&self) -> String {
         let mut entries = String::new();

@@ -1,4 +1,4 @@
-use super::super::*;
+use super::super::{Engine, Expr, ExprKind, BTreeMap, CValue, Receipt, ConstructorError, fault};
 use super::prelude::{dummy_expr, path_expr, representation_of, substitute_path};
 
 impl Engine {
@@ -277,9 +277,7 @@ impl Engine {
                 }
                 .into(),
                 representation: payload
-                    .as_ref()
-                    .map(representation_of)
-                    .unwrap_or_else(|| "absent".into()),
+                    .as_ref().map_or_else(|| "absent".into(), representation_of),
                 payload: payload.map(|v| v.to_string()),
                 evidence: vec!["unchecked candidate".into()],
                 remaining: vec!["global bound missing".into()],
@@ -296,9 +294,7 @@ impl Engine {
                 }
                 .into(),
                 representation: payload
-                    .as_ref()
-                    .map(representation_of)
-                    .unwrap_or_else(|| "absent".into()),
+                    .as_ref().map_or_else(|| "absent".into(), representation_of),
                 payload: payload.map(|v| v.to_string()),
                 evidence: vec!["authored method".into()],
                 remaining: Vec::new(),

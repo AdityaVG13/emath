@@ -1,4 +1,4 @@
-use super::*;
+use super::{CValue, ConstructorError, ExactInt};
 use super::prelude::*;
 
 impl CValue {

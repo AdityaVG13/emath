@@ -48,7 +48,7 @@
 //! Error model: engine, scratch, and host faults pass through with
 //! their own codes; dream-owned refusals use `dream_*` codes.
 //!
-//! Determinism class: identical module, target, config, and out_dir
+//! Determinism class: identical module, target, config, and `out_dir`
 //! produce an identical walk, level record, and level file (the
 //! engine is deterministic; emission renders observed values only).
 
@@ -124,7 +124,7 @@ pub struct LevelRecord {
     pub incumbent_score: (i128, i128),
     /// The frozen case set at close.
     pub case_ids: Vec<i128>,
-    /// The emitted level file (`None` when no out_dir was configured).
+    /// The emitted level file (`None` when no `out_dir` was configured).
     pub path: Option<PathBuf>,
     /// Whether the emitted level file's authored tests all passed
     /// in-process verification (false when nothing was emitted).
@@ -202,21 +202,18 @@ fn seam_inputs(tree: &SyntaxTree, function: &str) -> Option<Vec<(String, SeamCar
         let mut names = Vec::new();
         for section in decl.sections().filter(|section| section.name == "inputs") {
             for stmt in &section.suite.statements {
-                match &stmt.kind {
-                    StmtKind::FieldDecl { name, ty, .. } => {
-                        let carrier = match &ty.kind {
-                            TypeKind::Path { segments, .. } => {
-                                match segments.last().map(String::as_str) {
-                                    Some("Int") => Some(SeamCarrier::Int),
-                                    Some("Rat") => Some(SeamCarrier::Rat),
-                                    _ => None,
-                                }
+                if let StmtKind::FieldDecl { name, ty, .. } = &stmt.kind {
+                    let carrier = match &ty.kind {
+                        TypeKind::Path { segments, .. } => {
+                            match segments.last().map(String::as_str) {
+                                Some("Int") => Some(SeamCarrier::Int),
+                                Some("Rat") => Some(SeamCarrier::Rat),
+                                _ => None,
                             }
-                            _ => None,
-                        }?;
-                        names.push((name.clone(), carrier));
-                    }
-                    _ => {}
+                        }
+                        _ => None,
+                    }?;
+                    names.push((name.clone(), carrier));
                 }
             }
         }
@@ -463,7 +460,7 @@ fn render_level(
     let table = value_seq_literal(world);
     let row_ty = carrier.name();
     format!(
-        r#"# Dream level 1 - {module} ({target})
+        r"# Dream level 1 - {module} ({target})
 # close: {close_reason} after {batches} batches, {used} logical units, {resumes} budget resume(s)
 # incumbent key {incumbent_key}, score {num}/{den} over the frozen case set {cases}
 # the discovery audit trail, emitted by the dream driver from observed
@@ -514,7 +511,7 @@ emath function frozen_errors:
             given world = {table}
             given j = 0
             expect result == {frozen_errors}
-"#,
+",
         module = module.display(),
         num = score.0,
         den = score.1,
@@ -627,8 +624,7 @@ fn emit_level(
         return Err(HostFault::fault(
             "dream_certificate",
             format!(
-                "the emitted level does not parse: {:?} (driver emission bug)",
-                diagnostics
+                "the emitted level does not parse: {diagnostics:?} (driver emission bug)"
             ),
         ));
     }

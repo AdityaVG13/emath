@@ -65,7 +65,7 @@ fn apply_authored(capability: &str, args: &[Value]) -> Result<Value, String> {
 
 /// Dispatch an authored program goal by method label. The last Sequence
 /// packs the existing Simpson / Newton / dual extras; unknown labels
-/// refuse typed. Method text is carrier data, not FeatureID dispatch.
+/// refuse typed. Method text is carrier data, not `FeatureID` dispatch.
 fn program_expression_goal(args: &[Value]) -> Result<Value, String> {
     let [program, environment, method, extras] = args else {
         return Err(

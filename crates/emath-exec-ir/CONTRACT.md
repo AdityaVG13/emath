@@ -1,5 +1,25 @@
 # emath-exec-ir Contract
 
+## Constructor evaluator resource behavior
+
+The sequential constructor evaluator preserves its environment snapshots.
+Bindings now use interpreter-local copy-on-write storage: saving or refreshing
+a frame shares an immutable map; mutation detaches through `Rc::make_mut`.
+Snapshot timing, program counters, binding restoration, and buffer-cell aliasing
+remain unchanged. External checkpoints materialize the same owned, ordered maps
+and retain the same encoding. `ContinuationFrame` defaults to that owned-map
+representation; only private interpreter frames use shared bindings.
+
+Empty memo tables bypass key construction. Nonmemoizable callback, code, receipt,
+and mutable-buffer arguments are rejected before serializing preceding large
+research-state arguments; closure captures receive the same early check. This
+changes neither cache eligibility nor key bytes for eligible calls.
+Unary, binary, and conditional continuations materialize only when
+an evaluation fails; they are inserted below the child continuation in the
+original frame. Expression order, short-circuiting, arithmetic, work charges,
+checkpoint encoding, and resume order remain unchanged. These optimizations
+reduce allocation work; they do not impose an OS CPU or memory quota.
+
 ## Purpose and layer
 
 `emath-exec-ir` is the stable executable machine between admitted semantic terms and execution providers. It owns universal literals, registers, construction/storage/indexing, control, capability application, provider continuations, semantic images, and artifact loading. It does not own mathematical feature identity or meaning.

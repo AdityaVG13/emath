@@ -1,8 +1,15 @@
-use super::super::*;
-use super::prelude::{available_body, body_record, decl_stamp, domain_shape_admits_value, fragment_term, free_path_names, function_body_expr, rebuild_expr, view_of};
+use super::super::{Engine, CValue, ConstructorError, MAX_CALL_DEPTH, fault, Closure, Environment, Kont, Rc, EvalTail, BTreeMap, Expr, BTreeSet, Code, ExprKind};
+use super::prelude::{
+    available_body, body_record, decl_stamp, domain_shape_admits_value, fragment_term,
+    free_path_names, function_body_expr, rebuild_expr, view_of,
+};
 
 impl Engine {
-    pub(in crate::constructor_layer) fn apply_value(&mut self, callee: CValue, args: &[CValue]) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn apply_value(
+        &mut self,
+        callee: CValue,
+        args: &[CValue],
+    ) -> Result<CValue, ConstructorError> {
         match callee {
             CValue::Closure(clos) => {
                 if args.is_empty() {
@@ -45,10 +52,7 @@ impl Engine {
                     Ok(result)
                 }
             }
-            other => Err(fault(
-                "type",
-                format!("value is not callable: {other}"),
-            )),
+            other => Err(fault("type", format!("value is not callable: {other}"))),
         }
     }
 
@@ -66,7 +70,7 @@ impl Engine {
         &mut self,
         mut clos: Box<Closure>,
         mut args: Vec<CValue>,
-        saved: BTreeMap<String, CValue>,
+        saved: Environment,
     ) -> Result<CValue, ConstructorError> {
         loop {
             if args.is_empty() {
@@ -100,8 +104,7 @@ impl Engine {
                 ));
             }
             if let Some(name) = &clos.recursive {
-                self.env
-                    .insert(name.clone(), CValue::Closure(clos.clone()));
+                self.env.insert(name.clone(), CValue::Closure(clos.clone()));
             }
             if !clos.param.is_empty() {
                 self.env.insert(clos.param.clone(), args[0].clone());
@@ -116,9 +119,8 @@ impl Engine {
                 expr: Rc::new(clos.body.clone()),
             });
             self.refresh_frame();
-            let outcome = stacker::maybe_grow(1024 * 1024, 4 * 1024 * 1024, || {
-                self.eval_tail(&clos.body)
-            });
+            let outcome =
+                stacker::maybe_grow(1024 * 1024, 4 * 1024 * 1024, || self.eval_tail(&clos.body));
             match outcome {
                 Ok(EvalTail::Value(value)) => {
                     self.pop_kont();
@@ -126,7 +128,10 @@ impl Engine {
                     self.remember_closure(&clos, &args, value.clone());
                     return Ok(value);
                 }
-                Ok(EvalTail::Apply { callee, args: next_args }) => {
+                Ok(EvalTail::Apply {
+                    callee,
+                    args: next_args,
+                }) => {
                     self.pop_kont();
                     match callee {
                         CValue::Closure(next) => {
@@ -147,22 +152,21 @@ impl Engine {
                 }
                 Ok(EvalTail::Call { name, args: vals }) => {
                     self.pop_kont();
-                    let decl = self
-                        .functions
-                        .get(&name)
-                        .cloned()
-                        .ok_or_else(|| fault("unbound", format!("unknown function `{name}`")))?;
+                    let decl =
+                        self.functions.get(&name).cloned().ok_or_else(|| {
+                            fault("unbound", format!("unknown function `{name}`"))
+                        })?;
                     // `apply_fn_body` trusts its caller for arity (it
                     // zip-binds inputs); the guard here keeps a
                     // wrong-arity tail call an `arity` fault, never a
                     // truncated binding faulting `unbound`.
-                    let outcome = if decl.inputs.len() != vals.len() {
+                    let outcome = if decl.inputs.len() == vals.len() {
+                        self.apply_fn_body(&name, decl, &vals)
+                    } else {
                         Err(fault(
                             "arity",
                             format!("expected {} arguments", decl.inputs.len()),
                         ))
-                    } else {
-                        self.apply_fn_body(&name, decl, &vals)
                     };
                     self.env = saved;
                     let value = outcome?;
@@ -186,7 +190,10 @@ impl Engine {
     /// `unbound_code` instead of silently resolving against the ambient
     /// environment (dynamic-scope leak). Stamped dependencies that
     /// resolve differently refuse `stale_dependency`.
-    pub(in crate::constructor_layer) fn eval_code(&mut self, value: CValue) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn eval_code(
+        &mut self,
+        value: CValue,
+    ) -> Result<CValue, ConstructorError> {
         match value {
             CValue::Code(code) => {
                 self.verify_dependencies(&code)?;
@@ -209,7 +216,10 @@ impl Engine {
     /// Capture-time dependency snapshot: free callable names of the
     /// code body stamped with the identity of the declaration they
     /// resolve against at quote time.
-    pub(in crate::constructor_layer) fn dependency_snapshot(&self, expr: &Expr) -> BTreeMap<String, u64> {
+    pub(in crate::constructor_layer) fn dependency_snapshot(
+        &self,
+        expr: &Expr,
+    ) -> BTreeMap<String, u64> {
         let mut free = BTreeSet::new();
         free_path_names(expr, &mut Vec::new(), &mut free);
         let mut deps = BTreeMap::new();
@@ -223,7 +233,10 @@ impl Engine {
 
     /// A stamped dependency that no longer resolves, or resolves to a
     /// different declaration, refuses instead of re-resolving.
-    pub(in crate::constructor_layer) fn verify_dependencies(&self, code: &Code) -> Result<(), ConstructorError> {
+    pub(in crate::constructor_layer) fn verify_dependencies(
+        &self,
+        code: &Code,
+    ) -> Result<(), ConstructorError> {
         for (name, stamp) in &code.deps {
             let current = self.functions.get(name).map(|decl| decl_stamp(decl));
             if current.as_ref() != Some(stamp) {
@@ -239,7 +252,11 @@ impl Engine {
     /// Free names of the code body that no environment supplies: not
     /// bound internally, not a stamped dependency, not a current
     /// callable, not in the given input environment.
-    pub(in crate::constructor_layer) fn open_names(&self, code: &Code, inputs: &BTreeMap<String, CValue>) -> Vec<String> {
+    pub(in crate::constructor_layer) fn open_names(
+        &self,
+        code: &Code,
+        inputs: &BTreeMap<String, CValue>,
+    ) -> Vec<String> {
         let mut free = BTreeSet::new();
         free_path_names(&code.expr, &mut Vec::new(), &mut free);
         free.into_iter()
@@ -277,7 +294,7 @@ impl Engine {
         let mut free = BTreeSet::new();
         free_path_names(&code.expr, &mut Vec::new(), &mut free);
         let saved = self.env.clone();
-        self.env = inputs.clone();
+        self.env = inputs.clone().into();
         let outcome = self.eval(&code.expr);
         self.env = saved;
         let value = outcome?;
@@ -288,7 +305,7 @@ impl Engine {
                     continue;
                 }
                 if let Some(arg) = inputs.get(name) {
-                    acc = self.apply_value(acc, &[arg.clone()])?;
+                    acc = self.apply_value(acc, std::slice::from_ref(arg))?;
                 }
             }
             return Ok(acc);
@@ -296,7 +313,10 @@ impl Engine {
         Ok(value)
     }
 
-    pub(in crate::constructor_layer) fn quote_body(&self, value: CValue) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn quote_body(
+        &self,
+        value: CValue,
+    ) -> Result<CValue, ConstructorError> {
         let CValue::Code(code) = value else {
             return Ok(body_record("Opaque", None, None));
         };
@@ -313,7 +333,10 @@ impl Engine {
         Ok(available_body(code.expr.clone()))
     }
 
-    pub(in crate::constructor_layer) fn quote_make(&mut self, node: CValue) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn quote_make(
+        &mut self,
+        node: CValue,
+    ) -> Result<CValue, ConstructorError> {
         match node {
             CValue::Code(code) => Ok(CValue::Code(code)),
             CValue::Record { type_name, fields } if type_name == "Fragment" => {
@@ -339,7 +362,10 @@ impl Engine {
         }
     }
 
-    pub(in crate::constructor_layer) fn check_fragment_scope(&self, package: &CValue) -> Result<(), ConstructorError> {
+    pub(in crate::constructor_layer) fn check_fragment_scope(
+        &self,
+        package: &CValue,
+    ) -> Result<(), ConstructorError> {
         let CValue::Record { type_name, fields } = package else {
             return Ok(());
         };
@@ -357,10 +383,7 @@ impl Engine {
                         return Err(fault("invalid_code_construction", "forged Scope witness"));
                     };
                     if id < 0 || !self.scopes.contains(&(id as u64)) {
-                        return Err(fault(
-                            "invalid_code_construction",
-                            "forged Scope witness",
-                        ));
+                        return Err(fault("invalid_code_construction", "forged Scope witness"));
                     }
                 }
             }
@@ -368,7 +391,10 @@ impl Engine {
         Ok(())
     }
 
-    pub(in crate::constructor_layer) fn quote_view(&mut self, value: CValue) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn quote_view(
+        &mut self,
+        value: CValue,
+    ) -> Result<CValue, ConstructorError> {
         match fragment_term(value) {
             Ok(expr) => Ok(view_of(
                 &expr,
@@ -379,5 +405,4 @@ impl Engine {
             Err(message) => Err(fault("type", message)),
         }
     }
-
 }

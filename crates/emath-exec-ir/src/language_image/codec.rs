@@ -1,4 +1,4 @@
-use super::*;
+use super::{BTreeMap, FeatureId, ReferenceEntry, REFERENCE_NONE_PAGE, LanguageImageError, FromStr, Term, Signature, compile_reference_with_defaults, ParamShape, CompiledCell};
 
 /// Canonical page encoding: one stamped entry per capability, in feature
 /// order. The printed program is length-prefixed so its embedded newlines
@@ -32,7 +32,7 @@ pub(super) fn encode_reference_partition(entries: &BTreeMap<FeatureId, Reference
         page.push_str(&entry.term.canonical());
         page.push('\n');
         let program = entry.cell.program.print();
-        page.push_str(&format!("program {}\n", program.as_bytes().len()));
+        page.push_str(&format!("program {}\n", program.len()));
         page.push_str(&program);
     }
     page
@@ -144,16 +144,13 @@ pub(super) fn next_line<'a>(rest: &mut &'a str) -> Option<&'a str> {
     if rest.is_empty() {
         return None;
     }
-    match rest.split_once('\n') {
-        Some((line, remainder)) => {
-            *rest = remainder;
-            Some(line)
-        }
-        None => {
-            let line = *rest;
-            *rest = "";
-            Some(line)
-        }
+    if let Some((line, remainder)) = rest.split_once('\n') {
+        *rest = remainder;
+        Some(line)
+    } else {
+        let line = *rest;
+        *rest = "";
+        Some(line)
     }
 }
 
@@ -212,7 +209,7 @@ pub(super) fn first_installed_map_mismatch(
         .find(|(feature, cell)| {
             decoded
                 .get(feature)
-                .map_or(true, |entry| &entry.cell != *cell)
+                .is_none_or(|entry| &entry.cell != *cell)
         })
         .map(|(feature, _)| feature.clone())
         .or_else(|| {

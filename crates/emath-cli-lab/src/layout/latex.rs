@@ -84,9 +84,9 @@ mod env;
 mod lower;
 mod parser;
 
-use ast::*;
-use climb::*;
-use emit::*;
-use env::*;
-use lower::*;
-use parser::*;
+use ast::{TokKind, Ast, AstKind, parse_math_str, Token};
+use climb::{apply2, is_infix_op, glyph_term, as_int_binder, SeqItem, climb_eq};
+use emit::{token_text, emit, starts_atom};
+use env::{has_formula_delimiters, parse_document, parse_bare_math};
+use lower::lower_id;
+use parser::Parser;

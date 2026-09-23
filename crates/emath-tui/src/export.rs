@@ -19,7 +19,7 @@
 //! enforced by tests, not by sharing code. Cross-lane parity is the
 //! bead's acceptance: for the same module, surface, and budget
 //! schedule, the native lane's checkpoint is byte-identical to the VM
-//! lane's. The mirror's record fields render alphabetically (the CValue
+//! lane's. The mirror's record fields render alphabetically (the `CValue`
 //! record carrier is a `BTreeMap`), sequences render comma-space,
 //! records render `{"record": {"type": ...,"fields": {...}}}` with
 //! comma-joined fields - exactly `constructor_layer::scratch`'s writer
@@ -39,13 +39,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use super::host::{admitted_meaning_id, HostFault, LoopHost};
+use super::host::{HostFault, LoopHost, admitted_meaning_id};
 use emath_build::{generated_crate_target_dir, run_cargo_timed};
-use emath_rust_backend::constructor_crate::{
-    emit_constructor_crate, ConstructorEmitRefusal,
-};
-use emath_rust_backend::rust_ir::ast::escape_ident;
 use emath_rust_backend::AuthoredRecord;
+use emath_rust_backend::constructor_crate::{ConstructorEmitRefusal, emit_constructor_crate};
+use emath_rust_backend::rust_ir::ast::escape_ident;
 
 /// What an export produced.
 #[derive(Clone, Debug)]
@@ -71,7 +69,7 @@ enum MirrorType {
 
 /// One emitted `EmathRecord_*` struct, with both name vocabularies:
 /// the authored (emath) names are the scratch JSON's names and sort
-/// keys (the VM's record carrier is a BTreeMap keyed by them); the
+/// keys (the VM's record carrier is a `BTreeMap` keyed by them); the
 /// emitted Rust names are the field-access identifiers.
 #[derive(Clone, Debug)]
 struct StructShape {
@@ -137,7 +135,8 @@ fn name_maps(records: &[AuthoredRecord]) -> NameMaps {
     let mut maps = NameMaps::default();
     for record in records {
         let rust_record = escape_ident(&record.name);
-        maps.records.insert(rust_record.clone(), record.name.clone());
+        maps.records
+            .insert(rust_record.clone(), record.name.clone());
         let entry = maps.fields.entry(rust_record).or_default();
         for (field, _) in &record.fields {
             entry.insert(escape_ident(field), field.clone());
@@ -150,15 +149,11 @@ fn name_maps(records: &[AuthoredRecord]) -> NameMaps {
 /// ... }` block out of the emitted lib.rs, resolving every field to
 /// its authored name through `maps`. A field without an authored pair
 /// is a generation-time refusal, never a guess.
-fn parse_struct(
-    lib: &str,
-    rust_name: &str,
-    maps: &NameMaps,
-) -> Result<StructShape, String> {
+fn parse_struct(lib: &str, rust_name: &str, maps: &NameMaps) -> Result<StructShape, String> {
     let marker = format!("pub struct EmathRecord_{rust_name} {{");
-    let start = lib
-        .find(&marker)
-        .ok_or_else(|| format!("the emitted artifact does not declare `EmathRecord_{rust_name}`"))?;
+    let start = lib.find(&marker).ok_or_else(|| {
+        format!("the emitted artifact does not declare `EmathRecord_{rust_name}`")
+    })?;
     let body = &lib[start + marker.len()..];
     let end = body.find('}').ok_or_else(|| {
         format!("`EmathRecord_{rust_name}` has no closing brace in the emitted artifact")
@@ -372,33 +367,42 @@ pub fn export_native(host: &LoopHost, out_dir: &Path) -> Result<ExportReport, Ho
             ),
         )
     })?;
-    std::fs::write(artifact_dir.join("src/lib.rs"), &emission.lib).map_err(|error| {
-        HostFault::fault(
-            "loop_export_compile",
-            format!(
-                "cannot write {}: {error}",
-                artifact_dir.join("src/lib.rs").display()
-            ),
-        )
-    })?;
-    std::fs::write(artifact_dir.join("Cargo.toml"), &emission.manifest).map_err(|error| {
-        HostFault::fault(
-            "loop_export_compile",
-            format!(
-                "cannot write {}: {error}",
-                artifact_dir.join("Cargo.toml").display()
-            ),
-        )
-    })?;
+    emath_build::write_generated_file(artifact_dir.join("src/lib.rs"), &emission.lib).map_err(
+        |error| {
+            HostFault::fault(
+                "loop_export_compile",
+                format!(
+                    "cannot write {}: {error}",
+                    artifact_dir.join("src/lib.rs").display()
+                ),
+            )
+        },
+    )?;
+    emath_build::write_generated_file(artifact_dir.join("Cargo.toml"), &emission.manifest)
+        .map_err(|error| {
+            HostFault::fault(
+                "loop_export_compile",
+                format!(
+                    "cannot write {}: {error}",
+                    artifact_dir.join("Cargo.toml").display()
+                ),
+            )
+        })?;
     let lib = emission.lib.clone();
     let crate_name = emission.package_name.clone();
     let state_type = host.surface().state_type.clone();
     let shapes = state_shapes(&lib, &state_type, &emission.records).map_err(|detail| {
-        HostFault::fault("loop_export_state", format!("state shape refused: {detail}"))
+        HostFault::fault(
+            "loop_export_state",
+            format!("state shape refused: {detail}"),
+        )
     })?;
     // The contract check is the gate; the element name is inside it.
     check_state_contract(&state_type, &shapes).map_err(|detail| {
-        HostFault::fault("loop_export_state", format!("state contract refused: {detail}"))
+        HostFault::fault(
+            "loop_export_state",
+            format!("state contract refused: {detail}"),
+        )
     })?;
 
     let host_dir = out_dir.join("epoch-host");
@@ -434,14 +438,14 @@ path = "src/main.rs"
         target = host.surface().step.to_lowercase(),
         artifact_dir = artifact_dir.canonicalize().unwrap_or(artifact_dir.clone()),
     );
-    std::fs::write(host_dir.join("Cargo.toml"), package).map_err(|error| {
+    emath_build::write_generated_file(host_dir.join("Cargo.toml"), package).map_err(|error| {
         HostFault::fault(
             "loop_export_compile",
             format!("cannot write epoch-host Cargo.toml: {error}"),
         )
     })?;
     let main = generate_main(&crate_ident, host, &state_type, &shapes);
-    std::fs::write(src.join("main.rs"), main).map_err(|error| {
+    emath_build::write_generated_file(src.join("main.rs"), main).map_err(|error| {
         HostFault::fault(
             "loop_export_compile",
             format!("cannot write epoch-host main.rs: {error}"),
@@ -450,7 +454,8 @@ path = "src/main.rs"
 
     let target = generated_crate_target_dir(&format!(
         "epoch-host-{}-{}",
-        crate_name, host.surface().step
+        crate_name,
+        host.surface().step
     ));
     let mut command = std::process::Command::new("cargo");
     command
@@ -513,8 +518,7 @@ fn generate_main(
     let state_rust = shapes
         .iter()
         .find(|shape| shape.name == state_type)
-        .map(|shape| shape.rust_name.clone())
-        .unwrap_or_else(|| escape_ident(state_type));
+        .map_or_else(|| escape_ident(state_type), |shape| shape.rust_name.clone());
     let mut text = String::new();
 
     text.push_str(&fill(
@@ -609,7 +613,10 @@ fn i64_list(items: &[i64]) -> String {
             shape.rust_name, crate_ident, shape.rust_name
         ));
         text.push_str("    out.push_str(\"{\\\"record\\\": {\\\"type\\\": \");\n");
-        text.push_str(&format!("    out.push_str(&json_quote(\"{}\"));\n", shape.name));
+        text.push_str(&format!(
+            "    out.push_str(&json_quote(\"{}\"));\n",
+            shape.name
+        ));
         text.push_str("    out.push_str(\",\\\"fields\\\": {\");\n");
         let mut sorted: Vec<&(String, String, MirrorType)> = shape.fields.iter().collect();
         sorted.sort_by(|a, b| a.0.cmp(&b.0));
@@ -903,8 +910,12 @@ fn push_render_call(text: &mut String, ty: &MirrorType, expr: &str, depth: usize
         }
         MirrorType::Seq(inner) => {
             text.push_str(&format!("{pad}out.push('[');\n"));
-            text.push_str(&format!("{pad}for (index, item) in ({expr}).iter().enumerate() {{\n"));
-            text.push_str(&format!("{pad}    if index > 0 {{ out.push_str(\", \"); }}\n"));
+            text.push_str(&format!(
+                "{pad}for (index, item) in ({expr}).iter().enumerate() {{\n"
+            ));
+            text.push_str(&format!(
+                "{pad}    if index > 0 {{ out.push_str(\", \"); }}\n"
+            ));
             // Sequence iteration yields references; scalar leaves
             // deref (`*item`), records coerce (`&&T` -> `&T`), and
             // nested sequences take the reference as-is.

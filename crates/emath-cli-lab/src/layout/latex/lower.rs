@@ -1,6 +1,6 @@
-//! Layout-graph to BinderTerm lowering.
+//! Layout-graph to `BinderTerm` lowering.
 
-use super::*;
+use super::{MathLayoutGraph, NodeId, BinderTerm, LayoutError, LayoutContent, SpatialRelation, apply2, Term, SymbolId, is_infix_op, glyph_term, BinderKind, BinderFamily, VariableId, BinderDomain, as_int_binder, ScopedBinder, SeqItem, climb_eq};
 
 pub(super) fn lower_id(graph: &MathLayoutGraph, id: NodeId) -> Result<BinderTerm, LayoutError> {
     let node = graph.node(id).ok_or_else(|| LayoutError::Unlowered {

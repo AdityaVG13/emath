@@ -2,7 +2,7 @@
 
 use emath_core::QualifiedName;
 
-use super::*;
+use super::{Expr, ExprId, Infer, ExprNode};
 
 pub(super) fn carrier_arity(name: &str) -> Option<usize> {
     let name = name.rsplit("::").next().unwrap_or(name);

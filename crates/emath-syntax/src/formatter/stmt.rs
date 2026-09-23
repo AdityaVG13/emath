@@ -1,6 +1,6 @@
 //! Statement and type formatting (moved verbatim).
 
-use super::*;
+use super::{Stmt, indent, StmtKind, ReactionTerm, format_section_head, format_observations_suite, format_suite, format_expr, Prec, CommandArgument, Visibility, Param, Place, BinderKind, Binder, TypeExpr, TypeKind, expr, GenericArg};
 
 pub(super) fn format_stmt(out: &mut String, stmt: &Stmt, level: usize) {
     indent(out, level);

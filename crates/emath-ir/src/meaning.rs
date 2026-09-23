@@ -58,5 +58,5 @@ impl std::error::Error for MeaningError {}
 mod ctx;
 mod encode;
 
-use ctx::*;
+use ctx::{Encoder, LocalSlot, MeaningContext};
 pub use encode::*;

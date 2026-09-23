@@ -1,6 +1,6 @@
 //! Universal instructions for the stable executable machine.
 
-use super::*;
+use super::{EmirValue, BuiltinId, EmirSliceAxis, EmirProgram, FoldCombine, CellClass, VectorScalarOp, ReduceId};
 
 /// Domain-neutral execution instructions.
 ///
@@ -12,7 +12,7 @@ pub enum EmirOp {
     ConstF64(u64),
     ConstI64(i64),
     ConstBigInt(String),
-    /// Signed arbitrary-precision integer decimal (constructor ExactInt).
+    /// Signed arbitrary-precision integer decimal (constructor `ExactInt`).
     ConstExactInt(String),
     ConstText(String),
     ConstComplex(f64, f64),
@@ -175,7 +175,7 @@ pub enum EmirOp {
         body: EmirProgram,
     },
 
-    /// Generic capability application. `capability` is a FeatureID resolved
+    /// Generic capability application. `capability` is a `FeatureID` resolved
     /// against the installed Language Image; it is never interpreted by name.
     ApplyCapability {
         capability: String,
@@ -185,7 +185,7 @@ pub enum EmirOp {
 
     /// Universal program-as-value artifact: a nested program literal that
     /// evaluates to [`crate::interp::Value::Program`]. Domain-neutral
-    /// carrier machinery — the literal names no FeatureID and dispatches
+    /// carrier machinery — the literal names no `FeatureID` and dispatches
     /// nothing; like any value it can flow into an `ApplyCapability`
     /// argument register.
     /// Evaluate a literal program with explicit typed input and state frames.
@@ -266,9 +266,9 @@ pub enum EmirOp {
         /// an expression template (no parameter, no closure).
         param: Option<String>,
         /// The open names in binding order: a function template's
-        /// open constants (nested inputs 1..=free.len()), or an
+        /// open constants (nested inputs `1..=free.len()`), or an
         /// expression template's free names (nested inputs
-        /// 0..free.len(), sorted by the free-name collector).
+        /// `0..free.len()`, sorted by the free-name collector).
         free: Vec<String>,
         /// The carrier signature: a function template's declared
         /// scalar carrier (`Rat`, `Int`, or `Bool`) that the backend

@@ -33,6 +33,12 @@ The state type `T` is expected to carry the loop state contract fields
 (`archive`, `incumbent`, `case_set`, `batch`, `used`, `verdict`,
 `mode`); deviations refuse `loop_state_contract` naming the field.
 
+## Unchanged native exports
+
+Admission and module identity are checked on every export. Identical generated
+artifact/host sources and manifests preserve mtimes through the shared generated
+file writer; changed contents still rebuild through Cargo.
+
 ## Public types and semantics
 
 - `LoopHost::open(module, target)` - parse, scan, choose surface,
@@ -147,6 +153,80 @@ out_dir }` (defaults 64 / 64 / 10,000 / 3 / none); `DreamOutcome {
 stop, level, resumes }`; `LevelRecord` is the level journal entry
 (close reason, batches, used units, incumbent key and score, frozen
 case set, path, certificate).
+
+## Experiment host contract (`experiment`, `emath experiment`)
+
+`ExperimentHost::admit(manifest)` validates an `emath.experiment.v1`
+manifest. It declares two Cargo crates (each with `Cargo.lock`), a
+workload, an authored evaluator (module + function), a pair count, a
+warmup count, a seed, a budget (`experiment_ms`, `build_ms`, `trial_ms`,
+`output_bytes`, optional `memory_mb`), access (`network`,
+`filesystem_write`, `require_isolation`), and an optional
+`proposal_cost`. Admission also admits the evaluator. Every evaluator
+input must be one of `HOST_FACTS`; anything else refuses
+`experiment_evaluator`. Admission then digests sources and workload,
+fingerprints rustc, cargo, OS, CPU, parallelism and RUSTFLAGS, and
+decides enforcement. Nothing runs at admission.
+
+`ExperimentHost::run(config)` builds each arm with `cargo build --release
+--locked --offline` through `emath_build::run_cargo_timed`. Builds are
+timed separately from trials. Each session runs warmups, which are
+recorded but never sampled. Then it runs paired trials. Pair `i` runs the
+candidate first when `candidate_first(seed, i)` is true, and the order is
+recorded. Wall time is host-clocked with monotonic `Instant`, from before
+spawn to reap. It includes start-up for both arms and has 50 µs polling
+granularity. Stdout must be whitespace-separated integers. After all
+pairs, the host calls the evaluator with the declared facts and stores
+the returned record. The host never ranks, filters or averages.
+
+- **Outcomes:** success, `timeout`, cancellation, `crash` (exit code or
+  signal), `invalid_output`, `output_limit`, `spawn_failed`,
+  `build_failed`, `build_timeout`, and `experiment_budget` are distinct.
+  Any non-success is recorded as a terminal failure or a cancellation,
+  and no evaluation follows. The whole-experiment budget spans builds and
+  runs across sessions. The authored evaluation is outside that clock.
+- **Commit:** state is an `emath.scratch.v1` checkpoint written by
+  temp+rename. Its identity is the evaluator meaning id plus an
+  experiment digest. A changed identity refuses `experiment_identity`. A
+  pair is journaled `pending` before launch. On resume, a pending pair
+  becomes an `uncertain` attempt, is never counted, and reruns. Execution
+  is at least once; counting is exactly once. A rebuilt binary whose
+  digest differs from the measured one refuses `experiment_artifact`.
+  The host does not change engine snapshot timing; the checkpoint carries
+  only plain carriers (no closures).
+- **Audit ledger:** the audit id is a 60-bit prefix of the workload
+  content digest. The ledger entry is `pending` before evaluation and
+  `consumed` after the decision is committed. The evaluator receives
+  every other consumed or pending id, so A → B → A never looks fresh.
+  Evaluators that declare `audit_id` must return `consumed` containing it.
+- **Enforcement (macOS, `sandbox-exec`):** trials cannot fork, cannot
+  exec anything but the arm binary, and cannot read the workload, ledger
+  or checkpoint files. Network and writes are denied unless the manifest
+  permits them. Builds are denied network and protected reads. Children
+  always start with an empty environment. Memory limits use `prlimit
+  --as` on Linux (untested here); a memory limit that cannot be enforced
+  refuses `experiment_unenforceable`. Without a sandbox,
+  `require_isolation` refuses `experiment_isolation`; otherwise each
+  unenforced limit is reported as `UNENFORCED`.
+
+Faults: `experiment_read`, `experiment_manifest`, `experiment_evaluator`,
+`experiment_isolation`, `experiment_unenforceable`, `experiment_identity`,
+`experiment_artifact`, `experiment_state`, `experiment_ledger`,
+`experiment_evaluation`.
+
+Conformance: `tests/emath-tui/tests/experiment_host.rs` (real decision
+and replay, faster-but-wrong rejection, A → B → A audit reuse, timeout,
+cancellation, interrupted resume with an injected pending pair, and
+evaluator/workload identity refusals). The following mutants each fail a
+test: ignoring the ledger, a constant checkpoint identity, and dropping
+the uncertain-attempt record.
+
+No-claims: `sandbox-exec` is deprecated by Apple, and it is not a
+hardened security boundary. There is no ledger file locking, so run one
+host per ledger. A decision's status 1 means that every observed paired
+gain was positive. It is not statistical significance, and it does not
+extend to other workloads or machines. Candidates are explicitly
+supplied; there is no proposal loop.
 
 ## Invariants
 

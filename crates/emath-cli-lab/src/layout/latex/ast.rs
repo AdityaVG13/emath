@@ -1,6 +1,6 @@
 //! LaTeX token and AST types plus the tokenizer.
 
-use super::*;
+use super::{LayoutError, Parser, token_text, KNOWN_COMMANDS, GREEK};
 
 #[derive(Debug, Clone)]
 pub(super) struct Ast {
@@ -108,7 +108,7 @@ pub(super) fn tokenize(source: &str, base: usize) -> Result<Vec<Token>, LayoutEr
             let rest = &source[pos..];
             let name_len = rest
                 .chars()
-                .take_while(|c| c.is_ascii_alphabetic())
+                .take_while(char::is_ascii_alphabetic)
                 .map(char::len_utf8)
                 .sum::<usize>();
             let name = if name_len == 0 {
@@ -153,7 +153,7 @@ pub(super) fn tokenize(source: &str, base: usize) -> Result<Vec<Token>, LayoutEr
                 let rest = &source[pos..];
                 let len = rest
                     .chars()
-                    .take_while(|c| c.is_ascii_digit())
+                    .take_while(char::is_ascii_digit)
                     .map(char::len_utf8)
                     .sum::<usize>();
                 let number = rest[..len].to_string();

@@ -1,13 +1,21 @@
-use super::super::*;
+use super::super::{Engine, CValue, Expr, ConstructorError, ExprKind, Code, fault, Closure};
 use super::prelude::{domain_shape_of_expr, eq_values, is_refused_recipe, open_fragment};
 
 impl Engine {
-    pub(in crate::constructor_layer) fn pattern_binds(&mut self, scrutinee: &CValue, pattern: &Expr) -> Result<bool, ConstructorError> {
+    pub(in crate::constructor_layer) fn pattern_binds(
+        &mut self,
+        scrutinee: &CValue,
+        pattern: &Expr,
+    ) -> Result<bool, ConstructorError> {
         match (&pattern.kind, scrutinee) {
-            (ExprKind::List(items), CValue::Sequence(values)) if items.is_empty() && values.is_empty() => {
+            (ExprKind::List(items), CValue::Sequence(values))
+                if items.is_empty() && values.is_empty() =>
+            {
                 Ok(true)
             }
-            (ExprKind::SequenceCons { head, tail }, CValue::Sequence(values)) if !values.is_empty() => {
+            (ExprKind::SequenceCons { head, tail }, CValue::Sequence(values))
+                if !values.is_empty() =>
+            {
                 if let ExprKind::Path { segments, .. } = &head.kind {
                     if let Some(name) = segments.first() {
                         self.env.insert(name.clone(), values[0].clone());
@@ -29,7 +37,7 @@ impl Engine {
                     name.as_str(),
                     "true" | "false" | "partial" | "satisfied" | "unmet"
                 ) {
-                    return Ok(eq_values(scrutinee, &self.eval(pattern)?)?);
+                    return eq_values(scrutinee, &self.eval(pattern)?);
                 }
                 self.env.insert(name.clone(), scrutinee.clone());
                 Ok(true)
@@ -91,7 +99,9 @@ impl Engine {
             {
                 return Err(fault(
                     "method_unavailable",
-                    format!("`{name}` is an ordinary imported function, not a constructor identity"),
+                    format!(
+                        "`{name}` is an ordinary imported function, not a constructor identity"
+                    ),
                 ));
             }
         }
@@ -101,10 +111,9 @@ impl Engine {
             param: param.to_string(),
             domain: domain_shape_of_expr(domain),
             body: body.clone(),
-            env: self.env.clone(),
+            env: self.env.clone().into_map(),
             recursive: None,
         }));
         self.apply_value(cal, &[dom, clos])
     }
-
 }

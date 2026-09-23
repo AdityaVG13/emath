@@ -1,6 +1,6 @@
 //! World evaluation and receipt rendering.
 
-use super::*;
+use super::{Analysis, EvalReceipt, resolve_world_name, WORLD_IR_WORLD_NAMES, genesis_cmd, unknown_world_error, Environment, WorldIrValue, VariableId, VmBudget, vm_run, VmOutcome, WorldIr, Term, FreeTermWorld, BooleanAlienWorld, ModularAlienWorld, OnePointWorld, SeededCsaWorld, JsonWriter};
 
 pub(super) fn evaluate_named(analysis: &Analysis, name: &str) -> Result<EvalReceipt, String> {
     let label = resolve_world_name(name)?;

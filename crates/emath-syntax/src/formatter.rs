@@ -370,5 +370,5 @@ fn format_observations_suite(out: &mut String, suite: &Suite, level: usize) {
 }
 
 mod stmt;
-use stmt::*;
+use stmt::{is_infer_marker, format_stmt, format_stmt_kind};
 pub use stmt::{format_generic_arg, format_type};

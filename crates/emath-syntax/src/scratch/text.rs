@@ -1,6 +1,6 @@
 //! Line classification and top-level text splitting helpers.
 
-use super::*;
+use super::{IntentVerb, split_assignment, is_ident, SECTION_HEADS, Span, FileId};
 
 #[derive(Clone, Debug)]
 pub(super) enum LineKind {

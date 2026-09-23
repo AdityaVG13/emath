@@ -3,7 +3,7 @@
 //! The standard library is executable object packs, not catalog
 //! markdown: `emath library mount std` composes the std.core census
 //! (theory object + cell object + independent evidence receipt, each
-//! with an admitted MeaningID), exports it as a canonical `.emlib`
+//! with an admitted `MeaningID`), exports it as a canonical `.emlib`
 //! pack, mounts it through the store's typed mount (every object id and
 //! evidence hash re-verified), and prints a deterministic receipt.
 //! Forgery or corruption refuses typed; nothing silent.
@@ -21,7 +21,7 @@ use emath_syntax::install_source_parser;
 const THEORY_SOURCE: &str = "emath function shape_law:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
 /// The std.core cell: the reference algorithm — the same law computed
 /// as a distinct expression tree, so theory and algorithm carry
-/// independent MeaningIDs.
+/// independent `MeaningIDs`.
 const CELL_SOURCE: &str = "emath function square_ref:\n    inputs:\n        x: Float64\n    definitions:\n        y = (x * x) + 0.0\n";
 
 /// Admitted meaning identity AND canonical semantic payload for a

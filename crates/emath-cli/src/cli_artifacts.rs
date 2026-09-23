@@ -1,6 +1,6 @@
 //! Native-provider registration, Modelica import, artifact and architecture commands.
 
-use super::*;
+use super::{ProviderRegistry, Path, CliExit, EXIT_USAGE, EXIT_REFUSED, EXIT_OK, catalog};
 
 /// Registers the in-tree static `native.rust` capability
 /// (`evaluate.rust.library` → f64, exact, deterministic, E2 ceiling) so

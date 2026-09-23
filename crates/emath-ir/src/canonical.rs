@@ -58,9 +58,7 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
             out.push(':');
             out.push_str(
                 &extent
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "-".to_string()),
+                    .as_ref().map_or_else(|| "-".to_string(), ToString::to_string),
             );
         }
         TypeNode::Matrix {
@@ -73,16 +71,12 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
             out.push(':');
             out.push_str(
                 &rows
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "-".to_string()),
+                    .as_ref().map_or_else(|| "-".to_string(), ToString::to_string),
             );
             out.push(':');
             out.push_str(
                 &cols
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "-".to_string()),
+                    .as_ref().map_or_else(|| "-".to_string(), ToString::to_string),
             );
         }
         TypeNode::Tensor { element, shape } => {
@@ -407,9 +401,9 @@ fn encode_expr(out: &mut String, package: &SemanticPackage, id: crate::ids::Expr
             // canonical mode spellings.
             use std::fmt::Write;
             push_str(out, "series ");
-            let _ = write!(out, "{}\n", points.len());
+            let _ = writeln!(out, "{}", points.len());
             for (time, value) in points {
-                let _ = write!(out, "{} {}\n", time.to_bits(), value.to_bits());
+                let _ = writeln!(out, "{} {}", time.to_bits(), value.to_bits());
             }
             out.push_str(interpolation);
             out.push(' ');

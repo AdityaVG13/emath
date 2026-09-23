@@ -58,7 +58,7 @@ pub enum SynthesisError {
     /// Carrier exceeds [`MAX_CARRIER_SIZE`]; the table space would be
     /// unbounded (typed refusal `E-RES-110`).
     CarrierTooLarge(usize),
-    /// Duplicate carrier labels collapse table cells (BTreeMap keys), so
+    /// Duplicate carrier labels collapse table cells (`BTreeMap` keys), so
     /// enumeration would silently under-generate; refused instead.
     DuplicateCarrier,
     /// An empty law set is refused: every table would vacuously

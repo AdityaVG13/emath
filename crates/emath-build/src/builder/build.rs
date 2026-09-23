@@ -1,6 +1,12 @@
-//! The ModelBuilder trait and its BuilderModel implementation.
+//! The `ModelBuilder` trait and its `BuilderModel` implementation.
 
-use super::*;
+use super::{
+    BuilderError, BuilderModel, CompileModel, CompileSpec, ConstructorModel, Declaration,
+    DeclarationId, DeterminismPolicy, EvidenceLevel, ExactnessPolicy, Expression, FallbackPolicy,
+    Field, Goal, GoalKind, GoalModel, GoalRequirements, KindRef, NumericProfile, QualifiedName,
+    SafetyProfile, SemanticPackage, TargetProfile, TestModel, TypeId, TypeKind, TypeNode,
+    Visibility, OWNER,
+};
 
 /// The builder trait (`PUBLIC_API_INVENTORY.md` laboratory surface).
 pub trait ModelBuilder: Sized {

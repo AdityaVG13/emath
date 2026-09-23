@@ -1,7 +1,7 @@
 //! Constructor-layer evaluation: object, function, recur, quote, query.
 //!
 //! Reuses the shared syntax tree and scalar carrier arithmetic. Mathematical
-//! recipes are ordinary module functions, not image FeatureIDs.
+//! recipes are ordinary module functions, not image `FeatureIDs`.
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -26,7 +26,10 @@ const DEFAULT_WORK: u64 = 1_000_000;
 pub enum CValue {
     Bool(bool),
     Int(ExactInt),
-    Rat { num: ExactInt, den: ExactInt },
+    Rat {
+        num: ExactInt,
+        den: ExactInt,
+    },
     Float64(f64),
     /// Text payload carrier (fbpb6 successor bead e6gvs): a Str literal
     /// evaluates as a first-class value. Structural equality only —
@@ -85,16 +88,9 @@ impl PartialEq for CValue {
         match (self, other) {
             (Self::Bool(a), Self::Bool(b)) => a == b,
             (Self::Int(a), Self::Int(b)) => a == b,
-            (
-                Self::Rat {
-                    num: an,
-                    den: ad,
-                },
-                Self::Rat {
-                    num: bn,
-                    den: bd,
-                },
-            ) => an == bn && ad == bd,
+            (Self::Rat { num: an, den: ad }, Self::Rat { num: bn, den: bd }) => {
+                an == bn && ad == bd
+            }
             (Self::Float64(a), Self::Float64(b)) => a == b,
             (Self::Str(a), Self::Str(b)) => a == b,
             (Self::Sequence(a), Self::Sequence(b)) => a == b,
@@ -211,7 +207,10 @@ impl fmt::Display for CValue {
             // Contents are state, not a value: display the shape only,
             // never a snapshot that invites value-style comparison.
             Self::Buffer(cell) => {
-                let len = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).len();
+                let len = cell
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .len();
                 write!(f, "buffer({len})")
             }
             Self::Sequence(xs) => {
@@ -317,8 +316,11 @@ pub fn constructor_admit_code(code: &str) -> &'static str {
         "E-TYPE-003" => "E-TYPE-003",
         "E-TYPE-010" => "E-TYPE-010",
         "unbound" | "unbound_code" => "E-TYPE-002",
-        "method_unavailable" | "implementation_unavailable"
-        | "transformation_rule_unavailable" | "unresolved" | "stale_dependency" => "E-TYPE-003",
+        "method_unavailable"
+        | "implementation_unavailable"
+        | "transformation_rule_unavailable"
+        | "unresolved"
+        | "stale_dependency" => "E-TYPE-003",
         _ => "E-TYPE-012",
     }
 }
@@ -363,11 +365,17 @@ struct QueryDecl {
 #[derive(Clone, Debug, PartialEq)]
 enum EvalTail {
     Value(CValue),
-    Call { name: String, args: Vec<CValue> },
+    Call {
+        name: String,
+        args: Vec<CValue>,
+    },
     /// A tail call whose callee resolves to a closure VALUE in the
     /// environment (the recur lane's self-name, or any local
     /// closure): the application chain consumes it with frame reuse.
-    Apply { callee: CValue, args: Vec<CValue> },
+    Apply {
+        callee: CValue,
+        args: Vec<CValue>,
+    },
 }
 
 /// Remaining-work continuation slot. A budget stop keeps these with the
@@ -456,13 +464,59 @@ pub enum Kont {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ContinuationFrame {
+pub struct ContinuationFrame<E = BTreeMap<String, CValue>> {
     pub function: String,
     pub pc: u64,
     /// Next unfinished definition or instruction label in this frame.
     pub next: String,
-    pub env: BTreeMap<String, CValue>,
+    pub env: E,
     pub kont: Vec<Kont>,
+}
+impl<E> ContinuationFrame<E> {
+    fn map_environment<T>(self, map: impl FnOnce(E) -> T) -> ContinuationFrame<T> {
+        ContinuationFrame {
+            function: self.function,
+            pc: self.pc,
+            next: self.next,
+            env: map(self.env),
+            kont: self.kont,
+        }
+    }
+}
+
+/// Interpreter-local copy-on-write bindings. Snapshot timing is unchanged;
+/// only a mutation copies bindings shared with a saved environment or frame.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Environment(Rc<BTreeMap<String, CValue>>);
+
+impl Environment {
+    fn into_map(self) -> BTreeMap<String, CValue> {
+        Rc::unwrap_or_clone(self.0)
+    }
+
+    fn clear(&mut self) {
+        self.0 = Rc::default();
+    }
+}
+
+impl From<BTreeMap<String, CValue>> for Environment {
+    fn from(values: BTreeMap<String, CValue>) -> Self {
+        Self(Rc::new(values))
+    }
+}
+
+impl std::ops::Deref for Environment {
+    type Target = BTreeMap<String, CValue>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Environment {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Rc::make_mut(&mut self.0)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -511,19 +565,13 @@ impl Default for Checkpoint {
 }
 
 struct Engine {
-    env: BTreeMap<String, CValue>,
-    /// Refcounted: `apply_fn_body` runs a tail-call loop that
-    /// re-binds the callee per iteration; deep-cloning the whole
-    /// declaration (body AST included) per call was the interpreter's
-    /// single largest allocation storm.
+    env: Environment,
+    /// Sharing a declaration avoids copying its body on every tail call.
     functions: BTreeMap<String, Rc<FnDecl>>,
     queries: BTreeMap<String, QueryDecl>,
     objects: BTreeMap<String, ObjectSchema>,
-    /// Provenance of every installed top-level name: the empty path
-    /// for local declarations, the resolved import file otherwise.
-    /// Collision law: an import may not replace a name a different
-    /// origin installed (E-NAME-022); a same-origin re-install is
-    /// idempotent (the transitive import diamond).
+    /// Empty path for local names, resolved import path otherwise. An import
+    /// cannot replace a different origin; same-origin diamond imports coalesce.
     name_sources: BTreeMap<String, PathBuf>,
     work: u64,
     work_limit: u64,
@@ -535,15 +583,10 @@ struct Engine {
     inputs: BTreeMap<String, CValue>,
     call_depth: u32,
     next_ref: u64,
-    frames: Vec<ContinuationFrame>,
+    frames: Vec<ContinuationFrame<Environment>>,
     scopes: BTreeSet<u64>,
-    resume_frames: Vec<ContinuationFrame>,
-    /// Expect-row fault-name atoms. While set, a single-segment path that
-    /// resolves nowhere evaluates (and infers) as a nominal atom instead of
-    /// faulting `unbound`, so `expect diagnostic.code == <fault-name>` can
-    /// demand any named refusal — including user-quoted refusal reasons —
-    /// and a wrong name simply fails the example. Definitions and every
-    /// other expression context keep the hard unbound fault.
+    resume_frames: Vec<ContinuationFrame<Environment>>,
+    /// Only expect rows may resolve unbound single-segment names as fault atoms.
     expect_atoms: Cell<bool>,
 }
 
@@ -553,12 +596,10 @@ struct ObjectSchema {
     invariants: Vec<(String, Expr)>,
 }
 
-
 // Split out of the original single file. `prelude` reexports every
 // helper at constructor_layer width so the children can share them;
 // the `pub use` lines below are the crate-visible surface and match
 // the original single-file API.
-mod prelude;
 mod admit;
 mod call;
 mod checkpoint;
@@ -567,6 +608,7 @@ mod eval;
 mod expr;
 mod identity;
 mod ops;
+mod prelude;
 mod query;
 mod residual;
 mod scalar;
@@ -582,7 +624,6 @@ pub use residual::*;
 pub use scalar::*;
 pub use scratch::*;
 pub use setup::*;
-
 
 /// The engine's schema-tag family (view-layout node kinds, scalar-op
 /// tags, and the record family's structural names). Shared with
@@ -602,7 +643,9 @@ pub fn is_node_tag(name: &str) -> bool {
 pub fn module_callable_table(tree: &SyntaxTree) -> Vec<(String, bool, u64)> {
     let mut table = Vec::new();
     for item in &tree.items {
-        let Item::Declaration(decl) = item else { continue };
+        let Item::Declaration(decl) = item else {
+            continue;
+        };
         if decl.as_kind != "function" {
             continue;
         }
@@ -636,7 +679,9 @@ pub fn module_definition_table(
 ) -> Vec<(String, bool, Option<emath_rt::code_tree::CodeTree>)> {
     let mut table = Vec::new();
     for item in &tree.items {
-        let Item::Declaration(decl) = item else { continue };
+        let Item::Declaration(decl) = item else {
+            continue;
+        };
         if decl.as_kind != "function" {
             continue;
         }

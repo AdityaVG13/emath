@@ -2,5 +2,13 @@
 # Makes `cargo xtask demo all` work for freshly cloned workspaces.
 # The isolated dispatcher keeps language generation free of unrelated git
 # dependencies and forwards every other invocation to the full demo binary.
+# Keep local compiles and libtest from occupying every core by default.
+# Explicit --jobs / --test-threads or environment settings remain opt-ins.
+[build]
+jobs = 1
+
+[env]
+RUST_TEST_THREADS = { value = "1", force = false }
+
 [alias]
 xtask = "run -q --manifest-path xtask/generate/Cargo.toml -p emath-language-generator --"

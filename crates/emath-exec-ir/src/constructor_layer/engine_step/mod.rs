@@ -1,6 +1,6 @@
 //! The constructor Engine, split by responsibility.
 
-use super::*;
+use super::prelude;
 
 mod core;
 mod pattern;

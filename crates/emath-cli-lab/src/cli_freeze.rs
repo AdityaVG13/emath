@@ -1,6 +1,6 @@
 //! `emath freeze`, `why`, and assumptions commands.
 
-use super::*;
+use super::{Path, PathBuf, assign_once, take_nonflag_value, CliExit, read_emath_source, EXIT_REFUSED, print_diagnostics, admitted_meaning_id, EXIT_USAGE, print_missing_newline, exit_from_diagnostics, EXIT_OK, ExactnessStatus};
 
 pub(crate) fn freeze_lock_json(
     source: &str,
@@ -61,7 +61,7 @@ pub(crate) fn write_via_rename(path: &Path, bytes: &str) -> bool {
 pub(crate) fn sidecar_lock_path(out: &Path) -> PathBuf {
     let mut lock_path = out.to_path_buf();
     match lock_path.extension().and_then(|ext| ext.to_str()) {
-        Some("emath") | Some("lock") => {
+        Some("emath" | "lock") => {
             lock_path.set_extension("freeze.lock.json");
         }
         Some(ext) => {
@@ -196,7 +196,7 @@ pub(crate) fn parse_why_request(args: &[String]) -> Option<WhyRequest> {
         match arg.as_str() {
             "--json" => json = true,
             other if other.starts_with("inference:") => {
-                assign_once(&mut needle, other.to_string())?
+                assign_once(&mut needle, other.to_string())?;
             }
             other if other.starts_with('-') => return None,
             other => assign_once(&mut path, PathBuf::from(other))?,

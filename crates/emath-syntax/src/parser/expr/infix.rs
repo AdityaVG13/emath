@@ -1,6 +1,6 @@
 //! Binary/infix precedence levels: iff, imply, or, and, unit queries, comparisons, multiplicative, notation infix.
 
-use super::*;
+use super::{Expr, TokenKind, ExprKind, BinaryOp, Keyword, UnitQueryKind, Span, ApproxTolerance, comparison_operator, NotationFixity};
 
 impl super::super::Parser {
     // ---- logic connectives ==> and <==>) -------------------------
@@ -123,8 +123,8 @@ impl super::super::Parser {
         let start = self.current_span();
         // Check for `unit of` or `dimension of` contextual keywords.
         if let TokenKind::Ident(kw) = self.peek().clone() {
-            if matches!(kw.as_str(), "unit" | "dimension") {
-                if matches!(self.peek_at(1), TokenKind::Ident(id) if id == "of") {
+            if matches!(kw.as_str(), "unit" | "dimension")
+                && matches!(self.peek_at(1), TokenKind::Ident(id) if id == "of") {
                     let kind = if kw == "unit" {
                         UnitQueryKind::Unit
                     } else {
@@ -141,7 +141,6 @@ impl super::super::Parser {
                         source: start.cover(self.last_span()),
                     });
                 }
-            }
         }
         // `f ~~ g` — asymptotic equivalence at comparison precedence.
         // Lowers to a limit claim in sema.
@@ -173,7 +172,7 @@ impl super::super::Parser {
 
     /// Shared tail after a parsed left operand when the next token is
     /// `≈` / `~=`: parse the right side and the optional declared
-    /// tolerance clause. Used from expression position (parse_unit_query)
+    /// tolerance clause. Used from expression position (`parse_unit_query`)
     /// and from ident-led statement position (`y ≈ ...`).
     pub(in crate::parser) fn parse_approx_tail(&mut self, left: Expr) -> Option<Expr> {
         self.advance(); // `≈` / `~=`

@@ -67,7 +67,7 @@ pub const RULE_CANONICAL_FORMAT: RuleSpec = RuleSpec {
 
 /// E-MIG-RULE-002 `semantic-correction`: an explicitly authorized
 /// edition-major correction. Unlike a respell, this rule must change
-/// MeaningId and records both checked identities in the receipt.
+/// `MeaningId` and records both checked identities in the receipt.
 pub const RULE_SEMANTIC_CORRECTION: RuleSpec = RuleSpec {
     id: "E-MIG-RULE-002",
     kind: RuleKind::Semantic,
@@ -126,7 +126,7 @@ pub struct RuleApplied {
     pub kind: RuleKind,
     /// Site the rule touched; whole-file rules record `name:whole-file`.
     pub span: String,
-    /// Semantic identity (MeaningId) before / after.
+    /// Semantic identity (`MeaningId`) before / after.
     pub before_hash: String,
     pub after_hash: String,
     /// `"none"` for verified respells; semantic rules record the delta.
@@ -353,7 +353,7 @@ pub fn migrate_verified_rewrite(
 }
 
 /// Apply one registered semantic correction. Both sources must admit,
-/// and the rule must produce a different MeaningId. The checked delta
+/// and the rule must produce a different `MeaningId`. The checked delta
 /// is explicit in the receipt; treating an identity-preserving change
 /// as semantic is a classification error and refuses.
 #[must_use]

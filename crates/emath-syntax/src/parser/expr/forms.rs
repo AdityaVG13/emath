@@ -1,6 +1,6 @@
 //! Compound body forms: limit, cases, match, graph literals; match patterns; bound substitution.
 
-use super::*;
+use super::{Expr, TokenKind, ExprKind, Keyword, Span, BinaryOp, UnaryOp};
 
 impl super::super::Parser {
     /// Parse the body of a `limit x -> T[+|-]: body` expression; the

@@ -1,4 +1,4 @@
-use super::*;
+use super::{ScalarOp, Value, EvalFault, value_from_rat, value_from_exact, EmirValue, exact_int_of, register};
 
 pub(super) fn exact_ratio_arithmetic(
     ln: emath_rt::ExactInt,
@@ -150,7 +150,7 @@ pub(super) fn eval_exact_int_call(
             if args.len() != 1 {
                 return Err(EvalFault::Arithmetic {
                     op: "exact-int-call",
-                    detail: "int_sum argument count".into(),
+                    detail: "int_sum argument count",
                 });
             }
             emath_rt::exact_int_sum(&seq(args[0])?).map_err(fault)?
@@ -159,7 +159,7 @@ pub(super) fn eval_exact_int_call(
             if args.len() != 1 {
                 return Err(EvalFault::Arithmetic {
                     op: "exact-int-call",
-                    detail: "int_prod argument count".into(),
+                    detail: "int_prod argument count",
                 });
             }
             emath_rt::exact_int_prod(&seq(args[0])?).map_err(fault)?
@@ -194,7 +194,7 @@ pub(super) fn eval_exact_int_call(
             if args.len() != 2 {
                 return Err(EvalFault::Arithmetic {
                     op: "exact-int-call",
-                    detail: "int_hamming argument count".into(),
+                    detail: "int_hamming argument count",
                 });
             }
             emath_rt::exact_int_hamming(&seq(args[0])?, &seq(args[1])?).map_err(fault)?
@@ -218,7 +218,7 @@ pub(super) fn eval_exact_int_call(
             if args.len() != 3 {
                 return Err(EvalFault::Arithmetic {
                     op: "exact-int-call",
-                    detail: "int_poly_eval argument count".into(),
+                    detail: "int_poly_eval argument count",
                 });
             }
             emath_rt::exact_int_poly_eval(

@@ -1,6 +1,6 @@
 //! The `emath migrate` workspace-upgrade command.
 
-use super::*;
+use super::{Path, CliExit, EXIT_OK, print_json_diagnostics, json_diagnostic_entry, EXIT_IO, JsonWriter, EXIT_REFUSED};
 
 /// `migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate
 /// --list-rules`. Lossless rewrites only, receipt-driven.
@@ -12,7 +12,7 @@ use super::*;
 /// the receipt is written to `--receipt` (default: beside the source). `--check`
 /// never rewrites; exit 1 means a rule would fire (or the source
 /// refuses). `--dry-run` performs identity checking in-memory without writing
-/// to disk or creating a receipt file, and returns EXIT_OK if valid.
+/// to disk or creating a receipt file, and returns `EXIT_OK` if valid.
 /// Determinism: same input = byte-identical receipt.
 pub(crate) fn migrate_cmd(
     file: &Path,
@@ -93,13 +93,13 @@ pub(crate) fn migrate_cmd(
             } else {
                 println!("action: inspection only (--fix not passed)");
             }
-            if !rules.is_empty() {
+            if rules.is_empty() {
+                println!("rules: source is canonical, no rules apply");
+            } else {
                 println!("rules that would apply:");
                 for r in &rules {
                     println!("  - {r}");
                 }
-            } else {
-                println!("rules: source is canonical, no rules apply");
             }
             if !refusals.is_empty() {
                 println!("refusals encountered:");
@@ -115,9 +115,7 @@ pub(crate) fn migrate_cmd(
         };
     }
 
-    let receipt_path = receipt
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| file.with_extension("migrate.json"));
+    let receipt_path = receipt.map_or_else(|| file.with_extension("migrate.json"), Path::to_path_buf);
     if std::fs::write(&receipt_path, outcome.receipt.to_canonical_json()).is_err() {
         eprintln!("error: cannot write receipt {}", receipt_path.display());
         return EXIT_IO;

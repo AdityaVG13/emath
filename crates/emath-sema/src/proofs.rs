@@ -2,7 +2,7 @@
 //!
 //! Each verified-complete outline lowers to `emath.proof-obligation
 //! v1` records — the stable, provider-agnostic machine target. A
-//! ProofChecker is a CONTRACT, not a runtime dependency: checkers
+//! `ProofChecker` is a CONTRACT, not a runtime dependency: checkers
 //! implement [`ProofChecker`] and are handed the records; nothing in
 //! this module executes a checker (proofs are additive authority —
 //! a missing checker never blocks compilation, and no verdict is

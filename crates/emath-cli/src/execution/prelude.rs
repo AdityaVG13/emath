@@ -1,4 +1,4 @@
-//! Sibling reexports at module width (see constructor_layer).
+//! Sibling reexports at module width (see `constructor_layer`).
 //!
 //! `run` is absent: its items are `pub(crate)` and therefore already
 //! visible crate-wide.

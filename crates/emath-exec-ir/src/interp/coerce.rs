@@ -1,4 +1,4 @@
-use super::*;
+use super::{Value, EvalFault};
 
 pub(super) fn value_as_f64(value: &Value, op: &'static str) -> Result<f64, EvalFault> {
     match value {
@@ -105,7 +105,7 @@ pub(super) fn sample_series(
             } else {
                 let prior = (left_value - points[index - 1].1) / (left_time - points[index - 1].0);
                 if prior.signum() == secant.signum() {
-                    0.5 * (prior + secant)
+                    f64::midpoint(prior, secant)
                 } else {
                     0.0
                 }
@@ -115,7 +115,7 @@ pub(super) fn sample_series(
             } else {
                 let next = (points[index + 2].1 - right_value) / (points[index + 2].0 - right_time);
                 if next.signum() == secant.signum() {
-                    0.5 * (secant + next)
+                    f64::midpoint(secant, next)
                 } else {
                     0.0
                 }

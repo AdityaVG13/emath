@@ -1,6 +1,6 @@
 //! Sample-limit, limit, optimize, solve, and derivative lowering arms.
 
-use super::*;
+use super::{Expr, ExprId, Infer, E_UNSUPPORTED_TYPE, ExprNode, Literal, is_numeric_element, path_segments, E_UNKNOWN_VARIABLE, unwrap_derivative};
 
 pub(super) const CAPABILITY_SIMPSON: &str = "std.capability.calculus.simpson-integral";
 pub(super) const CAPABILITY_NEWTON: &str = "std.capability.calculus.scalar-solve";
@@ -186,10 +186,7 @@ impl super::super::Admitter {
             }
             var_names.push(name);
         }
-        let (body_id, body_infer) = match self.lower_expr(value) {
-            Some(result) => result,
-            None => return None,
-        };
+        let (body_id, body_infer) = self.lower_expr(value)?;
         if !is_numeric_element(&body_infer) {
             self.error(
                 "E-TYPE-012",
@@ -286,10 +283,7 @@ impl super::super::Admitter {
             );
             return None;
         }
-        let (body_id, body_infer) = match self.lower_expr(value) {
-            Some(result) => result,
-            None => return None,
-        };
+        let (body_id, body_infer) = self.lower_expr(value)?;
         if !is_numeric_element(&body_infer) {
             self.error("E-TYPE-012", "solve body must be numeric", value.source);
             return None;
@@ -333,7 +327,7 @@ impl super::super::Admitter {
         #[allow(unreachable_code)]
         let kind = ();
         let holding: &[Expr] = &[];
-        let _ = kind;
+        let () = kind;
         if false {
             if holding.is_empty() {
                 self.error(
@@ -412,10 +406,7 @@ impl super::super::Admitter {
         // Lower the value expression, then inline definition
         // references so the EMIR dual-number evaluator sees the
         // full computation chain.
-        let (body_id, body_infer) = match self.lower_expr(value) {
-            Some(result) => result,
-            None => return None,
-        };
+        let (body_id, body_infer) = self.lower_expr(value)?;
         if !is_numeric_element(&body_infer) {
             self.error(
                 "E-TYPE-012",

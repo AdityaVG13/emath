@@ -26,6 +26,7 @@ mod cli_dispatch;
 mod cli_json;
 mod cli_parse;
 mod loop_cmd;
+mod experiment_cmd;
 mod compiled_search;
 mod project_lock;
 
@@ -38,7 +39,7 @@ pub use terminal::{
 pub use cli_artifacts::*;
 pub use cli_build::*;
 pub use cli_check::*;
-pub(crate) use cli_dispatch::*;
+pub(crate) use cli_dispatch::{locate_language_root, help_cmd, catalog_read_cmd, print_command_help, unknown_command, run_command, parse_check_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals, load_verified_language};
 pub use cli_dispatch::{
     CompileRequest, FileJsonRequest, GenesisRequest, ParseRequest, SignatureRequest, assign_once,
     parse_compile_request, parse_file_json_request, parse_genesis_request, parse_parse_request,

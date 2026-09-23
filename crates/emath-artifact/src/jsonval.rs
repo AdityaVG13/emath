@@ -1,6 +1,6 @@
 //! The `JsonValue` DOM and its parser.
 
-use super::*;
+use super::{ArtifactError, ContentId, skip_json_ws, parse_json_string};
 
 /// Minimal JSON value tree accepted by [`parse_json_document`].
 #[derive(Clone, Debug, PartialEq)]

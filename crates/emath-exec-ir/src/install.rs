@@ -131,7 +131,7 @@ impl std::error::Error for PackError {}
 /// Validates a pack layout against the closed directory set.
 pub fn validate_layout(dirs: &[&str]) -> Result<(), PackError> {
     for dir in dirs {
-        if !LAYOUT_DIRS.contains(&dir) {
+        if !LAYOUT_DIRS.contains(dir) {
             return Err(PackError::UnknownLayoutDir {
                 dir: (*dir).to_string(),
             });
@@ -197,7 +197,7 @@ pub fn install_pack(
 }
 
 /// Installs an admitted pack whose lock records the EXISTING packages it
-/// composes (the std::physics compose: composition, never forking).
+/// composes (the `std::physics` compose: composition, never forking).
 /// `composed_packs` are lock identities (`name@version`) listed before
 /// the pack's own identity, which is appended last and never duplicated.
 pub fn install_pack_composing(
@@ -319,6 +319,6 @@ impl PackRegistry {
         self.packs
             .iter()
             .find(|installed| installed.pack == pack && installed.package == package)
-            .ok_or_else(|| PackError::UnknownPack { use_path: dotted })
+            .ok_or(PackError::UnknownPack { use_path: dotted })
     }
 }

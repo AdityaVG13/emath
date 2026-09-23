@@ -90,9 +90,7 @@ fn collect_emath(dir: &PathBuf, out: &mut Vec<PathBuf>) {
 
 fn path_relative(path: &PathBuf) -> String {
     let root = workspace_path("");
-    path.strip_prefix(&root)
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| path.display().to_string())
+    path.strip_prefix(&root).map_or_else(|_| path.display().to_string(), |p| p.display().to_string())
 }
 
 fn header_admits(text: &str) -> bool {
@@ -129,11 +127,10 @@ fn pinned_codes(text: &str) -> Vec<String> {
             .trim_start_matches("//")
             .trim();
         for token in body.split(|c: char| !(c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-')) {
-            if token.starts_with("E-") && token.chars().filter(|c| *c == '-').count() >= 2 {
-                if !codes.iter().any(|have| have == token) {
+            if token.starts_with("E-") && token.chars().filter(|c| *c == '-').count() >= 2
+                && !codes.iter().any(|have| have == token) {
                     codes.push(token.to_string());
                 }
-            }
         }
     }
     codes
@@ -172,7 +169,7 @@ pub fn demand_language_gaps(probe: &mut Probe) {
 
     Source::from_str(
         "gap/range-slice",
-        r#"emath function RangeSlice:
+        r"emath function RangeSlice:
     outputs:
         r: Float64
     definitions:
@@ -182,13 +179,13 @@ pub fn demand_language_gaps(probe: &mut Probe) {
     tests:
         example <middle>:
             expect r == 2.0
-"#,
+",
     )
     .eval_tests(probe);
 
     Source::from_str(
         "gap/interval-sum",
-        r#"emath function IntervalSum:
+        r"emath function IntervalSum:
     outputs:
         s: Interval<Float64>
     definitions:
@@ -196,13 +193,13 @@ pub fn demand_language_gaps(probe: &mut Probe) {
     tests:
         example <endpoints>:
             expect s == interval(4.0, 6.0)
-"#,
+",
     )
     .eval_tests(probe);
 
     Source::from_str(
         "gap/index-oob",
-        r#"emath function IndexOob:
+        r"emath function IndexOob:
     outputs:
         r: Float64
     definitions:
@@ -211,7 +208,7 @@ pub fn demand_language_gaps(probe: &mut Probe) {
     tests:
         example <oob>:
             expect r == 0.0
-"#,
+",
     )
     .must_refuse(probe, &["E-SHAPE-006"]);
 }

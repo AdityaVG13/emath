@@ -17,25 +17,25 @@ mod op_flow;
 use op_arith::op_arith_exprs;
 use op_collections::op_collection_exprs;
 use op_data::op_data_exprs;
-use op_flow::{op_flow_exprs, authored_control_expr};
+use op_flow::{authored_control_expr, op_flow_exprs};
 
 mod carrier;
 mod flat;
-mod kinds;
 pub(crate) mod kernels;
+mod kinds;
 mod record_layouts;
 mod rtcalls;
 
-use carrier::*;
+use carrier::{carrier_payload_types, expect_carrier, op_self_index};
 pub(crate) use flat::*;
-pub(crate) use kinds::*;
 pub(crate) use kernels::element_tensor_expr;
-pub(crate) use record_layouts::{record_layout, AuthoredRecordScope};
+pub(crate) use kinds::*;
+pub(crate) use record_layouts::{AuthoredRecordScope, record_layout};
 pub(crate) use rtcalls::*;
 
 /// Wrap an operand expression into the value union by its kind. Total
 /// over the joinable kinds (union, Int, Rat, Bool): the union-lane
-/// kind rules only admit those beside a CodeValue operand, so the
+/// kind rules only admit those beside a `CodeValue` operand, so the
 /// `unreachable` arm is a compile-time invariant, not a runtime path.
 pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
     match kind {
@@ -61,7 +61,7 @@ pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
 /// Wrap an operand expression into the node-record family by its
 /// kind. Total over the family-joinable kinds (node, the dual Code,
 /// the union, Int, Rat, Bool): the node-lane kind rules fold exactly
-/// those into the family, mirroring the VM's heterogeneous CValue
+/// those into the family, mirroring the VM's heterogeneous `CValue`
 /// sequences (a walk's `[made_code, node.args[1]]` list mixes Code
 /// and node values).
 pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
@@ -143,7 +143,10 @@ pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
     }
     match tree {
         CodeTree::Literal(value) => {
-            format!("emath_rt::code_tree::CodeTree::Literal({})", code_value(value))
+            format!(
+                "emath_rt::code_tree::CodeTree::Literal({})",
+                code_value(value)
+            )
         }
         CodeTree::Path(segments) => format!(
             "emath_rt::code_tree::CodeTree::Path(vec![{}])",
@@ -192,12 +195,15 @@ pub(crate) fn op_expr(
     names: &[String],
     states: &[String],
     input_kinds: &InputKinds,
+    kinds: &[ValueKind],
 ) -> Result<Expr, BackendError> {
     match op {
-        EmirOp::CallFrame { body, inputs, state, declared } => {
-            let kinds = value_kinds(program, names, states, input_kinds);
-            literal_frame_expr(body, inputs, state, program, &kinds, declared)
-        }
+        EmirOp::CallFrame {
+            body,
+            inputs,
+            state,
+            declared,
+        } => literal_frame_expr(body, inputs, state, program, kinds, declared),
         EmirOp::CallSelf { inputs, .. } => {
             // The recursive target (`__self` at entries, `__frame_self`
             // in inlined frames) declares owned parameters for
@@ -205,12 +211,12 @@ pub(crate) fn op_expr(
             // follow: records and vectors re-materialize owned
             // (clone), closure carriers rest as `Rc<dyn Fn>` registers
             // so one borrow coerces to the `&dyn Fn` parameter.
-            let kinds = value_kinds(program, names, states, input_kinds);
+
             let args = inputs
                 .iter()
                 .enumerate()
                 .map(|(position, value)| {
-                    let kind = kind_at(&kinds, *value);
+                    let kind = kind_at(kinds, *value);
                     // A node value crossing into the recursive target's
                     // declared Code parameter (the input at this
                     // position) unwraps/rebuilds through the shared
@@ -219,6 +225,13 @@ pub(crate) fn op_expr(
                     let param_kind = names
                         .get(position)
                         .and_then(|name| input_kinds.get(name).cloned());
+                    if let Some(target) = &param_kind {
+                        if let Some(converted) =
+                            numeric_boundary_value(&operand(program, *value), &kind, target)
+                        {
+                            return render_expr(&converted);
+                        }
+                    }
                     if kind == ValueKind::Node && param_kind == Some(ValueKind::ExprCode) {
                         return format!(
                             "emath_rt::code_tree::node_as_code(&{})?",
@@ -232,32 +245,39 @@ pub(crate) fn op_expr(
                     } else if kind.is_copy() {
                         render_expr(&operand(program, *value))
                     } else {
-                        render_expr(&owned_operand(program, *value, &kinds))
+                        render_expr(&owned_operand(program, *value, kinds))
                     }
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
             Ok(Expr::Raw(format!("__self({args})?")))
         }
-        EmirOp::SameDenseShape(..) | EmirOp::DenseValues(_) | EmirOp::DenseRepack { .. } | EmirOp::ToF64(_)
-        | EmirOp::DenseLayout(_) | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::ListConcat(_) | EmirOp::F64SortTotal(_) => {
-            let kinds = value_kinds(program, names, states, input_kinds);
-            op_collection_exprs(op, program, &kinds)
-        }
-        EmirOp::Branch { .. } | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) => authored_control_expr(op, program, names, states, input_kinds),
+        EmirOp::SameDenseShape(..)
+        | EmirOp::DenseValues(_)
+        | EmirOp::DenseRepack { .. }
+        | EmirOp::ToF64(_)
+        | EmirOp::DenseLayout(_)
+        | EmirOp::VectorSlice { .. }
+        | EmirOp::VectorConcat(_)
+        | EmirOp::ListConcat(_)
+        | EmirOp::F64SortTotal(_) => op_collection_exprs(op, program, kinds),
+        EmirOp::Branch { .. }
+        | EmirOp::Iterate { .. }
+        | EmirOp::Collect { .. }
+        | EmirOp::Refuse(_)
+        | EmirOp::RefuseValue(_) => authored_control_expr(op, program, kinds),
         EmirOp::ListCreate(elements) => {
-            let kinds = value_kinds(program, names, states, input_kinds);
             // A list with any node-family element joins the family's
             // dynamic sequence (the walk's mixed `[made, arg]`
             // argument lists); element values fold via `to_node`.
             if elements
                 .iter()
-                .any(|value| kind_at(&kinds, *value) == ValueKind::Node)
+                .any(|value| kind_at(kinds, *value) == ValueKind::Node)
             {
                 let items = elements
                     .iter()
                     .map(|value| {
-                        let kind = kind_at(&kinds, *value);
+                        let kind = kind_at(kinds, *value);
                         render_expr(&to_node(operand(program, *value), &kind))
                     })
                     .collect::<Vec<_>>()
@@ -266,32 +286,46 @@ pub(crate) fn op_expr(
                     "emath_rt::code_tree::node_list(vec![{items}])"
                 )));
             }
-            Ok(Expr::Macro { name: "vec".into(), args: elements.iter().map(|value| owned_operand(program, *value, &kinds)).collect() })
+            {
+                let element_kind = numeric_element_kind(elements, kinds);
+                Ok(Expr::Macro {
+                    name: "vec".into(),
+                    args: elements
+                        .iter()
+                        .map(|value| {
+                            numeric_boundary_value(
+                                &operand(program, *value),
+                                &kind_at(kinds, *value),
+                                &element_kind,
+                            )
+                            .unwrap_or_else(|| owned_operand(program, *value, kinds))
+                        })
+                        .collect(),
+                })
+            }
         }
         EmirOp::RecordField { record, field } => {
             // A field off a node value is the family's dynamic
             // projection - a typed refusal on a missing field, never
             // a silent default (the VM's `project_field` law).
-            let kinds = value_kinds(program, names, states, input_kinds);
-            if kind_at(&kinds, *record) == ValueKind::Node {
+
+            if kind_at(kinds, *record) == ValueKind::Node {
                 let record_code = render_expr(&operand(program, *record));
-                return Ok(Expr::Raw(format!(
-                    "({record_code}).field({field:?})?"
-                )));
+                return Ok(Expr::Raw(format!("({record_code}).field({field:?})?")));
             }
             // A part projection off the Rational carrier reads the
             // `(i128, i128)` tuple (`numer` = `.0`, `denom` = `.1`) and
             // widens to the exact-integer carrier, mirroring the VM's
             // `CValue::Rat { num, den }` parts. Anything but
             // numer/denom is a typed refusal, never a silent default.
-            if kind_at(&kinds, *record) == ValueKind::Rational {
+            if kind_at(kinds, *record) == ValueKind::Rational {
                 let index = match field.as_str() {
                     "numer" => "0",
                     "denom" => "1",
                     _ => {
                         return Err(BackendError::UnsupportedType(format!(
                             "Rat part projection `{field}` is not numer/denom"
-                        )))
+                        )));
                     }
                 };
                 return Ok(Expr::Raw(format!(
@@ -299,17 +333,20 @@ pub(crate) fn op_expr(
                     render_expr(&operand(program, *record))
                 )));
             }
-            let value = Expr::Field { receiver: Box::new(operand(program, *record)), field: escape_ident(field) };
-            if kind_of_op(op, &kinds, names, states, input_kinds).is_copy() { Ok(value) } else { Ok(Expr::Raw(format!("&{}", render_expr(&value)))) }
+            let value = Expr::Field {
+                receiver: Box::new(operand(program, *record)),
+                field: escape_ident(field),
+            };
+            if kind_of_op(op, kinds, names, states, input_kinds).is_copy() {
+                Ok(value)
+            } else {
+                Ok(Expr::Raw(format!("&{}", render_expr(&value))))
+            }
         }
-        EmirOp::ToInt(value) => {
-            let kinds = value_kinds(program, names, states, input_kinds);
-            checked_integer_operand(program, *value, &kinds)
-        }
+        EmirOp::ToInt(value) => checked_integer_operand(program, *value, kinds),
         EmirOp::IntegerQuotient(left, right) => {
-            let kinds = value_kinds(program, names, states, input_kinds);
-            let left_k = kind_at(&kinds, *left);
-            let right_k = kind_at(&kinds, *right);
+            let left_k = kind_at(kinds, *left);
+            let right_k = kind_at(kinds, *right);
             if left_k == ValueKind::I64 && right_k == ValueKind::I64 {
                 return Ok(checked_integer_result(Expr::MethodCall {
                     receiver: Box::new(operand(program, *left)),
@@ -322,27 +359,25 @@ pub(crate) fn op_expr(
             {
                 return Ok(map_runtime_result(format!(
                     "{}.quot(&{}).map_err(|err| err.to_string())",
-                    render_expr(&exact_int_operand(program, *left, &kinds)),
-                    render_expr(&exact_int_operand(program, *right, &kinds))
+                    render_expr(&exact_int_operand(program, *left, kinds)),
+                    render_expr(&exact_int_operand(program, *right, kinds))
                 )));
             }
             Err(BackendError::UnsupportedType(
                 "quotient requires two Int operands".into(),
             ))
         }
-        EmirOp::SameBits(left, right) => {
-            let kinds = value_kinds(program, names, states, input_kinds);
-            Ok(Expr::Raw(format!("({}).to_bits() == ({}).to_bits()", render_expr(&typed_operand(program, *left, ValueKind::F64, &kinds)), render_expr(&typed_operand(program, *right, ValueKind::F64, &kinds)))))
-        }
+        EmirOp::SameBits(left, right) => Ok(Expr::Raw(format!(
+            "({}).to_bits() == ({}).to_bits()",
+            render_expr(&typed_operand(program, *left, ValueKind::F64, kinds)),
+            render_expr(&typed_operand(program, *right, ValueKind::F64, kinds))
+        ))),
         EmirOp::ConstF64(bits) => Ok(Expr::F64(*bits)),
         EmirOp::ConstI64(value) => Ok(Expr::Int(*value)),
         EmirOp::ConstExactInt(digits) => Ok(Expr::Raw(format!(
             "emath_rt::ExactInt::parse(\"{digits}\").expect(\"const-exact-int digits\")"
         ))),
-        EmirOp::ExactIntCall { name, args } => {
-            let kinds = value_kinds(program, names, states, input_kinds);
-            Ok(exact_int_call_expr(name, args, program, &kinds)?)
-        },
+        EmirOp::ExactIntCall { name, args } => Ok(exact_int_call_expr(name, args, program, kinds)?),
         EmirOp::ConstBigInt(digits) => Ok(Expr::Raw(format!(
             "emath_rt::UBig::parse_decimal(\"{digits}\").expect(\"const-bigint digits\")"
         ))),
@@ -356,7 +391,9 @@ pub(crate) fn op_expr(
         | EmirOp::SeriesSample { .. }
         | EmirOp::SetCreate { .. }
         | EmirOp::SetContains { .. }
-        | EmirOp::RecordCreate { .. } => op_data_exprs(op, program, names, states, input_kinds),
+        | EmirOp::RecordCreate { .. } => {
+            op_data_exprs(op, program, names, states, input_kinds, kinds)
+        }
         EmirOp::F64Add(..)
         | EmirOp::F64Sub(..)
         | EmirOp::F64Mul(..)
@@ -376,11 +413,7 @@ pub(crate) fn op_expr(
         | EmirOp::Imply(..)
         | EmirOp::Iff(..)
         | EmirOp::Not(..)
-        | EmirOp::IsFinite(..) => op_arith_exprs(
-            op,
-            program,
-            &value_kinds(program, names, states, input_kinds),
-        ),
+        | EmirOp::IsFinite(..) => op_arith_exprs(op, program, kinds),
         EmirOp::Select { .. }
         | EmirOp::VectorCreate(..)
         | EmirOp::VectorLength(..)
@@ -403,11 +436,7 @@ pub(crate) fn op_expr(
         | EmirOp::VectorIndex { .. }
         | EmirOp::MatrixIndex { .. }
         | EmirOp::TensorIndex { .. }
-        | EmirOp::TensorSlice { .. } => op_collection_exprs(
-            op,
-            program,
-            &value_kinds(program, names, states, input_kinds),
-        ),
+        | EmirOp::TensorSlice { .. } => op_collection_exprs(op, program, kinds),
         EmirOp::Fold { .. }
         | EmirOp::OptionSome(..)
         | EmirOp::OptionNone
@@ -417,51 +446,69 @@ pub(crate) fn op_expr(
         | EmirOp::ResultErr(..)
         | EmirOp::ResultIsOk(..)
         | EmirOp::ResultUnwrapOr(..)
-        | EmirOp::ResultErrorOf(..) => op_flow_exprs(
-            op,
-            program,
-            names,
-            states,
-            input_kinds,
-            &value_kinds(program, names, states, input_kinds),
-        ),
+        | EmirOp::ResultErrorOf(..) => {
+            op_flow_exprs(op, program, names, states, input_kinds, kinds)
+        }
         EmirOp::ApplyCapability {
             capability,
             class,
             args,
-        } => capability_artifact_expr(
-            capability,
-            *class,
-            args,
-            program,
-            &value_kinds(program, names, states, input_kinds),
-        ),
+        } => capability_artifact_expr(capability, *class, args, program, kinds),
         EmirOp::ToF64Vector(sequence) => {
-            let kinds = value_kinds(program, names, states, input_kinds);
-            if kind_at(&kinds, *sequence) != ValueKind::Vector(Box::new(ValueKind::F64)) {
-                return Err(BackendError::UnsupportedType("vector packing requires Float64 elements".into()));
+            if kind_at(kinds, *sequence) != ValueKind::Vector(Box::new(ValueKind::F64)) {
+                return Err(BackendError::UnsupportedType(
+                    "vector packing requires Float64 elements".into(),
+                ));
             }
-            Ok(owned_operand(program, *sequence, &kinds))
+            Ok(owned_operand(program, *sequence, kinds))
         }
-        EmirOp::CallProgram { program: callable, inputs }
-        | EmirOp::CallScalarProgram { program: callable, inputs }
-        | EmirOp::CallRealProgram { program: callable, inputs }
-        | EmirOp::TryCallRealProgram { program: callable, inputs } => {
-            let kinds = value_kinds(program, names, states, input_kinds);
-            if kind_at(&kinds, *callable) != ValueKind::Program
-                || kind_at(&kinds, *inputs) != ValueKind::Vector(Box::new(ValueKind::F64))
+        EmirOp::CallProgram {
+            program: callable,
+            inputs,
+        }
+        | EmirOp::CallScalarProgram {
+            program: callable,
+            inputs,
+        }
+        | EmirOp::CallRealProgram {
+            program: callable,
+            inputs,
+        }
+        | EmirOp::TryCallRealProgram {
+            program: callable,
+            inputs,
+        } => {
+            if kind_at(kinds, *callable) != ValueKind::Program
+                || kind_at(kinds, *inputs) != ValueKind::Vector(Box::new(ValueKind::F64))
             {
-                return Err(BackendError::UnsupportedType("numeric call requires Program and Vector<Float64>".into()));
+                return Err(BackendError::UnsupportedType(
+                    "numeric call requires Program and Vector<Float64>".into(),
+                ));
             }
-            let call = format!("({})(&{})", render_expr(&operand(program, *callable)), render_expr(&operand(program, *inputs)));
+            let call = format!(
+                "({})(&{})",
+                render_expr(&operand(program, *callable)),
+                render_expr(&operand(program, *inputs))
+            );
             Ok(match op {
-                EmirOp::CallProgram { .. } => map_runtime_result(format!("{call}.and_then(emath_rt::NumericProgramResult::into_vector)")),
-                EmirOp::CallScalarProgram { .. } => map_runtime_result(format!("{call}.and_then(emath_rt::NumericProgramResult::into_scalar)")),
-                EmirOp::CallRealProgram { .. } => map_runtime_result(format!("{call}.and_then(emath_rt::NumericProgramResult::into_real)")),
-                _ => Expr::Raw(format!("{call}.and_then(emath_rt::NumericProgramResult::into_real)")),
+                EmirOp::CallProgram { .. } => map_runtime_result(format!(
+                    "{call}.and_then(emath_rt::NumericProgramResult::into_vector)"
+                )),
+                EmirOp::CallScalarProgram { .. } => map_runtime_result(format!(
+                    "{call}.and_then(emath_rt::NumericProgramResult::into_scalar)"
+                )),
+                EmirOp::CallRealProgram { .. } => map_runtime_result(format!(
+                    "{call}.and_then(emath_rt::NumericProgramResult::into_real)"
+                )),
+                _ => Expr::Raw(format!(
+                    "{call}.and_then(emath_rt::NumericProgramResult::into_real)"
+                )),
             })
         }
-        EmirOp::CallValue { program: callee_value, inputs } => {
+        EmirOp::CallValue {
+            program: callee_value,
+            inputs,
+        } => {
             // Typed indirect call on a closure carrier. The callee's
             // declared signature decides arity and borrowing: copy
             // arguments render owned, reference carriers borrow, and
@@ -469,8 +516,8 @@ pub(crate) fn op_expr(
             // callee consumes its arguments one stage at a time -
             // `(f)(a)?` yields the next callable (boxed), which the
             // following stage calls.
-            let kinds = value_kinds(program, names, states, input_kinds);
-            let ValueKind::Closure { .. } = kind_at(&kinds, *callee_value) else {
+
+            let ValueKind::Closure { .. } = kind_at(kinds, *callee_value) else {
                 return Err(BackendError::UnsupportedType(
                     "closure call requires a callee with a declared signature".into(),
                 ));
@@ -478,7 +525,7 @@ pub(crate) fn op_expr(
             let callee = render_expr(&operand(program, *callee_value));
             let mut call = format!("({callee})");
             let mut remaining: &[EmirValue] = inputs;
-            let mut kind = kind_at(&kinds, *callee_value);
+            let mut kind = kind_at(kinds, *callee_value);
             loop {
                 let ValueKind::Closure { params, result } = kind else {
                     return Err(BackendError::UnsupportedType(
@@ -496,6 +543,18 @@ pub(crate) fn op_expr(
                     .zip(params.iter())
                     .map(|(value, param)| {
                         let expression = render_expr(&operand(program, *value));
+                        if let Some(converted) = numeric_boundary_value(
+                            &operand(program, *value),
+                            &kind_at(kinds, *value),
+                            param,
+                        ) {
+                            let converted = render_expr(&converted);
+                            return if param.is_copy() {
+                                converted
+                            } else {
+                                format!("&({converted})")
+                            };
+                        }
                         if param.is_copy() {
                             return expression;
                         }
@@ -509,14 +568,15 @@ pub(crate) fn op_expr(
                         if matches!(param, ValueKind::Closure { .. }) {
                             return format!("{expression}.clone()");
                         }
-                        let already_borrowed = program
-                            .ops
-                            .get(value.0 as usize)
-                            .map(|(op, _)| {
+                        let already_borrowed =
+                            program.ops.get(value.0 as usize).is_some_and(|(op, _)| {
                                 matches!(op, EmirOp::LoadInput(_) | EmirOp::LoadState(_))
-                            })
-                            .unwrap_or(false);
-                        if already_borrowed { expression } else { format!("&{expression}") }
+                            });
+                        if already_borrowed {
+                            expression
+                        } else {
+                            format!("&{expression}")
+                        }
                     })
                     .collect::<Vec<_>>();
                 call = format!("({call}({})?)", rendered.join(", "));
@@ -528,28 +588,106 @@ pub(crate) fn op_expr(
             }
             Ok(Expr::Raw(call))
         }
-        EmirOp::ProgramLiteral { body, captures, vector_input, signature } => {
+        EmirOp::ProgramLiteral {
+            body,
+            captures,
+            vector_input,
+            signature,
+        } => {
             if body.state_count != 0 {
-                return Err(BackendError::UnsupportedType("program literal must be closed over state".into()));
+                return Err(BackendError::UnsupportedType(
+                    "program literal must be closed over state".into(),
+                ));
             }
-            let parameters = (0..body.input_count).map(|index| format!("__program_arg_{index}")).collect::<Vec<_>>();
-            let explicit = usize::from(body.input_count).checked_sub(captures.len())
-                .ok_or_else(|| BackendError::UnsupportedType("program captures exceed input count".into()))?;
-            let kinds = value_kinds(program, names, states, input_kinds);
-            if !signature.is_empty() {
+            let parameters = (0..body.input_count)
+                .map(|index| format!("__program_arg_{index}"))
+                .collect::<Vec<_>>();
+            let explicit = usize::from(body.input_count)
+                .checked_sub(captures.len())
+                .ok_or_else(|| {
+                    BackendError::UnsupportedType("program captures exceed input count".into())
+                })?;
+
+            if signature.is_empty() {
+                if *vector_input && explicit != 1 {
+                    return Err(BackendError::UnsupportedType(
+                        "vector program requires exactly one explicit input".into(),
+                    ));
+                }
+                let mut inputs = InputKinds::new();
+                let mut capture_bindings = String::new();
+                let mut bindings = String::new();
+                for (index, name) in parameters.iter().enumerate() {
+                    let kind = if index < explicit {
+                        if *vector_input {
+                            bindings.push_str(&format!("let {name} = __program_inputs.to_vec(); "));
+                            ValueKind::Vector(Box::new(ValueKind::F64))
+                        } else {
+                            bindings.push_str(&format!("let {name} = __program_inputs[{index}]; "));
+                            ValueKind::F64
+                        }
+                    } else {
+                        let argument = captures[index - explicit];
+                        let kind = kind_at(kinds, argument);
+                        let value = render_expr(&owned_operand(program, argument, kinds));
+                        capture_bindings
+                            .push_str(&format!("let __program_capture_{index} = {value}; "));
+                        let borrow = if kind.is_copy() { "" } else { "&" };
+                        bindings
+                            .push_str(&format!("let {name} = {borrow}__program_capture_{index}; "));
+                        kind
+                    };
+                    inputs.insert(name.clone(), kind);
+                }
+                let _reference = ReferenceScope::enter();
+                let body_code = render_expr(&value_expr(body, &parameters, &[], &inputs)?);
+                let result = match program_kind(body, &parameters, &[], &inputs) {
+                    ValueKind::F64 => {
+                        format!("emath_rt::NumericProgramResult::Scalar({body_code})")
+                    }
+                    ValueKind::I64 => {
+                        format!("emath_rt::NumericProgramResult::Integer({body_code})")
+                    }
+                    ValueKind::Never => body_code,
+                    ValueKind::Vector(element) if *element == ValueKind::F64 => {
+                        format!("emath_rt::NumericProgramResult::Vector({body_code})")
+                    }
+                    _ => {
+                        return Err(BackendError::UnsupportedType(
+                            "numeric program must return Float64, Int, or Vector<Float64>".into(),
+                        ));
+                    }
+                };
+                let arity_guard = if *vector_input {
+                    String::new()
+                } else {
+                    format!(
+                        "if __program_inputs.len() != {explicit} {{ return Err(String::from(\"call-program: argument count mismatch\")); }} "
+                    )
+                };
+                Ok(Expr::Raw(format!(
+                    "{{ {capture_bindings} let __program: std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>> = std::sync::Arc::new(move |__program_inputs: &[f64]| {{ {arity_guard} {bindings} Ok({result}) }}); __program }}"
+                )))
+            } else {
                 // Typed literal: the authored parameter domain fixes the
                 // callable ABI. One explicit parameter, owned captures
                 // moved into the closure, body ops propagate with `?`,
                 // and the inferred result kind types the return.
                 if *vector_input {
-                    return Err(BackendError::UnsupportedType("vector program carrier is the numeric lane only".into()));
+                    return Err(BackendError::UnsupportedType(
+                        "vector program carrier is the numeric lane only".into(),
+                    ));
                 }
                 if explicit != 1 {
-                    return Err(BackendError::UnsupportedType("typed program literal takes exactly one domain parameter".into()));
+                    return Err(BackendError::UnsupportedType(
+                        "typed program literal takes exactly one domain parameter".into(),
+                    ));
                 }
                 let param_kind = ValueKind::from_signature(signature);
                 if matches!(param_kind, ValueKind::Other) {
-                    return Err(BackendError::UnsupportedType(format!("program literal parameter domain {signature} has no native carrier")));
+                    return Err(BackendError::UnsupportedType(format!(
+                        "program literal parameter domain {signature} has no native carrier"
+                    )));
                 }
                 let param_ty = {
                     if matches!(param_kind, ValueKind::Closure { .. }) {
@@ -559,7 +697,11 @@ pub(crate) fn op_expr(
                         crate::rust_ir::render::render_ty(&param_kind.rust_ty()?)
                     } else {
                         let ty = crate::rust_ir::render::render_ty(&param_kind.rust_ty()?);
-                        if param_kind.is_copy() { ty } else { format!("&{ty}") }
+                        if param_kind.is_copy() {
+                            ty
+                        } else {
+                            format!("&{ty}")
+                        }
                     }
                 };
                 let mut inputs = InputKinds::new();
@@ -568,7 +710,7 @@ pub(crate) fn op_expr(
                 inputs.insert(parameters[0].clone(), param_kind);
                 for (index, name) in parameters.iter().enumerate().skip(1) {
                     let argument = captures[index - 1];
-                    let kind = kind_at(&kinds, argument);
+                    let kind = kind_at(kinds, argument);
                     if let ValueKind::Closure { params, result } = &kind {
                         // A captured callable must be SHARED into the
                         // literal's `'static` carrier: borrowing the
@@ -590,8 +732,9 @@ pub(crate) fn op_expr(
                         inputs.insert(name.clone(), kind);
                         continue;
                     }
-                    let value = render_expr(&owned_operand(program, argument, &kinds));
-                    capture_bindings.push_str(&format!("let __program_capture_{index} = {value}; "));
+                    let value = render_expr(&owned_operand(program, argument, kinds));
+                    capture_bindings
+                        .push_str(&format!("let __program_capture_{index} = {value}; "));
                     let borrow = if kind.is_copy() { "" } else { "&" };
                     bindings.push_str(&format!("let {name} = {borrow}__program_capture_{index}; "));
                     inputs.insert(name.clone(), kind);
@@ -605,8 +748,7 @@ pub(crate) fn op_expr(
                         let result_op = body
                             .ops
                             .get(body.result.0 as usize)
-                            .map(|(op, _)| op.name().to_string())
-                            .unwrap_or_else(|| "?".into());
+                            .map_or_else(|| "?".into(), |(op, _)| op.name().to_string());
                         return Err(BackendError::UnsupportedType(format!(
                             "program literal result has no native carrier (parameter domain {signature}, result op {result_op})"
                         )));
@@ -636,47 +778,16 @@ pub(crate) fn op_expr(
                     "{{ {capture_bindings} std::rc::Rc::new(move |{}: {param_ty}| -> Result<{result_ty}, String> {{ {bindings} {tail} }}) }}",
                     parameters[0]
                 )))
-            } else {
-            if *vector_input && explicit != 1 {
-                return Err(BackendError::UnsupportedType("vector program requires exactly one explicit input".into()));
-            }
-            let mut inputs = InputKinds::new();
-            let mut capture_bindings = String::new();
-            let mut bindings = String::new();
-            for (index, name) in parameters.iter().enumerate() {
-                let kind = if index < explicit {
-                    if *vector_input {
-                        bindings.push_str(&format!("let {name} = __program_inputs.to_vec(); "));
-                        ValueKind::Vector(Box::new(ValueKind::F64))
-                    } else {
-                        bindings.push_str(&format!("let {name} = __program_inputs[{index}]; "));
-                        ValueKind::F64
-                    }
-                } else {
-                    let argument = captures[index - explicit];
-                    let kind = kind_at(&kinds, argument);
-                    let value = render_expr(&owned_operand(program, argument, &kinds));
-                    capture_bindings.push_str(&format!("let __program_capture_{index} = {value}; "));
-                    let borrow = if kind.is_copy() { "" } else { "&" };
-                    bindings.push_str(&format!("let {name} = {borrow}__program_capture_{index}; "));
-                    kind
-                };
-                inputs.insert(name.clone(), kind);
-            }
-            let _reference = ReferenceScope::enter();
-            let body_code = render_expr(&value_expr(body, &parameters, &[], &inputs)?);
-            let result = match program_kind(body, &parameters, &[], &inputs) {
-                ValueKind::F64 => format!("emath_rt::NumericProgramResult::Scalar({body_code})"),
-                ValueKind::I64 => format!("emath_rt::NumericProgramResult::Integer({body_code})"),
-                ValueKind::Never => body_code,
-                ValueKind::Vector(element) if *element == ValueKind::F64 => format!("emath_rt::NumericProgramResult::Vector({body_code})"),
-                _ => return Err(BackendError::UnsupportedType("numeric program must return Float64, Int, or Vector<Float64>".into())),
-            };
-            let arity_guard = if *vector_input { String::new() } else { format!("if __program_inputs.len() != {explicit} {{ return Err(String::from(\"call-program: argument count mismatch\")); }} ") };
-            Ok(Expr::Raw(format!("{{ {capture_bindings} let __program: std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>> = std::sync::Arc::new(move |__program_inputs: &[f64]| {{ {arity_guard} {bindings} Ok({result}) }}); __program }}")))
             }
         }
-        EmirOp::CodeLiteral { body, param, free, carrier, tree, deps } => {
+        EmirOp::CodeLiteral {
+            body,
+            param,
+            free,
+            carrier,
+            tree,
+            deps,
+        } => {
             if param.is_none() {
                 // The compiled EXPRESSION template (bead
                 // emath-expression-quotes-324y0): the quoted
@@ -720,8 +831,8 @@ pub(crate) fn op_expr(
                     to_code_value(value_expr(body, free, &[], &inputs)?, &body_kind)
                 } else {
                     return Err(BackendError::UnsupportedType(
-                        "quote expression template body must compute the scalar union (Int/Rat/Bool arithmetic, comparisons, and boolean combinators over its free names)".into(),
-                    ));
+                    "quote expression template body must compute the scalar union (Int/Rat/Bool arithmetic, comparisons, and boolean combinators over its free names)".into(),
+                ));
                 };
                 let _reference = ReferenceScope::enter();
                 let body_code = render_expr(&body_value);
@@ -735,8 +846,10 @@ pub(crate) fn op_expr(
                     .map(|name| format!("String::from({name:?})"))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let tree_code =
-                    tree_expr(tree.as_ref().expect("union lane carries the distilled tree"));
+                let tree_code = tree_expr(
+                    tree.as_ref()
+                        .expect("union lane carries the distilled tree"),
+                );
                 let deps_code = if deps.is_empty() {
                     "std::collections::BTreeMap::new()".to_string()
                 } else {
@@ -794,11 +907,9 @@ pub(crate) fn op_expr(
             } else {
                 format!("Ok({body_code})")
             };
-            let carrier_ty =
-                crate::rust_ir::render::render_ty(&carrier_kind.rust_ty()?);
-            let unary_ty = format!(
-                "std::rc::Rc<dyn Fn({carrier_ty}) -> Result<{carrier_ty}, String>>"
-            );
+            let carrier_ty = crate::rust_ir::render::render_ty(&carrier_kind.rust_ty()?);
+            let unary_ty =
+                format!("std::rc::Rc<dyn Fn({carrier_ty}) -> Result<{carrier_ty}, String>>");
             let closure_params = parameters
                 .iter()
                 .map(|name| format!("{name}: {carrier_ty}"))
@@ -821,12 +932,16 @@ pub(crate) fn op_expr(
                 .join(", ");
             Ok(Expr::Raw(format!(
                 "{{ let __code_body = move |{closure_params}| -> Result<{carrier_ty}, String> {{ {tail} }}; \
-                 emath_rt::code::open::<{carrier_ty}>(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[{carrier_ty}]| -> Result<{unary_ty}, String> {{ \
-                 {bindings} let __code_unary: {unary_ty} = std::rc::Rc::new(move |{param}: {carrier_ty}| __code_body({forwarded})); \
-                 Ok(__code_unary) }})) }}"
+             emath_rt::code::open::<{carrier_ty}>(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[{carrier_ty}]| -> Result<{unary_ty}, String> {{ \
+             {bindings} let __code_unary: {unary_ty} = std::rc::Rc::new(move |{param}: {carrier_ty}| __code_body({forwarded})); \
+             Ok(__code_unary) }})) }}"
             )))
         }
-        EmirOp::CodeSubstitute { code, reference, value } => {
+        EmirOp::CodeSubstitute {
+            code,
+            reference,
+            value,
+        } => {
             // Partial application of one open name. The reference
             // resolved statically at lowering. A FUNCTION template
             // demands the declared carrier (the carrier check is
@@ -834,10 +949,10 @@ pub(crate) fn op_expr(
             // compile a mismatch anyway). An EXPRESSION template
             // accepts any scalar - the substitute-time carrier fact -
             // converted into the union.
-            let kinds = value_kinds(program, names, states, input_kinds);
-            match kind_at(&kinds, *code) {
+
+            match kind_at(kinds, *code) {
                 ValueKind::Code(carrier) => {
-                    let value_kind = kind_at(&kinds, *value);
+                    let value_kind = kind_at(kinds, *value);
                     if value_kind != *carrier {
                         let name = |kind: &ValueKind| match kind {
                             ValueKind::Rational => "Rat".to_string(),
@@ -859,7 +974,7 @@ pub(crate) fn op_expr(
                     )))
                 }
                 ValueKind::ExprCode => {
-                    let value_kind = kind_at(&kinds, *value);
+                    let value_kind = kind_at(kinds, *value);
                     if !union_promotable(&value_kind) || value_kind == ValueKind::CodeValue {
                         let name = |kind: &ValueKind| match kind {
                             ValueKind::Rational => "Rat".to_string(),
@@ -896,8 +1011,8 @@ pub(crate) fn op_expr(
             // shared scalar tree evaluator when it was made from
             // node records. Stamped dependencies verify against the
             // module table first (the `stale_dependency` refusal).
-            let kinds = value_kinds(program, names, states, input_kinds);
-            match kind_at(&kinds, *code) {
+
+            match kind_at(kinds, *code) {
                 ValueKind::Code(_) => Ok(Expr::Raw(format!(
                     "emath_rt::code::evaluate(&{})?",
                     render_expr(&operand(program, *code))
@@ -916,31 +1031,31 @@ pub(crate) fn op_expr(
             // minted Scope witnesses included - over the module
             // table's Global layouts. A Code value views its own
             // tree; a Fragment node value views its term.
-            let kinds = value_kinds(program, names, states, input_kinds);
-            match kind_at(&kinds, *code) {
-                ValueKind::ExprCode => Ok(Expr::Raw(format!(
-                    "({}).view(&__EMATH_MODULE_TABLE)",
-                    render_expr(&operand(program, *code))
-                ))),
-                ValueKind::Node => Ok(Expr::Raw(format!(
-                    "({}).view(&__EMATH_MODULE_TABLE)?",
-                    render_expr(&operand(program, *code))
-                ))),
-                ValueKind::Code(_) => Err(BackendError::UnsupportedType(
-                    "quote.view is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
-                )),
-                _ => Err(BackendError::UnsupportedType(
-                    "quote.view requires a Code or Fragment value".into(),
-                )),
-            }
+
+            match kind_at(kinds, *code) {
+            ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                "({}).view(&__EMATH_MODULE_TABLE)",
+                render_expr(&operand(program, *code))
+            ))),
+            ValueKind::Node => Ok(Expr::Raw(format!(
+                "({}).view(&__EMATH_MODULE_TABLE)?",
+                render_expr(&operand(program, *code))
+            ))),
+            ValueKind::Code(_) => Err(BackendError::UnsupportedType(
+                "quote.view is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
+            )),
+            _ => Err(BackendError::UnsupportedType(
+                "quote.view requires a Code or Fragment value".into(),
+            )),
+        }
         }
         EmirOp::CodeMake { node } => {
             // quote.make: rebuild a (possibly modified) node-record
             // tree back into the dual Code value; a Code passthrough
             // stays itself. The rebuilt open names and dependency
             // stamps follow the VM's quote_make laws.
-            let kinds = value_kinds(program, names, states, input_kinds);
-            match kind_at(&kinds, *node) {
+
+            match kind_at(kinds, *node) {
                 ValueKind::Node => Ok(Expr::Raw(format!(
                     "({}).make(&__EMATH_MODULE_TABLE)?",
                     render_expr(&operand(program, *node))
@@ -963,19 +1078,19 @@ pub(crate) fn op_expr(
             // record over the embedded definition table (the VM's
             // quote_body laws; a transparent body outside the
             // distilled subset refuses by name).
-            let kinds = value_kinds(program, names, states, input_kinds);
-            match kind_at(&kinds, *code) {
-                ValueKind::ExprCode => Ok(Expr::Raw(format!(
-                    "({}).body(&__EMATH_DEFINITIONS)?",
-                    render_expr(&operand(program, *code))
-                ))),
-                ValueKind::Code(_) => Err(BackendError::UnsupportedType(
-                    "quote.body is emitted for expression templates; a unary function template has no definition-table lane in this cut".into(),
-                )),
-                _ => Err(BackendError::UnsupportedType(
-                    "quote.body requires a Code value".into(),
-                )),
-            }
+
+            match kind_at(kinds, *code) {
+            ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                "({}).body(&__EMATH_DEFINITIONS)?",
+                render_expr(&operand(program, *code))
+            ))),
+            ValueKind::Code(_) => Err(BackendError::UnsupportedType(
+                "quote.body is emitted for expression templates; a unary function template has no definition-table lane in this cut".into(),
+            )),
+            _ => Err(BackendError::UnsupportedType(
+                "quote.body requires a Code value".into(),
+            )),
+        }
         }
         EmirOp::CodeOpen { package } => {
             // quote.open (the binder form's unwrap): a Fragment node
@@ -984,23 +1099,23 @@ pub(crate) fn op_expr(
             // factory and snapshot dropped (the VM's
             // check_fragment_scope + open_fragment laws, bead
             // emath-quote-bind-open-consumer-6f86g).
-            let kinds = value_kinds(program, names, states, input_kinds);
-            match kind_at(&kinds, *package) {
-                ValueKind::Node => Ok(Expr::Raw(format!(
-                    "({}).open()?",
-                    render_expr(&operand(program, *package))
-                ))),
-                ValueKind::ExprCode => Ok(Expr::Raw(format!(
-                    "({}).open()",
-                    render_expr(&operand(program, *package))
-                ))),
-                ValueKind::Code(_) => Err(BackendError::UnsupportedType(
-                    "quote.open is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
-                )),
-                _ => Err(BackendError::UnsupportedType(
-                    "quote.open requires a Code or Fragment package value".into(),
-                )),
-            }
+
+            match kind_at(kinds, *package) {
+            ValueKind::Node => Ok(Expr::Raw(format!(
+                "({}).open()?",
+                render_expr(&operand(program, *package))
+            ))),
+            ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                "({}).open()",
+                render_expr(&operand(program, *package))
+            ))),
+            ValueKind::Code(_) => Err(BackendError::UnsupportedType(
+                "quote.open is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
+            )),
+            _ => Err(BackendError::UnsupportedType(
+                "quote.open requires a Code or Fragment package value".into(),
+            )),
+        }
         }
         EmirOp::CodeBind { code } => {
             // quote.bind (the call form): the mint walk - the
@@ -1009,19 +1124,19 @@ pub(crate) fn op_expr(
             // table (the VM's mint_binds + dependency_snapshot laws).
             // The binder FORM (a fresh-tokened function literal) is
             // outside the distilled subset and refuses at lowering.
-            let kinds = value_kinds(program, names, states, input_kinds);
-            match kind_at(&kinds, *code) {
-                ValueKind::ExprCode => Ok(Expr::Raw(format!(
-                    "({}).bind(&__EMATH_MODULE_TABLE)",
-                    render_expr(&operand(program, *code))
-                ))),
-                ValueKind::Code(_) => Err(BackendError::UnsupportedType(
-                    "quote.bind is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
-                )),
-                _ => Err(BackendError::UnsupportedType(
-                    "quote.bind requires a Code value".into(),
-                )),
-            }
+
+            match kind_at(kinds, *code) {
+            ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                "({}).bind(&__EMATH_MODULE_TABLE)",
+                render_expr(&operand(program, *code))
+            ))),
+            ValueKind::Code(_) => Err(BackendError::UnsupportedType(
+                "quote.bind is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
+            )),
+            _ => Err(BackendError::UnsupportedType(
+                "quote.bind requires a Code value".into(),
+            )),
+        }
         }
         EmirOp::VectorMap { .. }
         | EmirOp::VectorMapScalar { .. }
@@ -1066,7 +1181,9 @@ fn capability_artifact_expr(
                     let names = (0..cell.params.len())
                         .map(|index| format!("__reference_arg_{index}"))
                         .collect::<Vec<_>>();
-                    let mut inputs = names.iter().zip(args)
+                    let mut inputs = names
+                        .iter()
+                        .zip(args)
                         .map(|(name, argument)| (name.clone(), kind_at(kinds, *argument)))
                         .collect();
                     let _reference = ReferenceScope::enter();
@@ -1084,7 +1201,8 @@ fn capability_artifact_expr(
                     let first_default = cell.params.len() - cell.defaults.len();
                     for index in args.len()..names.len() {
                         let default = &cell.defaults[index - first_default];
-                        let code = render_expr(&value_expr(default, &names[..index], &[], &inputs)?);
+                        let code =
+                            render_expr(&value_expr(default, &names[..index], &[], &inputs)?);
                         let kind = program_kind(default, &names[..index], &[], &inputs);
                         source.push_str(&format!("let {} = {code}; ", names[index]));
                         inputs.insert(names[index].clone(), kind);
@@ -1094,7 +1212,9 @@ fn capability_artifact_expr(
                     source.push_str(" }");
                     drop(_reference);
                     if rate_context() || fold_context() {
-                        return Ok(map_runtime_result(format!("(|| -> Result<_, String> {{ Ok({source}) }})()")));
+                        return Ok(map_runtime_result(format!(
+                            "(|| -> Result<_, String> {{ Ok({source}) }})()"
+                        )));
                     }
                     return Ok(Expr::Raw(source));
                 }
@@ -1111,8 +1231,7 @@ fn capability_artifact_expr(
                     .signature
                     .strip_prefix('(')
                     .and_then(|s| s.split_once(")->"))
-                    .map(|(s, _)| s)
-                    .unwrap_or("");
+                    .map_or("", |(s, _)| s);
                 let types: Vec<_> = inputs.split(',').collect();
                 let arguments = args
                     .iter()
@@ -1130,7 +1249,8 @@ fn capability_artifact_expr(
                     .collect::<Vec<_>>()
                     .join(", ");
                 return Ok(map_runtime_result(format!(
-                    "emath_rt::{}({arguments})", artifact.rust_function
+                    "emath_rt::{}({arguments})",
+                    artifact.rust_function
                 )));
             }
             let artifact = KERNEL_ARTIFACTS
@@ -1141,13 +1261,15 @@ fn capability_artifact_expr(
                         && artifact.semantic_hash == binding.semantic_hash
                 })
                 .ok_or_else(|| BackendError::StaleArtifactBinding(capability.to_string()))?;
-            artifact
-                .render(args, program, kinds)
-                .ok_or_else(|| BackendError::UnsupportedType(format!(
+            artifact.render(args, program, kinds).ok_or_else(|| {
+                BackendError::UnsupportedType(format!(
                     "kernel {} refuses argument carriers {:?}",
                     artifact.kernel_id,
-                    args.iter().map(|arg| kind_at(kinds, *arg)).collect::<Vec<_>>()
-                )))
+                    args.iter()
+                        .map(|arg| kind_at(kinds, *arg))
+                        .collect::<Vec<_>>()
+                ))
+            })
         }
         _ => Err(BackendError::MissingArtifactContract(
             capability.to_string(),
@@ -1182,9 +1304,7 @@ impl KernelArtifactKind {
 /// Whether a capability's codegen artifact can produce a runtime fault,
 /// for `program_may_fault` (the goal return's `Result` decision).
 pub(super) fn artifact_may_fault(capability: &str) -> bool {
-    let Ok(binding) =
-        emath_exec_ir::native_kernel::verified_kernel_binding(capability)
-    else {
+    let Ok(binding) = emath_exec_ir::native_kernel::verified_kernel_binding(capability) else {
         return false;
     };
     KERNEL_ARTIFACTS.iter().any(|artifact| {
@@ -1196,9 +1316,16 @@ pub(super) fn artifact_may_fault(capability: &str) -> bool {
 }
 
 impl KernelArtifact {
-    fn render(&self, args: &[EmirValue], program: &EmirProgram, kinds: &[ValueKind]) -> Option<Expr> {
+    fn render(
+        &self,
+        args: &[EmirValue],
+        program: &EmirProgram,
+        kinds: &[ValueKind],
+    ) -> Option<Expr> {
         match self.kind {
-            KernelArtifactKind::DensePointIndex => op_collections::dense_point_index_expr(args, program, kinds),
+            KernelArtifactKind::DensePointIndex => {
+                op_collections::dense_point_index_expr(args, program, kinds)
+            }
             KernelArtifactKind::CheckedAdd => {
                 let [left, right] = args else {
                     return None;
@@ -1284,11 +1411,18 @@ fn literal_frame_expr(
     kinds: &[ValueKind],
     declared: &[String],
 ) -> Result<Expr, BackendError> {
-    if inputs.len() != usize::from(body.input_count) || state.len() != usize::from(body.state_count) {
-        return Err(BackendError::UnsupportedType("frame argument count mismatch".into()));
+    if inputs.len() != usize::from(body.input_count) || state.len() != usize::from(body.state_count)
+    {
+        return Err(BackendError::UnsupportedType(
+            "frame argument count mismatch".into(),
+        ));
     }
-    let names = (0..inputs.len()).map(|index| format!("__frame_input_{index}")).collect::<Vec<_>>();
-    let states = (0..state.len()).map(|index| format!("__frame_state_{index}")).collect::<Vec<_>>();
+    let names = (0..inputs.len())
+        .map(|index| format!("__frame_input_{index}"))
+        .collect::<Vec<_>>();
+    let states = (0..state.len())
+        .map(|index| format!("__frame_state_{index}"))
+        .collect::<Vec<_>>();
     let mut frame_kinds = InputKinds::new();
     let mut code = String::from("{ ");
     for (index, (name, value)) in names.iter().zip(inputs).enumerate() {
@@ -1319,13 +1453,19 @@ fn literal_frame_expr(
             frame_kinds.insert(name.clone(), kind);
             continue;
         }
-        code.push_str(&format!("let {name} = {borrow}{}; ", render_expr(&operand(outer, *value))));
+        code.push_str(&format!(
+            "let {name} = {borrow}{}; ",
+            render_expr(&operand(outer, *value))
+        ));
         frame_kinds.insert(name.clone(), kind);
     }
     for (name, value) in states.iter().zip(state) {
         let kind = kind_at(kinds, *value);
         let borrow = if kind.is_copy() { "" } else { "&" };
-        code.push_str(&format!("let {name} = {borrow}{}; ", render_expr(&operand(outer, *value))));
+        code.push_str(&format!(
+            "let {name} = {borrow}{}; ",
+            render_expr(&operand(outer, *value))
+        ));
         frame_kinds.insert(name.clone(), kind);
     }
     let _reference = ReferenceScope::enter();
@@ -1360,9 +1500,7 @@ fn literal_frame_expr(
                 // the initial call. `CallSelf` re-materializes on
                 // every recursive step the same way.
                 params.push(format!("{name}: {ty}"));
-                call_args.push(format!(
-                    "<{ty} as Clone>::clone(&*{name})"
-                ));
+                call_args.push(format!("<{ty} as Clone>::clone(&*{name})"));
             }
         }
         let result_kind = program_kind(body, &names, &states, &frame_kinds);
@@ -1387,7 +1525,12 @@ fn literal_frame_expr(
         code.push_str(" }");
         return Ok(Expr::Raw(code));
     }
-    code.push_str(&render_expr(&value_expr(body, &names, &states, &frame_kinds)?));
+    code.push_str(&render_expr(&value_expr(
+        body,
+        &names,
+        &states,
+        &frame_kinds,
+    )?));
     code.push_str(" }");
     Ok(Expr::Raw(code))
 }

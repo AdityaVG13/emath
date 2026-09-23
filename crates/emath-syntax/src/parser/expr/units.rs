@@ -1,6 +1,6 @@
 //! Unit-expression parsing: brackets, expressions, atoms.
 
-use super::*;
+use super::{UnitExpr, TokenKind};
 
 impl super::super::Parser {
     /// Parse a compound-unit bracket `[unit m/s^2]`; the `unit`

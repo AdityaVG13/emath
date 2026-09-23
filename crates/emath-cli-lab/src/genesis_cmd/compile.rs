@@ -1,6 +1,6 @@
 //! The `emath compile` and world/portfolio show commands.
 
-use super::*;
+use super::{WorldIr, CompileRequest, CliExit, analyze, EXIT_REFUSED, builtin_worlds, COMPILED_WORLDS, EXIT_USAGE, path_to_string, fnv1a64, fs, EXIT_OK, Path, Component};
 
 /// Codegen world specs for `labels`. SURF-0008: the generator refuses
 /// (`E-GEN-094`) any declared meaning it cannot honor.

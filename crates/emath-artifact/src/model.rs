@@ -1,6 +1,6 @@
 //! Artifact manifests, source maps, plans, and evidence records.
 
-use super::*;
+use super::{SchemaId, ContentId, TargetProfile, EvidenceLevel, BTreeMap, EvidenceClaim};
 
 pub const ARTIFACT_MANIFEST_SCHEMA: &str = "emath.artifact";
 /// Artifact manifest document version (manifest v1). Bump on any change

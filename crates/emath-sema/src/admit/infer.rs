@@ -53,13 +53,13 @@ pub(super) enum Infer {
     /// slice (evaluation is the named next one).
     Series,
     /// An `Option<T>` carrier value (from an Option-typed declaration,
-    /// option_some, or option_none). Intentionally element-INSENSITIVE at
+    /// `option_some`, or `option_none`). Intentionally element-INSENSITIVE at
     /// this inference layer: only the carrier shape is tracked, not the
     /// payload type. The concrete
-    /// payload type is enforced later by term_compile's Shape and the
+    /// payload type is enforced later by `term_compile`'s Shape and the
     /// declared output type.
     OptionCarrier,
-    /// A `Result<T, E>` carrier value (result_ok / result_err). Like the
+    /// A `Result<T, E>` carrier value (`result_ok` / `result_err`). Like the
     /// option carrier, element/error-INsensitive here; the payload and
     /// error types are enforced downstream.
     ResultCarrier,
@@ -120,12 +120,8 @@ impl Infer {
             },
             Self::Matrix { rows, cols } => format!(
                 "Matrix[{}, {}]",
-                rows.as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "?".into()),
-                cols.as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "?".into())
+                rows.as_ref().map_or_else(|| "?".into(), ToString::to_string),
+                cols.as_ref().map_or_else(|| "?".into(), ToString::to_string)
             ),
             Self::Tensor { shape } => format!(
                 "Tensor[{}]",
@@ -301,11 +297,8 @@ pub(super) fn comparable_numeric(left: &Infer, right: &Infer) -> bool {
         (Infer::F64 | Infer::Nat | Infer::Int, Infer::F64 | Infer::Nat | Infer::Int) => true,
         (Infer::Complex, Infer::Complex | Infer::F64 | Infer::Nat | Infer::Int)
         | (Infer::F64 | Infer::Nat | Infer::Int, Infer::Complex) => true,
-        (Infer::HostDeferred, Infer::F64)
-        | (Infer::F64, Infer::HostDeferred)
-        | (Infer::HostDeferred, Infer::HostDeferred)
-        | (Infer::HostDeferred, Infer::Unit { .. })
-        | (Infer::Unit { .. }, Infer::HostDeferred) => true,
+        (Infer::HostDeferred, Infer::F64 | Infer::HostDeferred | Infer::Unit { .. }) |
+(Infer::F64 | Infer::Unit { .. }, Infer::HostDeferred) => true,
         (
             Infer::Unit {
                 dims: left_dims,

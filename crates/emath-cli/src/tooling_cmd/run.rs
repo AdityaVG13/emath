@@ -1,7 +1,7 @@
 //! Authored constructor tests. Leftover generated-crate execution stays
 //! on disk (RULE 1) and is not dispatched.
 
-use super::*;
+use super::{Path, CliExit, EXIT_USAGE, print_diagnostics, EXIT_ADMISSION, EXIT_REFUSED, EXIT_OK, EXIT_FAULT};
 
 /// Run `tests:` examples through the constructor evaluator. `work`
 /// raises the per-module budget (`--work N`), so large-instance rows

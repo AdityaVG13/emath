@@ -1,4 +1,4 @@
-use super::*;
+use super::{Value, EmirValue, EvalFault, register, rat_pair, exact_ratio_arithmetic, value_from_exact, value_from_rat, BuiltinId, f64_of, bool_of};
 
 /// Type-preserving scalar addition (control mail 66): two `Value::I64`
 /// operands add exactly via `i64::checked_add` and return `Value::I64`;

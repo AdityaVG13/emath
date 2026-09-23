@@ -1,10 +1,10 @@
 //! `emath check`: admission, data verification, and source reading.
 
-use super::*;
+use super::{Path, CliExit, refuse_malformed_project_lock, run_check, print_diagnostics, check_json_document, exit_from_diagnostics, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_IO, run_check_source, CompilerSession, Diagnostics, refuse_coded, EXIT_REFUSED};
 
 /// `check <file> [--verify-data] [--json]`: parse + admit, no codegen.
 /// `--verify-data` re-hashes every
-/// `sha256` declared in InstrumentRun provenance against the file on
+/// `sha256` declared in `InstrumentRun` provenance against the file on
 /// disk, relative to the source file; drift refuses `E-OBS-HASH`.
 pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
     if path.as_os_str() == "-" {
@@ -43,7 +43,7 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
                 !diagnostics.has_errors(),
                 &package_id,
                 &diagnostics,
-                meaning_id.as_ref().map(|id| id.as_str()),
+                meaning_id.as_ref().map(emath_core::MeaningId::as_str),
                 &units_profiles,
             )
         );
@@ -57,7 +57,7 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
 /// piped check matches the same text checked from disk.
 ///
 /// No project lock or data-file base directory exists for stdin, so
-/// `--verify-data` is refused (`E-CLI-USAGE`): InstrumentRun digests
+/// `--verify-data` is refused (`E-CLI-USAGE`): `InstrumentRun` digests
 /// resolve relative to a source file on disk.
 fn check_stdin(json: bool, verify_data: bool) -> CliExit {
     use std::io::Read;
@@ -107,7 +107,7 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
                 !diagnostics.has_errors(),
                 &package_id,
                 &diagnostics,
-                meaning_id.as_ref().map(|id| id.as_str()),
+                meaning_id.as_ref().map(emath_core::MeaningId::as_str),
                 &units_profiles,
             )
         );
@@ -115,7 +115,7 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
     exit_from_diagnostics(diagnostics.has_errors())
 }
 
-/// Declared raw-data digests: InstrumentRun provenance rows
+/// Declared raw-data digests: `InstrumentRun` provenance rows
 /// carrying a `sha256`, as (binding, file, declared digest).
 pub(super) fn declared_data_digests(path: &Path) -> Vec<(String, String, String)> {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());

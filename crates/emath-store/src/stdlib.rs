@@ -1,7 +1,7 @@
 //! Standard library as executable object packs.
 //!
 //! `std::{core, ...}` exports cells/theories/evidence as `.emlib` object
-//! packs: each element is an object with a MeaningID, canonical semantic
+//! packs: each element is an object with a `MeaningID`, canonical semantic
 //! payload, and presentation — objects, not catalog markdown. Two
 //! workspaces mount one pack without duplicating storage or compiler
 //! branches: the pack bytes are the single source, mounting is
@@ -30,7 +30,7 @@ pub const ENVELOPE_TAG_OBJECT: u8 = 1;
 /// Entry payload tag: an evidence receipt attachment.
 pub const ENVELOPE_TAG_RECEIPT: u8 = 2;
 
-/// One stdlib object as stored in a pack: kind, MeaningID, canonical
+/// One stdlib object as stored in a pack: kind, `MeaningID`, canonical
 /// semantic payload, presentation. Presentation never enters identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StdObject {
@@ -124,7 +124,7 @@ impl StdObject {
 }
 
 /// One evidence receipt as stored in a pack: the sealed receipt plus the
-/// object it attaches to. Entry id is the receipt's own EvidenceID.
+/// object it attaches to. Entry id is the receipt's own `EvidenceID`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StdReceipt {
     pub kind: String,

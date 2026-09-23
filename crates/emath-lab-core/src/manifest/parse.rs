@@ -1,6 +1,6 @@
 //! Manifest parsing and validation.
 
-use super::*;
+use super::{LabManifest, LabProblem, problem, CorpusPartition, MetricSpec, KillRule, kill_condition_token, ContentId, fnv1a64_bytes, json, JsonValue, artifact_json, json_count, kill_condition_json, LabError, expect_object, owned_string_field, bool_field, artifact_from_json, field, u64_field, array_field, object_field, string_field, parse_partition_kind, expect_u64, parse_direction, number_field, Thresholds, optional_number_field, kill_condition_from_json, parse_kill_action, FallbackPlan, FallbackAction, parse_fallback_action, EnvironmentPin, expect_string};
 
 impl LabManifest {
         /// Validates; every problem carries a stable code.

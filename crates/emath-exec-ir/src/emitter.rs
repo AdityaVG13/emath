@@ -252,8 +252,7 @@ impl Emitter {
                     BinaryOp::Mod => EmirOp::BinaryBuiltin(BuiltinId::Mod, left, right),
                     other => {
                         return Err(format!(
-                            "legacy operation {:?} reached executable lowering; admission must resolve a FeatureID application",
-                            other
+                            "legacy operation {other:?} reached executable lowering; admission must resolve a FeatureID application"
                         ));
                     }
                 };

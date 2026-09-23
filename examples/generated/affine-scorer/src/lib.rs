@@ -955,7 +955,7 @@ impl UBig {
     /// representation; same algorithm as the stage-1 i128 kernel).
     fn mod_pow(base: &UBig, exp: &UBig, m: &UBig) -> UBig {
         let mut result = UBig::rem(&UBig::one(), m);
-        let mut b = UBig::rem(base, m);
+        let b = UBig::rem(base, m);
         for i in (0..exp.bits()).rev() {
             result = UBig::mul_mod(&result, &result, m);
             if exp.bit(i) {
@@ -1067,7 +1067,7 @@ pub fn big_sqrt_mod_checked(a: &UBig, p: &UBig) -> Result<UBig, BigError> {
     if p.cmp(&two) == core::cmp::Ordering::Equal {
         return Ok(UBig::rem(a, p));
     }
-    if p.bit(0) == false {
+    if !p.bit(0) {
         return Err("sqrt_mod: modulus must be an odd prime (2 handled above)");
     }
     let modulus = UBig::rem(a, p);
@@ -1095,7 +1095,7 @@ pub fn big_sqrt_mod_checked(a: &UBig, p: &UBig) -> Result<UBig, BigError> {
         let p_minus_1 = p.sub(&one);
         let mut q = p_minus_1.clone();
         let mut s: u64 = 0;
-        while q.bit(0) == false {
+        while !q.bit(0) {
             q = q.div_u64(2);
             s += 1;
         }
@@ -1333,7 +1333,7 @@ pub fn factorial_checked(n: i64) -> Result<i64, &'static str> {
     if !(0..=20).contains(&n) {
         return Err("factorial overflow: n must be in [0, 20] for i64");
     }
-    Ok((1..=n).fold(1i64, |acc, k| acc * k))
+    Ok((1..=n).product::<i64>())
 }
 
 /// Multiplicative inverse of `a` modulo `m` (panics when the modulus is
@@ -2964,7 +2964,7 @@ impl AffineScorer {
     pub fn new(scale: f64, bias: f64) -> Result<Self, ConfigError> {
         {
             let __ok0 = !{
-                let __e2 = matches!(emath_rt::cmp_i64_f64((0i64), (scale)), Some(core::cmp::Ordering::Less | core::cmp::Ordering::Equal));
+                let __e2 = matches!(emath_rt::cmp_i64_f64(0i64, scale), Some(core::cmp::Ordering::Less | core::cmp::Ordering::Equal));
                 __e2
             };
             if __ok0 {
@@ -2973,8 +2973,8 @@ impl AffineScorer {
                 }
             }
             let __ok1 = !{
-                let __e1 = ((scale).is_finite());
-                __e1
+                
+                (scale).is_finite()
             };
             if __ok1 {
                 {
@@ -2982,8 +2982,8 @@ impl AffineScorer {
                 }
             }
             let __ok2 = !{
-                let __e1 = ((bias).is_finite());
-                __e1
+                
+                (bias).is_finite()
             };
             if __ok2 {
                 {
@@ -2991,8 +2991,8 @@ impl AffineScorer {
                 }
             }
             let __post_ok0 = !{
-                let __e2 = emath_rt::cmp_i64_f64((0i64), (scale)) == Some(core::cmp::Ordering::Less);
-                __e2
+                
+                emath_rt::cmp_i64_f64(0i64, scale) == Some(core::cmp::Ordering::Less)
             };
             if __post_ok0 {
                 {
@@ -3007,8 +3007,8 @@ impl AffineScorer {
         {
             {
                 let __e2 = (self.scale) * (x);
-                let __e4 = __e2 + (self.bias);
-                __e4
+                
+                __e2 + (self.bias)
             }
         }
     }

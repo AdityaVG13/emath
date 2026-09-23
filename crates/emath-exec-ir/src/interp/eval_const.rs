@@ -1,4 +1,4 @@
-use super::*;
+use super::{EmirProgram, EmirOp, Value, ValueFrame, EvalBudget, EvalFault};
 
 pub(super) fn eval_const(
     _self_program: &EmirProgram,

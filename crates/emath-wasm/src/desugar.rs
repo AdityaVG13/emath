@@ -18,7 +18,7 @@ pub struct PreparedSource<'a> {
     pub is_wrapped: bool,
 }
 
-impl<'a> PreparedSource<'a> {
+impl PreparedSource<'_> {
     /// Borrow the prepared text as a `&str` slice when no wrapping occurred.
     #[inline]
     #[must_use]
@@ -36,7 +36,7 @@ impl<'a> PreparedSource<'a> {
 /// Public pipeline seam: embedders and tests compile the same prepared source
 /// the op layer sees, so diagnostics refer to identical text.
 #[must_use]
-pub fn prepare_source<'a>(raw: &'a str) -> PreparedSource<'a> {
+pub fn prepare_source(raw: &str) -> PreparedSource<'_> {
     let _ = expand_scratch;
     PreparedSource {
         source: Cow::Borrowed(raw),

@@ -1,4 +1,4 @@
-use super::*;
+use super::{BinaryOp, FnDecl, Expr, ExprKind, BTreeMap, CValue, Declaration, StmtKind, BTreeSet, TypeExpr, ConstructorError, TypeKind, DomainShape, GenericArg};
 use super::prelude::*;
 
 pub(super) fn scalar_op_name(op: BinaryOp) -> Option<&'static str> {
@@ -325,7 +325,7 @@ pub(super) fn project_field(value: &CValue, field: &str) -> Option<CValue> {
         // A read-only projection: the slot count is fixed at
         // construction, so poison recovery cannot lie about it.
         CValue::Buffer(cell) if field == "length" => Some(cint(
-            cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).len(),
+            cell.lock().unwrap_or_else(std::sync::PoisonError::into_inner).len(),
         )),
         CValue::Rat { num, den } if field == "numer" => Some(CValue::Int(num.clone())),
         CValue::Rat { den, .. } if field == "denom" => Some(CValue::Int(den.clone())),

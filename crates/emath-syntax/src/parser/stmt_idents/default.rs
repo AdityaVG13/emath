@@ -1,6 +1,6 @@
 //! The default identifier-statement path.
 
-use super::*;
+use super::{Span, Stmt, TokenKind, StmtKind, Section, Keyword, CommandArgument, TypeExpr, TypeKind, Place};
 
 impl super::super::Parser {
     /// Generic ident-headed statement: sections, fields, commands, assigns.

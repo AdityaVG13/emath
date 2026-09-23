@@ -445,9 +445,7 @@ fn identity_violation(
         return first_identity_fail(table, e, left, right, law);
     }
     for e in 0..n {
-        if first_identity_fail(table, e, left, right, law).is_none() {
-            return None;
-        }
+        first_identity_fail(table, e, left, right, law)?;
     }
     Some(LawViolation {
         law: law.canonical(),

@@ -17,6 +17,8 @@ emath-exec-ir = { workspace = true }
 # backend carries the shared constructor-crate emitter. No cycles.
 emath-build = { workspace = true }
 emath-rust-backend = { workspace = true }
+# Experiment host (emath experiment): manifest and audit-ledger JSON.
+emath-artifact = { workspace = true }
 
 [lints]
 workspace = true

@@ -434,7 +434,7 @@ pub fn big_sqrt_mod_checked(a: &UBig, p: &UBig) -> Result<UBig, BigError> {
     if p.cmp(&two) == core::cmp::Ordering::Equal {
         return Ok(UBig::rem(a, p));
     }
-    if p.bit(0) == false {
+    if !p.bit(0) {
         return Err("sqrt_mod: modulus must be an odd prime (2 handled above)");
     }
     let modulus = UBig::rem(a, p);
@@ -462,7 +462,7 @@ pub fn big_sqrt_mod_checked(a: &UBig, p: &UBig) -> Result<UBig, BigError> {
         let p_minus_1 = p.sub(&one);
         let mut q = p_minus_1.clone();
         let mut s: u64 = 0;
-        while q.bit(0) == false {
+        while !q.bit(0) {
             q = q.div_u64(2);
             s += 1;
         }

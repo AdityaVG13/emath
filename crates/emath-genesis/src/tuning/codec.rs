@@ -1,6 +1,6 @@
 //! Payload encoding/decoding for symbols and semantics.
 
-use super::*;
+use super::{SemanticChange, DeltaError, PATCH_SEPARATOR, SemanticVariableKind, WorldIr, SymbolId, Signature, Fixity, SymbolDef, OperatorSemantics, MeaningHoleId};
 
 pub(super) fn operational_payloads(
     change: &SemanticChange,

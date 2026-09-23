@@ -1,6 +1,6 @@
 //! The `emath doctor` environment probes.
 
-use super::*;
+use super::{CliExit, upstream_lock_path, content_id_of_str, JsonWriter, UPSTREAM_LOCK_REL, EXIT_OK, EXIT_TOOLCHAIN, Command};
 
 pub struct DoctorProbe {
     pub name: &'static str,

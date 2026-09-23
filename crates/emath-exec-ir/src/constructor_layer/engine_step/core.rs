@@ -1,5 +1,9 @@
-use super::super::*;
-use super::prelude::{apply_unary, arrow_domain_of_expr, binary, cons_values, domain_shape_of_expr, domain_shape_of_type, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag, project_field, schema_tag};
+use super::super::{Engine, ConstructorError, Kont, Expr, CValue, ExprKind, parse_int, parse_exact, fault, Arc, BTreeMap, DomainShape, Closure, BinaryOp, Code, ExactInt, exact_fault};
+use super::prelude::{
+    apply_unary, arrow_domain_of_expr, binary, cons_values, domain_shape_of_expr,
+    domain_shape_of_type, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag,
+    project_field, schema_tag,
+};
 
 impl Engine {
     pub(in crate::constructor_layer) fn charge(&mut self) -> Result<(), ConstructorError> {
@@ -25,14 +29,40 @@ impl Engine {
         self.frames.last_mut()?.kont.pop()
     }
 
-    pub(in crate::constructor_layer) fn eval(&mut self, expr: &Expr) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn eval(
+        &mut self,
+        expr: &Expr,
+    ) -> Result<CValue, ConstructorError> {
         self.visit += 1;
         self.refresh_frame();
         self.charge()?;
         self.eval_fresh(expr)
     }
+    pub(in crate::constructor_layer) fn eval_with_kont(
+        &mut self,
+        expr: &Expr,
+        pending: impl FnOnce() -> Kont,
+    ) -> Result<CValue, ConstructorError> {
+        let position = self
+            .frames
+            .len()
+            .checked_sub(1)
+            .map(|index| (index, self.frames[index].kont.len()));
+        let result = self.eval(expr);
+        if result.is_err() {
+            if let Some((index, depth)) = position {
+                // Insert below the child's pending work, in the original caller
+                // frame even when exhaustion left nested call frames above it.
+                self.frames[index].kont.insert(depth, pending());
+            }
+        }
+        result
+    }
 
-    pub(in crate::constructor_layer) fn eval_fresh(&mut self, expr: &Expr) -> Result<CValue, ConstructorError> {
+    pub(in crate::constructor_layer) fn eval_fresh(
+        &mut self,
+        expr: &Expr,
+    ) -> Result<CValue, ConstructorError> {
         match &expr.kind {
             ExprKind::Int(text) => parse_int(text),
             ExprKind::Rational { numer, denom } => {
@@ -75,12 +105,9 @@ impl Engine {
                     if let Some(mut value) = self.env.get(&segments[0]).cloned() {
                         let mut projected = true;
                         for segment in &segments[1..] {
-                            match project_field(&value, segment) {
-                                Some(field) => value = field,
-                                None => {
-                                    projected = false;
-                                    break;
-                                }
+                            if let Some(field) = project_field(&value, segment) { value = field } else {
+                                projected = false;
+                                break;
                             }
                         }
                         if projected {
@@ -140,7 +167,10 @@ impl Engine {
                     }
                 }
                 if name == "_unmatched" {
-                    return Err(fault("nonexhaustive_match", "match did not cover the scrutinee"));
+                    return Err(fault(
+                        "nonexhaustive_match",
+                        "match did not cover the scrutinee",
+                    ));
                 }
                 if name == "true" {
                     return Ok(CValue::Bool(true));
@@ -178,8 +208,7 @@ impl Engine {
                     let domain = decl
                         .input_types
                         .first()
-                        .map(domain_shape_of_type)
-                        .unwrap_or(DomainShape::Unknown);
+                        .map_or(DomainShape::Unknown, domain_shape_of_type);
                     return Ok(CValue::Closure(Box::new(Closure {
                         param,
                         domain,
@@ -197,23 +226,19 @@ impl Engine {
                 Err(fault("unbound", format!("unbound `{name}`")))
             }
             ExprKind::Unary { op, value } => {
-                self.push_kont(Kont::UnaryAfter {
+                let v = self.eval_with_kont(value, || Kont::UnaryAfter {
                     op: *op,
                     value: value.clone(),
-                });
-                let v = self.eval(value)?;
-                self.pop_kont();
+                })?;
                 apply_unary(*op, v)
             }
             ExprKind::Binary { op, left, right } => {
+                let l = self.eval_with_kont(left, || Kont::BinLeft {
+                    op: *op,
+                    left: left.clone(),
+                    right: right.clone(),
+                })?;
                 if matches!(op, BinaryOp::And | BinaryOp::Or) {
-                    self.push_kont(Kont::BinLeft {
-                        op: *op,
-                        left: left.clone(),
-                        right: right.clone(),
-                    });
-                    let l = self.eval(left)?;
-                    self.pop_kont();
                     return match (op, l) {
                         (BinaryOp::And, CValue::Bool(false)) => Ok(CValue::Bool(false)),
                         (BinaryOp::Or, CValue::Bool(true)) => Ok(CValue::Bool(true)),
@@ -222,20 +247,11 @@ impl Engine {
                         _ => Err(fault("type", "boolean combinator expects Bool")),
                     };
                 }
-                self.push_kont(Kont::BinLeft {
-                    op: *op,
-                    left: left.clone(),
-                    right: right.clone(),
-                });
-                let l = self.eval(left)?;
-                self.pop_kont();
-                self.push_kont(Kont::BinRight {
+                let r = self.eval_with_kont(right, || Kont::BinRight {
                     op: *op,
                     left: l.clone(),
                     right: right.clone(),
-                });
-                let r = self.eval(right)?;
-                self.pop_kont();
+                })?;
                 binary(*op, l, r)
             }
             ExprKind::If {
@@ -243,30 +259,18 @@ impl Engine {
                 then_value,
                 else_value,
             } => {
-                self.push_kont(Kont::IfAfterCond {
+                let cond = self.eval_with_kont(condition, || Kont::IfAfterCond {
                     condition: condition.clone(),
                     then_value: then_value.clone(),
                     else_value: else_value.clone(),
-                });
-                let cond = self.eval(condition)?;
-                self.pop_kont();
+                })?;
                 match cond {
-                    CValue::Bool(true) => {
-                        self.push_kont(Kont::IfThen {
-                            then_value: then_value.clone(),
-                        });
-                        let value = self.eval(then_value)?;
-                        self.pop_kont();
-                        Ok(value)
-                    }
-                    CValue::Bool(false) => {
-                        self.push_kont(Kont::IfElse {
-                            else_value: else_value.clone(),
-                        });
-                        let value = self.eval(else_value)?;
-                        self.pop_kont();
-                        Ok(value)
-                    }
+                    CValue::Bool(true) => self.eval_with_kont(then_value, || Kont::IfThen {
+                        then_value: then_value.clone(),
+                    }),
+                    CValue::Bool(false) => self.eval_with_kont(else_value, || Kont::IfElse {
+                        else_value: else_value.clone(),
+                    }),
                     _ => Err(fault("type", "if condition must be Bool")),
                 }
             }
@@ -310,7 +314,11 @@ impl Engine {
                 index_seq(seq, i)
             }
             ExprKind::Call { function, args } => self.eval_call(function, args),
-            ExprKind::FunctionAbs { param, domain, body } => {
+            ExprKind::FunctionAbs {
+                param,
+                domain,
+                body,
+            } => {
                 Ok(CValue::Closure(Box::new(Closure {
                     param: param.clone(),
                     // Record the declared domain so both check lanes see
@@ -319,7 +327,7 @@ impl Engine {
                     // arguments against it).
                     domain: domain_shape_of_expr(domain),
                     body: *body.clone(),
-                    env: self.env.clone(),
+                    env: self.env.clone().into_map(),
                     recursive: None,
                 })))
             }
@@ -341,7 +349,7 @@ impl Engine {
                 // Unknown for the record-of-functions shape.
                 let recur_domain = arrow_domain_of_expr(ty);
                 if let ExprKind::FunctionAbs { param, body, .. } = &body.kind {
-                    let mut env = self.env.clone();
+                    let mut env = self.env.clone().into_map();
                     let finished = Closure {
                         param: param.clone(),
                         domain: recur_domain.clone(),
@@ -362,7 +370,7 @@ impl Engine {
                     param: String::new(),
                     domain: recur_domain,
                     body: *body.clone(),
-                    env: self.env.clone(),
+                    env: self.env.clone().into_map(),
                     recursive: Some(name.clone()),
                 })))
             }
@@ -395,7 +403,10 @@ impl Engine {
                     Some(CValue::Int(n)) => n,
                     None => ExactInt::zero(),
                     Some(other) => {
-                        return Err(fault("type", format!("range start must be Int, found {other}")))
+                        return Err(fault(
+                            "type",
+                            format!("range start must be Int, found {other}"),
+                        ));
                     }
                 };
                 let e = match end.as_ref().map(|e| self.eval(e)).transpose()? {
@@ -407,7 +418,10 @@ impl Engine {
                         ));
                     }
                     Some(other) => {
-                        return Err(fault("type", format!("range end must be Int, found {other}")))
+                        return Err(fault(
+                            "type",
+                            format!("range end must be Int, found {other}"),
+                        ));
                     }
                 };
                 let last = if *inclusive {
@@ -458,5 +472,4 @@ impl Engine {
             )),
         }
     }
-
 }

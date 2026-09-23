@@ -1,6 +1,12 @@
 //! `emath plan`/`build`/`planner` pipelines and plan inspections.
 
-use super::*;
+use super::{
+    CliExit, CompilerSession, EXIT_ADMISSION, EXIT_FAULT, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, Path,
+    PathBuf, PlanInspection, PlannerConfig, PlanningOutcome, ProviderRegistry, RegistryConfig,
+    assign_once, emit_provider_trait, exit_from_diagnostics, lift_missing, plan_json_document,
+    print_diagnostics, refuse_coded, refuse_malformed_project_lock, register_native_rust,
+    run_planner, take_nonflag_value,
+};
 use emath_core::Diagnostics;
 
 pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
@@ -45,11 +51,13 @@ fn merge_constructor_admit(source: &str, path: Option<&Path>, diagnostics: &mut 
         diagnostics.extend_from(&parse);
         return;
     }
-    let has_constructor = tree.items.iter().any(|item| matches!(
-        item,
-        emath_core::tree::Item::Declaration(decl)
-            if matches!(decl.as_kind.as_str(), "object" | "function" | "query")
-    ));
+    let has_constructor = tree.items.iter().any(|item| {
+        matches!(
+            item,
+            emath_core::tree::Item::Declaration(decl)
+                if matches!(decl.as_kind.as_str(), "object" | "function" | "query")
+        )
+    });
     if !has_constructor {
         diagnostics.error(
             "E-KIND-GONE",
@@ -196,7 +204,7 @@ pub fn build(request: BuildRequest) -> CliExit {
                     .iter()
                     .map(|d| {
                         crate::json_diagnostic_entry(
-                            &d.code,
+                            d.code,
                             match d.severity {
                                 emath_core::Severity::Error => "error",
                                 emath_core::Severity::Warning => "warning",
@@ -236,13 +244,13 @@ pub fn build(request: BuildRequest) -> CliExit {
     if let Some(exit) = build_constructor_file(&spec, &out, json) {
         return exit;
     }
-    return refuse_coded(
+    refuse_coded(
         "build",
         json,
         EXIT_ADMISSION,
         "E-KIND-GONE",
         "`emath build` emits constructor functions. Write `emath object`, `emath function`, or `emath query`.",
-    );
+    )
 }
 
 /// Plan inspections for `emath explain <file>` / `--json`.
@@ -467,13 +475,25 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
         Err(emath_rust_backend::constructor_crate::ConstructorEmitRefusal::NotConstructor(
             message,
         )) => {
-            return Some(refuse_coded("build", json, EXIT_ADMISSION, "E-KIND-GONE", message));
+            return Some(refuse_coded(
+                "build",
+                json,
+                EXIT_ADMISSION,
+                "E-KIND-GONE",
+                message,
+            ));
         }
         Err(emath_rust_backend::constructor_crate::ConstructorEmitRefusal::ImportsRefused {
             e_code,
             detail,
         }) => {
-            return Some(refuse_coded("build", json, EXIT_ADMISSION, &e_code, &detail));
+            return Some(refuse_coded(
+                "build",
+                json,
+                EXIT_ADMISSION,
+                &e_code,
+                &detail,
+            ));
         }
     };
     if let Err(err) = std::fs::create_dir_all(out.join("src")) {
@@ -485,7 +505,7 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             &err.to_string(),
         ));
     }
-    if let Err(err) = std::fs::write(out.join("src/lib.rs"), emission.lib) {
+    if let Err(err) = emath_build::write_generated_file(out.join("src/lib.rs"), emission.lib) {
         return Some(refuse_coded(
             "build",
             json,
@@ -494,7 +514,7 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             &err.to_string(),
         ));
     }
-    if let Err(err) = std::fs::write(out.join("Cargo.toml"), emission.manifest) {
+    if let Err(err) = emath_build::write_generated_file(out.join("Cargo.toml"), emission.manifest) {
         return Some(refuse_coded(
             "build",
             json,

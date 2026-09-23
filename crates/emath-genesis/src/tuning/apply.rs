@@ -1,6 +1,6 @@
 //! Apply-or-revert engine for world deltas.
 
-use super::*;
+use super::{WorldDelta, WorldIr, DeltaError, SemanticChange, SemanticVariableKind, apply_carrier, apply_symbol, apply_signature, apply_operator, replace_list_item, operational_payloads};
 
 pub(super) fn apply_or_revert(
     delta: &WorldDelta,

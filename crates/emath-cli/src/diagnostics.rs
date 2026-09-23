@@ -313,7 +313,7 @@ pub fn render_cayley_ascii(witness: &RenderedWitness) -> String {
             table
                 .rows
                 .iter()
-                .map(|row| row.get(index).map(String::len).unwrap_or(0))
+                .map(|row| row.get(index).map_or(0, String::len))
                 .max()
                 .unwrap_or(0)
                 .max(header.len())
@@ -360,7 +360,7 @@ pub fn explanation_json(explanation: &Explanation) -> String {
             let rows: Vec<String> = table.rows.iter().map(|row| row.join(" ")).collect();
             w.strings("rows", &rows);
         }
-        object.object_field("witness", &w.finish().trim_end());
+        object.object_field("witness", w.finish().trim_end());
     }
     let links: Vec<String> = explanation
         .documentation_links

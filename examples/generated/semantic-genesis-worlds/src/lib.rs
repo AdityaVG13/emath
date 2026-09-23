@@ -357,7 +357,7 @@ where
 {
     match symbol {
         "ζ" => {
-            if values.len() != 0 {
+            if !values.is_empty() {
                 return Err(EvalError::Arity {
                     symbol: symbol.into(),
                     expected: 0,

@@ -1,4 +1,4 @@
-use super::*;
+use super::{EmirProgram, EmirOp, Value, ValueFrame, EvalBudget, EvalFault, register, bool_of, evaluate_frames_in, i64_of, EvaluationFuel, evaluate_with_budget, value_as_bool};
 
 pub(super) fn eval_control(
     self_program: &EmirProgram,

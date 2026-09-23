@@ -67,7 +67,7 @@ const NO_FUNCTIONS: &str =
     "`emath build` emits lowered Rust for `emath function` entries. Symbolic query-only files are not marked runnable.";
 
 /// Generated-artifact lint policy: entry names follow authored
-/// spellings (PascalCase), the flattener parenthesizes substituted
+/// spellings (`PascalCase`), the flattener parenthesizes substituted
 /// expressions defensively, and authored-but-unused parameters stay
 /// in signatures - all style-only in machine-generated code.
 const EMITTED_HEADER: &str = "#![forbid(unsafe_code)]\n#![allow(nonstandard_style, unused_parens, unused_braces, unused_mut, unused_variables)]\n\n";
@@ -266,8 +266,7 @@ pub fn emit_constructor_crate(
                             Some((output.clone(), signature))
                         }
                         _ => None,
-                    })
-                    .map(|(name, signature)| (name, signature));
+                    });
                 match emit_constructor_entry(&lowered.program, name, &inputs, output.as_ref().map(|(name, signature)| (name.as_str(), signature.as_str())), &records) {
                     Ok(body) => {
                         rust.push_str(&format!("// function `{name}`\n"));

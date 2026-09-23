@@ -89,7 +89,7 @@ impl From<ConstructorError> for HostFault {
 
 /// What to author when a module has no session surface: the named
 /// diagnostic, with the complete worked example to copy from.
-const SURFACE_LIFT: &str = r#"a loop host drives one batch per call through an authored session surface:
+const SURFACE_LIFT: &str = r"a loop host drives one batch per call through an authored session surface:
   - `emath function Step<Name>` with inputs (state: LoopState, budget: Int)
     and exactly one output of the same state type; its body passes the
     target's module-level lifted closures to research_batch;
@@ -123,7 +123,7 @@ Make*/Seed*/Step* shape for your target:
             witness_of = MakeWitness(0)
             result = research_seed(0, value_of, CaseSet: {ids: []}, val,
                                    witness_of, target_id, evaluator_id,
-                                   input_id, mode)"#;
+                                   input_id, mode)";
 
 /// One discovered session surface.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -161,7 +161,7 @@ fn path_type_name(ty: &TypeExpr) -> Option<&str> {
 }
 
 /// `(name, type name)` pairs of one section's field declarations.
-fn section_fields(decl: &Declaration, section: &str) -> Vec<(String, Option<String>)> {
+pub(crate) fn section_fields(decl: &Declaration, section: &str) -> Vec<(String, Option<String>)> {
     decl.sections()
         .filter(|candidate| candidate.name == section)
         .flat_map(|candidate| candidate.suite.statements.iter())
@@ -462,7 +462,7 @@ fn demand_state_record(state: &CValue, state_type: &str) -> Result<(), HostFault
 
 // ---- value readers (the loop state contract fields) --------------------
 
-fn record_fields<'a>(value: &'a CValue) -> Result<&'a BTreeMap<String, CValue>, HostFault> {
+fn record_fields(value: &CValue) -> Result<&BTreeMap<String, CValue>, HostFault> {
     match value {
         CValue::Record { fields, .. } => Ok(fields),
         other => Err(HostFault::fault(

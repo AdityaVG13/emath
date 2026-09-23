@@ -121,19 +121,16 @@ pub(super) fn lower_index_axis(
                 }
                 id
             }
-            None => match extent {
-                Some(Extent::Fixed(size)) => admitter.push_expr(
-                    ExprNode::Literal(Literal::Integer(size.to_string())),
+            None => if let Some(Extent::Fixed(size)) = extent { admitter.push_expr(
+                ExprNode::Literal(Literal::Integer(size.to_string())),
+                index.source,
+            ) } else {
+                admitter.error(
+                    "E-SHAPE-006",
+                    format!("open slice on axis {axis} needs a fixed extent"),
                     index.source,
-                ),
-                _ => {
-                    admitter.error(
-                        "E-SHAPE-006",
-                        format!("open slice on axis {axis} needs a fixed extent"),
-                        index.source,
-                    );
-                    return None;
-                }
+                );
+                return None;
             },
         };
         let slice_extent = match (
@@ -143,7 +140,7 @@ pub(super) fn lower_index_axis(
                 .or(start.is_none().then_some(0.0)),
             end.as_ref().and_then(|expr| expr_number(expr)).or_else(|| {
                 end.is_none()
-                    .then(|| match extent {
+                    .then_some(match extent {
                         Some(Extent::Fixed(size)) => Some(*size as f64),
                         _ => None,
                     })

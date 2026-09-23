@@ -251,7 +251,7 @@ pub(super) fn parse_number(bytes: &[u8], index: &mut usize) -> Option<String> {
         *index += 1;
     }
     let digits_start = *index;
-    while bytes.get(*index).is_some_and(|byte| byte.is_ascii_digit()) {
+    while bytes.get(*index).is_some_and(u8::is_ascii_digit) {
         *index += 1;
     }
     if *index == digits_start {

@@ -1,4 +1,4 @@
-use super::*;
+use super::{EmirProgram, EmirOp, Value, ValueFrame, EvalBudget, EvalFault, evaluate_frames, evaluate_frames_in, register, evaluate_with_budget, vector_of, EmirValue, ProgramValue};
 
 pub(super) fn eval_calls(
     self_program: &EmirProgram,

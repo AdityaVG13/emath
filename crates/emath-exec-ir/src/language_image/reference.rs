@@ -1,4 +1,4 @@
-use super::*;
+use super::{Term, ParamShape, CompiledCell, EmirValue, DomainObligation, EmirOp, FeatureCapsule, BTreeMap, FeatureId, LanguageImageError, BTreeSet, EmirProgram, FromStr, Signature, SymbolId, TermError, optimize, Span};
 
 /// Image partition carrying the compiled reference programs. The page is
 /// DATA (canonical text), never generated Rust source, and it is the

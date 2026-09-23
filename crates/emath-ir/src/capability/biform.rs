@@ -1,6 +1,6 @@
 //! Biform (two-sided) evidence and closure assessment.
 
-use super::*;
+use super::{CellClass, CellSchema, ClosureRefusal, ProjectionKind, SuppliedProjection, required_projections, cell_id, fmt, plan_cell_closure};
 
 /// The stability gate: every required projection must be closed, and docs
 /// must be bound to the cell's current identity. Returns one typed
@@ -107,7 +107,7 @@ impl BiformAuthority {
 }
 
 /// One side's independent evidence object as supplied for closure: its
-/// own EvidenceID token and authority class. Never shared between sides;
+/// own `EvidenceID` token and authority class. Never shared between sides;
 /// the spec and algorithm evidence objects are distinct.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SideEvidence {

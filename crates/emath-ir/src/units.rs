@@ -340,7 +340,7 @@ pub struct UnitError {
 }
 
 /// Named unit catalogs are leftover leftover. Constructor surface has no
-/// SI/element FeatureID. Callers that need a table declare units locally.
+/// SI/element `FeatureID`. Callers that need a table declare units locally.
 pub fn lookup_unit(name: &str) -> Result<Unit, UnitError> {
     Err(UnitError {
         code: "E-UNIT-104",

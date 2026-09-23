@@ -9,7 +9,7 @@
 //!
 //! Contract:
 //! - **Keyed by kernel ID and carrier signature**, never by a domain enum or
-//!   FeatureID spelling.
+//!   `FeatureID` spelling.
 //! - **Handler signature uses the existing exec-ir `Value`**
 //!   (`fn(&[Value]) -> Result<Value, String>`); the exec-ir `Value`
 //!   type is the single value type across the interpreted VM, so the
@@ -23,7 +23,7 @@
 //!   fabricates a handler. A handler `Err` propagates the refusal
 //!   payload verbatim; `Ok` flows through unchanged.
 //! Kernel implementations may use runtime numerical leaves, but binding,
-//! arity, and refusal are independent of FeatureID spelling. Rust-backend
+//! arity, and refusal are independent of `FeatureID` spelling. Rust-backend
 //! codegen for kernel-backed cells is an explicit no-claim.
 
 use std::cell::RefCell;
@@ -86,7 +86,7 @@ pub struct NativeKernel {
 
 impl NativeKernel {
     /// Derive exact/range arity from the carrier signature. Optional arguments
-    /// are trailing input spellings suffixed with `?`; no FeatureID is inspected.
+    /// are trailing input spellings suffixed with `?`; no `FeatureID` is inspected.
     #[must_use]
     pub fn arity_contract(&self) -> KernelArity {
         let Some(inputs) = self
@@ -269,7 +269,7 @@ pub struct CallableSignature {
 
 fn callable_signatures(distribution: &LanguageDistribution) -> BTreeMap<String, CallableSignature> {
     distribution.capsules.iter().filter_map(|capsule| {
-        if capsule.class != emath_ir::FeatureClass::Capability || !distribution.authority.entries.get(&capsule.feature_id).is_some_and(|entry| entry.state.as_str() == "capsule-active") { return None; }
+        if capsule.class != emath_ir::FeatureClass::Capability || distribution.authority.entries.get(&capsule.feature_id).is_none_or(|entry| entry.state.as_str() != "capsule-active") { return None; }
         let emath_ir::CapsuleSlot::Value(semantics) = capsule.slots.get("semantics")? else { return None; };
         let inputs = semantic_field(semantics, "inputs")?;
         let output = semantic_field(semantics, "output")?.to_string();
@@ -373,7 +373,7 @@ pub struct RecordLayout {
 fn record_layouts(distribution: &LanguageDistribution) -> Result<BTreeMap<String, RecordLayout>, KernelBindingError> {
     let mut layouts = BTreeMap::new();
     for capsule in &distribution.capsules {
-        if !distribution.authority.entries.get(&capsule.feature_id).is_some_and(|entry| entry.state.as_str() == "capsule-active") { continue; }
+        if distribution.authority.entries.get(&capsule.feature_id).is_none_or(|entry| entry.state.as_str() != "capsule-active") { continue; }
         let Some(emath_ir::CapsuleSlot::Value(fields)) = capsule.slots.get("record_fields") else { continue; };
         let Some(emath_ir::CapsuleSlot::Value(semantics)) = capsule.slots.get("semantics") else {
             return Err(KernelBindingError::MissingSignature(capsule.feature_id.to_string()));
@@ -408,11 +408,11 @@ pub fn installed_record_layout(name: &str) -> Option<RecordLayout> {
 }
 
 thread_local! {
-    static METHOD_CONTRACTS: RefCell<BTreeMap<String, MethodContract>> = RefCell::new(BTreeMap::new());
-    static RECORD_LAYOUTS: RefCell<BTreeMap<String, RecordLayout>> = RefCell::new(BTreeMap::new());
-    static CALLABLE_SIGNATURES: RefCell<BTreeMap<String, CallableSignature>> = RefCell::new(BTreeMap::new());
+    static METHOD_CONTRACTS: RefCell<BTreeMap<String, MethodContract>> = const { RefCell::new(BTreeMap::new()) };
+    static RECORD_LAYOUTS: RefCell<BTreeMap<String, RecordLayout>> = const { RefCell::new(BTreeMap::new()) };
+    static CALLABLE_SIGNATURES: RefCell<BTreeMap<String, CallableSignature>> = const { RefCell::new(BTreeMap::new()) };
     static LANGUAGE_BINDINGS: RefCell<BTreeMap<String, InstalledKernelBinding>> =
-        RefCell::new(BTreeMap::new());
+        const { RefCell::new(BTreeMap::new()) };
     /// Installed authored reference cells (the verified Language Image's
     /// `reference_programs`, filtered to capsule-active capabilities),
     /// keyed by capability feature id string. Installed ONLY through
@@ -421,7 +421,7 @@ thread_local! {
     /// matching. The application seam consults these ONLY when no valid
     /// native binding exists.
     static REFERENCE_CELLS: RefCell<BTreeMap<String, CompiledCell>> =
-        RefCell::new(BTreeMap::new());
+        const { RefCell::new(BTreeMap::new()) };
 }
 
 /// The capsule-active capability reference programs of a distribution,
@@ -640,7 +640,7 @@ fn gcd_u128(mut left: u128, mut right: u128) -> u128 {
 
 /// Euclid over unsigned magnitudes; gcd(0, 0) = 0 by the
 /// divisibility-lattice convention (0 divides only 0, and gcd is the
-/// lattice meet). The one refusal is the 2^63 magnitude (|i64::MIN|)
+/// lattice meet). The one refusal is the 2^63 magnitude (|`i64::MIN`|)
 /// paired with 0, whose gcd has no i64 carrier.
 pub(crate) fn euclidean_gcd(args: &[Value]) -> Result<Value, String> {
     match args {
@@ -659,7 +659,7 @@ pub(crate) fn euclidean_gcd(args: &[Value]) -> Result<Value, String> {
 
 /// lcm(0, x) = 0; otherwise |a|/gcd · |b| in u128 intermediates
 /// (|a|, |b| <= 2^63, so the widened product cannot wrap u128), and a
-/// result past i64::MAX refuses typed instead of wrapping.
+/// result past `i64::MAX` refuses typed instead of wrapping.
 pub(crate) fn checked_lcm(args: &[Value]) -> Result<Value, String> {
     match args {
         [Value::I64(left), Value::I64(right)] => {
@@ -681,7 +681,7 @@ pub(crate) fn integer_factorial(args: &[Value]) -> Result<Value, String> {
     match args {
         [Value::I64(n)] => emath_rt::factorial_checked(*n)
             .map(Value::I64)
-            .map_err(|detail| detail.to_string()),
+            .map_err(std::string::ToString::to_string),
         _ => Err("E-TYPE-012: integer-factorial argument must be Int".to_string()),
     }
 }
@@ -695,7 +695,7 @@ pub(crate) fn integer_remainder(args: &[Value]) -> Result<Value, String> {
         let value = bigint_field_element(value, &modulus)?;
         return emath_rt::big_int_rem_checked(&value, &modulus)
             .map(Value::BigInt)
-            .map_err(|detail| detail.to_string());
+            .map_err(std::string::ToString::to_string);
     }
     match (value, modulus) {
         (Value::I64(value), Value::I64(modulus)) if *modulus > 0 => {
@@ -715,12 +715,12 @@ pub(crate) fn modular_inverse(args: &[Value]) -> Result<Value, String> {
         let value = bigint_field_element(value, &modulus)?;
         return emath_rt::big_mod_inv_checked(&value, &modulus)
             .map(Value::BigInt)
-            .map_err(|detail| detail.to_string());
+            .map_err(std::string::ToString::to_string);
     }
     match (value, modulus) {
         (Value::I64(value), Value::I64(modulus)) => emath_rt::mod_inv_checked(*value, *modulus)
             .map(Value::I64)
-            .map_err(|detail| detail.to_string()),
+            .map_err(std::string::ToString::to_string),
         _ => Err("E-TYPE-012: modular-inverse arguments must be exact integers".to_string()),
     }
 }
@@ -735,13 +735,13 @@ pub(crate) fn modular_power(args: &[Value]) -> Result<Value, String> {
         let exponent = bigint_exponent(exponent)?;
         return emath_rt::big_pow_mod_checked(&base, &exponent, &modulus)
             .map(Value::BigInt)
-            .map_err(|detail| detail.to_string());
+            .map_err(std::string::ToString::to_string);
     }
     match (base, exponent, modulus) {
         (Value::I64(base), Value::I64(exponent), Value::I64(modulus)) => {
             emath_rt::pow_mod_checked(*base, *exponent, *modulus)
                 .map(Value::I64)
-                .map_err(|detail| detail.to_string())
+                .map_err(std::string::ToString::to_string)
         }
         _ => Err("E-TYPE-012: modular-power arguments must be exact integers".to_string()),
     }
@@ -756,12 +756,12 @@ pub(crate) fn modular_square_root(args: &[Value]) -> Result<Value, String> {
         let value = bigint_field_element(value, &modulus)?;
         return emath_rt::big_sqrt_mod_checked(&value, &modulus)
             .map(Value::BigInt)
-            .map_err(|detail| detail.to_string());
+            .map_err(std::string::ToString::to_string);
     }
     match (value, modulus) {
         (Value::I64(value), Value::I64(modulus)) => emath_rt::sqrt_mod_checked(*value, *modulus)
             .map(Value::I64)
-            .map_err(|detail| detail.to_string()),
+            .map_err(std::string::ToString::to_string),
         _ => Err("E-TYPE-012: modular-square-root arguments must be exact integers".to_string()),
     }
 }
@@ -775,9 +775,9 @@ pub(crate) fn modular_congruence(args: &[Value]) -> Result<Value, String> {
         let left = bigint_field_element(left, &modulus)?;
         let right = bigint_field_element(right, &modulus)?;
         let left =
-            emath_rt::big_int_rem_checked(&left, &modulus).map_err(|detail| detail.to_string())?;
+            emath_rt::big_int_rem_checked(&left, &modulus).map_err(std::string::ToString::to_string)?;
         let right =
-            emath_rt::big_int_rem_checked(&right, &modulus).map_err(|detail| detail.to_string())?;
+            emath_rt::big_int_rem_checked(&right, &modulus).map_err(std::string::ToString::to_string)?;
         return Ok(Value::Bool(left == right));
     }
     match (left, right, modulus) {
@@ -805,13 +805,13 @@ fn modular_polynomial_eval(args: &[Value]) -> Result<Value, String> {
         let point = bigint_field_element(point, &modulus)?;
         return emath_rt::big_poly_eval_mod_checked(coefficients, &point, &modulus)
             .map(Value::BigInt)
-            .map_err(|detail| detail.to_string());
+            .map_err(std::string::ToString::to_string);
     }
     match (point, modulus) {
         (Value::I64(point), Value::I64(modulus)) => {
             emath_rt::poly_eval_mod_checked(coefficients, *point, *modulus)
                 .map(Value::I64)
-                .map_err(|detail| detail.to_string())
+                .map_err(std::string::ToString::to_string)
         }
         _ => Err(
             "E-TYPE-012: modular-polynomial-eval expects Vector, ExactInt, ExactInt".to_string(),
@@ -827,12 +827,12 @@ fn reed_solomon_encode(args: &[Value]) -> Result<Value, String> {
         let modulus = bigint_modulus(modulus, "rs_encode: modulus must be positive")?;
         return emath_rt::big_rs_encode_checked(coefficients, *length, &modulus)
             .map(Value::BigVector)
-            .map_err(|detail| detail.to_string());
+            .map_err(std::string::ToString::to_string);
     }
     match modulus {
         Value::I64(modulus) => emath_rt::rs_encode_checked(coefficients, *length, *modulus)
             .map(Value::Vector)
-            .map_err(|detail| detail.to_string()),
+            .map_err(std::string::ToString::to_string),
         _ => Err("E-TYPE-012: reed-solomon-encode expects Vector, Int, ExactInt".to_string()),
     }
 }
@@ -842,7 +842,7 @@ pub(crate) fn hamming_distance(args: &[Value]) -> Result<Value, String> {
         [Value::Vector(left), Value::Vector(right)] => {
             emath_rt::hamming_distance_checked(left, right)
                 .map(Value::I64)
-                .map_err(|detail| detail.to_string())
+                .map_err(std::string::ToString::to_string)
         }
         _ => Err("E-TYPE-012: hamming-distance arguments must be Vector".to_string()),
     }
@@ -865,7 +865,7 @@ fn bigint_field_element(value: &Value, modulus: &emath_rt::UBig) -> Result<emath
     match value {
         Value::BigInt(value) => Ok(value.clone()),
         Value::I64(value) => {
-            emath_rt::big_int_rem_i64_checked(*value, modulus).map_err(|detail| detail.to_string())
+            emath_rt::big_int_rem_i64_checked(*value, modulus).map_err(std::string::ToString::to_string)
         }
         _ => Err("E-TYPE-012: operand must be an exact integer".to_string()),
     }
@@ -893,18 +893,15 @@ fn modular_alphabet_shift(args: &[Value]) -> Result<Value, String> {
         let key = bigint_field_element(key, &modulus)?;
         return emath_rt::big_int_rem_checked(&symbol.add(&key), &modulus)
             .map(Value::BigInt)
-            .map_err(|detail| detail.to_string());
+            .map_err(std::string::ToString::to_string);
     }
     match (symbol, key, alphabet) {
         (Value::I64(symbol), Value::I64(key), Value::I64(alphabet)) if *alphabet > 0 => {
-            match symbol.checked_add(*key) {
-                Some(sum) => Ok(Value::I64(sum.rem_euclid(*alphabet))),
-                None => {
-                    let sum = i128::from(*symbol) + i128::from(*key);
-                    let modulus = i128::from(*alphabet);
-                    let rem = ((sum % modulus) + modulus) % modulus;
-                    Ok(Value::I64(rem as i64))
-                }
+            if let Some(sum) = symbol.checked_add(*key) { Ok(Value::I64(sum.rem_euclid(*alphabet))) } else {
+                let sum = i128::from(*symbol) + i128::from(*key);
+                let modulus = i128::from(*alphabet);
+                let rem = ((sum % modulus) + modulus) % modulus;
+                Ok(Value::I64(rem as i64))
             }
         }
         (Value::I64(_), Value::I64(_), Value::I64(_)) => {

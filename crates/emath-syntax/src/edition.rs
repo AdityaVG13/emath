@@ -62,6 +62,5 @@ pub fn grammar_profile_for(edition: &str) -> Result<&'static GrammarProfile, Gra
 #[must_use]
 pub fn admitted_by_default(stage: DeprecationStage, edition: &str) -> bool {
     grammar_profile_for(edition)
-        .map(|profile| stage < profile.min_default_stage || stage == profile.min_default_stage)
-        .unwrap_or(false)
+        .is_ok_and(|profile| stage <= profile.min_default_stage)
 }

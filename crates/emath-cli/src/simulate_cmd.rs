@@ -423,7 +423,7 @@ fn simulate_cmd(args: &SimulateArgs) -> CliExit {
             EXIT_OK
         }
         Err(error) => {
-            emit_simulate_error(&error.to_string(), args.json);
+            emit_simulate_error(&error.clone(), args.json);
             EXIT_REFUSED
         }
     }
@@ -484,7 +484,7 @@ fn emit_trajectory(
     for sample in &trajectory.samples {
         let mut parts = Vec::new();
         for (name, value) in &sample.state {
-            parts.push(format!("{name}={}", value));
+            parts.push(format!("{name}={value}"));
         }
         println!("t={} {}", format_f64(sample.t), parts.join(" "));
     }
@@ -625,7 +625,7 @@ fn value_json(value: &Value) -> String {
         // decimal digits (JSON-ish number shape, no f64 round trip).
         Value::BigInt(value) => value.to_decimal(),
         Value::BigVector(items) => {
-            let body: Vec<String> = items.iter().map(|v| v.to_decimal()).collect();
+            let body: Vec<String> = items.iter().map(emath_rt::UBig::to_decimal).collect();
             format!("[{}]", body.join(", "))
         }
         Value::Rat { num, den } => format!("{num}/{den}"),

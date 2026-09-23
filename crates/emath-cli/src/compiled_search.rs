@@ -360,18 +360,7 @@ fn execute(request: &SearchRequest) -> Result<(String, PathBuf, bool), String> {
         entry.string("function", name);
         entry.string("role", if index == 0 { "baseline" } else { "candidate" });
         entry.bool("accepted", output.status.success());
-        if !output.status.success() {
-            let reason = String::from_utf8_lossy(&output.stderr)
-                .chars()
-                .take(4096)
-                .collect::<String>();
-            if index == 0 {
-                return Err(format!(
-                    "E-SEARCH-BASELINE: compiled baseline failed reference agreement: {reason}"
-                ));
-            }
-            entry.string("rejection", &reason);
-        } else {
+        if output.status.success() {
             let samples = String::from_utf8(output.stdout)
                 .map_err(|error| error.to_string())?
                 .lines()
@@ -406,6 +395,17 @@ fn execute(request: &SearchRequest) -> Result<(String, PathBuf, bool), String> {
             {
                 best = Some((summary.median, (*name).clone()));
             }
+        } else {
+            let reason = String::from_utf8_lossy(&output.stderr)
+                .chars()
+                .take(4096)
+                .collect::<String>();
+            if index == 0 {
+                return Err(format!(
+                    "E-SEARCH-BASELINE: compiled baseline failed reference agreement: {reason}"
+                ));
+            }
+            entry.string("rejection", &reason);
         }
         entries.push(entry.finish());
     }
@@ -465,9 +465,7 @@ fn cpu_name() -> String {
             .args(["-n", "machdep.cpu.brand_string"])
             .output()
             .ok()
-            .filter(|out| out.status.success())
-            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
-            .unwrap_or_else(|| "unavailable".into());
+            .filter(|out| out.status.success()).map_or_else(|| "unavailable".into(), |out| String::from_utf8_lossy(&out.stdout).trim().to_string());
     }
     fs::read_to_string("/proc/cpuinfo")
         .ok()

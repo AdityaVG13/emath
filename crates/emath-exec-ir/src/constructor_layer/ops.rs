@@ -1,4 +1,4 @@
-use super::*;
+use super::{CValue, ConstructorError, ExactInt, UnaryOp, BinaryOp};
 use super::prelude::*;
 
 /// Ordering across numeric carriers. Pure exact pairs cross-multiply; any
@@ -64,7 +64,7 @@ pub(super) fn index_seq(seq: CValue, i: ExactInt) -> Result<CValue, ConstructorE
             };
             let items = cell
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             items
                 .get(index)
                 .cloned()

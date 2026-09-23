@@ -1,14 +1,14 @@
 //! The independent evidence plane: proofs/tests attach to
 //! stored objects as content-addressed receipts WITHOUT touching the
-//! object graph — attaching evidence never changes ObjectID or
-//! MeaningID (evidence is not a second meaning identity; authority
+//! object graph — attaching evidence never changes `ObjectID` or
+//! `MeaningID` (evidence is not a second meaning identity; authority
 //! comes from the receipt content, never from method popularity).
 //!
 //! Receipts reuse the house content-addressing convention
 //! (`fnv1a64` over length-framed canonical bytes, schema-fenced like
 //! every store id). A receipt whose recorded `evidence_id` does not
 //! match the hash recomputed from its `(kind, payload)` is FORGED —
-//! `E-EVID-503`, the EvidenceStore tamper code, refused before any
+//! `E-EVID-503`, the `EvidenceStore` tamper code, refused before any
 //! view mutation. Attachment is idempotent per (object, receipt);
 //! views are derived (count/iterate), never stored separately, so the
 //! plane cannot drift from its own receipts.

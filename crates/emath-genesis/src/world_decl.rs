@@ -539,13 +539,13 @@ pub fn synthesize_world(
     let mut rows = BTreeMap::new();
     let identity_index = match law {
         WorldLaw::IdentityElement { element } => {
-            let index = domain
+            
+            domain
                 .iter()
                 .position(|known| known == element)
                 .ok_or_else(|| SynthesisError::UnknownElement {
                     element: element.clone(),
-                })?;
-            index
+                })?
         }
         _ => usize::MAX,
     };

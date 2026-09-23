@@ -1,6 +1,6 @@
 //! The `--function-spec` evaluation path.
 
-use super::*;
+use super::{EvalArgs, CliExit, EXIT_OK, refuse_eval_coded, has_declaration_content, CompilerSession, Limits, print_diagnostics, print_json_diagnostics, json_diagnostics_entries, EXIT_REFUSED, TypeNode, BTreeMap, Value, parse_set_value_for, eval_definitions_values, run_declaration, TestVerdict, JsonWriter};
 
 fn eval_constructor_file(args: &EvalArgs) -> Option<CliExit> {
     let source = std::fs::read_to_string(&args.path).ok()?;
@@ -311,7 +311,7 @@ pub(super) fn eval_function_spec(args: &EvalArgs) -> CliExit {
         &inputs_from,
         &inputs,
         &outputs,
-        &meaning_id.to_string(),
+        meaning_id.as_ref(),
         args.json,
     );
     EXIT_OK

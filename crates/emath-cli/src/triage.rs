@@ -42,57 +42,54 @@ pub fn compute_recommendations(
         prio += 1;
     }
 
-    match active_path {
-        Some(path) => {
-            let path_str = path.display().to_string();
-            if !admitted {
-                let first_error = diagnostics.errors().next().map(|d| &d.code[..]);
-                if let Some(code) = first_error {
-                    recommendations.push(TriageRecommendation {
-                        priority: prio,
-                        action: "explain_error",
-                        command: format!("emath explain {code} --json"),
-                        reason: format!("Investigate refusal diagnostic {code}"),
-                    });
-                    prio += 1;
-                }
-                recommendations.push(TriageRecommendation {
-                    priority: prio,
-                    action: "fix_diagnostics",
-                    command: format!("emath check {path_str} --json"),
-                    reason: "Resolve admission errors in constructor source".to_string(),
-                });
-            } else {
-                recommendations.push(TriageRecommendation {
-                    priority: prio,
-                    action: "build",
-                    command: format!("emath build {path_str} --verify --json"),
-                    reason: "Compile an admitted constructor program to verified Rust".to_string(),
-                });
-                prio += 1;
-                recommendations.push(TriageRecommendation {
-                    priority: prio,
-                    action: "run",
-                    command: format!("emath run {path_str} --json"),
-                    reason: "Run an ordinary `emath function` or `emath query`".to_string(),
-                });
-            }
-        }
-        None => {
+    if let Some(path) = active_path {
+        let path_str = path.display().to_string();
+        if admitted {
             recommendations.push(TriageRecommendation {
                 priority: prio,
-                action: "scaffold_program",
-                command: "emath new my_program".to_string(),
-                reason: "No .emath programs found in current directory; create a new project scaffold".to_string(),
+                action: "build",
+                command: format!("emath build {path_str} --verify --json"),
+                reason: "Compile an admitted constructor program to verified Rust".to_string(),
             });
             prio += 1;
             recommendations.push(TriageRecommendation {
                 priority: prio,
-                action: "capabilities",
-                command: "emath capabilities --json".to_string(),
-                reason: "Inspect the constructor CLI contract".to_string(),
+                action: "run",
+                command: format!("emath run {path_str} --json"),
+                reason: "Run an ordinary `emath function` or `emath query`".to_string(),
+            });
+        } else {
+            let first_error = diagnostics.errors().next().map(|d| d.code);
+            if let Some(code) = first_error {
+                recommendations.push(TriageRecommendation {
+                    priority: prio,
+                    action: "explain_error",
+                    command: format!("emath explain {code} --json"),
+                    reason: format!("Investigate refusal diagnostic {code}"),
+                });
+                prio += 1;
+            }
+            recommendations.push(TriageRecommendation {
+                priority: prio,
+                action: "fix_diagnostics",
+                command: format!("emath check {path_str} --json"),
+                reason: "Resolve admission errors in constructor source".to_string(),
             });
         }
+    } else {
+        recommendations.push(TriageRecommendation {
+            priority: prio,
+            action: "scaffold_program",
+            command: "emath new my_program".to_string(),
+            reason: "No .emath programs found in current directory; create a new project scaffold".to_string(),
+        });
+        prio += 1;
+        recommendations.push(TriageRecommendation {
+            priority: prio,
+            action: "capabilities",
+            command: "emath capabilities --json".to_string(),
+            reason: "Inspect the constructor CLI contract".to_string(),
+        });
     }
 
     recommendations
@@ -232,7 +229,7 @@ fn discover_target_file() -> Option<PathBuf> {
         let mut emath_files: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.extension().map_or(false, |ext| ext == "emath"))
+            .filter(|p| p.extension().is_some_and(|ext| ext == "emath"))
             .collect();
         emath_files.sort();
         if let Some(first) = emath_files.into_iter().next() {
@@ -247,7 +244,7 @@ fn discover_target_file() -> Option<PathBuf> {
                 let mut emath_files: Vec<PathBuf> = entries
                     .flatten()
                     .map(|e| e.path())
-                    .filter(|p| p.extension().map_or(false, |ext| ext == "emath"))
+                    .filter(|p| p.extension().is_some_and(|ext| ext == "emath"))
                     .collect();
                 emath_files.sort();
                 if let Some(first) = emath_files.into_iter().next() {
@@ -282,7 +279,7 @@ fn print_triage_json(
             "attention_required"
         },
     );
-    let target_str = target.map(|p| p.display().to_string()).unwrap_or_else(|| "(none)".to_string());
+    let target_str = target.map_or_else(|| "(none)".to_string(), |p| p.display().to_string());
     quick_ref.string("target", &target_str);
     quick_ref.bool("doctor_ready", doctor_ok);
     quick_ref.bool("admitted", admitted);
@@ -343,7 +340,7 @@ fn print_triage_human(
     println!(
         "{}: {}",
         crate::terminal::stdout_bold("Target"),
-        target.map(|p| p.display().to_string()).unwrap_or_else(|| "(none)".to_string())
+        target.map_or_else(|| "(none)".to_string(), |p| p.display().to_string())
     );
     let ok_count = probes.iter().filter(|p| p.ok).count();
     let health_str = if ok_count == probes.len() {

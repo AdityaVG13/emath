@@ -1,4 +1,4 @@
-use super::*;
+use super::{Path, CliExit, constructor_inspect, SavedRun, successor, diagnostic, EXIT_USAGE, emit, EXIT_OK, resume_package, jobs, EXIT_REFUSED, execute_case, JsonWriter, TypeNode, Value};
 
 pub(crate) fn inspect(path: &Path, json: bool) -> CliExit {
     if let Some(exit) = constructor_inspect(path, json) {
@@ -55,7 +55,7 @@ pub(crate) fn verify(path: &Path, json: bool) -> CliExit {
             frames,
             false,
         );
-        let expected = state.completed.get(index).or_else(|| state.active_result.as_ref());
+        let expected = state.completed.get(index).or(state.active_result.as_ref());
         if !result.as_ref().is_ok_and(|(result, observed)| Some(result) == expected && observed == frames) {
             return diagnostic(
                 json,
@@ -83,8 +83,7 @@ pub(crate) fn verify(path: &Path, json: bool) -> CliExit {
         println!("{}", out.finish());
     } else {
         println!(
-            "verified {} cases by certificate checks and source reconstruction; not a formal proof",
-            checked_cases
+            "verified {checked_cases} cases by certificate checks and source reconstruction; not a formal proof"
         );
     }
     EXIT_OK

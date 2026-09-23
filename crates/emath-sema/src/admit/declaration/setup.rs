@@ -1,6 +1,6 @@
 use emath_core::tree::ExprKind;
 
-use super::*;
+use super::{BTreeSet, Admitter, KindSchema, BTreeMap, Section, StmtKind, RepeatPolicy, PHASE1_SECTIONS};
 
 /// Validate the declaration shell and index its sections by name
 /// (moved verbatim from `admit_declaration`).

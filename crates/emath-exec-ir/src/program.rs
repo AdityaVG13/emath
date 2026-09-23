@@ -1,6 +1,6 @@
 //! Program-level structures: `EmirProgram`, `DomainObligation`.
 
-use super::*;
+use super::{EmirOp, Span, EmirValue, write_nested_programs};
 
 /// Domain obligations recorded during lowering. semantics: the
 /// obligation is emitted as an assumption (strict-f64 IEEE behavior); no

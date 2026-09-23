@@ -512,7 +512,7 @@ pub fn dedupe(tables: &[OpTable]) -> Result<DedupeReceipt, MorphismError> {
         let mut dropped = Vec::new();
         for &member in members.iter().skip(1) {
             let witness = find_isomorphism(&tables[member], &tables[representative_index])?
-                .ok_or_else(|| MorphismError::InvalidMorphism {
+                .ok_or(MorphismError::InvalidMorphism {
                     reason: "iso-witness-missing",
                 })?;
             dropped.push(DroppedDuplicate {

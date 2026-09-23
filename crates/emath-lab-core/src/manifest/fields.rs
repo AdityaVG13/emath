@@ -1,6 +1,6 @@
 //! JSON field helpers and enum round-trips.
 
-use super::*;
+use super::{LabProblem, ArtifactRef, JsonValue, LabError, ContentId, PartitionKind, MetricDirection, KillAction, FallbackAction, KillCondition};
 
 pub(super) fn problem(code: &'static str, message: &str) -> LabProblem {
     LabProblem {

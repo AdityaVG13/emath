@@ -33,7 +33,7 @@ fn catalog_contract() {
         |word| suggest_command(word),
     ));
     p.eq("core-alias", CORE_COMMANDS, COMMANDS);
-    p.eq("core-len", COMMANDS.len(), 21);
+    p.eq("core-len", COMMANDS.len(), 23);
     p.case("live-help", |p| {
         for command in COMMANDS {
             p.demand(format!("{command}-usage"), command_usage(command).is_some(), "usage");

@@ -1,6 +1,15 @@
 //! Package build orchestration: compose, stage, cargo, verify.
 
-use super::*;
+use super::{
+    content_id_of_str, generated_crate_target_dir, manifest_identity, plan_to_record, publish,
+    required_artifact_paths, stage, verify_artifact, write_artifact_manifest,
+    write_evidence_bundle, write_resolution_plan, write_source_map, ArtifactClass,
+    ArtifactManifest, BTreeMap, BackendInput, BackendOutput, BuildError, BuildOptions, BuildReport,
+    ClaimVerdict, Component, CrateProfile, Diagnostics, EvidenceBundleRecord, EvidenceClaim,
+    EvidenceLevel, Path, PathBuf, PlanRecord, ResolutionPlan, SchemaId, SourceMap, SourceMapEntry,
+    StagedFile, ARTIFACT_MANIFEST_SCHEMA, COMPILER_DESCRIPTOR, EVIDENCE_BUNDLE_SCHEMA,
+    SOURCE_MAP_SCHEMA,
+};
 
 /// Artifact pipeline over an already-elaborated package
 /// (programmatic models and macro-expanded sources use this exact path:
@@ -406,6 +415,13 @@ pub fn run_cargo_timed(
     timeout: std::time::Duration,
 ) -> Result<std::process::Output, String> {
     use std::io::Read;
+    // Generated crates can live outside the workspace's Cargo configuration.
+    // Bound their default fan-out without overriding an explicit caller choice.
+    for key in ["CARGO_BUILD_JOBS", "RUST_TEST_THREADS"] {
+        if !command.get_envs().any(|(name, _)| name == key) {
+            command.env(key, std::env::var_os(key).unwrap_or_else(|| "1".into()));
+        }
+    }
     // Stay in the terminal's foreground group so Ctrl-C / SIGTERM reach
     // cargo and rustc. On timeout, kill cargo's children first (rustc),
     // then cargo: Child::kill alone leaves the compiler holding
@@ -418,21 +434,19 @@ pub fn run_cargo_timed(
         .map_err(|error| format!("cannot spawn cargo: {error}"))?;
     // Take both pipes before returning Err so a missing pipe cannot orphan
     // a live cargo child (kill + wait before propagating).
-    let mut stdout = match child.stdout.take() {
-        Some(stdout) => stdout,
-        None => {
-            kill_timed_child(&mut child);
-            let _ = child.wait();
-            return Err("stdout pipe missing after spawn".to_string());
-        }
+    let mut stdout = if let Some(stdout) = child.stdout.take() {
+        stdout
+    } else {
+        kill_timed_child(&mut child);
+        let _ = child.wait();
+        return Err("stdout pipe missing after spawn".to_string());
     };
-    let mut stderr = match child.stderr.take() {
-        Some(stderr) => stderr,
-        None => {
-            kill_timed_child(&mut child);
-            let _ = child.wait();
-            return Err("stderr pipe missing after spawn".to_string());
-        }
+    let mut stderr = if let Some(stderr) = child.stderr.take() {
+        stderr
+    } else {
+        kill_timed_child(&mut child);
+        let _ = child.wait();
+        return Err("stderr pipe missing after spawn".to_string());
     };
     let stdout_thread = std::thread::spawn(move || {
         let mut buf = Vec::new();

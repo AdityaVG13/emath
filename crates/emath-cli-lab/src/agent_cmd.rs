@@ -409,7 +409,7 @@ fn agent_triage_cmd(file: &Path) -> CliExit {
             let result = session.plan(package.file);
             (result.package.goals, result.plans.len() as u64, true, None)
         }
-        Err(error) => (Vec::new(), 0, false, Some(error.to_string())),
+        Err(error) => (Vec::new(), 0, false, Some(error.clone())),
     };
     println!(
         "{}",

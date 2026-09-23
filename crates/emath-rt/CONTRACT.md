@@ -16,6 +16,22 @@ the generated language image. The implementation is shared two ways:
 
 Layer: foundation (std-only, no other emath crates).
 
+## Exact integer comparison
+
+Ordering compares Small/Small directly as i128. Wide magnitudes are borrowed;
+a mixed Small operand uses four stack limbs, including i128::MIN via
+unsigned_abs. Sign order and negative-magnitude reversal are unchanged. No
+heap allocation is needed for comparison itself. Native generated code and
+constructor VM share this implementation. The numeric_typed regression checks
+all pairs around signed and storage boundaries and equivalent Big/Small forms.
+
+## Wide integer division
+
+Single-u32-limb divisors use high-to-low word division. Remainder < divisor
+ensures that joining it with the next u32 limb fits in u64. Signed/Euclidean
+wrappers, zero handling, normalization, and multi-limb fallback are unchanged.
+This shared representation primitive does not widen native Int type admission.
+
 ## Public types and semantics
 
 - `SOURCE: &'static str`; the embeddable kernel body; byte-stable per
