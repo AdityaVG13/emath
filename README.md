@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Status](https://img.shields.io/badge/status-active%20Rust%20workspace-2ea44f)](#what-exists-now)
-[![Rust](https://img.shields.io/badge/rust-nightly%202026--08--04-b7410e)](rust-toolchain.toml)
+[![Rust](https://img.shields.io/badge/rust-nightly%202026--08--27-b7410e)](rust-toolchain.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Manual](https://img.shields.io/badge/docs-manual-0969da)](MANUAL.md)
 [![Constitution](https://img.shields.io/badge/docs-constitution-blue)](implementation/CONSTITUTION.md)
@@ -32,7 +32,7 @@ Intent is resolved through a deterministic pipeline (parse → constructor admis
 | Pipeline | Parse → admit constructor kinds → typed IR → reference VM (`emath run`) or Rust emission (`emath build`) |
 | Gates | `emath check`, `emath run`, `emath build` |
 | Capstone demos | `cargo xtask demo <name>` (holes-synthesis, scoped-binders, math-layout, cache-policy, and module demos) |
-| Web playground | `emath web` (in-page WASM compiler; Stage 1 subset today) |
+| Web playground | `cargo xtask serve-web` after `cargo xtask build-web` (in-page WASM workbench; see [`web/README.md`](web/README.md)) |
 | Providers | Std-only; in-tree Dew/Rumoca stand-ins; Wrenfold / Franken* planned behind adapters |
 | Docs of record | [`MANUAL.md`](MANUAL.md), [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md), [`examples/`](examples/README.md) |
 
@@ -102,11 +102,11 @@ emath function Greeter:
 
 Declare only what you need: `inputs:`, `outputs:`, `definitions:`, and `tests:` are the function sections. `goals:` and `compile:` are not constructor sections. `emath run` admits the source and evaluates definitions or source examples on the reference VM. It prints a constructor receipt. Use `emath test <file>` for authored tests. Use `emath build <file>` to emit Rust.
 
-### CLI change: 2026-09-08
+### CLI change: 2026-09-08 (historical)
 
 `run` and `step` now commit each complete case. Retries reuse saved results; revision locks prevent competing commits. `--cancel-file` stops between cases. Failed definitions retain independent values without turning failure into success.
 
-`run --branch-from <checkpoint> --relation <relation>` keeps changed problems separate from the original target. `run --measure N` records real reference-execution timings, not generated-kernel speedups. [Runtime controls and limits](implementation/CLI_REFERENCE.md#durable-execution-controls-2026-09-08). No mathematical capability or `language/` file changed in this update.
+At the time this note was written, `run` also accepted `--branch-from <checkpoint> --relation <relation>` and `--measure N`; those flags are no longer in the `run` surface (`emath help run` is the live list). No mathematical capability or `language/` file changed in this update.
 
 ### CLI change: 2026-09-07
 
@@ -140,7 +140,7 @@ emath function Total:
     outputs:
         result: Int
     definitions:
-        result = reduce(0, add) x in xs: x
+        result = sum(xs)
 ```
 
 What actually runs today:
@@ -183,14 +183,14 @@ See [`language/CAPABILITY.md`](language/CAPABILITY.md) and [`MANUAL.md`](MANUAL.
 
 ## Web playground
 
-After a source checkout, build the browser pane and WASM engine, then serve them locally:
+After a source checkout, build the workbench assets and WASM engine, then serve them locally (see [`web/README.md`](web/README.md)):
 
 ```console
 $ cargo xtask build-web
-$ emath web
+$ cargo xtask serve-web [port]
 ```
 
-`cargo run -p emath-cli -- web` is the same. The command prints `http://127.0.0.1:7878/` (or the `--port` you pass) and opens a browser; Ctrl-C stops the server. Use `--no-open` to skip the browser, and `--dist PATH` or `EMATH_WEB_DIST` to point at a built `web/dist`.
+The server defaults to port 8080; navigate to `http://localhost:8080`. `emath web` is a named refusal — the playground is not part of the constructor CLI.
 
 Everything in the pane executes in-page through a C-ABI WASM build of the compiler (no server round-trips, no cargo, nothing leaves the machine):
 
@@ -219,7 +219,7 @@ FrankenLean            planned (theorem and proof evidence)
 native providers       exact arithmetic, intervals, search, basic numerics
 ```
 
-Upstream engines (Dew JIT/GPU, the full Rumoca compiler, Wrenfold, Franken*) are pinned dependencies behind adapters, never presented as implemented before they are wired in. They do not define emath's public semantics, and no upstream internals appear in emath's stable public IR. See `emath provider list` for the machine-readable status table.
+Upstream engines (Dew JIT/GPU, the full Rumoca compiler, Wrenfold, Franken*) are pinned dependencies behind adapters, never presented as implemented before they are wired in. They do not define emath's public semantics, and no upstream internals appear in emath's stable public IR. The table above is the machine-checked status view; `emath provider` is a named refusal (providers are not language identities).
 
 ## Design principles
 

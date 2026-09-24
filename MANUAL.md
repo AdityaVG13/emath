@@ -31,8 +31,9 @@ and `emath kind` refuse. `goals:`, `equations:`, `state:`, and
 `compile:` are not constructor sections.
 
 The five constructor families are `object`, `function`, `recur`,
-`quote`, and `query`. Named recipes (`sum`, `derivative`, `solve`,
-`sin`, `norm`) are ordinary modules behind `use`, or local code.
+`quote`, and `query`. Named recipes are ordinary modules behind
+`use` (`fold.reduce`'s `sum`, `analysis.derivative`, `algebra.solve`,
+`numerics.float64_kernels`' `sin_*`), or local code.
 
 ## Commands
 
