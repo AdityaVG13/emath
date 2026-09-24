@@ -25,9 +25,12 @@
 //! `language/modules/mechanics/oscillations.emath`,
 //! `language/modules/discrete/order.emath` (the mutual-recursion
 //! cycle pins), `language/modules/discrete/matching.emath` (the
-//! mixed-kind join pins), and `language/modules/search/
-//! structural_spike.emath` (the code-template-carrier pins) — the
-//! same givens,
+//! mixed-kind join pins), `language/modules/search/
+//! structural_spike.emath` (the code-template-carrier pins),
+//! `language/modules/analysis/evolution/composition.emath` (the
+//! shared-state record + curried-closure pins), and
+//! `language/modules/mechanics/stiff.emath` (the implicit-solve +
+//! adaptive-walk pins) — the same givens,
 //! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
@@ -3026,6 +3029,648 @@ fn emission_conformance_structural_spike() {
     assert!(
         diffs.is_empty(),
         "emitted structural_spike disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const COMPOSITION_DRIVER: &str = r#"
+//! Authored pins of analysis/evolution/composition.emath against the
+//! emitted crate (emath-49o8, the shared-state lane).
+//!
+//! SimState is one_step's shared evolution object; this module had
+//! used it with no import (the VM resolved it structurally), so the
+//! emitted lane refused every record literal by name until the
+//! dependency was authored. The import closed it: the record
+//! literals emit as EmathRecord_SimState, the CURRIED closure inputs
+//! (accel: Rat -> Rat -> Rat) ride the two-level
+//! Rc<dyn Fn(..) -> Result<Rc<dyn Fn(..) -> Result<..>>>> ABI, and
+//! the binary subflow closures (f: Rat -> SimState -> SimState)
+//! chain through flow_compose with the record taken by reference at
+//! the second stage. Transcription boundaries: every ratio compares
+//! cross-multiplied (emitted values are canonical; the drivers never
+//! assume a reduced spelling), and the two-step rollout rows assume
+//! the emitted recursion consumes i/n as authored.
+
+use composition::{
+    composition_contract, damped_drift, damped_step, drift, energy, energy_boundary,
+    flow_compose, kick, momentum_reversal, probe_separable, verlet_rollout, verlet_step,
+    EmathRecord_SimState as S,
+};
+
+type R = (i128, i128);
+type Accel = std::rc::Rc<
+    dyn Fn(R) -> Result<std::rc::Rc<dyn Fn(R) -> Result<R, String>>, String>,
+>;
+type Flow = std::rc::Rc<
+    dyn Fn(R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<S, String>>, String>,
+>;
+
+fn q(n: i128, d: i128) -> R {
+    (n, d)
+}
+
+fn s(t: R, y0: R, y1: R) -> S {
+    S { t, y: vec![y0, y1] }
+}
+
+fn eq(a: &R, b: &R) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+fn sq(got: &Result<S, String>, t: R, y0: R, y1: R) -> Option<String> {
+    match got {
+        Ok(v)
+            if eq(&v.t, &t)
+                && v.y.len() == 2
+                && eq(&v.y[0], &y0)
+                && eq(&v.y[1], &y1) => None,
+        Ok(v) => Some(format!("{:?} {:?}", v.t, v.y)),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn dq(got: &Result<R, String>, want: R) -> Option<String> {
+    match got {
+        Ok(v) if eq(&v, &want) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn bq(got: &Result<bool, String>, want: bool) -> Option<String> {
+    match got {
+        Ok(v) if *v == want => None,
+        Ok(v) => Some(format!("{v}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+// accel = -q (the harmonic acceleration, separable in p)
+fn minus_q() -> Accel {
+    std::rc::Rc::new(|qq: R| {
+        Ok(std::rc::Rc::new(move |_pp: R| Ok((-qq.0, qq.1))))
+    })
+}
+
+// accel = 0 (the free particle)
+fn zero_a() -> Accel {
+    std::rc::Rc::new(|_qq: R| Ok(std::rc::Rc::new(|_pp: R| Ok((0, 1)))))
+}
+
+// accel = q + p (momentum-coupled: the two-momenta probe must catch it)
+fn coupled_a() -> Accel {
+    std::rc::Rc::new(|qq: R| {
+        Ok(std::rc::Rc::new(move |pp: R| {
+            Ok((qq.0 * pp.1 + pp.0 * qq.1, qq.1 * pp.1))
+        }))
+    })
+}
+
+// the drift subflow as a binary closure (flow_compose's f/g/k)
+fn drift_flow() -> Flow {
+    std::rc::Rc::new(|c: R| {
+        Ok(std::rc::Rc::new(move |s2: &S| drift(c, s2.clone())))
+    })
+}
+
+// the potential V(q) = q^2 / 2 (energy's unary closure input)
+fn quad_half() -> std::rc::Rc<dyn Fn(R) -> Result<R, String>> {
+    std::rc::Rc::new(|qq: R| Ok((qq.0 * qq.0, qq.1 * qq.1 * 2)))
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <free_particle_half_step> (drift: the record-carrier
+    // lane itself)
+    let got = drift(q(1, 2), s(q(0, 1), q(0, 1), q(2, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(1, 1), q(2, 1)) {
+        failures += 1;
+        println!("DIFF free_particle_half_step EMITTED {diff}; VM = t:0 y:[1, 2]");
+    }
+
+    // example <harmonic_half_kick> (kick: the curried closure input
+    // is CALLED inside the emitted body)
+    let got = kick(minus_q(), q(1, 2), s(q(0, 1), q(1, 1), q(0, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(1, 1), q(0 - 1, 2)) {
+        failures += 1;
+        println!("DIFF harmonic_half_kick EMITTED {diff}; VM = t:0 y:[1, -1/2]");
+    }
+
+    // example <adjacent_drifts_merge> (flow_compose: three binary
+    // subflow closures chained; adjacent drifts merge exactly)
+    let got = flow_compose(
+        drift_flow(),
+        q(1, 4),
+        drift_flow(),
+        q(1, 2),
+        drift_flow(),
+        q(1, 4),
+        s(q(0, 1), q(0, 1), q(2, 1)),
+    );
+    if let Some(diff) = sq(&got, q(0, 1), q(2, 1), q(2, 1)) {
+        failures += 1;
+        println!("DIFF adjacent_drifts_merge EMITTED {diff}; VM = t:0 y:[2, 2]");
+    }
+
+    // example <separable_acceleration_passes> (probe_separable: -q
+    // ignores p, both momenta agree)
+    let got = probe_separable(minus_q(), q(3, 1), q(0, 1), q(5, 1));
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF separable_acceleration_passes EMITTED {diff}; VM = true");
+    }
+    // example <momentum_coupled_acceleration_fails>
+    let got = probe_separable(coupled_a(), q(3, 1), q(0, 1), q(5, 1));
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF momentum_coupled_acceleration_fails EMITTED {diff}; VM = false");
+    }
+
+    // example <free_particle_step_and_inverse> (verlet_step: gates +
+    // the kick-drift-kick composition through the closures)
+    let got = verlet_step(zero_a(), q(1, 2), s(q(0, 1), q(0, 1), q(2, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(1, 1), q(2, 1)) {
+        failures += 1;
+        println!("DIFF free_particle_step_and_inverse EMITTED {diff}; VM = t:0 y:[1, 2]");
+    }
+    // example <harmonic_step_museum_values> (the museum recipe:
+    // 7/8, -15/32 exactly)
+    let got = verlet_step(minus_q(), q(1, 2), s(q(0, 1), q(1, 1), q(0, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(7, 8), q(0 - 15, 32)) {
+        failures += 1;
+        println!("DIFF harmonic_step_museum_values EMITTED {diff}; VM = t:0 y:[7/8, -15/32]");
+    }
+    // example <harmonic_exact_reversal> (negative h is legal on THIS
+    // path: step(-h, step(h, s)) == s exactly)
+    let fwd = verlet_step(minus_q(), q(1, 2), s(q(0, 1), q(1, 1), q(0, 1)))
+        .unwrap_or_else(|e| panic!("harmonic_exact_reversal inner: {e}"));
+    let got = verlet_step(minus_q(), q(0 - 1, 2), fwd);
+    if let Some(diff) = sq(&got, q(0, 1), q(1, 1), q(0, 1)) {
+        failures += 1;
+        println!("DIFF harmonic_exact_reversal EMITTED {diff}; VM = t:0 y:[1, 0]");
+    }
+
+    // example <drifts_and_cools> (damped_drift: 2, 9/5)
+    let got = damped_drift(q(1, 5), q(1, 2), s(q(0, 1), q(1, 1), q(2, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(2, 1), q(9, 5)) {
+        failures += 1;
+        println!("DIFF drifts_and_cools EMITTED {diff}; VM = t:0 y:[2, 9/5]");
+    }
+    // example <cooling_is_not_backward_integrable> (stepping back
+    // with -c does NOT restore the state: 99/50 != 2)
+    let fwd = damped_drift(q(1, 5), q(1, 2), s(q(0, 1), q(1, 1), q(2, 1)))
+        .unwrap_or_else(|e| panic!("cooling_is_not_backward_integrable inner: {e}"));
+    let got = damped_drift(q(1, 5), q(0 - 1, 2), fwd);
+    if let Ok(v) = &got {
+        if v.y.len() == 2 && eq(&v.y[1], &q(2, 1)) {
+            failures += 1;
+            println!(
+                "DIFF cooling_is_not_backward_integrable EMITTED p = {:?}; VM != 2/1",
+                v.y[1]
+            );
+        }
+    } else if let Err(e) = &got {
+        failures += 1;
+        println!("DIFF cooling_is_not_backward_integrable EMITTED Err({e})");
+    }
+
+    // example <damped_step_values> (the dissipative composition:
+    // 7/8, -71/160)
+    let got = damped_step(minus_q(), q(1, 5), q(1, 2), s(q(0, 1), q(1, 1), q(0, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(7, 8), q(0 - 71, 160)) {
+        failures += 1;
+        println!("DIFF damped_step_values EMITTED {diff}; VM = t:0 y:[7/8, -71/160]");
+    }
+
+    // example <negates_momentum_only> (momentum_reversal)
+    let got = momentum_reversal(s(q(0, 1), q(1, 1), q(2, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(1, 1), q(0 - 2, 1)) {
+        failures += 1;
+        println!("DIFF negates_momentum_only EMITTED {diff}; VM = t:0 y:[1, -2]");
+    }
+
+    // example <harmonic_energy_at_rest> (energy: the unary closure
+    // input + the record field access)
+    let got = energy(quad_half(), s(q(0, 1), q(1, 1), q(0, 1)));
+    if let Some(diff) = dq(&got, q(1, 2)) {
+        failures += 1;
+        println!("DIFF harmonic_energy_at_rest EMITTED {diff}; VM = 1/2");
+    }
+
+    // example <two_steps_pinned> (verlet_rollout: recursion through
+    // the composed step; 17/32, -105/128)
+    let got = verlet_rollout(minus_q(), q(1, 2), 2, 0, s(q(0, 1), q(1, 1), q(0, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(17, 32), q(0 - 105, 128)) {
+        failures += 1;
+        println!("DIFF two_steps_pinned EMITTED {diff}; VM = t:0 y:[17/32, -105/128]");
+    }
+    // example <rollout_reverses_exactly> (the signed rollout inverts)
+    let fwd = verlet_rollout(minus_q(), q(1, 2), 2, 0, s(q(0, 1), q(1, 1), q(0, 1)))
+        .unwrap_or_else(|e| panic!("rollout_reverses_exactly inner: {e}"));
+    let got = verlet_rollout(minus_q(), q(0 - 1, 2), 2, 0, fwd);
+    if let Some(diff) = sq(&got, q(0, 1), q(1, 1), q(0, 1)) {
+        failures += 1;
+        println!("DIFF rollout_reverses_exactly EMITTED {diff}; VM = t:0 y:[1, 0]");
+    }
+
+    // example <both_reversal_contracts_hold> (composition_contract:
+    // negation AND the involution, side by side)
+    let got = composition_contract(0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF both_reversal_contracts_hold EMITTED {diff}; VM = true");
+    }
+    // example <free_particle_involution_numbers> (the museum's
+    // literal example: R o step(h) == step(-h))
+    let got = verlet_step(zero_a(), q(1, 2), s(q(0, 1), q(0, 1), q(2, 1)));
+    if let Some(diff) = sq(&got, q(0, 1), q(1, 1), q(2, 1)) {
+        failures += 1;
+        println!("DIFF free_particle_involution_numbers EMITTED {diff}; VM = t:0 y:[1, 2]");
+    }
+    let rev = momentum_reversal(s(q(0, 1), q(1, 1), q(2, 1)))
+        .unwrap_or_else(|e| panic!("free_particle_involution_numbers reversal: {e}"));
+    let got = verlet_step(zero_a(), q(1, 2), rev);
+    if let Some(diff) = sq(&got, q(0, 1), q(0, 1), q(0 - 2, 1)) {
+        failures += 1;
+        println!("DIFF free_particle_involution_numbers EMITTED {diff}; VM = t:0 y:[0, -2]");
+    }
+
+    // example <verlet_delta_exact_nonzero> (energy_boundary: symmetry
+    // is NOT exact energy conservation — the delta is exact)
+    let got = energy_boundary(0);
+    match &got {
+        Ok(b) if eq(&b.verlet_delta, &q(0 - 15, 2048)) => {}
+        Ok(b) => {
+            failures += 1;
+            println!(
+                "DIFF verlet_delta_exact_nonzero EMITTED {:?}; VM = -15/2048",
+                b.verlet_delta
+            );
+        }
+        Err(e) => {
+            failures += 1;
+            println!("DIFF verlet_delta_exact_nonzero EMITTED Err({e})");
+        }
+    }
+    // example <damped_delta_exact_more_negative> (-959/51200, and
+    // strictly more dissipative than the verlet delta)
+    match &got {
+        Ok(b)
+            if eq(&b.damped_delta, &q(0 - 959, 51200))
+                && b.damped_delta.0 * b.verlet_delta.1
+                    < b.verlet_delta.0 * b.damped_delta.1 => {}
+        Ok(b) => {
+            failures += 1;
+            println!(
+                "DIFF damped_delta_exact_more_negative EMITTED {:?} vs {:?}; VM = -959/51200 < -15/2048",
+                b.damped_delta, b.verlet_delta
+            );
+        }
+        Err(e) => {
+            failures += 1;
+            println!("DIFF damped_delta_exact_more_negative EMITTED Err({e})");
+        }
+    }
+
+    if failures > 0 {
+        panic!("{failures} composition row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_composition() {
+    let diffs = run_lane(
+        "language/modules/analysis/evolution/composition.emath",
+        COMPOSITION_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted composition disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const STIFF_DRIVER: &str = r#"
+//! Authored pins of mechanics/stiff.emath against the emitted crate
+//! (emath-49o8, the shared-state lane's second module).
+//!
+//! stiff composes one_step's SimState machinery with the implicit
+//! solves: solve_dense (imported from algebra.linear.systems) is
+//! INLINED into the emitted bodies as the sibling lane spells it,
+//! and the three laws that refused by record name (the symplectic
+//! invariant, the true-energy drift, the determinant) now emit. The
+//! adaptive walk rows pin the refusal atoms (bad_step_budget,
+//! non_adaptable_step's sibling nonnegative_test_rate,
+//! singular_matrix) as exact Err strings. Transcription boundary:
+//! ratios compare cross-multiplied, never by spelling.
+
+use stiff::{
+    stiff_abs, stiff_adaptive_walk, stiff_astable_ok, stiff_astable_walk, stiff_be_factor,
+    stiff_be_step_solve, stiff_be_system_law, stiff_cn_factor, stiff_contrast_law,
+    stiff_diag2_be_step, stiff_embedded_est, stiff_embedded_step, stiff_explicit_factor,
+    stiff_symplectic_invariant_law, stiff_true_energy_drifts_law, stiff_verlet_det_law,
+    stiff_verlet_invariant,
+};
+
+type R = (i128, i128);
+
+fn q(n: i128, d: i128) -> R {
+    (n, d)
+}
+
+fn eq(a: &R, b: &R) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+fn dq(got: &Result<R, String>, want: R) -> Option<String> {
+    match got {
+        Ok(v) if eq(&v, &want) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn lq(got: &Result<Vec<R>, String>, want: &[R]) -> Option<String> {
+    match got {
+        Ok(v)
+            if v.len() == want.len()
+                && v.iter().zip(want).all(|(a, b)| eq(a, b)) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn bq(got: &Result<bool, String>, want: bool) -> Option<String> {
+    match got {
+        Ok(v) if *v == want => None,
+        Ok(v) => Some(format!("{v}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn xq<T: std::fmt::Debug>(got: &Result<T, String>, atom: &str) -> Option<String> {
+    match got {
+        Err(e) if e == atom => None,
+        Ok(v) => Some(format!("Ok({v:?})")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <negative_flips_sign> (stiff_abs)
+    let got = stiff_abs(q(0 - 3, 4));
+    if let Some(diff) = dq(&got, q(3, 4)) {
+        failures += 1;
+        println!("DIFF negative_flips_sign EMITTED {diff}; VM = 3/4");
+    }
+    // example <positive_is_itself>
+    let got = stiff_abs(q(5, 2));
+    if let Some(diff) = dq(&got, q(5, 2)) {
+        failures += 1;
+        println!("DIFF positive_is_itself EMITTED {diff}; VM = 5/2");
+    }
+    // example <zero_arm_hits_zero> (the comparison boundary arm)
+    let got = stiff_abs(q(0, 1));
+    if let Some(diff) = dq(&got, q(0, 1)) {
+        failures += 1;
+        println!("DIFF zero_arm_hits_zero EMITTED {diff}; VM = 0/1");
+    }
+
+    // example <half_step_decay> (stiff_be_factor: 1/(1 - h lam))
+    let got = stiff_be_factor(q(1, 2), q(0 - 2, 1));
+    if let Some(diff) = dq(&got, q(1, 2)) {
+        failures += 1;
+        println!("DIFF half_step_decay EMITTED {diff}; VM = 1/2");
+    }
+    // example <half_step_cn> (stiff_cn_factor)
+    let got = stiff_cn_factor(q(1, 2), q(0 - 2, 1));
+    if let Some(diff) = dq(&got, q(1, 3)) {
+        failures += 1;
+        println!("DIFF half_step_cn EMITTED {diff}; VM = 1/3");
+    }
+    // example <quarter_step_explicit> (stiff_explicit_factor: 0 at
+    // h lam = -1 — the contrast lane's zero)
+    let got = stiff_explicit_factor(q(1, 2), q(0 - 2, 1));
+    if let Some(diff) = dq(&got, q(0, 1)) {
+        failures += 1;
+        println!("DIFF quarter_step_explicit EMITTED {diff}; VM = 0/1");
+    }
+
+    // example <solved_step_matches_hand> (stiff_be_step_solve: the
+    // implicit solve ASSEMBLED through the inlined solve_dense)
+    let got = stiff_be_step_solve(q(0 - 2, 1), q(1, 2), q(1, 1));
+    if let Some(diff) = dq(&got, q(1, 2)) {
+        failures += 1;
+        println!("DIFF solved_step_matches_hand EMITTED {diff}; VM = 1/2");
+    }
+    // example <resonance_refuses> (h lam = 1: the assembled system is
+    // singular — the named refusal, exact Err string)
+    let got = stiff_be_step_solve(q(2, 1), q(1, 2), q(1, 1));
+    if let Some(diff) = xq(&got, "singular_matrix") {
+        failures += 1;
+        println!("DIFF resonance_refuses EMITTED {diff}; VM = Err(singular_matrix)");
+    }
+
+    // example <solve_is_the_closed_form> (stiff_be_system_law: the
+    // machine-algebra certificate)
+    let got = stiff_be_system_law(0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF solve_is_the_closed_form EMITTED {diff}; VM = true");
+    }
+
+    // example <two_scale_decoupled_step> (stiff_diag2_be_step: the
+    // diagonal 2x2 solve, sequence carriers in and out)
+    let got = stiff_diag2_be_step(
+        q(0 - 2, 1),
+        q(0 - 6, 1),
+        q(1, 2),
+        vec![q(1, 1), q(8, 1)],
+    );
+    if let Some(diff) = lq(&got, &[q(1, 2), q(2, 1)]) {
+        failures += 1;
+        println!("DIFF two_scale_decoupled_step EMITTED {diff}; VM = [1/2, 2]");
+    }
+
+    // example <decays_everywhere_stiff> (stiff_astable_ok)
+    let got = stiff_astable_ok(q(5, 4), q(0 - 2, 1));
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF decays_everywhere_stiff EMITTED {diff}; VM = true");
+    }
+    // example <refuses_nonstiff_demand> (lam >= 0 is not the stiff
+    // lane — the named refusal)
+    let got = stiff_astable_ok(q(1, 2), q(3, 1));
+    if let Some(diff) = xq(&got, "nonnegative_test_rate") {
+        failures += 1;
+        println!("DIFF refuses_nonstiff_demand EMITTED {diff}; VM = Err(nonnegative_test_rate)");
+    }
+    // example <zero_step_is_not_decay> (amplitude EXACTLY 1: the
+    // strict < is the decidable boundary)
+    let got = stiff_astable_ok(q(0, 1), q(0 - 2, 1));
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF zero_step_is_not_decay EMITTED {diff}; VM = false");
+    }
+
+    // example <dyadic_walk_decays> (stiff_astable_walk: the walk
+    // CHECKS every element)
+    let got = stiff_astable_walk(
+        q(0 - 2, 1),
+        vec![q(1, 4), q(1, 2), q(1, 1), q(5, 2), q(21, 2)],
+        0,
+    );
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF dyadic_walk_decays EMITTED {diff}; VM = true");
+    }
+    // example <zero_step_breaks_the_walk> (h = 0 breaks it — no
+    // accept-at-entry)
+    let got = stiff_astable_walk(q(0 - 2, 1), vec![q(0, 1)], 0);
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF zero_step_breaks_the_walk EMITTED {diff}; VM = false");
+    }
+
+    // example <implicit_decays_explicit_grows> (stiff_contrast_law:
+    // 2/7 vs -3/2 at h = 5/4)
+    let got = stiff_contrast_law(0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF implicit_decays_explicit_grows EMITTED {diff}; VM = true");
+    }
+
+    // example <half_step_estimate_one_sixth> (stiff_embedded_est:
+    // |y_CN - y_BE| exactly)
+    let got = stiff_embedded_est(q(0 - 2, 1), q(1, 2), q(1, 1));
+    if let Some(diff) = dq(&got, q(1, 6)) {
+        failures += 1;
+        println!("DIFF half_step_estimate_one_sixth EMITTED {diff}; VM = 1/6");
+    }
+
+    // example <loose_tol_accepts> (stiff_embedded_step: the StiffStep
+    // record's three fields — accept)
+    let got = stiff_embedded_step(q(0 - 2, 1), q(1, 2), q(1, 4), q(1, 1));
+    match &got {
+        Ok(v)
+            if eq(&v.y, &q(1, 3)) && eq(&v.est, &q(1, 6)) && v.ok => {}
+        Ok(v) => {
+            failures += 1;
+            println!(
+                "DIFF loose_tol_accepts EMITTED y={:?} est={:?} ok={}; VM = y=1/3 est=1/6 ok=true",
+                v.y, v.est, v.ok
+            );
+        }
+        Err(e) => {
+            failures += 1;
+            println!("DIFF loose_tol_accepts EMITTED Err({e})");
+        }
+    }
+    // example <tight_tol_refuses> (est 1/6 > tol 1/7: ok false — the
+    // certificate, not an epsilon)
+    let got = stiff_embedded_step(q(0 - 2, 1), q(1, 2), q(1, 7), q(1, 1));
+    match &got {
+        Ok(v)
+            if eq(&v.y, &q(1, 3)) && eq(&v.est, &q(1, 6)) && !v.ok => {}
+        Ok(v) => {
+            failures += 1;
+            println!(
+                "DIFF tight_tol_refuses EMITTED y={:?} est={:?} ok={}; VM = y=1/3 est=1/6 ok=false",
+                v.y, v.est, v.ok
+            );
+        }
+        Err(e) => {
+            failures += 1;
+            println!("DIFF tight_tol_refuses EMITTED Err({e})");
+        }
+    }
+
+    // example <accepts_and_advances> (stiff_adaptive_walk)
+    let got = stiff_adaptive_walk(q(0 - 2, 1), q(1, 2), q(1, 4), q(1, 1), 1, 8);
+    if let Some(diff) = dq(&got, q(1, 3)) {
+        failures += 1;
+        println!("DIFF accepts_and_advances EMITTED {diff}; VM = 1/3");
+    }
+    // example <halves_once_then_accepts> (refused at h = 1/2, halved
+    // to h = 1/4 where est = 1/15 <= 1/7: 3/5)
+    let got = stiff_adaptive_walk(q(0 - 2, 1), q(1, 2), q(1, 7), q(1, 1), 1, 8);
+    if let Some(diff) = dq(&got, q(3, 5)) {
+        failures += 1;
+        println!("DIFF halves_once_then_accepts EMITTED {diff}; VM = 3/5");
+    }
+    // example <negative_steps_refuse> (bad_step_budget, exact)
+    let got = stiff_adaptive_walk(q(0 - 2, 1), q(1, 2), q(1, 4), q(1, 1), 0 - 1, 8);
+    if let Some(diff) = xq(&got, "bad_step_budget") {
+        failures += 1;
+        println!("DIFF negative_steps_refuse EMITTED {diff}; VM = Err(bad_step_budget)");
+    }
+    // example <two_accepted_steps_compose> (1/3 then 1/9 — the
+    // ok-branch recursion must CONSUME the budget)
+    let got = stiff_adaptive_walk(q(0 - 2, 1), q(1, 2), q(1, 4), q(1, 1), 2, 8);
+    if let Some(diff) = dq(&got, q(1, 9)) {
+        failures += 1;
+        println!("DIFF two_accepted_steps_compose EMITTED {diff}; VM = 1/9");
+    }
+
+    // example <hand_value> (stiff_verlet_invariant: 15/32)
+    let got = stiff_verlet_invariant(q(1, 1), q(0, 1), q(1, 1), q(1, 2));
+    if let Some(diff) = dq(&got, q(15, 32)) {
+        failures += 1;
+        println!("DIFF hand_value EMITTED {diff}; VM = 15/32");
+    }
+
+    // example <invariant_over_six_steps>
+    // (stiff_symplectic_invariant_law: the modified-Hamiltonian
+    // certificate over the verlet rollout — refused by record name
+    // before the SimState import)
+    let got = stiff_symplectic_invariant_law(q(1, 1), q(1, 2), 6, 0, q(1, 1), q(0, 1));
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF invariant_over_six_steps EMITTED {diff}; VM = true");
+    }
+    // example <zero_steps_accept_at_entry> (the boundary: the law
+    // binds only along taken steps)
+    let got = stiff_symplectic_invariant_law(q(1, 1), q(1, 2), 0, 0, q(1, 1), q(0, 1));
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF zero_steps_accept_at_entry EMITTED {diff}; VM = true");
+    }
+
+    // example <first_step_drifts_exactly> (stiff_true_energy_drifts_law:
+    // the honesty twin, -15/2048 per step)
+    let got = stiff_true_energy_drifts_law(0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF first_step_drifts_exactly EMITTED {diff}; VM = true");
+    }
+
+    // example <area_preserved_exactly> (stiff_verlet_det_law: the
+    // step map's determinant is EXACTLY 1)
+    let got = stiff_verlet_det_law(0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF area_preserved_exactly EMITTED {diff}; VM = true");
+    }
+
+    if failures > 0 {
+        panic!("{failures} stiff row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_stiff() {
+    let diffs = run_lane(
+        "language/modules/mechanics/stiff.emath",
+        STIFF_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted stiff disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

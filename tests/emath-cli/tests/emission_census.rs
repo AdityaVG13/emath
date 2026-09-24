@@ -23,7 +23,7 @@ use std::sync::mpsc;
 mod common;
 
 /// The pinned not-runnable census (2026-09-24, the refusal-lane pass):
-/// 10 modules across the named refusal lanes. Update this number ONLY
+/// 8 modules across the named refusal lanes. Update this number ONLY
 /// with a bead that names the lane that changed. History: 15 until
 /// the operator-tag-witness pass, which unblocked analysis/autodiff,
 /// analysis/bvp_newton, and optimization/advanced (the schema-tag
@@ -63,8 +63,27 @@ mod common;
 /// precisely: it emits and compiles offline with its 40 authored rows
 /// still green in the VM. search/discovery stays a named lane (its
 /// Rat -> Bool quoted functions are outside the homogeneous
-/// unary-program lane the runtime's Code<V> carries).
-const NOT_RUNNABLE_PINNED: usize = 10;
+/// unary-program lane the runtime's Code<V> carries). 10 -> 8 with
+/// the shared-state pass (emath-49o8): analysis/evolution/composition
+/// (10 refusals) and mechanics/stiff (3) refused every SimState
+/// record literal by name because composition USED one_step's shared
+/// evolution object with no import - the VM resolved it structurally
+/// (open records), the emitted lane honestly demands the declaration.
+/// The authored `use analysis.evolution.one_step` closes it: the
+/// record literals emit as EmathRecord_SimState, the curried closure
+/// inputs (Rat -> Rat -> Rat) ride the two-level Rc<dyn Fn> ABI, the
+/// binary subflow closures chain through flow_compose, and stiff's
+/// inlined implicit solves emit with the three laws that refused by
+/// record name. Both modules emit and compile offline with their 19
+/// and 28 authored rows still green in the VM (the conformance lanes
+/// pin every row emitted == VM, refusal atoms exact). Remaining 8:
+/// derivative/linalg (quote.substitute's static reference string),
+/// events (the general Call guard), levenberg (unknown value
+/// carriers through the numeric-program law), walk (quote.open/
+/// quote.view carriers), rewriting (quote.make and the substitute
+/// carrier mismatch), discovery (heterogeneous Rat -> Bool quoted
+/// functions), sieve (buffer carrier ops are VM-only in this cut).
+const NOT_RUNNABLE_PINNED: usize = 8;
 
 /// Fixed compile-lane count (the sweep's `-P 4`).
 const LANES: usize = 4;
