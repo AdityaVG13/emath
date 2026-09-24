@@ -1733,7 +1733,20 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
                 // (e6gvs): the interchange signature stays `Text`, the
                 // form the backend's kind parser already carries.
                 "Str" => Some("Text".into()),
-                "Code" => Some("Code".into()),
+                // Bare `Code` is the expression template (open
+                // expression with free names; evaluate yields the
+                // union scalar). `Code[T]` names the program template's
+                // scalar carrier: a quoted unary program over T
+                // (substitutes bind T constants, evaluate yields the
+                // specialized T -> T closure) - the backend's kind
+                // parser splits the two on exactly this spelling.
+                "Code" => match generic_args.first() {
+                    Some(GenericArg::Type(carrier)) => Some(format!(
+                        "Code<{}>",
+                        constructor_type_signature(carrier, objects)?
+                    )),
+                    _ => Some("Code".into()),
+                },
                 "sequence" => {
                     let GenericArg::Type(element) = generic_args.first()? else {
                         return None;

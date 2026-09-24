@@ -24,8 +24,10 @@
 //! `language/modules/geometry/surfaces.emath`,
 //! `language/modules/mechanics/oscillations.emath`,
 //! `language/modules/discrete/order.emath` (the mutual-recursion
-//! cycle pins), and `language/modules/discrete/matching.emath` (the
-//! mixed-kind join pins) — the same givens,
+//! cycle pins), `language/modules/discrete/matching.emath` (the
+//! mixed-kind join pins), and `language/modules/search/
+//! structural_spike.emath` (the code-template-carrier pins) — the
+//! same givens,
 //! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
@@ -2853,6 +2855,177 @@ fn emission_conformance_matching() {
     assert!(
         diffs.is_empty(),
         "emitted matching disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const SPIKE_DRIVER: &str = r#"
+//! Authored pins of search/structural_spike.emath against the emitted
+//! crate.
+//!
+//! The code-template-carrier pins (emath-49o8): the module's template
+//! chain is declared `Code[Rat]` - the homogeneous unary program
+//! template over Rat - so substitutes bind Rat constants and
+//! evaluate yields the specialized Rat -> Rat closure the walks call.
+//! The driver never hand-builds a Code value: the template chains
+//! from the emitted quadratic_template entry, exactly as the authored
+//! rows do. Rat values are the (i128, i128) ratio carrier; rows
+//! compare by cross-multiplication and integers land as (n, 1).
+
+use structural_spike::{cand_score, climb_step, quadratic_template, rollout_of, scan_best};
+
+type Q = (i128, i128);
+
+fn q(n: i64, d: i64) -> Q {
+    (n as i128, d as i128)
+}
+
+fn q_eq(a: Q, b: Q) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+fn dq(got: &Result<Q, String>, want: Q) -> Option<String> {
+    match got {
+        Ok(v) if q_eq(*v, want) => None,
+        other => Some(format!("{other:?}")),
+    }
+}
+
+fn lq(got: &Result<Vec<Q>, String>, want: &[Q]) -> Option<String> {
+    match got {
+        Ok(v) if v.len() == want.len() && v.iter().zip(want).all(|(a, b)| q_eq(*a, *b)) => None,
+        other => Some(format!("{other:?}")),
+    }
+}
+
+fn main() {
+    let mut failures = 0usize;
+    let template = quadratic_template(0).expect("quadratic_template answers");
+    // The authored target closure f = 2x, one fresh shared handle per
+    // row (the parameters are owned `Rc<dyn Fn>` carriers).
+    fn f() -> std::rc::Rc<dyn Fn((i128, i128)) -> Result<(i128, i128), String>> {
+        std::rc::Rc::new(|x: (i128, i128)| Ok((x.0 * 2, x.1)))
+    }
+
+    // example <exact_hypothesis_scores_zero> (cand_score: substitute,
+    // evaluate, apply - the called-closure lane itself)
+    let got = cand_score(
+        template.clone(),
+        f(),
+        vec![q(1, 1), q(2, 1)],
+        vec![q(2, 1), q(0, 1)],
+    );
+    if let Some(diff) = dq(&got, q(0, 1)) {
+        failures += 1;
+        println!("DIFF exact_hypothesis_scores_zero EMITTED {diff}; VM = 0/1");
+    }
+    // example <zero_hypothesis_misses_by_the_data>
+    let got = cand_score(
+        template.clone(),
+        f(),
+        vec![q(1, 1), q(2, 1)],
+        vec![q(0, 1), q(0, 1)],
+    );
+    if let Some(diff) = dq(&got, q(20, 1)) {
+        failures += 1;
+        println!("DIFF zero_hypothesis_misses_by_the_data EMITTED {diff}; VM = 20/1");
+    }
+
+    // example <exact_fit_rolls_out_exact> (rollout_of: the evaluated
+    // closure drives a free-running two-orbit rollout)
+    let got = rollout_of(
+        template.clone(),
+        f(),
+        vec![q(2, 1), q(0, 1)],
+        q(1, 1),
+        5,
+    );
+    if let Some(diff) = dq(&got, q(0, 1)) {
+        failures += 1;
+        println!("DIFF exact_fit_rolls_out_exact EMITTED {diff}; VM = 0/1");
+    }
+    // example <flat_hypothesis_misses_step_one>
+    let got = rollout_of(
+        template.clone(),
+        f(),
+        vec![q(0, 1), q(0, 1)],
+        q(1, 1),
+        1,
+    );
+    if let Some(diff) = dq(&got, q(4, 1)) {
+        failures += 1;
+        println!("DIFF flat_hypothesis_misses_step_one EMITTED {diff}; VM = 4/1");
+    }
+
+    // example <one_round_then_budget_refusal> (climb_step: eight
+    // cand_score calls per round, recursion, and the budget refusal)
+    let got = climb_step(
+        template.clone(),
+        f(),
+        vec![q(1, 1)],
+        vec![q(1, 1), q(0, 1), q(1, 1), q(1, 1)],
+        1,
+        9,
+    );
+    if let Some(diff) = lq(
+        &got,
+        &[q(5, 4), q(1, 4), q(1, 4), q(9, 1), q(6, 1)],
+    ) {
+        failures += 1;
+        println!("DIFF one_round_then_budget_refusal EMITTED {diff}; VM = [5/4, 1/4, 1/4, 9, 6]");
+    }
+    // example <climbs_to_exact_zero_and_stops_clean>
+    let got = climb_step(
+        template.clone(),
+        f(),
+        vec![q(1, 1)],
+        vec![q(1, 1), q(0, 1), q(1, 1), q(1, 1)],
+        1,
+        65,
+    );
+    if let Some(diff) = lq(
+        &got,
+        &[q(3, 2), q(1, 2), q(0, 1), q(25, 1), q(0, 1)],
+    ) {
+        failures += 1;
+        println!("DIFF climbs_to_exact_zero_and_stops_clean EMITTED {diff}; VM = [3/2, 1/2, 0/1, 25, 0]");
+    }
+
+    // example <strict_minimum_wins_and_records_the_hit> (scan_best)
+    let got = scan_best(
+        template.clone(),
+        f(),
+        vec![q(1, 1)],
+        vec![vec![q(1, 1), q(0, 1)], vec![q(2, 1), q(0, 1)], vec![q(0, 1), q(0, 1)]],
+        1,
+        vec![q(0, 1), q(0, 1)],
+        q(4, 1),
+        2,
+        3,
+    );
+    if let Some(diff) = lq(
+        &got,
+        &[q(2, 1), q(0, 1), q(0, 1), q(3, 1), q(1, 1)],
+    ) {
+        failures += 1;
+        println!("DIFF strict_minimum_wins_and_records_the_hit EMITTED {diff}; VM = [2, 0, 0, 3, 1]");
+    }
+
+    if failures > 0 {
+        panic!("{failures} structural_spike row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_structural_spike() {
+    let diffs = run_lane(
+        "language/modules/search/structural_spike.emath",
+        SPIKE_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted structural_spike disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

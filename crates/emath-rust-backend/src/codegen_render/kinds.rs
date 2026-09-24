@@ -176,6 +176,18 @@ impl ValueKind {
                         .and_then(|text| text.strip_suffix('>'))
                     {
                         ValueKind::Record(name.to_string())
+                    } else if let Some(inner) = text
+                        .strip_prefix("Code<")
+                        .and_then(|text| text.strip_suffix('>'))
+                    {
+                        // The program template's scalar carrier (the
+                        // authored `Code[T]` spelling): a quoted unary
+                        // program over T - substitutes bind T constants
+                        // and evaluate yields the specialized T -> T
+                        // closure. Bare `Code` (matched above) is the
+                        // expression template, whose evaluate yields
+                        // the union scalar.
+                        ValueKind::Code(Box::new(parse(inner, remaining - 1)))
                     } else if text.starts_with("Fn<") && text.ends_with('>') {
                         // Typed closure signature: every part but the
                         // last is a parameter; the last is the result.

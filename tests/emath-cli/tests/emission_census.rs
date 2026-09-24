@@ -23,7 +23,7 @@ use std::sync::mpsc;
 mod common;
 
 /// The pinned not-runnable census (2026-09-24, the refusal-lane pass):
-/// 11 modules across the named refusal lanes. Update this number ONLY
+/// 10 modules across the named refusal lanes. Update this number ONLY
 /// with a bead that names the lane that changed. History: 15 until
 /// the operator-tag-witness pass, which unblocked analysis/autodiff,
 /// analysis/bvp_newton, and optimization/advanced (the schema-tag
@@ -49,8 +49,22 @@ mod common;
 /// the Rat-element vector at the arm boundary) and a ratio value
 /// crossing an Int-declared parameter narrows checked (E-INT-002 by
 /// name), so matching emits and compiles offline with its 154
-/// authored rows still green in the VM.
-const NOT_RUNNABLE_PINNED: usize = 11;
+/// authored rows still green in the VM. 11 -> 10 with the
+/// code-template-carrier seam (emath-49o8): search/structural_spike's
+/// four closure-call refusals (cand_score, climb_step, rollout_of,
+/// scan_best) were the interchange's missing spelling for the
+/// PROGRAM template - bare `Code` kinds as the expression template
+/// (evaluate yields the union scalar), so a quoted unary program
+/// declared bare refused the moment its evaluated result was called.
+/// The authored `Code[T]` spelling now carries through the
+/// interchange (`Code<Rat>`: the homogeneous unary program template
+/// over Rat - substitutes bind Rat constants, evaluate yields the
+/// Rat -> Rat closure) and the module declares its template chain
+/// precisely: it emits and compiles offline with its 40 authored rows
+/// still green in the VM. search/discovery stays a named lane (its
+/// Rat -> Bool quoted functions are outside the homogeneous
+/// unary-program lane the runtime's Code<V> carries).
+const NOT_RUNNABLE_PINNED: usize = 10;
 
 /// Fixed compile-lane count (the sweep's `-P 4`).
 const LANES: usize = 4;
