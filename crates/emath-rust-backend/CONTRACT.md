@@ -171,21 +171,28 @@ None. Cargo.toml has no `[features]`.
 
 ## Conformance tests
 
-Integration tests in `tests/emath-rust-backend/tests/lib.rs`:
-- `keyword_declaration_name_is_escaped_in_generated_rust`
-- `keyword_crate_name_is_escaped_in_manifest`
-- `stateless_declaration_emits_free_function`
-- `generated_constructor_carries_its_construction_receipt`,
-  `expect_less_example_generates_computation_without_assert`,
-  `constant_only_declaration_generates_parameterless_method`,
-  `chained_definitions_emit_let_bindings_in_source_order`,
-  `causalized_model_emits_newton_step_methods`,
-  `model_emits_explicit_step_methods`,
-  `const_i64_past_f64_mantissa_stays_i64`,
-  `vector_index_codegen_uses_checked_helper_not_index`,
-  `integer_product_fold_uses_i64_kernel`,
-  `sign_zero_uses_mathematical_sgn`,
-  `folded_nonfinite_constants_emit_valid_rust`
+Integration tests in `tests/emath-rust-backend/tests/`:
+- `numeric_boundaries.rs` (`native_numeric_boundaries`): compiles and
+  executes the generated numeric-boundary fixture, including named
+  overflow refusals and wide-frame preservation.
+- `op_domains_render.rs` (`op_domains_render`): the op-domain render
+  matrix.
+- `profile_validate.rs` (`profile_validate`): profile parse and
+  validation refusals.
+- `render_paren.rs` (`probe`): rendered atoms stay unwrapped.
+
+The historical model-step tests (`stateless_declaration_emits_free_function`,
+`causalized_model_emits_newton_step_methods`,
+`model_emits_explicit_step_methods`, and the escape/keyword rows) were
+removed with the model surface: `model` is not a core kind (`E-KIND-GONE`
+at admission, `is_model = false` hardcoded in sema), `emath simulate` is
+not a constructor command, and the authored steppers live in
+`language/modules/numerics/euler.emath` and `rk4.emath` over the
+`analysis/evolution/one_step` family (exact Rat tier, census-runnable).
+The `codegen_steps` Euler/RK4/Newton emission templates are therefore
+unreachable from admitted source and stay on disk quarantined - the same
+step-7 policy as the mathematical kernel files (on disk, never
+dispatched).
 
 Legacy domain-render assertions are not part of this contract. They must be migrated outside this crate to construct `ApplyCapability` programs with executable artifact contracts.
 
