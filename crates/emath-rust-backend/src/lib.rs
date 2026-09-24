@@ -224,7 +224,8 @@ pub fn emit_constructor_entry(
     records: &[AuthoredRecord],
 ) -> Result<String, BackendError> {
     use crate::codegen_render::{
-        program_kind, value_expr, AuthoredRecordScope, InputKinds, ReferenceScope, ValueKind,
+        program_kind, value_expr, AuthoredRecordScope, InputKinds, ReferenceScope, SelfWrapperScope,
+        ValueKind,
     };
     use crate::rust_ir::ast::escape_ident;
     use crate::rust_ir::render::{render_expr, render_ty};
@@ -269,6 +270,10 @@ pub fn emit_constructor_entry(
             ));
         };
         let declared = ValueKind::from_signature(signature);
+        // The projected carrier is what the entry (and its `__self`
+        // wrapper, when the body recurses) returns; nested `CallSelf`
+        // sites cross from it.
+        let _wrapper = SelfWrapperScope::enter(declared.clone());
         let rendered = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
         let projected = match declared {
             ValueKind::I64 => format!(
@@ -305,6 +310,11 @@ pub fn emit_constructor_entry(
                 Err(_) => "impl core::fmt::Debug".to_string(),
             }
         };
+        // The entry body's own carrier is what `__self` (when the
+        // body recurses) returns; nested `CallSelf` sites read it
+        // from the scope instead of re-deriving a branch-local
+        // inference that cannot see the enclosing join.
+        let _wrapper = SelfWrapperScope::enter(result_kind.clone());
         let body = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
         (result_ty, body)
     };

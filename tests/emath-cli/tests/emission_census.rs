@@ -23,7 +23,7 @@ use std::sync::mpsc;
 mod common;
 
 /// The pinned not-runnable census (2026-09-24, the refusal-lane pass):
-/// 12 modules across the named refusal lanes. Update this number ONLY
+/// 11 modules across the named refusal lanes. Update this number ONLY
 /// with a bead that names the lane that changed. History: 15 until
 /// the operator-tag-witness pass, which unblocked analysis/autodiff,
 /// analysis/bvp_newton, and optimization/advanced (the schema-tag
@@ -38,8 +38,19 @@ mod common;
 /// and non-family record fields refuse by name, so walk answers with
 /// its real lanes (quote.open, quote.view, and the Cases.arms tuple
 /// kind, all named). `not_runnable_lanes_answer_by_name` pins that
-/// no lane may crash the emitter again.
-const NOT_RUNNABLE_PINNED: usize = 12;
+/// no lane may crash the emitter again. 12 -> 11 with the
+/// mixed-kind-join pass (emath-49o8): discrete/matching's three
+/// refusals (max_match_loop, max_matching, asg_row) were the
+/// mixed-kind vector join - a Rat-typed inlined carrier (replace_at's
+/// declared Rat signatures instantiated over Int vectors) joining a
+/// function's Int-recursive tail left the branch register unkinded
+/// and the capture typing refused. The join now folds element-wise
+/// under the same scalar law (an Int-element arm widens exactly into
+/// the Rat-element vector at the arm boundary) and a ratio value
+/// crossing an Int-declared parameter narrows checked (E-INT-002 by
+/// name), so matching emits and compiles offline with its 154
+/// authored rows still green in the VM.
+const NOT_RUNNABLE_PINNED: usize = 11;
 
 /// Fixed compile-lane count (the sweep's `-P 4`).
 const LANES: usize = 4;

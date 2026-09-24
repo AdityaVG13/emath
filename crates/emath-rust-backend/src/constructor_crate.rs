@@ -18,6 +18,7 @@ use std::path::Path;
 
 use emath_core::tree::SyntaxTree;
 
+use crate::codegen_render::{InputKinds, SiblingEntryScope, ValueKind, program_kind};
 use crate::{emit_constructor_entry, emit_record_definitions, AuthoredRecord};
 
 /// What one constructor-file emission produced.
@@ -204,6 +205,54 @@ pub fn emit_constructor_crate(
             unresolved.push(error.to_string());
         }
     }
+    // The emitted entry's true result carrier per function,
+    // pre-lowered once over the main-file functions before any
+    // rendering: a `CallSibling` register carries the callee's
+    // EMITTED carrier, and that is the callee's inferred body join -
+    // not the authored declaration - whenever the two disagree (a
+    // Rat-typed inlined carrier joining an Int-declared recursive
+    // tail emits the ratio carrier at the entry). The input kinds
+    // mirror the entry ABI's declared carriers exactly.
+    let mut sibling_kinds: std::collections::BTreeMap<String, ValueKind> =
+        std::collections::BTreeMap::new();
+    for name in functions.iter() {
+        let Ok(lowered) = emath_exec_ir::constructor_emir::lower_constructor_function(&tree, name)
+        else {
+            continue;
+        };
+        let declared = tree
+            .items
+            .iter()
+            .find_map(|item| match item {
+                emath_core::tree::Item::Declaration(decl) if decl.name == *name => Some(
+                    emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs"),
+                ),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let mut kinds = InputKinds::new();
+        let mut input_names = Vec::new();
+        for input in &lowered.inputs {
+            let signature = declared
+                .iter()
+                .find(|(declared, _)| declared == input)
+                .and_then(|(_, ty)| {
+                    emath_exec_ir::constructor_emir::constructor_type_signature(ty, &objects)
+                });
+            kinds.insert(
+                input.clone(),
+                signature
+                    .as_deref()
+                    .map_or(ValueKind::I64, ValueKind::from_signature),
+            );
+            input_names.push(input.clone());
+        }
+        sibling_kinds.insert(
+            name.clone(),
+            program_kind(&lowered.program, &input_names, &[], &kinds),
+        );
+    }
+    let _sibling_scope = SiblingEntryScope::enter(sibling_kinds);
     // One named entry per runnable function: sibling calls (pilot p8)
     // need both functions in the same crate, so entries carry their
     // function names instead of a shared `entry` symbol. A sibling

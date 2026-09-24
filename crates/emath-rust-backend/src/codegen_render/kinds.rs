@@ -9,6 +9,75 @@ use super::{
 /// Scalar carrier of an EMIR register. Exact carriers never widen implicitly.
 pub(crate) type InputKinds = BTreeMap<String, ValueKind>;
 
+thread_local! {
+    /// The result carrier of the recursive wrapper currently being
+    /// rendered (`__self` at entries, `__frame_self` in inlined
+    /// frames). The wrapper's emitted return type is decided once,
+    /// over the enclosing body's full join; a `CallSelf` site nested
+    /// in a branch cannot re-derive it (the local inference reads
+    /// only the branch), so the render reads the scope first and
+    /// crosses from the carrier the wrapper actually returns.
+    static SELF_WRAPPER_KIND: std::cell::RefCell<Vec<ValueKind>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    /// The emitted entry's result carrier per sibling function
+    /// (pre-lowered over the crate's own functions before any
+    /// rendering). A `CallSibling` register carries the callee's
+    /// EMITTED carrier, not the authored declaration: the two
+    /// disagree when the callee's body joins mixed-kind arms and
+    /// emits the ratio spelling against an Int-declared tail.
+    static SIBLING_ENTRY_KINDS: std::cell::RefCell<Vec<BTreeMap<String, ValueKind>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Guarded entry onto the wrapper-carrier stack (see
+/// `SELF_WRAPPER_KIND`); drops pop on scope exit, so nested frames
+/// shadow their enclosing wrapper exactly while they render.
+pub(crate) struct SelfWrapperScope;
+impl SelfWrapperScope {
+    pub(crate) fn enter(kind: ValueKind) -> Self {
+        SELF_WRAPPER_KIND.with(|stack| stack.borrow_mut().push(kind));
+        Self
+    }
+}
+impl Drop for SelfWrapperScope {
+    fn drop(&mut self) {
+        SELF_WRAPPER_KIND.with(|stack| stack.borrow_mut().pop());
+    }
+}
+
+/// The innermost rendering wrapper's result carrier, when one is
+/// being rendered.
+pub(crate) fn self_wrapper_kind() -> Option<ValueKind> {
+    SELF_WRAPPER_KIND.with(|stack| stack.borrow().last().cloned())
+}
+
+/// Guarded entry onto the sibling-entry-carrier table stack (see
+/// `SIBLING_ENTRY_KINDS`).
+pub(crate) struct SiblingEntryScope;
+impl SiblingEntryScope {
+    pub(crate) fn enter(kinds: BTreeMap<String, ValueKind>) -> Self {
+        SIBLING_ENTRY_KINDS.with(|stack| stack.borrow_mut().push(kinds));
+        Self
+    }
+}
+impl Drop for SiblingEntryScope {
+    fn drop(&mut self) {
+        SIBLING_ENTRY_KINDS.with(|stack| stack.borrow_mut().pop());
+    }
+}
+
+/// A sibling function's emitted entry carrier, when the emission
+/// pre-lowered it.
+pub(crate) fn sibling_entry_kind(name: &str) -> Option<ValueKind> {
+    SIBLING_ENTRY_KINDS.with(|stack| {
+        stack
+            .borrow()
+            .iter()
+            .rev()
+            .find_map(|table| table.get(name).cloned())
+    })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ValueKind {
     I64,
@@ -444,6 +513,35 @@ fn result_is_call_self(program: &EmirProgram) -> bool {
         .is_some_and(|(op, _)| matches!(op, EmirOp::CallSelf { .. }))
 }
 
+/// The carrier one branch renders when its arms carry these kinds:
+/// the scalar join law (ExactInt absorbs I64, Rational absorbs the
+/// integer kinds - `if k == 0: 0 else: a / b` joins to Rat exactly as
+/// the VM's Int-to-Rat widening does) applied element-wise through
+/// vectors. A Rat-typed inlined carrier (replace_at's declared Rat
+/// signatures instantiated over Int vectors) joins a function's
+/// Int-recursive tail as the ratio vector; the render side widens
+/// the non-dominant arm through `numeric_boundary_value` onto the
+/// same join. Every pair the law cannot fold is unrepresentable.
+pub(super) fn join_arm_kinds(left: ValueKind, right: ValueKind) -> ValueKind {
+    match (left, right) {
+        (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt) => {
+            ValueKind::ExactInt
+        }
+        (ValueKind::Rational, ValueKind::I64 | ValueKind::ExactInt)
+        | (ValueKind::I64 | ValueKind::ExactInt, ValueKind::Rational) => ValueKind::Rational,
+        (ValueKind::Vector(left_element), ValueKind::Vector(right_element)) => {
+            let joined = join_arm_kinds(*left_element, *right_element);
+            if matches!(joined, ValueKind::Other) {
+                ValueKind::Other
+            } else {
+                ValueKind::Vector(Box::new(joined))
+            }
+        }
+        (joined, other) if joined == other => joined,
+        _ => ValueKind::Other,
+    }
+}
+
 pub(super) fn numeric_element_kind(values: &[EmirValue], kinds: &[ValueKind]) -> ValueKind {
     fn join(left: ValueKind, right: ValueKind) -> ValueKind {
         match (left, right) {
@@ -708,9 +806,16 @@ pub(super) fn kind_of_op(
         }
         // A sibling entry call (a recursion-cycle edge) renders as a
         // call to the callee's emitted entry fn, whose result type is
-        // grounded in the callee's declared output - so the register
-        // carries the declared kind.
-        EmirOp::CallSibling { result, .. } => {
+        // the callee's inferred body carrier - so the register
+        // carries THAT, not the authored declaration: the two
+        // disagree when the callee's body joins mixed-kind arms (a
+        // Rat-typed inlined carrier against an Int-declared recursive
+        // tail emits the ratio carrier). Without a pre-lowered table
+        // entry the declared signature stands.
+        EmirOp::CallSibling { name, result, .. } => {
+            if let Some(kind) = sibling_entry_kind(name) {
+                return kind;
+            }
             if !result.is_empty() {
                 let declared = ValueKind::from_signature(result);
                 if !matches!(declared, ValueKind::Other) {
@@ -827,30 +932,14 @@ pub(super) fn kind_of_op(
                 || (right_degenerate && !left_degenerate && left != ValueKind::Other)
             {
                 left
-            } else if left == right {
-                left
-            } else if matches!(
-                (&left, &right),
-                (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt)
-            ) {
-                // One representation: an exact-int arm absorbs an i64
-                // arm (the render widens the i64 side through
-                // `ExactInt::from`); a declared Int context narrows
-                // back at the checked i64 boundary (`coerce_to_ty`).
-                ValueKind::ExactInt
-            } else if matches!(
-                (&left, &right),
-                (ValueKind::Rational, ValueKind::I64 | ValueKind::ExactInt)
-                    | (ValueKind::I64 | ValueKind::ExactInt, ValueKind::Rational)
-            ) {
-                // One representation: a rational arm absorbs an
-                // integer arm (`if k == 0: 0 else: a / b` joins to
-                // Rat exactly as the VM's Int-to-Rat widening does);
-                // the render widens the integer side through the same
-                // `numeric_boundary_value` the call boundaries use.
-                ValueKind::Rational
             } else {
-                ValueKind::Other
+                // One representation: the arms fold under the scalar
+                // join law, element-wise through vectors (an
+                // Int-element arm widens exactly into the Rat-element
+                // vector at the arm boundary); a declared Int context
+                // narrows back at the checked i64 boundary. Pairs the
+                // law cannot fold stay unrepresentable.
+                join_arm_kinds(left, right)
             }
         }
         EmirOp::ListCreate(values)
@@ -1483,6 +1572,19 @@ pub(super) fn numeric_boundary_value(
         (ValueKind::ExactInt, ValueKind::Rational) => Some(Expr::Raw(
             super::op_arith::exact_int_ratio_parts(&render_expr(expression)),
         )),
+        // A ratio narrowing onto the i64 lane carries the emission
+        // lane's checked law (E-INT-002 by name): the division must
+        // be exact and the quotient in range. A Rat-computed actual
+        // crossing an Int-declared parameter (the replace_at
+        // instantiation's ratio arms folding back onto a function's
+        // Int-recursive tail) admits exactly the integral values the
+        // VM's arbitrary-precision Int lane would carry.
+        (ValueKind::Rational, ValueKind::I64) => Some(Expr::Raw(format!(
+            "{{ let (__narrow_num, __narrow_den) = {}; if __narrow_den == 0 || __narrow_num % __narrow_den != 0 || !({} <= __narrow_num / __narrow_den && __narrow_num / __narrow_den <= {}) {{ return Err(String::from(\"E-INT-002: ratio result does not narrow exactly onto the i64 lane\")); }} (__narrow_num / __narrow_den) as i64 }}",
+            render_expr(expression),
+            i64::MIN as i128,
+            i64::MAX as i128,
+        ))),
         // The union collapses onto a declared carrier through the
         // checked projections - the same law the declared output
         // boundary applies, at record fields, sequence elements, and

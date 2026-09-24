@@ -22,9 +22,10 @@
 //! `language/modules/exact/quadratic.emath`,
 //! `language/modules/numerics/bounds.emath`,
 //! `language/modules/geometry/surfaces.emath`,
-//! `language/modules/mechanics/oscillations.emath`, and
+//! `language/modules/mechanics/oscillations.emath`,
 //! `language/modules/discrete/order.emath` (the mutual-recursion
-//! cycle pins) — the same givens,
+//! cycle pins), and `language/modules/discrete/matching.emath` (the
+//! mixed-kind join pins) — the same givens,
 //! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
@@ -2670,6 +2671,188 @@ fn emission_conformance_operator_tag_witness() {
     assert!(
         diffs.is_empty(),
         "emitted witness disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const MATCHING_DRIVER: &str = r#"
+//! Authored pins of discrete/matching.emath against the emitted crate.
+//!
+//! The mixed-kind join pins (emath-49o8): replace_at's declared Rat
+//! carriers instantiate over Int vectors, so some inlined arms carry
+//! the ratio spelling while the recursive tails declare the Int
+//! spelling - the branch join folds both to one carrier and the
+//! recursion arguments narrow checked (E-INT-002 by name). The
+//! entries settle onto the declared Int carriers (the ratio spelling
+//! lives only inside the emitted arms), so every row compares the
+//! emitted i64 vectors against the VM's integer answers directly.
+
+use matching::{
+    assign_max, asg_row, max_match_loop, max_matching, EmathRecord_Edge as Edge,
+    EmathRecord_WeightedGraph as Wg,
+};
+
+fn g(vertices: i64, edges: &[(i64, i64, i64)]) -> Wg {
+    Wg {
+        vertices,
+        edges: edges
+            .iter()
+            .map(|(from, to, weight)| Edge {
+                from: *from,
+                to: *to,
+                weight: (*weight as i128, 1),
+            })
+            .collect(),
+    }
+}
+
+fn i_eq(got: &Result<Vec<i64>, String>, want: &[i64]) -> Option<String> {
+    match got {
+        Ok(v) if v == want => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <path_matches_two> (max_matching)
+    let got = max_matching(g(4, &[(0, 1, 1), (1, 2, 1), (2, 3, 1)]));
+    if let Some(diff) = i_eq(&got, &[1, 0, 3, 2]) {
+        failures += 1;
+        println!("DIFF path_matches_two EMITTED {diff}; VM = [1, 0, 3, 2]");
+    }
+    // example <star_matches_one>
+    let got = max_matching(g(4, &[(0, 1, 1), (0, 2, 1), (0, 3, 1)]));
+    if let Some(diff) = i_eq(&got, &[3, 0 - 1, 0 - 1, 0]) {
+        failures += 1;
+        println!("DIFF star_matches_one EMITTED {diff}; VM = [3, -1, -1, 0]");
+    }
+    // example <c6_matches_perfectly>
+    let got = max_matching(g(
+        6,
+        &[(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1), (4, 5, 1), (5, 0, 1)],
+    ));
+    if let Some(diff) = i_eq(&got, &[5, 2, 1, 4, 3, 0]) {
+        failures += 1;
+        println!("DIFF c6_matches_perfectly EMITTED {diff}; VM = [5, 2, 1, 4, 3, 0]");
+    }
+    // example <non_bipartite_refuses>: the odd cycle refuses by name.
+    let got = max_matching(g(3, &[(0, 1, 1), (1, 2, 1), (2, 0, 1)]));
+    match got {
+        Err(e) if e.contains("not_bipartite") => {}
+        other => {
+            failures += 1;
+            println!("DIFF non_bipartite_refuses EMITTED {other:?}; VM = Err(not_bipartite)");
+        }
+    }
+
+    // example <p4_grows_to_the_maximum> (max_match_loop: the grown
+    // join - an augment result folding with the input m - recurses)
+    let got = max_match_loop(
+        vec![vec![1], vec![0, 2], vec![1, 3], vec![2]],
+        vec![0 - 1, 0 - 1, 0 - 1, 0 - 1],
+        vec![0, 1, 0, 1],
+        4,
+    );
+    if let Some(diff) = i_eq(&got, &[1, 0, 3, 2]) {
+        failures += 1;
+        println!("DIFF p4_grows_to_the_maximum EMITTED {diff}; VM = [1, 0, 3, 2]");
+    }
+    // example <exhausted_input_returns_the_partner_vector>
+    let got = max_match_loop(
+        vec![vec![1], vec![0, 2], vec![1, 3], vec![2]],
+        vec![1, 0, 3, 2],
+        vec![0, 1, 0, 1],
+        4,
+    );
+    if let Some(diff) = i_eq(&got, &[1, 0, 3, 2]) {
+        failures += 1;
+        println!("DIFF exhausted_input_returns_the_partner_vector EMITTED {diff}; VM = [1, 0, 3, 2]");
+    }
+    // example <star_matches_the_last_declared_leaf>
+    let got = max_match_loop(
+        vec![vec![1, 2, 3], vec![0], vec![0], vec![0]],
+        vec![0 - 1, 0 - 1, 0 - 1, 0 - 1],
+        vec![0, 1, 1, 1],
+        4,
+    );
+    if let Some(diff) = i_eq(&got, &[3, 0 - 1, 0 - 1, 0]) {
+        failures += 1;
+        println!("DIFF star_matches_the_last_declared_leaf EMITTED {diff}; VM = [3, -1, -1, 0]");
+    }
+
+    // example <picks_the_heavier_assignment> (assign_max: the full
+    // asg_rec/asg_row recursion from the empty baseline)
+    let got = assign_max(g(
+        4,
+        &[(0, 2, 3), (0, 3, 1), (1, 2, 1), (1, 3, 1)],
+    ));
+    if let Some(diff) = i_eq(&got, &[2, 3, 0, 1]) {
+        failures += 1;
+        println!("DIFF picks_the_heavier_assignment EMITTED {diff}; VM = [2, 3, 0, 1]");
+    }
+    // example <tie_picks_the_lex_least>
+    let got = assign_max(g(4, &[(0, 2, 1), (0, 3, 1), (1, 2, 1), (1, 3, 1)]));
+    if let Some(diff) = i_eq(&got, &[2, 3, 0, 1]) {
+        failures += 1;
+        println!("DIFF tie_picks_the_lex_least EMITTED {diff}; VM = [2, 3, 0, 1]");
+    }
+    // example <negative_weights_can_leave_vertices_free>
+    let got = assign_max(g(2, &[(0, 1, 0 - 2)]));
+    if let Some(diff) = i_eq(&got, &[0 - 1, 0 - 1]) {
+        failures += 1;
+        println!("DIFF negative_weights_can_leave_vertices_free EMITTED {diff}; VM = [-1, -1]");
+    }
+
+    // example <heavier_fixture_full_row_folds_to_the_optimum>
+    // (asg_row: the match-or-skip row fold itself)
+    let got = asg_row(
+        g(4, &[(0, 2, 3), (0, 3, 1), (1, 2, 1), (1, 3, 1)]),
+        vec![vec![2, 3], vec![2, 3], vec![0, 1], vec![0, 1]],
+        vec![0, 0, 1, 1],
+        vec![0, 0, 0, 0],
+        vec![0 - 1, 0 - 1, 0 - 1, 0 - 1],
+        0,
+        1,
+        vec![0 - 1, 0 - 1, 0 - 1, 0 - 1],
+    );
+    if let Some(diff) = i_eq(&got, &[2, 3, 0, 1]) {
+        failures += 1;
+        println!("DIFF heavier_fixture_full_row_folds_to_the_optimum EMITTED {diff}; VM = [2, 3, 0, 1]");
+    }
+    // example <tie_breaks_to_the_lex_least_vector>
+    let got = asg_row(
+        g(4, &[(0, 2, 1), (0, 3, 1), (1, 2, 1), (1, 3, 1)]),
+        vec![vec![2, 3], vec![2, 3], vec![0, 1], vec![0, 1]],
+        vec![0, 0, 1, 1],
+        vec![0, 0, 0, 0],
+        vec![0 - 1, 0 - 1, 0 - 1, 0 - 1],
+        0,
+        1,
+        vec![0 - 1, 0 - 1, 0 - 1, 0 - 1],
+    );
+    if let Some(diff) = i_eq(&got, &[2, 3, 0, 1]) {
+        failures += 1;
+        println!("DIFF tie_breaks_to_the_lex_least_vector EMITTED {diff}; VM = [2, 3, 0, 1]");
+    }
+
+    if failures > 0 {
+        panic!("{failures} matching row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_matching() {
+    let diffs = run_lane(
+        "language/modules/discrete/matching.emath",
+        MATCHING_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted matching disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

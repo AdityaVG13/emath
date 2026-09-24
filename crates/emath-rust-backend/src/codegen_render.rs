@@ -276,8 +276,12 @@ pub(crate) fn op_expr(
             // crosses through the shared numeric boundary - the same
             // law as call arguments: E-INT-002 by name on narrowing,
             // exact widening the other way, and sequence elements
-            // obey the same check element-wise.
-            let callee_kind = program_kind(program, names, states, input_kinds);
+            // obey the same check element-wise. Nested in a branch,
+            // the local inference cannot see the enclosing join, so
+            // the wrapper scope (set where the wrapper's type is
+            // decided) names the carrier the call actually returns.
+            let callee_kind = self_wrapper_kind()
+                .unwrap_or_else(|| program_kind(program, names, states, input_kinds));
             let declared =
                 if result.is_empty() { ValueKind::Other } else { ValueKind::from_signature(result) };
             let site_kind = if !matches!(declared, ValueKind::Other) {
@@ -1671,6 +1675,10 @@ fn literal_frame_expr(
                 Err(_) => "impl core::fmt::Debug".to_string(),
             }
         };
+        // The frame fn IS the recursive wrapper for its body: the
+        // scope names its decided carrier so nested `CallSelf` sites
+        // cross from what `__frame_self` actually returns.
+        let _wrapper = SelfWrapperScope::enter(result_kind.clone());
         let mut body_code = render_expr(&value_expr(body, &names, &states, &frame_kinds)?)
             .replace("__self(", "__frame_self(");
         // A frame tail that resolves to a borrowed register (a

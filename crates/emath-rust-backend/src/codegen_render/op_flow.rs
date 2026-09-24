@@ -243,27 +243,30 @@ pub(super) fn authored_control_expr(
             };
             let then_kind = arm_kind(then_body);
             let else_kind = arm_kind(else_body);
-            let exact_join = then_kind == ValueKind::ExactInt || else_kind == ValueKind::ExactInt;
-            // A rational arm absorbs an integer arm (`if k == 0: 0
-            // else: a / b`): the integer side widens through the same
-            // `numeric_boundary_value` the call boundaries use, so
-            // both arms render the `(i128, i128)` ratio carrier.
-            let rational_join = (then_kind == ValueKind::Rational
-                && matches!(else_kind, ValueKind::I64 | ValueKind::ExactInt))
-                || (else_kind == ValueKind::Rational
-                    && matches!(then_kind, ValueKind::I64 | ValueKind::ExactInt));
+            // The arms fold to one carrier: the same join law the
+            // kind walk applies (ExactInt absorbs I64, Rational
+            // absorbs the integers), element-wise through vectors.
+            // Whichever arm the law dominates widens through the
+            // `numeric_boundary_value` the call boundaries use - an
+            // Int arm into a Rat arm, and a Rat-typed inlined carrier
+            // (replace_at's declared Rat signatures instantiated over
+            // Int vectors) joining an Int-recursive tail folds to the
+            // ratio vector with the integer side widening exactly.
+            let joined_kind = super::join_arm_kinds(then_kind.clone(), else_kind.clone());
             let then_text = nested(then_body, argument_kinds.clone())?;
             let else_text = nested(else_body, argument_kinds)?;
             let widen = |text: String, kind: &ValueKind, other: &ValueKind| -> String {
-                if rational_join && matches!(kind, ValueKind::I64 | ValueKind::ExactInt) {
-                    if let Some(converted) = super::numeric_boundary_value(
+                if !matches!(joined_kind, ValueKind::Other)
+                    && *kind != joined_kind
+                    && !matches!(kind, ValueKind::Other)
+                    && let Some(converted) = super::numeric_boundary_value(
                         &Expr::Raw(text.clone()),
                         kind,
-                        &ValueKind::Rational,
+                        &joined_kind,
                         "branch arm",
-                    ) {
-                        return render_expr(&converted);
-                    }
+                    )
+                {
+                    return render_expr(&converted);
                 }
                 // A dynamic arm (a quoted frame's `evaluate` result)
                 // joining a typed arm projects through the same
@@ -279,28 +282,19 @@ pub(super) fn authored_control_expr(
                             | ValueKind::ExactInt
                             | ValueKind::Bool
                     )
-                {
-                    if let Some(converted) = super::numeric_boundary_value(
+                    && let Some(converted) = super::numeric_boundary_value(
                         &Expr::Raw(text.clone()),
                         kind,
                         other,
                         "branch arm",
-                    ) {
-                        return render_expr(&converted);
-                    }
+                    )
+                {
+                    return render_expr(&converted);
                 }
                 text
             };
-            let then_body = if exact_join && then_kind == ValueKind::I64 {
-                format!("emath_rt::ExactInt::from(({then_text}))")
-            } else {
-                widen(then_text, &then_kind, &else_kind)
-            };
-            let else_body = if exact_join && else_kind == ValueKind::I64 {
-                format!("emath_rt::ExactInt::from(({else_text}))")
-            } else {
-                widen(else_text, &else_kind, &then_kind)
-            };
+            let then_body = widen(then_text, &then_kind, &else_kind);
+            let else_body = widen(else_text, &else_kind, &then_kind);
             // A union-valued condition (a boolean combinator inside an
             // expression template or quoted frame) projects to bool
             // checked - the same law as the Select arm.
