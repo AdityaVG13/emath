@@ -135,6 +135,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         EmirOp::VectorMapScalar { vector, scalar, .. } => out.extend([*vector, *scalar]),
         EmirOp::CallFrame { inputs, state, .. } => { out.extend(inputs); out.extend(state); }
         EmirOp::CallSelf { inputs, .. } => out.extend(inputs),
+        EmirOp::CallSibling { inputs, .. } => out.extend(inputs),
         EmirOp::SameDenseShape(left, right) => out.extend([*left, *right]),
         EmirOp::DenseValues(value) | EmirOp::DenseLayout(value) | EmirOp::ToF64(value) | EmirOp::F64SortTotal(value) => out.push(*value),
         EmirOp::VectorSlice { vector, offset, count } => out.extend([*vector, *offset, *count]),

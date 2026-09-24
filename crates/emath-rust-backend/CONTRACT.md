@@ -46,6 +46,31 @@ predicts the rendered Rust type:
   `Int`/`ExactInt`/`Rat`: the exact operand widens through the as-f64 coercion
   (`numerator as f64 / denominator as f64`, the ratio carrier is normalized).
   Pure int/int, rat/rat, and float/float pairs keep their own lanes.
+- An exact-integer machine operand over a `Rat`-kinded register (an `Int` datum
+  routed through a Rat-declared record field, which projects the layout's ratio
+  carrier) narrows value-exactly: a denominator-1 ratio projects to the integer
+  it equals (`ExactInt::from(num)`), anything else refuses
+  `E-INT-003: exact integer operand is a non-integral rational`. The VM's `Int`
+  parameter admits integer values only; the projection admits exactly the
+  value-equal ratios.
+- A degenerate kind is recursive: a vector whose element kind is itself
+  degenerate carries no carrier (a list OF empty literals), so branch joins and
+  frame inputs treat it exactly like `Other` - the other arm's concrete kind or
+  the declared parameter wins (`assignments`' nested `vec!(vec!())` base arm
+  joins to `Vec<Vec<bool>>`).
+- A non-copy frame binding carries its carrier in the binding itself
+  (`let name: &ty = &expr;`): a degenerate operand (an empty `[]` literal) has
+  no self-evident element type to infer, so the declared frame kind names it -
+  the same law as the closure-capture lane.
+- A recursion-cycle edge (`CallSibling`) renders as a call to the callee's
+  emitted entry fn, and the emission worklist settles the entry set to a fixed
+  point: every `CallSibling`-reachable function (including IMPORTED cycle
+  members, the caller's `use`d tree merged for declared lookups) gets its own
+  entry - `probability/sampling`'s imported `sort_loop` from `discrete/order`
+  is the pin. Arguments cross through the callee's declared carriers with the
+  same frame-input laws (numeric boundaries, closure handle clones, owned
+  non-copy carriers), and the register kind carries the callee's declared
+  result.
 
 Authored lists join Int/ExactInt/Rat representations before construction or cons.
 Concatenation borrows each input once, sums lengths without cloning, allocates
@@ -74,6 +99,18 @@ generated fixture, including named overflow refusals and wide-frame preservation
   renders self-contained with its own `__frame_self`, so a nested sibling's
   self-recursion never forces a wrapper (or a unit result type) on the
   enclosing body.
+- Indexing a concrete non-sequence carrier (`VectorIndex` whose receiver kind
+  is a scalar, record, or closure) refuses by the VM's own name - the
+  `vector_of` type confusion, op `vector-index` - as a `return Err` carrier
+  whose kind is `Never`; every consumer join absorbs it (a branch arm, an
+  arithmetic operand whose other side wins the carrier), and the refusal
+  expression coerces into operand positions so the faulting arm still
+  compiles. This is the authored `lp_ray(lp_zeros(1), ...)` shape: a flat
+  actual into a nested-declared parameter whose double-index arm never runs
+  under the authored givens - the emitted code preserves both facts (it
+  compiles; the arm refuses if ever taken). `Other`-kinded receivers keep the
+  float-index lane's dynamic guard - an uninferred kind may still be a
+  sequence at runtime.
 
 ## Rendering cost
 

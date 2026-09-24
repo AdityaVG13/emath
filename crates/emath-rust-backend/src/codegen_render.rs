@@ -278,6 +278,49 @@ pub(crate) fn op_expr(
                 .unwrap_or_else(|| render_expr(&call));
             Ok(Expr::Raw(crossed))
         }
+        EmirOp::CallSibling {
+            name,
+            inputs,
+            declared,
+            ..
+        } => {
+            // A sibling call that closes a recursion cycle: the
+            // callee's body cannot inline (the cycle would nest
+            // forever), so the call renders against the callee's
+            // emitted entry fn - one named entry per runnable
+            // function lives in the same crate. Arguments cross
+            // through the callee's declared carriers (the same
+            // frame-input law: numeric boundaries, closure handle
+            // clones, owned non-copy carriers).
+            let entry = escape_ident(name);
+            let args = inputs
+                .iter()
+                .enumerate()
+                .map(|(position, value)| {
+                    let kind = kind_at(kinds, *value);
+                    let target = declared
+                        .get(position)
+                        .map(|signature| ValueKind::from_signature(signature))
+                        .filter(|kind| !matches!(kind, ValueKind::Other));
+                    if let Some(target) = &target {
+                        if let Some(converted) =
+                            numeric_boundary_value(&operand(program, *value), &kind, target)
+                        {
+                            return render_expr(&converted);
+                        }
+                    }
+                    if matches!(kind, ValueKind::Closure { .. }) {
+                        format!("{}.clone()", render_expr(&operand(program, *value)))
+                    } else if kind.is_copy() {
+                        render_expr(&operand(program, *value))
+                    } else {
+                        render_expr(&owned_operand(program, *value, kinds))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            Ok(Expr::Raw(format!("{entry}({args})?")))
+        }
         EmirOp::SameDenseShape(..)
         | EmirOp::DenseValues(_)
         | EmirOp::DenseRepack { .. }
@@ -1509,11 +1552,22 @@ fn literal_frame_expr(
                 continue;
             }
         }
-        let borrow = if kind.is_copy() { "" } else { "&" };
-        code.push_str(&format!(
-            "let {name} = {borrow}{}; ",
-            render_expr(&operand(outer, *value))
-        ));
+        if kind.is_copy() {
+            code.push_str(&format!(
+                "let {name} = {}; ",
+                render_expr(&operand(outer, *value))
+            ));
+        } else {
+            // A borrowed frame binding carries its carrier in the
+            // binding itself: a degenerate operand (an empty `[]`
+            // literal) has no self-evident element type to infer, so
+            // the declared frame kind names it.
+            let ty = crate::rust_ir::render::render_ty(&kind.borrowed_rust_ty()?);
+            code.push_str(&format!(
+                "let {name}: &{ty} = &{}; ",
+                render_expr(&operand(outer, *value))
+            ));
+        }
         frame_kinds.insert(name.clone(), kind);
     }
     for (name, value) in states.iter().zip(state) {

@@ -68,6 +68,38 @@ fn call_binds_closure(tree: &SyntaxTree, function: &Expr) -> bool {
     })
 }
 
+/// Authored carrier signatures for one function: input carriers (one
+/// per declared input) and the output carrier (a multi-output
+/// function packs `Record<name>`, matching the entry emission's
+/// result authority). Empty strings mean unknown.
+fn authored_signatures(
+    tree: &SyntaxTree,
+    name: &str,
+    object_names: &BTreeSet<String>,
+) -> (Vec<String>, String) {
+    let decl = tree.items.iter().find_map(|item| match item {
+        Item::Declaration(decl) if decl.as_kind == "function" && decl.name == name => Some(decl),
+        _ => None,
+    });
+    let Some(decl) = decl else {
+        return (Vec::new(), String::new());
+    };
+    let declared = section_typed_fields(decl, "inputs")
+        .iter()
+        .map(|(_, ty)| constructor_type_signature(ty, object_names).unwrap_or_default())
+        .collect();
+    let outputs = section_typed_fields(decl, "outputs");
+    let result = if outputs.len() > 1 {
+        format!("Record<{name}>")
+    } else {
+        outputs
+            .first()
+            .and_then(|(_, ty)| constructor_type_signature(ty, object_names))
+            .unwrap_or_default()
+    };
+    (declared, result)
+}
+
 fn lower_named(
     tree: &SyntaxTree,
     name: &str,
@@ -106,6 +138,7 @@ fn lower_named(
         collect_unresolved(expr, &mut unresolved);
     }
     let mut siblings = BTreeMap::new();
+    let mut entry_refs = BTreeMap::new();
     let mut callees = BTreeSet::new();
     for (_, expr) in &defs {
         collect_called_names(expr, &mut callees);
@@ -116,31 +149,22 @@ fn lower_named(
         if callee == name || !function_exists(tree, &callee) {
             continue;
         }
+        if visiting.contains(&callee) {
+            // The cycle edge: this callee is an open ancestor, so its
+            // body cannot inline here (the cycle would nest forever).
+            // Reference its emitted entry fn instead - the backend
+            // renders the named call, crossing arguments and results
+            // through the callee's declared carriers.
+            let signatures = authored_signatures(tree, &callee, &object_names);
+            entry_refs.insert(callee, signatures);
+            continue;
+        }
         match lower_named(tree, &callee, cache, visiting) {
             Ok(other) if other.runnable => {
                 // Authored input carriers for the inlined frame: an
                 // argument with no self-evident kind (an empty `[]`)
                 // recovers its carrier from the callee's declaration.
-                let declared = tree
-                    .items
-                    .iter()
-                    .find_map(|item| match item {
-                        Item::Declaration(decl)
-                            if decl.as_kind == "function" && decl.name == callee =>
-                        {
-                            Some(
-                                section_typed_fields(decl, "inputs")
-                                    .iter()
-                                    .map(|(_, ty)| {
-                                        constructor_type_signature(ty, &object_names)
-                                            .unwrap_or_default()
-                                    })
-                                    .collect::<Vec<_>>(),
-                            )
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or_default();
+                let (declared, _) = authored_signatures(tree, &callee, &object_names);
                 siblings.insert(callee, (other.program, declared));
             }
             Ok(other) => {
@@ -156,6 +180,7 @@ fn lower_named(
         inputs: inputs.clone(),
         locals: BTreeMap::new(),
         siblings,
+        entry_siblings: entry_refs,
         objects,
         ops: Vec::new(),
         obligations: Vec::new(),
@@ -299,6 +324,11 @@ struct Lowerer {
     /// backend recovers degenerate argument kinds (an empty `[]`)
     /// from the declaration instead of guessing.
     siblings: BTreeMap<String, (EmirProgram, Vec<String>)>,
+    /// Sibling calls that close a recursion cycle (the callee is an
+    /// open ancestor, so its body cannot inline): name -> authored
+    /// (input carriers, output carrier). Lowered as `CallSibling` -
+    /// the backend renders a call to the callee's emitted entry fn.
+    entry_siblings: BTreeMap<String, (Vec<String>, String)>,
     objects: BTreeMap<String, String>,
     ops: Vec<(EmirOp, Span)>,
     obligations: Vec<DomainObligation>,
@@ -358,6 +388,7 @@ impl Lowerer {
             inputs: self.captured_names(),
             locals: BTreeMap::new(),
             siblings: self.siblings.clone(),
+            entry_siblings: self.entry_siblings.clone(),
             objects: self.objects.clone(),
             ops: Vec::new(),
             obligations: Vec::new(),
@@ -430,6 +461,7 @@ impl Lowerer {
             inputs,
             locals: BTreeMap::new(),
             siblings: self.siblings.clone(),
+            entry_siblings: self.entry_siblings.clone(),
             objects: self.objects.clone(),
             ops: Vec::new(),
             obligations: Vec::new(),
@@ -642,6 +674,22 @@ impl Lowerer {
             return Ok(self.push(EmirOp::CallSelf {
                 inputs,
                 result: self.self_result.clone(),
+            }));
+        }
+        if let Some((declared, result)) = self.entry_siblings.get(&called).cloned() {
+            // The cycle edge: the callee is an open ancestor (A calls
+            // B, B calls A), so its body cannot inline. Lower the
+            // named sibling call - the backend renders a call to the
+            // callee's emitted entry fn with the declared carriers.
+            let mut inputs = Vec::new();
+            for arg in args {
+                inputs.push(self.expr(arg)?);
+            }
+            return Ok(self.push(EmirOp::CallSibling {
+                name: called.clone(),
+                inputs,
+                declared,
+                result,
             }));
         }
         if let Some((body, declared)) = self.siblings.get(&called).cloned() {
@@ -938,6 +986,7 @@ impl Lowerer {
                         inputs,
                         locals: BTreeMap::new(),
                         siblings: self.siblings.clone(),
+            entry_siblings: self.entry_siblings.clone(),
                         objects: self.objects.clone(),
                         ops: Vec::new(),
                         obligations: Vec::new(),
@@ -982,6 +1031,7 @@ impl Lowerer {
                         inputs: free.clone(),
                         locals: BTreeMap::new(),
                         siblings: self.siblings.clone(),
+            entry_siblings: self.entry_siblings.clone(),
                         objects: self.objects.clone(),
                         ops: Vec::new(),
                         obligations: Vec::new(),
@@ -1151,6 +1201,7 @@ fn lower_closed(
         inputs: inputs.to_vec(),
         locals: BTreeMap::new(),
         siblings: BTreeMap::new(),
+        entry_siblings: BTreeMap::new(),
         objects: BTreeMap::new(),
         ops: Vec::new(),
         obligations: Vec::new(),
@@ -2050,6 +2101,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         inputs: vec!["__index".into(), "__acc".into(), param.to_string()],
         locals: BTreeMap::new(),
         siblings: BTreeMap::new(),
+        entry_siblings: BTreeMap::new(),
         objects: BTreeMap::new(),
         ops: Vec::new(),
         obligations: Vec::new(),
@@ -2080,6 +2132,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         inputs: vec![param.to_string()],
         locals: BTreeMap::new(),
         siblings: BTreeMap::new(),
+        entry_siblings: BTreeMap::new(),
         objects: BTreeMap::new(),
         ops: Vec::new(),
         obligations: Vec::new(),

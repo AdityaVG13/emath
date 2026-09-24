@@ -110,9 +110,16 @@ pub(super) fn op_arith_exprs(
         _ => None,
     };
     if let Some((function, left, right, negate)) = exact {
-        if kind_at(kinds, left) == ValueKind::Rational
-            && kind_at(kinds, right) == ValueKind::Rational
-        {
+        let left_kind = kind_at(kinds, left);
+        let right_kind = kind_at(kinds, right);
+        // A Never operand (the `vector-index` type-confusion refusal)
+        // passes through the exact lane: its `return Err` expression
+        // diverges, so it coerces into the ratio argument position and
+        // faults first at runtime - the same evaluation order the VM
+        // would take if the arm ever ran.
+        let rat_pair = matches!(left_kind, ValueKind::Rational | ValueKind::Never)
+            && matches!(right_kind, ValueKind::Rational | ValueKind::Never);
+        if rat_pair {
             let value = map_runtime_result(format!(
                 "emath_rt::{function}({}, {})",
                 render_expr(&operand(program, left)),

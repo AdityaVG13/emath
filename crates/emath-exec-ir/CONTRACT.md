@@ -339,14 +339,20 @@ runtime Refuse (the same fault the VM raises when a branch takes
 it), so authored transformation modules that name their boundary
 in unexercised else-branches still lower.
 
-Consumer boundary (named, honest): mutually recursive sibling
-functions refuse lowering (`recursive sibling ... is not
-emitted`) - the emission model inlines acyclic siblings and
-self-recursion only; entry-call emission for cycles is a future
-bead, not scope creep here. The consumer module
+Consumer boundary (named, honest): a call whose callee is an OPEN
+RECURSION ANCESTOR (the `visiting` set) closes a cycle and cannot
+inline - it lowers as the named `CallSibling` op (callee name,
+inputs, declared carrier signatures, declared result). The emission
+model inlines acyclic siblings as `CallFrame` and self-recursion as
+`CallSelf`; a cycle edge is the fourth shape. The consumer module
 (`language/modules/calculus/diff.emath`, local-only like every
-language/ file) folds its helper rules into one self-recursive
-walk for exactly this reason - the mathematics is unchanged.
+language/ file) folds its helper rules into one self-recursive walk
+by choice, not necessity. The E-MIR interpreter refuses `CallSibling`
+as emission-carried (`CarrierRefused`, the same fence as the quote
+ops): lowered constructor programs are emission-lane artifacts, not
+VM-run programs, and the backend's emission worklist gives every
+`CallSibling`-reachable function (imported cycle members included)
+its own named entry.
 
 ## Kernel boundary
 

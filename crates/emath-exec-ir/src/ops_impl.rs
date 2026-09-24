@@ -90,6 +90,7 @@ impl EmirOp {
             Self::ApplyCapability { .. } => "apply-capability",
             Self::CallFrame { .. } => "call-frame",
             Self::CallSelf { .. } => "call-self",
+            Self::CallSibling { .. } => "call-sibling",
             Self::SameDenseShape(..) => "same-dense-shape",
             Self::DenseLayout(_) => "dense-layout",
             Self::VectorSlice { .. } => "vector-slice",

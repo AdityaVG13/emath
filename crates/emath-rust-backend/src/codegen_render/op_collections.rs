@@ -2,8 +2,8 @@
 
 use super::{
     BackendError, EmirOp, EmirProgram, EmirValue, Expr, Stmt, ValueKind, checked_integer_operand,
-    exact_int_operand, index_f64, kind_at, map_runtime_result, operand, owned_operand, render_expr,
-    tensor_index_call, tensor_slice_call, typed_operand,
+    exact_int_operand, index_f64, kind_at, kind_is_never_indexable, map_runtime_result, operand,
+    owned_operand, render_expr, tensor_index_call, tensor_slice_call, typed_operand,
 };
 
 fn authored_list_concat(
@@ -475,6 +475,17 @@ pub(super) fn op_collection_exprs(
                 let sequence = render_expr(&operand(program, *vector));
                 let index = render_expr(&operand(program, *index));
                 return Ok(Expr::Raw(format!("({sequence}).index({index})?")));
+            }
+            // A concrete non-sequence carrier cannot be indexed: the
+            // VM's `vector_of` type confusion (op `vector-index`)
+            // faults on this op, so the emitted lane refuses by the
+            // same name instead of guessing a `.get` lane the carrier
+            // does not carry. The Never kind lets every consumer join
+            // absorb the refusal.
+            if kind_is_never_indexable(&kind_at(kinds, *vector)) {
+                return Ok(Expr::Raw(
+                    "return Err(\"vector-index type confusion\".to_string())".into(),
+                ));
             }
             let collection = render_expr(&operand(program, *vector));
             let materialize = match kind_at(kinds, *vector) {

@@ -217,11 +217,32 @@ pub(super) fn union_pair(kinds: &[ValueKind], left: EmirValue, right: EmirValue)
         || (right_kind == ValueKind::CodeValue && union_promotable(&left_kind))
 }
 
+/// A receiver kind that can never be indexed: every concrete
+/// non-sequence carrier faults the VM's `vector_of` type confusion
+/// (op `vector-index`). `Other` is excluded - an uninferred kind may
+/// still be a sequence at runtime, so the float-index lane keeps its
+/// dynamic guard.
+pub(super) fn kind_is_never_indexable(kind: &ValueKind) -> bool {
+    !matches!(
+        kind,
+        ValueKind::Vector(_)
+            | ValueKind::Matrix(_)
+            | ValueKind::Tensor
+            | ValueKind::Node
+            | ValueKind::Other
+    )
+}
+
 /// A kind that carries no usable carrier information: `Other`, or a
-/// vector whose element kind is `Other` (an empty `[]` literal).
+/// vector whose element kind is itself degenerate (an empty `[]`
+/// literal carries no element kind of its own; a list OF empty lists
+/// carries neither its own nor its elements').
 pub(super) fn kind_is_degenerate(kind: &ValueKind) -> bool {
-    matches!(kind, ValueKind::Other)
-        || matches!(kind, ValueKind::Vector(element) if matches!(**element, ValueKind::Other))
+    match kind {
+        ValueKind::Other => true,
+        ValueKind::Vector(element) => kind_is_degenerate(element),
+        _ => false,
+    }
 }
 
 /// Recover a frame input's kind from the callee's authored
@@ -684,6 +705,19 @@ pub(super) fn kind_of_op(
                 .first()
                 .map_or(ValueKind::I64, |value| kind_at(kinds, *value))
         }
+        // A sibling entry call (a recursion-cycle edge) renders as a
+        // call to the callee's emitted entry fn, whose result type is
+        // grounded in the callee's declared output - so the register
+        // carries the declared kind.
+        EmirOp::CallSibling { result, .. } => {
+            if !result.is_empty() {
+                let declared = ValueKind::from_signature(result);
+                if !matches!(declared, ValueKind::Other) {
+                    return declared;
+                }
+            }
+            ValueKind::Other
+        }
         EmirOp::CallFrame {
             body,
             inputs,
@@ -856,6 +890,13 @@ pub(super) fn kind_of_op(
             // Indexing a node sequence (the walk's `node.args[0]`)
             // stays in the node family.
             ValueKind::Node => ValueKind::Node,
+            // A concrete non-sequence carrier cannot be indexed: the
+            // VM's `vector_of` type confusion (op `vector-index`)
+            // faults, so the op never yields and the Never kind lets
+            // every consumer join absorb the refusal. `Other` keeps
+            // the float-index lane - an uninferred kind may still be
+            // a sequence at runtime.
+            receiver if kind_is_never_indexable(&receiver) => ValueKind::Never,
             _ => ValueKind::F64,
         },
         EmirOp::ConstComplex(..) => ValueKind::Complex,
@@ -933,11 +974,19 @@ pub(super) fn kind_of_op(
         EmirOp::LoadInput(index) => input_kind(names.get(*index as usize), input_kinds),
         EmirOp::LoadState(index) => input_kind(states.get(*index as usize), input_kinds),
         EmirOp::F64Add(left, right) | EmirOp::F64Sub(left, right) | EmirOp::F64Mul(left, right) => {
-            // The expression-template union lane: one union operand
-            // with a joinable other routes the op onto the dynamic
-            // kernels; the result stays the union until a typed
-            // boundary projects it.
-            if union_pair(kinds, *left, *right) {
+            // A Never operand (an op that always refuses - the
+            // `vector-index` type confusion) never yields a value, so
+            // the surviving operand's carrier wins; the render
+            // propagates the refusal expression through its own lane.
+            if kind_at(kinds, *left) == ValueKind::Never {
+                kind_at(kinds, *right)
+            } else if kind_at(kinds, *right) == ValueKind::Never {
+                kind_at(kinds, *left)
+            } else if union_pair(kinds, *left, *right) {
+                // The expression-template union lane: one union
+                // operand with a joinable other routes the op onto
+                // the dynamic kernels; the result stays the union
+                // until a typed boundary projects it.
                 ValueKind::CodeValue
             } else if (kind_at(kinds, *left) == ValueKind::ExactInt
                 || kind_at(kinds, *right) == ValueKind::ExactInt)

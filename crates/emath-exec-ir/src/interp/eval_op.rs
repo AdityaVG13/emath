@@ -56,5 +56,15 @@ pub(super) fn eval_op(
                 ),
             })
         }
+        // A sibling entry call is emission-lane: the interpreter has
+        // no sibling-name environment, and constructor-lowered
+        // programs run in the constructor VM, which resolves sibling
+        // names natively. Refuse by name instead of guessing.
+        EmirOp::CallSibling { .. } => Err(EvalFault::CarrierRefused {
+            op: op.name(),
+            detail: String::from(
+                "sibling entry call; the interpreter has no sibling-name environment",
+            ),
+        }),
     }
 }

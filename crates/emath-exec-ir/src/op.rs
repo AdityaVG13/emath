@@ -213,6 +213,28 @@ pub enum EmirOp {
         inputs: Vec<EmirValue>,
         result: String,
     },
+    /// Call a sibling function that closes a recursion cycle (A calls
+    /// B, B calls A). The callee's body cannot inline here - the
+    /// cycle would nest forever - so the op names the callee: the
+    /// backend renders a call to the callee's emitted entry fn (one
+    /// named entry per runnable function lives in the same crate),
+    /// crossing arguments through the shared numeric boundary laws
+    /// exactly as frame inputs do.
+    ///
+    /// `declared` carries the callee's authored input carrier
+    /// signatures (one per input, empty = unknown) and `result` the
+    /// callee's authored output carrier signature (empty = unknown).
+    /// Kind inference and the render use them. Evaluation faults
+    /// named: the interpreter has no sibling-name environment, and
+    /// constructor-lowered programs are emission-lane (the authored
+    /// module runs in the constructor VM, which resolves sibling
+    /// names natively).
+    CallSibling {
+        name: String,
+        inputs: Vec<EmirValue>,
+        declared: Vec<String>,
+        result: String,
+    },
     /// Compare scalar/dense carrier layout, including stored element counts.
     SameDenseShape(EmirValue, EmirValue),
     DenseLayout(EmirValue),

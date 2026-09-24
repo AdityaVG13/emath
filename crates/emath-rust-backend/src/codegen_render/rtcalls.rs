@@ -120,7 +120,7 @@ pub(super) fn checked_integer_result(call: Expr) -> Expr {
 pub(crate) fn program_may_fault(program: &EmirProgram) -> bool {
     program.ops.iter().any(|(op, _)| match op {
         EmirOp::Branch { then_body, else_body, .. } => program_may_fault(then_body) || program_may_fault(else_body),
-        EmirOp::CallFrame { .. } | EmirOp::CallSelf { .. } | EmirOp::DenseRepack { .. } | EmirOp::DenseValues(_)
+        EmirOp::CallFrame { .. } | EmirOp::CallSelf { .. } | EmirOp::CallSibling { .. } | EmirOp::DenseRepack { .. } | EmirOp::DenseValues(_)
         | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::ListConcat(_)
         | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) | EmirOp::ToInt(_) | EmirOp::IntegerQuotient(_, _) | EmirOp::ExactIntCall { .. } | EmirOp::CallProgram { .. } | EmirOp::CallScalarProgram { .. } | EmirOp::CallRealProgram { .. } | EmirOp::TryCallRealProgram { .. } | EmirOp::CallValue { .. } => true,
         EmirOp::VectorIndex { .. }
@@ -327,6 +327,20 @@ pub(super) fn exact_int_operand(
             "emath_rt::ExactInt::from({})",
             render_expr(&operand(program, value))
         )),
+        ValueKind::Rational => {
+            // A ratio-typed register at an exact-integer machine op
+            // (an Int datum routed through a Rat-declared record
+            // field projects the layout's ratio carrier): project
+            // value-exactly - a denominator-1 ratio is the integer it
+            // equals, anything else refuses by name (the VM's Int
+            // parameter admits integer values only). The `?` form
+            // propagates in both fn and closure contexts, unlike a
+            // bare `return`.
+            let ratio = render_expr(&operand(program, value));
+            Expr::Raw(format!(
+                "{{ let __ratio = {ratio}; ((__ratio).1 == 1i128).then(|| emath_rt::ExactInt::from((__ratio).0)).ok_or(\"E-INT-003: exact integer operand is a non-integral rational\")? }}"
+            ))
+        }
         _ => operand(program, value),
     }
 }

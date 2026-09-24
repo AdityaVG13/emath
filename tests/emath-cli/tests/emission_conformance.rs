@@ -21,8 +21,10 @@
 //! `language/modules/cryptology/modular.emath`,
 //! `language/modules/exact/quadratic.emath`,
 //! `language/modules/numerics/bounds.emath`,
-//! `language/modules/geometry/surfaces.emath`, and
-//! `language/modules/mechanics/oscillations.emath` — the same givens,
+//! `language/modules/geometry/surfaces.emath`,
+//! `language/modules/mechanics/oscillations.emath`, and
+//! `language/modules/discrete/order.emath` (the mutual-recursion
+//! cycle pins) — the same givens,
 //! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
@@ -2363,6 +2365,169 @@ fn emission_conformance_oscillations() {
     assert!(
         diffs.is_empty(),
         "emitted oscillations disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const ORDER_DRIVER: &str = r#"
+//! Authored pins of discrete/order.emath against the emitted crate.
+//! The sort pins drive the mutual-recursion cycle (sort_loop calls
+//! sort_step, sort_step calls sort_loop) through the emitted entries
+//! for BOTH cycle members - the named-entry seam the emission
+//! worklist settles.
+
+use order::{EmathRecord_SortedPair, sort_loop, sort_step, sort_with_permutation, unsort_at};
+
+type Rat = (i128, i128);
+
+fn rats(rows: &[[i128; 2]]) -> Vec<Rat> {
+    rows.iter().map(|[n, d]| (*n, *d)).collect()
+}
+
+fn ints(xs: &[i64]) -> Vec<i64> {
+    xs.to_vec()
+}
+
+fn pair(values: &[[i128; 2]], perm: &[i64]) -> EmathRecord_SortedPair {
+    EmathRecord_SortedPair { values: rats(values), perm: ints(perm) }
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <simple_sort>: the whole cycle from the public entry.
+    let got = sort_with_permutation(rats(&[[5, 2], [1, 2], [3, 2]]));
+    let want = pair(&[[1, 2], [3, 2], [5, 2]], &[1, 2, 0]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF simple_sort EMITTED {:?}; VM = values [1/2, 3/2, 5/2] perm [1, 2, 0]", got);
+    }
+
+    // the same row's unsort round-trip: unsort(result) == the input.
+    if let Ok(sorted) = &got {
+        let back = unsort_at(sorted.clone(), 0);
+        if !matches!(&back, Ok(v) if *v == rats(&[[5, 2], [1, 2], [3, 2]])) {
+            failures += 1;
+            println!("DIFF simple_sort_unsort EMITTED {:?}; VM = [5/2, 1/2, 3/2]", back);
+        }
+    }
+
+    // example <stable_first_index_ties>: equal keys keep ascending
+    // original index.
+    let got = sort_with_permutation(rats(&[[3, 1], [3, 1], [2, 1]]));
+    let want = pair(&[[2, 1], [3, 1], [3, 1]], &[2, 0, 1]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF stable_first_index_ties EMITTED {:?}; VM = values [2/1, 3/1, 3/1] perm [2, 0, 1]", got);
+    }
+
+    // example <empty_sort>.
+    let got = sort_with_permutation(vec![]);
+    let want = pair(&[], &[]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF empty_sort EMITTED {:?}; VM = empty pair", got);
+    }
+
+    // example <singleton_sort>.
+    let got = sort_with_permutation(rats(&[[7, 2]]));
+    let want = pair(&[[7, 2]], &[0]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF singleton_sort EMITTED {:?}; VM = values [7/2] perm [0]", got);
+    }
+
+    // example <green_start_state>: sort_loop entered at the cycle's
+    // other member directly.
+    let got = sort_loop(
+        rats(&[[5, 2], [1, 2], [3, 2]]),
+        ints(&[0, 1, 2]),
+        vec![],
+        vec![],
+    );
+    let want = pair(&[[1, 2], [3, 2], [5, 2]], &[1, 2, 0]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF green_start_state EMITTED {:?}; VM = values [1/2, 3/2, 5/2] perm [1, 2, 0]", got);
+    }
+
+    // example <base_unwinds_reversed_accs>: empty remaining unwinds
+    // the prepend-built accumulators.
+    let got = sort_loop(
+        rats(&[[5, 2], [1, 2], [3, 2]]),
+        vec![],
+        rats(&[[5, 2], [3, 2], [1, 2]]),
+        ints(&[0, 2, 1]),
+    );
+    let want = pair(&[[1, 2], [3, 2], [5, 2]], &[1, 2, 0]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF base_unwinds_reversed_accs EMITTED {:?}; VM = values [1/2, 3/2, 5/2] perm [1, 2, 0]", got);
+    }
+
+    // example <empty_start>.
+    let got = sort_loop(vec![], vec![], vec![], vec![]);
+    let want = pair(&[], &[]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF empty_start EMITTED {:?}; VM = empty pair", got);
+    }
+
+    // example <first_round_from_green_start>: sort_step entered
+    // directly - the cycle edge back into sort_loop.
+    let got = sort_step(
+        rats(&[[5, 2], [1, 2], [3, 2]]),
+        ints(&[0, 1, 2]),
+        vec![],
+        vec![],
+    );
+    let want = pair(&[[1, 2], [3, 2], [5, 2]], &[1, 2, 0]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF first_round_from_green_start EMITTED {:?}; VM = values [1/2, 3/2, 5/2] perm [1, 2, 0]", got);
+    }
+
+    // example <entered_after_first_pick>: round 1 already applied.
+    let got = sort_step(
+        rats(&[[5, 2], [1, 2], [3, 2]]),
+        ints(&[0, 2]),
+        rats(&[[1, 2]]),
+        ints(&[1]),
+    );
+    let want = pair(&[[1, 2], [3, 2], [5, 2]], &[1, 2, 0]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF entered_after_first_pick EMITTED {:?}; VM = values [1/2, 3/2, 5/2] perm [1, 2, 0]", got);
+    }
+
+    // example <tie_keeps_original_order>: the stable tie law through
+    // sort_step's entry.
+    let got = sort_step(
+        rats(&[[3, 1], [3, 1], [2, 1]]),
+        ints(&[0, 1, 2]),
+        vec![],
+        vec![],
+    );
+    let want = pair(&[[2, 1], [3, 1], [3, 1]], &[2, 0, 1]);
+    if !matches!(&got, Ok(v) if *v == want) {
+        failures += 1;
+        println!("DIFF tie_keeps_original_order EMITTED {:?}; VM = values [2/1, 3/1, 3/1] perm [2, 0, 1]", got);
+    }
+
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all order pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_order() {
+    let diffs = run_lane("language/modules/discrete/order.emath", ORDER_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted order disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

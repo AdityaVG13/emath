@@ -206,85 +206,103 @@ pub fn emit_constructor_crate(
     }
     // One named entry per runnable function: sibling calls (pilot p8)
     // need both functions in the same crate, so entries carry their
-    // function names instead of a shared `entry` symbol.
-    for name in &functions {
-        match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, name) {
-            Ok(lowered) => {
-                if !lowered.runnable {
-                    runnable = false;
-                    unresolved.extend(lowered.unresolved);
-                    rust.push_str(&format!(
-                        "// `{name}` is not marked runnable: unresolved symbolic code\n"
-                    ));
-                    continue;
-                }
-                needs_module_table |= crate::contains_tree_ops(&lowered.program);
-                needs_definition_table |= crate::contains_body_ops(&lowered.program);
-                // Declared carriers ground the entry ABI; an untyped
-                // input falls back to the numeric lane's Int.
-                let declared = main
-                    .items
-                    .iter()
-                    .find_map(|item| match item {
-                        emath_core::tree::Item::Declaration(decl) if &decl.name == name => Some(
-                            emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs"),
-                        ),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-                let inputs: Vec<(String, Option<String>)> = lowered
-                    .inputs
-                    .iter()
-                    .map(|input| {
-                        let signature = declared
-                            .iter()
-                            .find(|(declared, _)| declared == input)
-                            .and_then(|(_, ty)| {
-                                emath_exec_ir::constructor_emir::constructor_type_signature(
-                                    ty, &objects,
-                                )
-                            });
-                        (input.clone(), signature)
-                    })
-                    .collect();
-                // The single-output declaration is the carrier
-                // authority at the expression-template boundary (the
-                // checked projection site); multi-output functions
-                // pack a record and never carry a raw union result.
-                let output = main
-                    .items
-                    .iter()
-                    .find_map(|item| match item {
-                        emath_core::tree::Item::Declaration(decl) if &decl.name == name => {
-                            let outputs =
-                                emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
-                            let (output, ty) = outputs.first()?;
-                            let signature =
-                                emath_exec_ir::constructor_emir::constructor_type_signature(
-                                    ty, &objects,
-                                )?;
-                            Some((output.clone(), signature))
-                        }
-                        _ => None,
-                    });
-                match emit_constructor_entry(&lowered.program, name, &inputs, output.as_ref().map(|(name, signature)| (name.as_str(), signature.as_str())), &records) {
-                    Ok(body) => {
-                        rust.push_str(&format!("// function `{name}`\n"));
-                        rust.push_str(&body);
-                        rust.push('\n');
-                    }
-                    Err(error) => {
+    // function names instead of a shared `entry` symbol. A sibling
+    // entry call (a recursion-cycle edge) may name a function beyond
+    // the main file - an imported cycle member - so emission settles
+    // the referenced set to a fixed point: every `CallSibling` name
+    // reachable in an emitted program gets its own entry, main-file
+    // functions first in authored order, then cycle members as
+    // referenced.
+    let mut worklist: std::collections::VecDeque<String> =
+        functions.iter().cloned().collect();
+    let mut emitted: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    while let Some(name) = worklist.pop_front() {
+        if !emitted.insert(name.clone()) {
+            continue;
+        }
+        let mut pending_refs = Vec::new();
+        match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, &name) {
+                Ok(lowered) => {
+                    if !lowered.runnable {
                         runnable = false;
-                        unresolved.push(error.to_string());
-                        rust.push_str(&format!("// `{name}` is not marked runnable: {error}\n"));
+                        unresolved.extend(lowered.unresolved);
+                        rust.push_str(&format!(
+                            "// `{name}` is not marked runnable: unresolved symbolic code\n"
+                        ));
+                        continue;
+                    }
+                    collect_call_sibling_names(&lowered.program, &mut pending_refs);
+                    needs_module_table |= crate::contains_tree_ops(&lowered.program);
+                    needs_definition_table |= crate::contains_body_ops(&lowered.program);
+                    // Declared carriers ground the entry ABI; an untyped
+                    // input falls back to the numeric lane's Int. The
+                    // merged tree resolves imported cycle members too.
+                    let declared = tree
+                        .items
+                        .iter()
+                        .find_map(|item| match item {
+                            emath_core::tree::Item::Declaration(decl) if decl.name == name => Some(
+                                emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs"),
+                            ),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    let inputs: Vec<(String, Option<String>)> = lowered
+                        .inputs
+                        .iter()
+                        .map(|input| {
+                            let signature = declared
+                                .iter()
+                                .find(|(declared, _)| declared == input)
+                                .and_then(|(_, ty)| {
+                                    emath_exec_ir::constructor_emir::constructor_type_signature(
+                                        ty, &objects,
+                                    )
+                                });
+                            (input.clone(), signature)
+                        })
+                        .collect();
+                    // The single-output declaration is the carrier
+                    // authority at the expression-template boundary (the
+                    // checked projection site); multi-output functions
+                    // pack a record and never carry a raw union result.
+                    let output = tree
+                        .items
+                        .iter()
+                        .find_map(|item| match item {
+                            emath_core::tree::Item::Declaration(decl) if decl.name == name => {
+                                let outputs =
+                                    emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
+                                let (output, ty) = outputs.first()?;
+                                let signature =
+                                    emath_exec_ir::constructor_emir::constructor_type_signature(
+                                        ty, &objects,
+                                    )?;
+                                Some((output.clone(), signature))
+                            }
+                            _ => None,
+                        });
+                    match emit_constructor_entry(&lowered.program, &name, &inputs, output.as_ref().map(|(output, signature)| (output.as_str(), signature.as_str())), &records) {
+                        Ok(body) => {
+                            rust.push_str(&format!("// function `{name}`\n"));
+                            rust.push_str(&body);
+                            rust.push('\n');
+                        }
+                            Err(error) => {
+                            runnable = false;
+                            unresolved.push(error.to_string());
+                            rust.push_str(&format!("// `{name}` is not marked runnable: {error}\n"));
+                        }
                     }
                 }
-            }
             Err(error) => {
                 runnable = false;
                 unresolved.push(error);
             }
         }
+        // Every cycle member referenced by this program gets its own
+        // entry; the worklist settles to a fixed point.
+        worklist.extend(pending_refs);
     }
     if needs_module_table {
         let globals = module_table
@@ -366,4 +384,39 @@ pub fn emit_constructor_crate(
         unresolved,
         records,
     })
+}
+
+/// Collect every `CallSibling` name reachable in a program's ops,
+/// including nested control/collection/frame bodies (a recursion-cycle
+/// edge can sit under any binder). The emission worklist uses this to
+/// give every referenced cycle member its own entry fn.
+fn collect_call_sibling_names(
+    program: &emath_exec_ir::EmirProgram,
+    out: &mut Vec<String>,
+) {
+    use emath_exec_ir::EmirOp;
+    for (op, _) in &program.ops {
+        match op {
+            EmirOp::CallSibling { name, .. } => out.push(name.clone()),
+            EmirOp::Branch {
+                then_body,
+                else_body,
+                ..
+            } => {
+                collect_call_sibling_names(then_body, out);
+                collect_call_sibling_names(else_body, out);
+            }
+            EmirOp::CallFrame { body, .. }
+            | EmirOp::ProgramLiteral { body, .. }
+            | EmirOp::Fold { body, .. }
+            | EmirOp::Collect { body, .. } => collect_call_sibling_names(body, out),
+            EmirOp::Iterate { body, stop, .. } => {
+                collect_call_sibling_names(body, out);
+                if let Some(stop) = stop {
+                    collect_call_sibling_names(stop, out);
+                }
+            }
+            _ => {}
+        }
+    }
 }
