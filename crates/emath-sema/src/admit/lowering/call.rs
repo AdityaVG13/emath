@@ -244,67 +244,20 @@ impl super::super::Admitter {
             return self.lower_series_at(args, expr);
         }
         if operator_leaf(&name) == "grad" {
-            if args.len() != 1 {
-                self.error(
-                    "E-TYPE-012",
-                    format!("`{name}` expects 1 argument, found {}", args.len()),
-                    expr.source,
-                );
-                return None;
-            }
-            let (body_id, body_infer) = self.lower_expr(&args[0])?;
-            if !is_scalar_numeric(&body_infer) {
-                self.error(
-                    "E-TYPE-012",
-                    "`grad` expects a scalar numeric expression",
-                    args[0].source,
-                );
-                return None;
-            }
-            let n = self.inputs.len();
-            if n == 0 {
-                self.error(
-                    "E-TYPE-012",
-                    "`grad` requires at least one input to differentiate",
-                    expr.source,
-                );
-                return None;
-            }
-            let inlined = self.inline_defs(body_id);
-            let program_inputs = self.program_input_names();
-            let slot_ids: Vec<_> = (0..n)
-                .map(|slot| self.push_f64(slot as f64, expr.source))
-                .collect();
-            let extra = vec![self.push_expr(ExprNode::Vector(slot_ids), expr.source)];
-            if let Some((id, _)) = self.apply_program_kernel(
-                "program-reverse-gradient",
-                inlined,
-                program_inputs,
-                extra,
-                expr.source,
-            ) {
-                return Some((
-                    id,
-                    Infer::Vector {
-                        extent: Some(emath_ir::Extent::Fixed(n)),
-                        element: None,
-                    },
-                ));
-            }
-            let id = self.push_expr(
-                ExprNode::Call {
-                    function: emath_core::QualifiedName(name.clone()),
-                    arguments: vec![body_id],
-                },
+            // Retired by the constructor constitution (emath-xx0x.1):
+            // the Wengert-tape builtin is gone from the surface and
+            // differentiation is authored - `analysis.autodiff` /
+            // `analysis.derivative`, the exact Rat tier (the adjoint
+            // sweep with the distributed pullback replaces the tape).
+            // The spelling refuses by name instead of lowering onto
+            // the retired native kernels.
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                "`grad` is retired: differentiation is authored - \
+                 use the analysis.autodiff / analysis.derivative modules",
                 expr.source,
             );
-            return Some((
-                id,
-                Infer::Vector {
-                    extent: Some(emath_ir::Extent::Fixed(n)),
-                    element: None,
-                },
-            ));
+            return None;
         }
         if operator_leaf(&name) == "not" {
             if args.len() != 1 {

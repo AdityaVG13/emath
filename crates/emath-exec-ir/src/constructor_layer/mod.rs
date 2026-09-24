@@ -316,6 +316,10 @@ pub fn constructor_admit_code(code: &str) -> &'static str {
         "E-TYPE-003" => "E-TYPE-003",
         "E-TYPE-010" => "E-TYPE-010",
         "unbound" | "unbound_code" => "E-TYPE-002",
+        // Retired builtin spellings: the constructor-form family
+        // (`E-TYPE-010`, the same code the sema lane refuses
+        // `derivative` under) - the surface names what replaced them.
+        "retired_builtin" => "E-TYPE-010",
         "method_unavailable"
         | "implementation_unavailable"
         | "transformation_rule_unavailable"

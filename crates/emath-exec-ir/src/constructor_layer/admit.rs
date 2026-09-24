@@ -527,6 +527,19 @@ CType::Unknown, _) => CType::Unknown,
             // as `division_by_zero` admits; a wrong name fails the example.
             return Ok(CType::Schema);
         }
+        // Retired builtin spellings (the constructor constitution,
+        // emath-xx0x.1): `grad`'s Wengert tape is gone and
+        // differentiation is authored (`analysis.autodiff` /
+        // `analysis.derivative`, the exact Rat tier). The spelling
+        // refuses by name instead of reporting a bare unbound - after
+        // every legitimate name source, so an authored object,
+        // function, or query named `grad` still admits.
+        if segments.len() == 1 && name == "grad" {
+            return Err(fault(
+                "retired_builtin",
+                "`grad` is retired: differentiation is authored - use the analysis.autodiff / analysis.derivative modules",
+            ));
+        }
         Err(fault("unbound", format!("unbound `{name}`")))
     }
 

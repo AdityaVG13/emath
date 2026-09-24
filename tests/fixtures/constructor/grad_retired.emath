@@ -1,0 +1,14 @@
+# grad(...) is retired by the constructor constitution (emath-xx0x.1):
+# the Wengert-tape builtin is gone from the surface and differentiation
+# is authored - analysis.autodiff / analysis.derivative, the exact Rat
+# tier. Admission must refuse the spelling by name instead of lowering
+# it onto the retired native kernels.
+# expect: E-TYPE-010
+
+emath function g:
+    inputs:
+        x: Float64
+    outputs:
+        result: Float64
+    definitions:
+        result = grad(x * x)

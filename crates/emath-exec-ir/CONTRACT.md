@@ -354,6 +354,19 @@ VM-run programs, and the backend's emission worklist gives every
 `CallSibling`-reachable function (imported cycle members included)
 its own named entry.
 
+Retired builtin spellings refuse by name at the constructor
+admission lane (`retired_builtin` -> `E-TYPE-010`, after every
+legitimate name source so an authored object, function, or query
+with the same name still admits): `grad`'s Wengert tape was retired
+by the constitution (emath-xx0x.1) and differentiation is authored
+(`analysis.autodiff` / `analysis.derivative`, the exact Rat tier).
+The mathematical kernel files stay on disk undisturbed per the
+constitution's step 7 - on disk but never dispatched; the sema
+lowering keeps the same refusal as its second fence.
+`tests/fixtures/constructor/grad_retired.emath` +
+`tests/emath-cli/tests/grad_retired.rs` pin the refusal
+(failure-first: the fixture admitted before the flip).
+
 ## Kernel boundary
 
 Native kernels are immutable implementations keyed by domain-neutral kernel IDs and carrier signatures. `install_language_distribution` derives FeatureID bindings exclusively from capsule-active Language Image rows and starts from an empty binding map. There are no built-in FeatureID aliases or legacy bindings.
