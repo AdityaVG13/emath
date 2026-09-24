@@ -172,6 +172,10 @@ pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
             unary(*op),
             tree_expr(value)
         ),
+        CodeTree::Closure { param, body } => format!(
+            "emath_rt::code_tree::CodeTree::Closure {{ param: String::from({param:?}), body: Box::new({}) }}",
+            tree_expr(body)
+        ),
         CodeTree::Tuple(items) => format!(
             "emath_rt::code_tree::CodeTree::Tuple(vec![{}])",
             items.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
@@ -226,9 +230,12 @@ pub(crate) fn op_expr(
                         .get(position)
                         .and_then(|name| input_kinds.get(name).cloned());
                     if let Some(target) = &param_kind {
-                        if let Some(converted) =
-                            numeric_boundary_value(&operand(program, *value), &kind, target)
-                        {
+                        if let Some(converted) = numeric_boundary_value(
+                            &operand(program, *value),
+                            &kind,
+                            target,
+                            "call argument",
+                        ) {
                             return render_expr(&converted);
                         }
                     }
@@ -273,7 +280,7 @@ pub(crate) fn op_expr(
                     .map_or(ValueKind::I64, |value| kind_at(kinds, *value))
             };
             let call = Expr::Raw(format!("__self({args})?"));
-            let crossed = numeric_boundary_value(&call, &callee_kind, &site_kind)
+            let crossed = numeric_boundary_value(&call, &callee_kind, &site_kind, "call result")
                 .map(|converted| render_expr(&converted))
                 .unwrap_or_else(|| render_expr(&call));
             Ok(Expr::Raw(crossed))
@@ -303,11 +310,26 @@ pub(crate) fn op_expr(
                         .map(|signature| ValueKind::from_signature(signature))
                         .filter(|kind| !matches!(kind, ValueKind::Other));
                     if let Some(target) = &target {
-                        if let Some(converted) =
-                            numeric_boundary_value(&operand(program, *value), &kind, target)
-                        {
+                        if let Some(converted) = numeric_boundary_value(
+                            &operand(program, *value),
+                            &kind,
+                            target,
+                            "call argument",
+                        ) {
                             return render_expr(&converted);
                         }
+                    }
+                    // A node value crossing into the callee's declared
+                    // Code parameter rebuilds through the shared
+                    // bridge - the same node-as-code law as the
+                    // recursive `__self` call lane.
+                    if kind == ValueKind::Node
+                        && target == Some(ValueKind::ExprCode)
+                    {
+                        return format!(
+                            "emath_rt::code_tree::node_as_code(&{})?",
+                            render_expr(&operand(program, *value))
+                        );
                     }
                     if matches!(kind, ValueKind::Closure { .. }) {
                         format!("{}.clone()", render_expr(&operand(program, *value)))
@@ -366,6 +388,7 @@ pub(crate) fn op_expr(
                                 &operand(program, *value),
                                 &kind_at(kinds, *value),
                                 &element_kind,
+                                "vector element",
                             )
                             .unwrap_or_else(|| owned_operand(program, *value, kinds))
                         })
@@ -635,6 +658,7 @@ pub(crate) fn op_expr(
                             &operand(program, *value),
                             &kind_at(kinds, *value),
                             param,
+                            "call argument",
                         ) {
                             let converted = render_expr(&converted);
                             return if param.is_copy() {
@@ -1172,6 +1196,15 @@ pub(crate) fn op_expr(
                 "({}).body(&__EMATH_DEFINITIONS)?",
                 render_expr(&operand(program, *code))
             ))),
+            // A node value (the Call node's `callee` field, viewed):
+            // a Code-carrying node unfolds through the definition
+            // table; an operator tag record is the no-identity
+            // Opaque record - the VM's `quote_body` law arm for arm
+            // (`quote_body_over_node`).
+            ValueKind::Node => Ok(Expr::Raw(format!(
+                "emath_rt::code_tree::quote_body_over_node(&({}), &__EMATH_DEFINITIONS)?",
+                render_expr(&operand(program, *code))
+            ))),
             ValueKind::Code(_) => Err(BackendError::UnsupportedType(
                 "quote.body is emitted for expression templates; a unary function template has no definition-table lane in this cut".into(),
             )),
@@ -1545,8 +1578,12 @@ fn literal_frame_expr(
         // call sites use; the binding owns the converted carrier.
         let actual = kind_at(kinds, *value);
         if actual != kind {
-            if let Some(converted) = numeric_boundary_value(&operand(outer, *value), &actual, &kind)
-            {
+            if let Some(converted) = numeric_boundary_value(
+                &operand(outer, *value),
+                &actual,
+                &kind,
+                "frame input",
+            ) {
                 code.push_str(&format!("let {name} = {}; ", render_expr(&converted)));
                 frame_kinds.insert(name.clone(), kind);
                 continue;

@@ -299,6 +299,19 @@ pub fn project_bool(value: &CodeValue, output: &str) -> Result<bool, String> {
     }
 }
 
+/// Checked projection to an exact-integer operand slot: Int admits
+/// (widening into the checked machine carrier); Rational and Bool
+/// refuse by name - the same `type_admits` law as the output
+/// projections, carried by the exact tier.
+pub fn project_exact_int(value: &CodeValue, slot: &str) -> Result<super::exact_int::ExactInt, String> {
+    match value {
+        CodeValue::Int(n) => Ok(super::exact_int::ExactInt::from(*n)),
+        other => Err(format!(
+            "type: exact-integer slot `{slot}` does not have the declared type, found {other}"
+        )),
+    }
+}
+
 /// The compiled expression body: consumes the free names' values (in
 /// `free` order) and computes the union-valued expression.
 pub type ExprFactory = Rc<dyn Fn(&[CodeValue]) -> Result<CodeValue, String>>;

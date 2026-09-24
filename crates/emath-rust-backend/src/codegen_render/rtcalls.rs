@@ -319,6 +319,15 @@ pub(super) fn exact_int_operand(
                 "{{ let __ratio = {ratio}; ((__ratio).1 == 1i128).then(|| emath_rt::ExactInt::from((__ratio).0)).ok_or(\"E-INT-003: exact integer operand is a non-integral rational\")? }}"
             ))
         }
+        ValueKind::CodeValue => {
+            // A union-valued operand (an evaluated quoted expression)
+            // at an exact-integer machine-op slot: the checked
+            // projection - Int admits, anything else refuses by name.
+            Expr::Raw(format!(
+                "emath_rt::code::project_exact_int(&{}, \"exact integer operand\")?",
+                render_expr(&operand(program, value))
+            ))
+        }
         _ => operand(program, value),
     }
 }

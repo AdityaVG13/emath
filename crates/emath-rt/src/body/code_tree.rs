@@ -151,6 +151,13 @@ pub enum CodeTree {
         op: TreeUnary,
         value: Box<CodeTree>,
     },
+    /// A function literal (the VM's `FunctionAbs` view): the binder's
+    /// parameter name and the body tree. The declared domain is not
+    /// carried - the fragment is walked and made, never applied.
+    Closure {
+        param: String,
+        body: Box<CodeTree>,
+    },
     Tuple(Vec<CodeTree>),
     If {
         condition: Box<CodeTree>,
@@ -408,6 +415,22 @@ pub fn quote_body_node(code: &ExprCode, defs: &DefinitionTable) -> Result<NodeVa
     Ok(available_body(&code.tree))
 }
 
+/// The VM's `quote_body` over a node value (apply.rs, arm for arm): a
+/// Code-carrying node unfolds through the definition table exactly as
+/// [`quote_body_node`]; any other node (an operator tag record viewed
+/// off a Call node's `callee` field) is `Opaque` with no identity and
+/// no signature - a record, never a fault. The authored walk checks
+/// `.kind == Available` and takes its named refusal leg on this arm.
+pub fn quote_body_over_node(
+    node: &NodeValue,
+    defs: &DefinitionTable,
+) -> Result<NodeValue, String> {
+    match node {
+        NodeValue::Code(code) => quote_body_node(code, defs),
+        _ => Ok(body_record("Opaque", None, None)),
+    }
+}
+
 /// The `Opaque`/`Available` body records (the VM's `body_record` and
 /// `available_body`): tag fields first, identity and signature as
 /// tags, the Available fragment as a dependency-free Code value.
@@ -646,6 +669,19 @@ pub fn view_tree(tree: &CodeTree, module: &ModuleTable) -> NodeValue {
                         "children",
                         NodeValue::Sequence(vec![fragment_package(mint, value, None)]),
                     ),
+                ],
+            )
+        }),
+        CodeTree::Closure { param, body } => with_mint(|mint| {
+            // The VM's `FunctionAbs` view: the binder's parameter as a
+            // name tag, the body as Code, and the minted scope package
+            // carrying the binder.
+            view_record(
+                "Closure",
+                vec![
+                    ("param", node_tag(param)),
+                    ("body", code_of((**body).clone())),
+                    ("scope", fragment_package(mint, body, Some(param))),
                 ],
             )
         }),
@@ -895,6 +931,25 @@ pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(CodeTree::Tuple(trees))
                 }
+                "Closure" => {
+                    // The VM's `FunctionAbs` rebuild: the parameter
+                    // from its name tag, the body from the Code field;
+                    // the minted scope witness is not part of the term.
+                    let param = match fields.get("param") {
+                        Some(name) => tag_name(name)
+                            .map(str::to_string)
+                            .ok_or_else(|| String::from("Closure param is not a name tag"))?,
+                        None => return Err(String::from("Closure missing param")),
+                    };
+                    let body = match fields.get("body") {
+                        Some(NodeValue::Code(code)) => code.tree.clone(),
+                        _ => return Err(String::from("Closure body is not code")),
+                    };
+                    Ok(CodeTree::Closure {
+                        param,
+                        body: Box::new(body),
+                    })
+                }
                 "Fragment" => fields
                     .get("term")
                     .ok_or_else(|| String::from("Fragment missing term"))
@@ -972,9 +1027,10 @@ pub fn make_quoted(node: impl std::borrow::Borrow<NodeValue>, module: &ModuleTab
 // Tree substitution and the tree evaluator
 
 /// Substitute by name (the VM's `substitute_path` over the emitted
-/// subset - which has no binders, so no capture avoidance applies):
-/// a matching path becomes the replacement; an absent reference is a
-/// no-op.
+/// subset): a matching path becomes the replacement; an absent
+/// reference is a no-op. A closure binder shadows the reference inside
+/// its body - the body is substituted only when the reference is a
+/// different name.
 pub fn substitute_tree(tree: &CodeTree, reference: &str, replacement: &CodeTree) -> CodeTree {
     match tree {
         CodeTree::Path(segments) if segments.join(".") == reference => replacement.clone(),
@@ -996,6 +1052,19 @@ pub fn substitute_tree(tree: &CodeTree, reference: &str, replacement: &CodeTree)
             op: *op,
             value: Box::new(substitute_tree(value, reference, replacement)),
         },
+        CodeTree::Closure { param, body } => {
+            if param == reference {
+                CodeTree::Closure {
+                    param: param.clone(),
+                    body: body.clone(),
+                }
+            } else {
+                CodeTree::Closure {
+                    param: param.clone(),
+                    body: Box::new(substitute_tree(body, reference, replacement)),
+                }
+            }
+        }
         CodeTree::Tuple(items) => CodeTree::Tuple(
             items
                 .iter()
@@ -1037,6 +1106,14 @@ fn collect_free_names(tree: &CodeTree, free: &mut BTreeSet<String>) {
             collect_free_names(right, free);
         }
         CodeTree::Unary { value, .. } => collect_free_names(value, free),
+        CodeTree::Closure { param, body } => {
+            // The binder binds its parameter inside the body: the
+            // body's free names minus the parameter.
+            let mut inner = BTreeSet::new();
+            collect_free_names(body, &mut inner);
+            inner.remove(param);
+            free.extend(inner);
+        }
         CodeTree::Tuple(items) => items.iter().for_each(|item| collect_free_names(item, free)),
         CodeTree::If {
             condition,
@@ -1112,6 +1189,9 @@ pub fn evaluate_tree(
                 "tree: call `{name}` is not emitted in the scalar tree evaluator"
             ))
         }
+        CodeTree::Closure { param, .. } => Err(format!(
+            "tree: closure `{param} -> _` is not a scalar value in the tree evaluator"
+        )),
         CodeTree::Binary { op, left, right } => match op {
             TreeBinary::And => {
                 if code_as_bool(&evaluate_tree(left, inputs)?)? {

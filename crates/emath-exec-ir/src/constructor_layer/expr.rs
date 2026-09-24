@@ -353,11 +353,22 @@ pub(super) fn is_schema_tag(name: &str) -> bool {
             | "Le"
             | "Gt"
             | "Ge"
+            | "And"
+            | "Or"
             | "Pow"
             | "Imply"
             | "Iff"
             | "Asymp"
             | "In"
+            // the unary view arms (`format!("{op:?}")` over
+            // emath-core's UnaryOp): the full binary set above plus
+            // these three are the complete view-layout callee
+            // vocabulary (`code_tree::TreeBinary/TreeUnary`) - a
+            // structural walk compares `node.callee` against any of
+            // them, bare or as the empty record `Neg:{}`.
+            | "Neg"
+            | "Not"
+            | "Pos"
             | "transparent"
             | "opaque"
             | "Match"

@@ -90,9 +90,14 @@ pub(super) fn op_arith_exprs(
             // right side only when the left side does not decide, and
             // Rust's `&&`/`||` over the checked projections do exactly
             // that (a non-Bool operand that is never reached never
-            // faults, matching the engine).
-            let left_code = render_expr(&operand(program, left));
-            let right_code = render_expr(&operand(program, right));
+            // faults, matching the engine). A typed-Bool side (a
+            // comparison result) wraps through `to_code_value` exactly
+            // like the union arithmetic lane - the union join is one
+            // representation on both sides.
+            let left_kind = kind_at(kinds, left);
+            let right_kind = kind_at(kinds, right);
+            let left_code = render_expr(&to_code_value(operand(program, left), &left_kind));
+            let right_code = render_expr(&to_code_value(operand(program, right), &right_kind));
             return Ok(Expr::Raw(format!(
                 "emath_rt::code::CodeValue::Bool(emath_rt::code::code_as_bool(&{left_code})? {join} emath_rt::code::code_as_bool(&{right_code})?)"
             )));

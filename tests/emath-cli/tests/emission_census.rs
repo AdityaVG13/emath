@@ -22,10 +22,17 @@ use std::sync::mpsc;
 
 mod common;
 
-/// The pinned not-runnable census (2026-09-24, commit 13691db): 15
-/// modules across the named refusal lanes. Update this number ONLY with
-/// a bead that names the lane that changed.
-const NOT_RUNNABLE_PINNED: usize = 15;
+/// The pinned not-runnable census (2026-09-24, the refusal-lane pass):
+/// 12 modules across the named refusal lanes. Update this number ONLY
+/// with a bead that names the lane that changed. History: 15 until
+/// the operator-tag-witness pass, which unblocked analysis/autodiff,
+/// analysis/bvp_newton, and optimization/advanced (the schema-tag
+/// family completed with the unary/binary view arms Neg/Not/Pos/
+/// And/Or; quote.body over a node callee renders through
+/// quote_body_over_node; the definition-table bodies distill their
+/// FunctionAbs wrappers as Closure trees; the modules declare their
+/// vars carriers as sequence(Code)).
+const NOT_RUNNABLE_PINNED: usize = 12;
 
 /// Fixed compile-lane count (the sweep's `-P 4`).
 const LANES: usize = 4;

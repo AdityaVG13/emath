@@ -147,11 +147,15 @@ pub(super) fn op_data_exprs(
                     })?;
                 let kind = ValueKind::from_signature(&ty.1);
                 let expression = operand(program, *value);
-                let value =
-                    match numeric_boundary_value(&expression, &kind_at(kinds, *value), &kind) {
-                        Some(converted) => render_expr(&converted),
-                        None => render_expr(&owned_value(expression, &kind)),
-                    };
+                let value = match numeric_boundary_value(
+                    &expression,
+                    &kind_at(kinds, *value),
+                    &kind,
+                    name,
+                ) {
+                    Some(converted) => render_expr(&converted),
+                    None => render_expr(&owned_value(expression, &kind)),
+                };
                 members.push(format!("{}: {value}", escape_ident(name)));
             }
             let fields = members.join(", ");

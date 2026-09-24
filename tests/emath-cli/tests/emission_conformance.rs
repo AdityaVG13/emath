@@ -29,6 +29,10 @@
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
 //! in the driver headers (cross-module bracket rows, i64 ABI limits).
+//! The witness lane drives `tests/fixtures/constructor/`
+//! `operator_tag_witness.emath` — its quoted forms are built as
+//! distilled trees (the same shapes `quote(...)` distills), one row
+//! per authored witness example.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -2528,6 +2532,144 @@ fn emission_conformance_order() {
     assert!(
         diffs.is_empty(),
         "emitted order disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const WITNESS_DRIVER: &str = r#"
+//! Authored pins of the operator-tag witness fixture against the
+//! emitted crate: one row per witness example, the quoted form built
+//! as a distilled tree (the same shape `quote(...)` distills). The
+//! VM truth is the authored `expect result == true` row pinned in
+//! step 1 of the lane; every row here must return `Ok(true)` from
+//! the emitted entry - the tag-witness comparison law (`Add` bare,
+//! `Eq:{}` empty record, and the unary/binary arms `Neg`, `Not`,
+//! `Pos`, `And`, `Or`) is one law in both lanes.
+
+use operator_tag_witness::{
+    add_bare, and_witness, body_of_named_callee, body_of_operator_callee, eq_record, neg_witness,
+    not_witness, or_witness, pos_witness,
+};
+use operator_tag_witness::emath_rt::code::{open_expr, CodeValue, ExprCode};
+use operator_tag_witness::emath_rt::code_tree::{CodeTree, TreeBinary, TreeUnary};
+
+fn int(n: i64) -> CodeTree {
+    CodeTree::Literal(CodeValue::Int(n))
+}
+
+fn binary(op: TreeBinary, left: CodeTree, right: CodeTree) -> CodeTree {
+    CodeTree::Binary {
+        op,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+fn unary(op: TreeUnary, value: CodeTree) -> CodeTree {
+    CodeTree::Unary {
+        op,
+        value: Box::new(value),
+    }
+}
+
+fn code(tree: CodeTree) -> ExprCode {
+    open_expr(Vec::new(), tree, None, std::collections::BTreeMap::new())
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <sums>: add_bare(quote(1 + 2)) == true
+    let got = add_bare(code(binary(TreeBinary::Add, int(1), int(2))));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF sums EMITTED {got:?}; VM = true");
+    }
+
+    // example <compares>: eq_record(quote(1 == 2)) == true
+    let got = eq_record(code(binary(TreeBinary::Eq, int(1), int(2))));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF compares EMITTED {got:?}; VM = true");
+    }
+
+    // example <negates>: neg_witness(quote(-(1 + 2))) == true
+    let got = neg_witness(code(unary(TreeUnary::Neg, binary(TreeBinary::Add, int(1), int(2)))));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF negates EMITTED {got:?}; VM = true");
+    }
+
+    // example <negates_bool>: not_witness(quote(not (1 < 2))) == true
+    let got = not_witness(code(unary(TreeUnary::Not, binary(TreeBinary::Lt, int(1), int(2)))));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF negates_bool EMITTED {got:?}; VM = true");
+    }
+
+    // example <conjoins>: and_witness(quote(1 < 2 and 2 < 3)) == true
+    let got = and_witness(code(binary(
+        TreeBinary::And,
+        binary(TreeBinary::Lt, int(1), int(2)),
+        binary(TreeBinary::Lt, int(2), int(3)),
+    )));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF conjoins EMITTED {got:?}; VM = true");
+    }
+
+    // example <disjoins>: or_witness(quote(1 < 2 or 3 < 2)) == true
+    let got = or_witness(code(binary(
+        TreeBinary::Or,
+        binary(TreeBinary::Lt, int(1), int(2)),
+        binary(TreeBinary::Lt, int(3), int(2)),
+    )));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF disjoins EMITTED {got:?}; VM = true");
+    }
+
+    // example <affirms>: pos_witness(quote(+(1 + 2))) == true
+    let got = pos_witness(code(unary(TreeUnary::Pos, binary(TreeBinary::Add, int(1), int(2)))));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF affirms EMITTED {got:?}; VM = true");
+    }
+
+    // example <operator_callee_is_opaque>: quote.body over the Add tag
+    // callee is the no-identity Opaque record (the VM's non-Code law).
+    let got = body_of_operator_callee(code(binary(TreeBinary::Add, int(1), int(2))));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF operator_callee_is_opaque EMITTED {got:?}; VM = true");
+    }
+
+    // example <named_callee_unfolds>: quote.body over the named callee
+    // sq unfolds the definition table (transparent -> Available).
+    let got = body_of_named_callee(code(CodeTree::Call {
+        function: Box::new(CodeTree::Path(vec!["sq".to_string()])),
+        args: vec![CodeTree::Path(vec!["y".to_string()])],
+    }));
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF named_callee_unfolds EMITTED {got:?}; VM = true");
+    }
+
+    if failures > 0 {
+        panic!("{failures} witness row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_operator_tag_witness() {
+    let diffs = run_lane(
+        "tests/fixtures/constructor/operator_tag_witness.emath",
+        WITNESS_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted witness disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

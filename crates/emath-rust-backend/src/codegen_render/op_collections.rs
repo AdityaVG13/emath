@@ -49,7 +49,9 @@ fn authored_list_concat(
             }
             .into(),
         );
-        if let Some(converted) = super::numeric_boundary_value(&item, source_element, element) {
+        if let Some(converted) =
+            super::numeric_boundary_value(&item, source_element, element, "sequence element")
+        {
             extend.push_str(&format!(
                 "for __list_element in {name} {{ output.push({}); }} ",
                 render_expr(&converted)

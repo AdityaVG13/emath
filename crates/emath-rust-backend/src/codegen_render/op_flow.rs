@@ -254,12 +254,37 @@ pub(super) fn authored_control_expr(
                     && matches!(then_kind, ValueKind::I64 | ValueKind::ExactInt));
             let then_text = nested(then_body, argument_kinds.clone())?;
             let else_text = nested(else_body, argument_kinds)?;
-            let widen = |text: String, kind: &ValueKind| -> String {
+            let widen = |text: String, kind: &ValueKind, other: &ValueKind| -> String {
                 if rational_join && matches!(kind, ValueKind::I64 | ValueKind::ExactInt) {
                     if let Some(converted) = super::numeric_boundary_value(
                         &Expr::Raw(text.clone()),
                         kind,
                         &ValueKind::Rational,
+                        "branch arm",
+                    ) {
+                        return render_expr(&converted);
+                    }
+                }
+                // A dynamic arm (a quoted frame's `evaluate` result)
+                // joining a typed arm projects through the same
+                // numeric boundary: the runtime value carries the
+                // typed carrier the other arm renders, so the static
+                // join renders the checked projection instead of an
+                // E0308 pair.
+                if matches!(kind, ValueKind::CodeValue)
+                    && matches!(
+                        other,
+                        ValueKind::I64
+                            | ValueKind::Rational
+                            | ValueKind::ExactInt
+                            | ValueKind::Bool
+                    )
+                {
+                    if let Some(converted) = super::numeric_boundary_value(
+                        &Expr::Raw(text.clone()),
+                        kind,
+                        other,
+                        "branch arm",
                     ) {
                         return render_expr(&converted);
                     }
@@ -269,17 +294,27 @@ pub(super) fn authored_control_expr(
             let then_body = if exact_join && then_kind == ValueKind::I64 {
                 format!("emath_rt::ExactInt::from(({then_text}))")
             } else {
-                widen(then_text, &then_kind)
+                widen(then_text, &then_kind, &else_kind)
             };
             let else_body = if exact_join && else_kind == ValueKind::I64 {
                 format!("emath_rt::ExactInt::from(({else_text}))")
             } else {
-                widen(else_text, &else_kind)
+                widen(else_text, &else_kind, &then_kind)
+            };
+            // A union-valued condition (a boolean combinator inside an
+            // expression template or quoted frame) projects to bool
+            // checked - the same law as the Select arm.
+            let condition = if kind_at(kinds, *condition) == ValueKind::CodeValue {
+                format!(
+                    "emath_rt::code::code_as_bool(&{})?",
+                    render_expr(&operand(program, *condition))
+                )
+            } else {
+                render_expr(&operand(program, *condition))
             };
             format!(
-                "{{ {} if {} {{ {then_body} }} else {{ {else_body} }} }}",
+                "{{ {} if {condition} {{ {then_body} }} else {{ {else_body} }} }}",
                 captures(args, 0)?,
-                render_expr(&operand(program, *condition))
             )
         }
         EmirOp::Collect { count, args, body } => {

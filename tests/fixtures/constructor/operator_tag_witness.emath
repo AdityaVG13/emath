@@ -1,0 +1,140 @@
+# The operator-tag witness idiom across the FULL view vocabulary.
+# One law, two spellings: a bare schema-tag name (`Add`) and the
+# empty record literal (`Neg:{}`) are the same witness - the tag
+# record with no fields. The unary view arms (Neg, Not, Pos) and the
+# binary And/Or arms are part of that vocabulary: a structural walk
+# comparing node.callee against them must emit identically to the
+# VM. Ordinary fixture. Not a FeatureID.
+
+emath function add_bare:
+    # Control: the bare spelling over an admitted binary tag.
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: node.callee == Add else: false
+    tests:
+        example <sums>:
+            given form = quote(1 + 2)
+            expect result == true
+
+emath function eq_record:
+    # Control: the empty-record spelling over an admitted binary tag.
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: node.callee == Eq:{} else: false
+    tests:
+        example <compares>:
+            given form = quote(1 == 2)
+            expect result == true
+
+emath function neg_witness:
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: node.callee == Neg:{} else: false
+    tests:
+        example <negates>:
+            given form = quote(-(1 + 2))
+            expect result == true
+
+emath function not_witness:
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: node.callee == Not:{} else: false
+    tests:
+        example <negates_bool>:
+            given form = quote(not (1 < 2))
+            expect result == true
+
+emath function and_witness:
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: node.callee == And:{} else: false
+    tests:
+        example <conjoins>:
+            given form = quote(1 < 2 and 2 < 3)
+            expect result == true
+
+emath function or_witness:
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: node.callee == Or:{} else: false
+    tests:
+        example <disjoins>:
+            given form = quote(1 < 2 or 3 < 2)
+            expect result == true
+
+emath function pos_witness:
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: node.callee == Pos:{} else: false
+    tests:
+        example <affirms>:
+            given form = quote(+(1 + 2))
+            expect result == true
+
+emath function sq:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x * x
+
+emath function body_of_operator_callee:
+    # quote.body over an operator-tag callee: the non-Code law - a
+    # tag record is Opaque with no identity and no signature, a
+    # record, never a fault.
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: quote.body(node.callee).kind == Opaque else: false
+    tests:
+        example <operator_callee_is_opaque>:
+            given form = quote(1 + 2)
+            expect result == true
+
+emath function body_of_named_callee:
+    # quote.body over a NAMED callee (a Code-carrying node field):
+    # the definition-table unfold - a transparent module function is
+    # Available.
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: quote.body(node.callee).kind == Available else: false
+    tests:
+        example <named_callee_unfolds>:
+            given form = quote(sq(y))
+            expect result == true

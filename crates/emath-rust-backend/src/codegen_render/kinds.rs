@@ -690,6 +690,7 @@ pub(super) fn kind_of_op(
                             &Expr::Raw(String::new()),
                             body_kind,
                             &declared,
+                            "",
                         )
                         .is_some()
                     {
@@ -1030,14 +1031,16 @@ pub(super) fn kind_of_op(
         // boundary projects it). A non-joinable pair (Float64 beside
         // the union) keeps the Bool lane, and the expression-template
         // body check refuses it named.
-        EmirOp::Eq(left, right)
-        | EmirOp::Ne(left, right)
-        | EmirOp::Lt(left, right)
-        | EmirOp::Le(left, right)
-        | EmirOp::Gt(left, right)
-        | EmirOp::Ge(left, right)
-        | EmirOp::And(left, right)
-        | EmirOp::Or(left, right) => {
+        EmirOp::Eq(..) | EmirOp::Ne(..) | EmirOp::Lt(..) | EmirOp::Le(..) | EmirOp::Gt(..)
+        | EmirOp::Ge(..) => {
+            // Comparisons yield Bool in every lane - the union lane's
+            // `matches!(code_cmp(..)?, ..)` / `code_eq(..)?` render is
+            // a checked bool, exactly like the typed lanes; only the
+            // boolean COMBINATORS carry the union result (their
+            // `CodeValue::Bool(..)` render keeps the dynamic value).
+            ValueKind::Bool
+        }
+        EmirOp::And(left, right) | EmirOp::Or(left, right) => {
             if union_pair(kinds, *left, *right) {
                 ValueKind::CodeValue
             } else {
@@ -1461,6 +1464,7 @@ pub(super) fn numeric_boundary_value(
     expression: &Expr,
     from: &ValueKind,
     to: &ValueKind,
+    slot: &str,
 ) -> Option<Expr> {
     match (from, to) {
         (ValueKind::ExactInt, ValueKind::I64) => Some(coerce_to_ty(
@@ -1479,6 +1483,27 @@ pub(super) fn numeric_boundary_value(
         (ValueKind::ExactInt, ValueKind::Rational) => Some(Expr::Raw(
             super::op_arith::exact_int_ratio_parts(&render_expr(expression)),
         )),
+        // The union collapses onto a declared carrier through the
+        // checked projections - the same law the declared output
+        // boundary applies, at record fields, sequence elements, and
+        // branch arms. The refusal names the slot and the found
+        // value; an Int widens into Rat/ExactInt exactly.
+        (ValueKind::CodeValue, ValueKind::I64) => Some(Expr::Raw(format!(
+            "emath_rt::code::project_i64(&{}, {slot:?})?",
+            render_expr(expression)
+        ))),
+        (ValueKind::CodeValue, ValueKind::Rational) => Some(Expr::Raw(format!(
+            "emath_rt::code::project_ratio(&{}, {slot:?})?",
+            render_expr(expression)
+        ))),
+        (ValueKind::CodeValue, ValueKind::ExactInt) => Some(Expr::Raw(format!(
+            "emath_rt::code::project_exact_int(&{}, {slot:?})?",
+            render_expr(expression)
+        ))),
+        (ValueKind::CodeValue, ValueKind::Bool) => Some(Expr::Raw(format!(
+            "emath_rt::code::project_bool(&{}, {slot:?})?",
+            render_expr(expression)
+        ))),
         (ValueKind::Vector(source), ValueKind::Vector(target)) => {
             let item = Expr::Raw(
                 if source.is_copy() {
@@ -1488,7 +1513,7 @@ pub(super) fn numeric_boundary_value(
                 }
                 .into(),
             );
-            let converted = numeric_boundary_value(&item, source, target)?;
+            let converted = numeric_boundary_value(&item, source, target, slot)?;
             Some(Expr::Raw(format!(
                 "({}).iter().map(|__numeric| -> Result<_, String> {{ Ok({}) }}).collect::<Result<Vec<_>, String>>()?",
                 render_expr(expression),

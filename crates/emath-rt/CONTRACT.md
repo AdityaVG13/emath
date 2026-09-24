@@ -207,12 +207,14 @@ constructor VM's EXACT carrier rules (normative source:
   refuses `division_by_zero`.
 - Equality compares VALUES by cross-multiplication (`2 == 2/1` is
   true); Bool equality is structural; mixed kinds are never equal.
-- Checked projections (`project_i64`/`project_ratio`/`project_bool`)
-  mirror the engine's `type_admits` at typed boundaries: a
-  Rat-declared output widens Int exactly (`5` becomes `5/1`), an
-  Int-declared output refuses a Rational by name (matching the
-  engine's `output ... does not have the declared type` message), Bool
-  admits Bool only.
+- Checked projections (`project_i64`/`project_ratio`/`project_bool`/
+  `project_exact_int`) mirror the engine's `type_admits` at typed
+  boundaries: a Rat-declared output widens Int exactly (`5` becomes
+  `5/1`), an Int-declared output refuses a Rational by name (matching
+  the engine's `output ... does not have the declared type` message),
+  Bool admits Bool only, and an ExactInt boundary admits an Int union
+  member exactly (`ExactInt::from`) while Rational and Bool refuse by
+  name.
 
 `ExprCode` (`open_expr`/`substitute_expr`/`evaluate_expr`) obeys the
 same laws as the function carrier: by-name binding, absent-reference
@@ -294,10 +296,18 @@ arm-for-arm port of the VM's `quote_body`: a Path-named Code yields
 dependency-free, factory-free Code of the body - the VM's
 `available_body` law), `Opaque { identity, signature: "unbound" }`
 for a name the table does not carry (a record, never a fault), and
-`Available` of the code's own tree for any non-Path Code. No-claim
-boundary: a transparent row outside the distilled subset (bodies
-with binders, quotes, structured shapes) carries `None` and the
-unfold refuses
+`Available` of the code's own tree for any non-Path Code. Function
+bodies distill as `Closure { param, body }` (the `FunctionAbs` arm -
+the binder shadows in `substitute_tree`, binds in
+`collect_free_names`, and the VM view shows the param tag with the
+body as a minted fragment), so a transparent callee's authored
+function body is `Available` with a computable fragment.
+`quote_body_over_node` is the same unfold over a NODE callee: a
+named node resolves through the table (`Available`), an op-tag
+callee yields the no-identity `Opaque` (the VM's apply law - an
+operator has no authored body). No-claim boundary: a transparent row
+outside the distilled subset (quotes, structured shapes) carries
+`None` and the unfold refuses
 `tree: the body of \`{name}\` is not emitted in artifact trees` -
 the VM shows the raw expression there; parity holds inside the
 distillable subset. The table is emitted by the same lowering that

@@ -267,9 +267,10 @@ cross-lane checkpoint).
 
 Determinism class: distillation and stamping are pure functions of
 the authored tree. No-claim: node kinds outside the emitted subset
-(Closure, Cases, Match, Recur, Record, ...) refuse by name on the
+(Cases, Match, Recur, Record, ...) refuse by name on the
 MAKE side - the walk consumer can view them only after a future
-distill arm exists.
+distill arm exists (a function literal now distills as
+`Closure { param, body }` and renders on the make side).
 
 Residual-lane boundary: the compile-time quote-elimination lane
 (residual.rs) still runs FIRST for every function, and a walk whose

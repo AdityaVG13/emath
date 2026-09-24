@@ -105,6 +105,16 @@ pub(crate) fn distill_tree(expr: &Expr) -> Result<CodeTree, String> {
             then_value: Box::new(distill_tree(then_value)?),
             else_value: Box::new(distill_tree(else_value)?),
         }),
+        // The definition-table body lane: `function_body_expr` wraps
+        // every table body in `FunctionAbs` binders (one per input),
+        // so a transparent module body distills exactly when its
+        // binder wrapper does. The declared domain is not carried -
+        // the fragment is walked and made, never applied (the tree's
+        // Closure law mirrors the VM's `FunctionAbs` view).
+        ExprKind::FunctionAbs { param, body, .. } => Ok(CodeTree::Closure {
+            param: param.clone(),
+            body: Box::new(distill_tree(body)?),
+        }),
         ExprKind::Float(_) => Err(String::from(
             "float templates are not emitted in the artifact tree lane",
         )),
