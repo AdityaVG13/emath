@@ -1,6 +1,6 @@
 //! CLI entry (`run`), argument parsing, and the command grammar.
 
-use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, PlannerRequest, BuildRequest, simulate_cmd, execution, loop_cmd, experiment_cmd, compiled_search, language_cmd, parse_check_request, parse_file_json_request, parse_planner_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
+use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, PlannerRequest, BuildRequest, execution, loop_cmd, experiment_cmd, compiled_search, language_cmd, parse_check_request, parse_file_json_request, parse_planner_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
 
 /// Entry used by main; keeps the CLI testable.
 pub fn run(args: &[String]) -> CliExit {
@@ -79,7 +79,6 @@ pub(super) enum Command {
     Plan(FileJsonRequest),
     Planner(PlannerRequest),
     Build(BuildRequest),
-    Simulate(simulate_cmd::SimulateArgs),
     New {
         name: String,
         out: PathBuf,
@@ -328,39 +327,6 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
             parse_build_request,
         )
         .map(Command::Build),
-        "simulate" => match simulate_cmd::parse_simulate_args(rest) {
-            Ok(parsed) => Ok(Command::Simulate(parsed)),
-            Err(message) => {
-                let positionals: Vec<&str> = rest
-                    .iter()
-                    .filter(|arg| !arg.starts_with('-') || *arg == "-")
-                    .map(String::as_str)
-                    .collect();
-                if positionals.is_empty() {
-                    Err(ParseKnownError::Pedagogic(
-                        PedagogicError::new(
-                            "E-CLI-USAGE",
-                            "missing required argument `<file.emath>` for `emath simulate`",
-                            "positional argument 1 (expected path to `.emath` source file)",
-                            "emath run <file.emath> --function NAME --json",
-                        )
-                        .with_command("simulate")
-                        .with_usage("emath simulate <file.emath>  (refuses: not a constructor; use `emath run`)"),
-                    ))
-                } else {
-                    Err(ParseKnownError::Pedagogic(
-                        PedagogicError::new(
-                            "E-CLI-USAGE",
-                            format!("invalid simulation argument: {message}"),
-                            "arguments for `emath simulate`",
-                            "emath run <file.emath> --function NAME --json",
-                        )
-                        .with_command("simulate")
-                        .with_usage("emath simulate <file.emath>  (refuses: not a constructor; use `emath run`)"),
-                    ))
-                }
-            }
-        },
         "new" => match parse_new_request(rest) {
             Some((name, out, dry_run, force, json)) => Ok(Command::New {
                 name,

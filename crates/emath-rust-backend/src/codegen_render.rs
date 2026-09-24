@@ -1299,7 +1299,7 @@ fn capability_artifact_expr(
                     source.push_str(&body);
                     source.push_str(" }");
                     drop(_reference);
-                    if rate_context() || fold_context() {
+                    if fold_context() {
                         return Ok(map_runtime_result(format!(
                             "(|| -> Result<_, String> {{ Ok({source}) }})()"
                         )));

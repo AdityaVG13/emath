@@ -1,6 +1,6 @@
 //! Runtime calls and universal register/type helpers.
 
-use super::{EmirProgram, EmirValue, Expr, ValueKind, kind_at, render_expr, EmirOp, typed_operand, InputKinds, BackendError, value_expr, EmirSliceAxis, FoldCombine};
+use super::{EmirProgram, EmirValue, Expr, ValueKind, kind_at, render_expr, EmirOp, typed_operand, InputKinds, BackendError, EmirSliceAxis, FoldCombine};
 
 pub(crate) fn operand(_program: &EmirProgram, value: EmirValue) -> Expr {
     Expr::Var(format!("__e{}", value.0))
@@ -169,21 +169,11 @@ pub(super) fn map_runtime_result(call: String) -> Expr {
             "{call}.map_err(|e| e.to_string()).unwrap_or_else(|e| panic!(\"{{e}}\"))"
         ));
     }
-    if rate_context() {
-        return Expr::Raw(format!(
-            "{call}.map_err(|e| e.to_string()).expect(\"internal: checked-op fault on admitted model\")"
-        ));
-    }
     Expr::Raw(format!("{call}.map_err(|e| e.to_string())?"))
 }
 
 thread_local! {
-    static RATE_CONTEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static FOLD_CONTEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-pub(super) fn rate_context() -> bool {
-    RATE_CONTEXT.with(std::cell::Cell::get)
 }
 
 pub(super) fn fold_context() -> bool {
@@ -192,18 +182,6 @@ pub(super) fn fold_context() -> bool {
 
 pub(super) fn set_fold_context(value: bool) {
     FOLD_CONTEXT.with(|cell| cell.set(value));
-}
-
-pub(crate) fn value_expr_rate(
-    program: &EmirProgram,
-    names: &[String],
-    states: &[String],
-    input_kinds: &InputKinds,
-) -> Result<Expr, BackendError> {
-    RATE_CONTEXT.with(|cell| cell.set(true));
-    let out = value_expr(program, names, states, input_kinds);
-    RATE_CONTEXT.with(|cell| cell.set(false));
-    out
 }
 
 pub(super) fn render_slice_axis(

@@ -15,7 +15,6 @@ impl BackendInput<'_> {
         let mut anchors: Vec<BackendAnchor> = Vec::new();
         let mut assumptions: Vec<String> = Vec::new();
         let mut emitted_error_types: Vec<String> = Vec::new();
-        let mut newton_helpers_emitted = false;
         let mut receipts: Vec<ConstructionReceipt> = Vec::new();
 
         items.push(Item::RawAttribute("#![forbid(unsafe_code)]".to_string()));
@@ -300,15 +299,6 @@ impl BackendInput<'_> {
             let goals = evaluate_goals;
             for goal in &goals {
                 let target = goal.target.clone();
-                // `der_*` definitions on models are rate functions owned by
-                // `emit_model_step_methods` (state-typed signature). The
-                // goals-omitted ergonomics default turns every definition
-                // into an evaluate goal, including rates; emitting both
-                // duplicates the method name (E0592) and the goal-loop
-                // variant mistypes the return as f64. Skip rate targets.
-                if declaration.kind_label == "model" && target.starts_with("der_") {
-                    continue;
-                }
                 if !declaration.definitions.contains_key(&target) {
                     return Err(BackendError::UnknownTarget(target));
                 }
@@ -334,34 +324,6 @@ impl BackendInput<'_> {
                 let mut eval_kinds = input_kinds.clone();
                 let mut body_stmts = Vec::new();
                 let mut can_fault = false;
-                if !emit_free_fn {
-                    for field in &declaration.algebraic {
-                        let scalar = matches!(
-                            self.solve_width(
-                                field.ty,
-                                &name,
-                                &format!("algebraic `{}`", field.name)
-                            ),
-                            Ok(1)
-                        );
-                        let from_self = Expr::Field {
-                            receiver: Box::new(Expr::SelfValue),
-                            field: field.name.clone(),
-                        };
-                        body_stmts.push(Stmt::Let {
-                            pattern: escape_ident(&field.name),
-                            value: Box::new(if scalar {
-                                from_self
-                            } else {
-                                Expr::MethodCall {
-                                    receiver: Box::new(from_self),
-                                    method: "clone".to_string(),
-                                    args: Vec::new(),
-                                }
-                            }),
-                        });
-                    }
-                }
                 for (def_name, def_expr) in chain {
                     let def_name = *def_name;
                     let def_expr = *def_expr;
@@ -464,20 +426,6 @@ impl BackendInput<'_> {
             // to `evaluate`), so the goal loop emits one method per
             // target; no per-declaration cap.
             drop(goals);
-
-            if declaration.kind_label == "model" && !emit_free_fn {
-                self.emit_model_step_methods(
-                    package,
-                    declaration,
-                    &name,
-                    &input_names,
-                    &state_names,
-                    &mut items,
-                    &mut methods,
-                    &mut assumptions,
-                    &mut newton_helpers_emitted,
-                )?;
-            }
 
             if emit_free_fn {
                 for method in methods {

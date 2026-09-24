@@ -189,10 +189,13 @@ at admission, `is_model = false` hardcoded in sema), `emath simulate` is
 not a constructor command, and the authored steppers live in
 `language/modules/numerics/euler.emath` and `rk4.emath` over the
 `analysis/evolution/one_step` family (exact Rat tier, census-runnable).
-The `codegen_steps` Euler/RK4/Newton emission templates are therefore
-unreachable from admitted source and stay on disk quarantined - the same
-step-7 policy as the mathematical kernel files (on disk, never
-dispatched).
+The `codegen_steps` Euler/RK4/Newton emission templates and the CLI's
+`simulate_cmd` were removed outright after that verification (user
+authorization 2026-09-24): no caller from admitted source, no tests, the
+generate.rs model arms and the rate-context render lane went with them.
+The exec-ir `runner/simulate` refusal shell STAYS - its
+`CONSTRUCTOR_SIMULATE_GONE` entries are the pinned retirement surface
+(`tests/emath-exec-ir/tests/constructor_cutover.rs`).
 
 Legacy domain-render assertions are not part of this contract. They must be migrated outside this crate to construct `ApplyCapability` programs with executable artifact contracts.
 

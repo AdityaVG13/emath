@@ -1,6 +1,6 @@
 //! Command dispatch and per-subcommand argument parsers.
 
-use super::{Command, Path, PlannerRequest, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, plan, planner_cmd, build, simulate_cmd, tooling_cmd, execution, loop_cmd, experiment_cmd, compiled_search, language_cmd, EXIT_USAGE, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError, Write};
+use super::{Command, Path, PlannerRequest, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, plan, planner_cmd, build, tooling_cmd, execution, loop_cmd, experiment_cmd, compiled_search, language_cmd, EXIT_USAGE, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError, Write};
 
 fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>)> {
     match command {
@@ -137,7 +137,6 @@ pub(super) fn run_command(command: Command) -> CliExit {
         Command::Plan(FileJsonRequest::Ready { path, json, .. }) => plan(&path, json),
         Command::Planner(request) => planner_cmd(request),
         Command::Build(request) => build(request),
-        Command::Simulate(args) => simulate_cmd::dispatch_simulate(&args),
         Command::New {
             name,
             out,

@@ -13,7 +13,6 @@ pub mod diagnostics;
 pub mod execution;
 pub mod language_cmd;
 mod provenance_cmd;
-pub mod simulate_cmd;
 pub mod tooling_cmd;
 pub mod triage;
 pub mod pedagogy;

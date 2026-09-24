@@ -22,7 +22,6 @@ mod codegen_helpers;
 use codegen_helpers::{collect_var_names, emit_host_structs, field_value_kinds, add_obligations, expand_host_inputs, refine_capability_result_kind, type_is_i64, sanitize_crate_name, sanitize_version};
 mod codegen_render;
 use codegen_render::{value_expr, coerce_to_ty, program_kind, program_may_fault, ValueKind};
-mod codegen_steps;
 pub mod constructor_crate;
 pub mod rust_ir;
 
