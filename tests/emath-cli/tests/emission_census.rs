@@ -31,7 +31,14 @@ mod common;
 /// And/Or; quote.body over a node callee renders through
 /// quote_body_over_node; the definition-table bodies distill their
 /// FunctionAbs wrappers as Closure trees; the modules declare their
-/// vars carriers as sequence(Code)).
+/// vars carriers as sequence(Code)). Still 12 after the walk-lane
+/// crash fix (emath-49o8): quote/walk used to hit `unreachable!` in
+/// the node-family fold and the census silently counted the crash as
+/// a refusal lane - the family is now closed under nested sequences
+/// and non-family record fields refuse by name, so walk answers with
+/// its real lanes (quote.open, quote.view, and the Cases.arms tuple
+/// kind, all named). `not_runnable_lanes_answer_by_name` pins that
+/// no lane may crash the emitter again.
 const NOT_RUNNABLE_PINNED: usize = 12;
 
 /// Fixed compile-lane count (the sweep's `-P 4`).
@@ -126,6 +133,52 @@ fn census_row(bin: &Path, module: &Path, out: &Path) -> Row {
             ..row
         }
     }
+}
+
+/// A not-runnable lane must answer with a named refusal, never a
+/// crash: `quote/walk.emath` once hit `unreachable!` in the emitter's
+/// node-family fold (`Vector(Vector(ExprCode))`, the walk's lists of
+/// all-made argument lists) and the census silently counted the crash
+/// as a refusal lane because a panicked build prints no
+/// `"runnable": true`. This lane pins the answer shape: a clean exit
+/// whose JSON either claims runnable or names what is unresolved.
+#[test]
+fn not_runnable_lanes_answer_by_name() {
+    let bin = common::emath_bin();
+    let module = repo_root().join("language/modules/quote/walk.emath");
+    let run_id = format!(
+        "{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+    let out = std::env::temp_dir().join(format!("emath_walk_lane_{run_id}"));
+    std::fs::create_dir_all(&out).expect("create scratch dir");
+    let build = Command::new(bin)
+        .args([
+            "build",
+            module.to_str().expect("utf8 module path"),
+            "--out",
+            out.to_str().expect("utf8 scratch path"),
+            "--json",
+        ])
+        .output()
+        .expect("run emath build for the walk lane");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    assert!(
+        !text.contains("panicked"),
+        "a not-runnable lane must not crash the emitter:\n{text}"
+    );
+    assert!(
+        build.status.success() && text.contains("\"runnable\""),
+        "the walk lane must answer: runnable true/false with named unresolved entries\n{text}"
+    );
 }
 
 #[test]

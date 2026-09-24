@@ -58,12 +58,29 @@ pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
     }
 }
 
+/// The node-record family is closed under sequences: a family-joinable
+/// element, or a nested sequence of one, folds inductively (the walk's
+/// lists of all-made argument lists are `sequence(sequence(Code))`).
+fn node_family(kind: &ValueKind) -> bool {
+    match kind {
+        ValueKind::Node
+        | ValueKind::ExprCode
+        | ValueKind::CodeValue
+        | ValueKind::I64
+        | ValueKind::Rational
+        | ValueKind::Bool => true,
+        ValueKind::Vector(element) => node_family(element),
+        _ => false,
+    }
+}
+
 /// Wrap an operand expression into the node-record family by its
 /// kind. Total over the family-joinable kinds (node, the dual Code,
-/// the union, Int, Rat, Bool): the node-lane kind rules fold exactly
-/// those into the family, mirroring the VM's heterogeneous `CValue`
-/// sequences (a walk's `[made_code, node.args[1]]` list mixes Code
-/// and node values).
+/// the union, Int, Rat, Bool, and sequences of those, nested
+/// inductively): the node-lane kind rules fold exactly those into the
+/// family, mirroring the VM's heterogeneous `CValue` sequences (a
+/// walk's `[made_code, node.args[1]]` list mixes Code and node
+/// values; its argument-list lists nest one level deeper).
 pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
     match kind {
         // Both family carriers are non-copy: an operand may render as
@@ -76,18 +93,9 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
         )),
         // A list of family-joinable elements (the walk's all-made
         // argument lists, `[made, made]`) folds into the family's
-        // dynamic sequence elementwise.
-        ValueKind::Vector(element)
-            if matches!(
-                **element,
-                ValueKind::Node
-                    | ValueKind::ExprCode
-                    | ValueKind::CodeValue
-                    | ValueKind::I64
-                    | ValueKind::Rational
-                    | ValueKind::Bool
-            ) =>
-        {
+        // dynamic sequence elementwise; a nested family sequence folds
+        // the same way, one map level per nesting.
+        ValueKind::Vector(element) if node_family(element) => {
             let folded = to_node(Expr::Raw(String::from("item")), element);
             Expr::Raw(format!(
                 "emath_rt::code_tree::NodeValue::Sequence(({}).into_iter().map(|item| {}).collect::<Vec<_>>())",

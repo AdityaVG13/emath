@@ -2,8 +2,8 @@
 
 use super::{
     BackendError, EmirOp, EmirProgram, Expr, InputKinds, ValueKind, borrowed_value,
-    element_tensor_expr, escape_ident, input_kind, kind_at, local_state, operand, operand_ref,
-    owned_value, record_layout, render_expr, rt_call, to_node,
+    element_tensor_expr, escape_ident, input_kind, kind_at, local_state, node_family, operand,
+    operand_ref, owned_value, record_layout, render_expr, rt_call, to_node,
 };
 
 use super::numeric_boundary_value;
@@ -117,12 +117,17 @@ pub(super) fn op_data_exprs(
                     .iter()
                     .map(|(name, value)| {
                         let kind = kind_at(kinds, *value);
-                        format!(
+                        if kind != ValueKind::Node && !node_family(&kind) {
+                            return Err(BackendError::UnsupportedType(format!(
+                                "node record {type_name} field {name} carries {kind:?} - outside the node family"
+                            )));
+                        }
+                        Ok(format!(
                             "(String::from({name:?}), {})",
                             render_expr(&to_node(operand(program, *value), &kind))
-                        )
+                        ))
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Result<Vec<_>, _>>()?
                     .join(", ");
                 return Ok(Expr::Raw(format!(
                     "emath_rt::code_tree::node_record({type_name:?}, vec![{members}])"
