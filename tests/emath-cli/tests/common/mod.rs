@@ -86,6 +86,80 @@ pub fn emath_lab_bin() -> &'static Path {
     })
 }
 
+/// Stable emitted-crate workspace for one authored module, shared by the
+/// emission census and the conformance lanes: `<temp>/emath_emit/<key>`,
+/// keyed by the module's repo-relative path (`/` -> `__`). The dir is
+/// reused across runs, so its `target/` keeps cargo's fingerprints and
+/// incremental state: `emath build --out` rewrites only changed bytes
+/// (mtimes survive identical output), and a re-run over unchanged emission
+/// is a cargo no-op instead of a cold compile of the embedded runtime.
+/// Outside the repository by design (an emitted crate inside the workspace
+/// tree would be claimed by the root manifest). Nothing is deleted.
+#[allow(dead_code)]
+pub fn emitted_crate_dir(module: &Path) -> PathBuf {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo = repo.canonicalize().unwrap_or(repo);
+    let module = module
+        .canonicalize()
+        .unwrap_or_else(|_| module.to_path_buf());
+    let relative = module.strip_prefix(&repo).unwrap_or(&module);
+    let key = relative
+        .with_extension("")
+        .iter()
+        .map(|part| {
+            part.to_string_lossy()
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("__");
+    let dir = std::env::temp_dir().join("emath_emit").join(key);
+    std::fs::create_dir_all(&dir).expect("create emitted crate dir");
+    dir
+}
+
+/// Exclusive advisory lock over one emitted-crate dir (released on drop):
+/// two concurrent runs over the same module serialize their emit, write,
+/// and build instead of racing a half-written `lib.rs`.
+#[allow(dead_code)]
+pub fn lock_emitted_crate(dir: &Path) -> std::fs::File {
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.with_extension("lock"))
+        .expect("open emitted crate lock");
+    lock.lock().expect("lock emitted crate dir");
+    lock
+}
+
+/// Write `contents` only when the bytes differ, so an unchanged file keeps
+/// its mtime and cargo does not recompile it.
+#[allow(dead_code)]
+pub fn write_if_changed(path: &Path, contents: &str) {
+    if std::fs::read(path).is_ok_and(|old| old == contents.as_bytes()) {
+        return;
+    }
+    std::fs::write(path, contents).expect("write generated file");
+}
+
+/// Offline `cargo build` of an emitted crate into its own persistent
+/// target dir. Debuginfo is off: the artifacts are driven, never debugged,
+/// and debuginfo is a measured ~15% of a cold emitted-crate build.
+#[allow(dead_code)]
+pub fn cargo_build_emitted(dir: &Path, target: &[&str]) -> std::process::Output {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    Command::new(cargo)
+        .args(["build", "--offline", "--manifest-path"])
+        .arg(dir.join("Cargo.toml"))
+        .args(target)
+        .env("CARGO_TARGET_DIR", dir.join("target"))
+        .env("CARGO_PROFILE_DEV_DEBUG", "0")
+        .output()
+        .expect("run cargo build for emitted crate")
+}
+
 /// Run the CLI binary with `args`, returning (stdout+stderr, exit code).
 /// Diagnostics print on stderr (output-style rule); assertions match the
 /// combined stream so the exact E-* code is assertable either way.

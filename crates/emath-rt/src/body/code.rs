@@ -394,6 +394,16 @@ impl core::fmt::Debug for ExprCode {
     }
 }
 
+impl PartialEq for ExprCode {
+    /// The node family's code law (`node_eq`): two codes are equal when
+    /// their distilled trees and stamped dependencies are. The compiled
+    /// factory is derived from the same tree, so it carries no identity
+    /// of its own; records with code fields compare through this.
+    fn eq(&self, other: &Self) -> bool {
+        self.tree == other.tree && self.deps == other.deps
+    }
+}
+
 /// Open an expression template: `free` names the expression's free
 /// names in the order the factory consumes their values, `tree` is
 /// the distilled tree, `make` the compiled factory when one exists,
@@ -533,6 +543,17 @@ pub fn evaluate_expr(
     module: &super::code_tree::ModuleTable,
 ) -> Result<CodeValue, String> {
     let code = code.borrow();
+    guard_closed(code, module)?;
+    if let Some(make) = &code.make {
+        return make(&[]);
+    }
+    super::code_tree::evaluate_tree(&code.tree, &std::collections::BTreeMap::new(), module)
+}
+
+/// The executor's guards, in the VM's order: stamped dependencies
+/// verify against the module table, then open code refuses
+/// `unbound_code` naming every remaining open name.
+fn guard_closed(code: &ExprCode, module: &super::code_tree::ModuleTable) -> Result<(), String> {
     super::code_tree::verify_deps(&code.deps, module)?;
     if !code.free.is_empty() {
         return Err(format!(
@@ -540,10 +561,70 @@ pub fn evaluate_expr(
             code.free.join(", ")
         ));
     }
-    if let Some(make) = &code.make {
-        return make(&[]);
+    Ok(())
+}
+
+/// A quoted function literal evaluated for application: one call takes
+/// the applied arguments in order.
+pub type AppliedCode = std::rc::Rc<dyn Fn(&[CodeValue]) -> Result<CodeValue, String>>;
+
+/// The applied lane of the guarded executor (`f = quote.evaluate(code)`
+/// then `f(a, ..)`). The code closes exactly as `evaluate_expr` checks
+/// it - same refusals, at the same point. The callable applies the
+/// literal's nested binders stage by stage (the VM's curried
+/// application): each argument binds the next parameter and the body
+/// evaluates through the shared scalar tree evaluator. Each argument
+/// is checked against its binder's recorded domain BEFORE it binds
+/// (the VM's check-then-bind order), refusing `type: closure domain
+/// `{d}` does not admit the argument `{v}`` - an `Int` literal never
+/// silently computes over a ratio. A closed code that is not a
+/// function literal evaluates here (its own refusals first), and every
+/// application of it refuses with the VM's
+/// `type: value is not callable: {value}`.
+pub fn evaluate_callable_expr(
+    code: impl std::borrow::Borrow<ExprCode>,
+    module: &super::code_tree::ModuleTable,
+) -> Result<AppliedCode, String> {
+    use super::code_tree::{evaluate_tree, CodeTree};
+    let code = code.borrow();
+    guard_closed(code, module)?;
+    let tree = code.tree.clone();
+    let module = *module;
+    if !matches!(tree, CodeTree::Closure { .. }) {
+        let value = match &code.make {
+            Some(make) => make(&[])?,
+            None => evaluate_tree(&tree, &std::collections::BTreeMap::new(), &module)?,
+        };
+        return Ok(std::rc::Rc::new(move |_: &[CodeValue]| {
+            Err(format!("type: value is not callable: {value}"))
+        }));
     }
-    super::code_tree::evaluate_tree(&code.tree, &std::collections::BTreeMap::new())
+    Ok(std::rc::Rc::new(move |args: &[CodeValue]| {
+        let mut bound = std::collections::BTreeMap::new();
+        let mut current = &tree;
+        for argument in args {
+            match current {
+                CodeTree::Closure {
+                    param,
+                    domain,
+                    body,
+                } => {
+                    if !domain.admits(argument) {
+                        return Err(format!(
+                            "type: closure domain `{domain}` does not admit the argument `{argument}`"
+                        ));
+                    }
+                    bound.insert(param.clone(), *argument);
+                    current = body;
+                }
+                other => {
+                    let value = evaluate_tree(other, &bound, &module)?;
+                    return Err(format!("type: value is not callable: {value}"));
+                }
+            }
+        }
+        evaluate_tree(current, &bound, &module)
+    }))
 }
 
 /// The free names in binding order.
@@ -573,6 +654,12 @@ impl ExprCode {
     }
     pub fn evaluate(&self, module: &super::code_tree::ModuleTable) -> Result<CodeValue, String> {
         evaluate_expr(self, module)
+    }
+    pub fn evaluate_callable(
+        &self,
+        module: &super::code_tree::ModuleTable,
+    ) -> Result<AppliedCode, String> {
+        evaluate_callable_expr(self, module)
     }
     /// The definition-table unfold (`quote.body`): the Available/
     /// Opaque record over the embedded definition table (the VM's

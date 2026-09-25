@@ -340,12 +340,60 @@ runtime Refuse (the same fault the VM raises when a branch takes
 it), so authored transformation modules that name their boundary
 in unexercised else-branches still lower.
 
+Closure-valued defs (emath-49o8): `base.field` and `f(x)` parse as
+the same one-argument call, so a def must be KNOWN closure-valued for
+a later `f(x)` to lower as `CallValue` instead of `RecordField`.
+Besides function literals, arrow-name aliases, single-arrow-output
+calls, and `quote.evaluate`, a def that partially applies a known
+curried callable is closure-valued: declared arrow inputs carry their
+stage count (`A -> B -> C` is two), function-literal defs carry their
+nested-literal depth, and an application leaving stages unapplied
+binds the residual (`model_at = predict(params)`). A function literal
+over the bracket domain `sequence[T]` signs as `Vector<T>` (the same
+carrier as `sequence(T)`), so it takes the typed closure lane.
+The called-name walk that builds the sibling map descends
+`CallableBinder` bodies too (`quote.open term in packed:
+walk_term(term)`): a callee seen only inside a binder body otherwise
+never joins the map and its one-argument call lowers as a projection.
+
+Dynamic carriers: `Fragment` signs as `Fragment` and an
+unparameterized `sequence` as `Sequence`; the backend kinds both as
+the node family (the VM's package records and heterogeneous lists).
+
+Applied evaluate: `CodeEvaluate.applied` says how an evaluated quoted
+function is used. `CodeApplication::Declared(sig)` when a def
+`f = quote.evaluate(code)` is passed into module-function parameters
+that all declare the same arrow `sig` (`newton_solve(f, df, ..)` with
+`df: Rat -> Rat`); else `Union(n)` when every call `f(..)` passes the
+same count, or for the in-place callee `quote.evaluate(code)(..)`;
+`None` is the value itself. Over an expression template the value is
+then a quoted function literal (the VM's closure). The call-site walk
+(`collect_call_sites`, the same traversal that builds the sibling map)
+records every site's arguments by position. A quoted body's callees
+join the callee set (they name module functions - a quote never sees
+the frame's locals) without contributing sites. In the FUNCTION
+template lane a module function the body calls is a dependency, not
+an open constant (the VM's capture law), so the compiled template
+calls it as a sibling; other free names keep the open-constant lane.
+The expression-template lane is unchanged (its compiled factory still
+treats free names as runtime inputs). Distillation records a function literal's binder domain on
+`CodeTree::Closure` through the VM's own `domain_shape_of_expr`, so the
+artifact's applied lane admits arguments by the same shape.
+
 Consumer boundary (named, honest): a call whose callee is an OPEN
 RECURSION ANCESTOR (the `visiting` set) closes a cycle and cannot
 inline - it lowers as the named `CallSibling` op (callee name,
 inputs, declared carrier signatures, declared result). The emission
 model inlines acyclic siblings as `CallFrame` and self-recursion as
-`CallSelf`; a cycle edge is the fourth shape. The consumer module
+`CallSelf`; a cycle edge is the fourth shape. A sibling `CallFrame`
+names its callee (`callee: Some(name)`; recur and immediate-lambda
+frames carry `None`) so the backend can call the callee's emitted
+entry instead of re-inlining it; evaluation ignores the name.
+`ConstructorLowering` is one module's lowering session: roots lowered
+through it share every path-independent callee result (runnable, no
+open ancestor met, no `CallSibling` in its inlined tree, every inlined
+callee path-independent) - identical bytes to per-root lowering,
+without re-lowering each callee tree once per root. The consumer module
 (`language/modules/calculus/diff.emath`, local-only like every
 language/ file) folds its helper rules into one self-recursive walk
 by choice, not necessity. The E-MIR interpreter refuses `CallSibling`

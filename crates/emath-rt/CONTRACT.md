@@ -269,7 +269,42 @@ reproduces the VM's walk records arm for arm:
 - node laws: `node_eq` mirrors the VM's `eq_values` (scalar VALUE
   equality - `2 == 2/1`; mixed kinds never equal), `node_field`
   refuses typed (`type: record has no field \`{f}\``), `node_index`
-  refuses `invalid_index: sequence index out of range`.
+  refuses `invalid_index: sequence index out of range`. `_N` on a
+  family `Sequence` indexes positionally, exactly as on a `Tuple`:
+  emitted code builds tuples as positional sequences (the typed
+  lane's tuple law), so a tuple the artifact built reads back the
+  same way one the caller built does.
+- applied evaluate: `evaluate_callable_expr` closes a code exactly as
+  `evaluate_expr` does (stale dependencies, then `unbound_code`) and
+  returns an `AppliedCode` callable that binds a function literal's
+  nested parameters stage by stage and evaluates the body through
+  `evaluate_tree`; each argument meets its binder's `TreeDomain` before
+  it binds (the VM's check-then-bind order and scalar admission: `Rat`
+  admits Int and Rat, `Int` Int, `Bool` Bool, a sequence domain no
+  scalar, `Unknown` everything), refusing `type: closure domain `{d}`
+  does not admit the argument `{v}``. A closed non-function code
+  evaluates up front and every application refuses `type: value is not
+  callable: {v}` (the VM's words).
+- `CodeTree::Closure` records its binder domain (`TreeDomain`, the
+  VM's `DomainShape` in artifact vocabulary; distillation reuses the
+  VM's `domain_shape_of_expr`). The view does not expose it (the VM's
+  view does not); `rebuild_node` gives a made closure the `Rat` domain,
+  as the VM's make does; substitution preserves it; tree equality
+  includes it.
+- module calls: `ModuleTable::callables` maps a module function name
+  to a `ModuleCallable` (`fn(&[CodeValue]) -> Result<CodeValue, String>`,
+  the artifact's adapter over the compiled entry); `evaluate_tree`
+  takes the table and runs `CodeTree::Call` through it, arguments
+  evaluated left to right. A callee bound in the input environment
+  refuses `type: value is not callable: {v}` (the VM's words); a call
+  the table does not carry keeps `tree: call `{f}` is not emitted in
+  the scalar tree evaluator`. `ModuleTable` is `Copy` (all `'static`
+  slices), so an applied-evaluate callable captures it by value.
+- `node_items` yields a family `Sequence`'s or `Tuple`'s items (the
+  call-marshal bridge into a declared sequence parameter); any other
+  value refuses `type: expected a sequence value`.
+- `ExprCode` equality is tree + stamped dependencies (the factory is
+  derived from the tree); `node_eq` on code nodes uses it.
 
 `ExprCode` is dual-representational: `{free, tree,
 make: Option<factory>, deps}` - one lowering pass emits the compiled

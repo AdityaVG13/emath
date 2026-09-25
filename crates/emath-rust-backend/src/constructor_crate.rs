@@ -18,8 +18,11 @@ use std::path::Path;
 
 use emath_core::tree::SyntaxTree;
 
-use crate::codegen_render::{InputKinds, SiblingEntryScope, ValueKind, program_kind};
-use crate::{emit_constructor_entry, emit_record_definitions, AuthoredRecord};
+use crate::codegen_render::{
+    EntryAbi, EntryAbiScope, InputKinds, SiblingEntryScope, ValueKind, entry_abi,
+    internal_entry_name, program_kind, register_entry_abi,
+};
+use crate::{emit_constructor_entry_abi, emit_record_definitions, AuthoredRecord};
 
 /// What one constructor-file emission produced.
 #[derive(Clone, Debug)]
@@ -205,6 +208,75 @@ pub fn emit_constructor_crate(
             unresolved.push(error.to_string());
         }
     }
+    // Lower every function once: the main file's functions, then every
+    // sibling a lowered program names - recursion-cycle edges
+    // (`CallSibling`, which need an entry) and inlined sibling frames
+    // (named `CallFrame`s, which may call one) - to a fixed point.
+    use std::collections::{BTreeMap, VecDeque};
+    let mut lowered: BTreeMap<String, Result<emath_exec_ir::constructor_emir::LoweredFunction, String>> =
+        BTreeMap::new();
+    let mut session = emath_exec_ir::constructor_emir::ConstructorLowering::new(&tree);
+    let mut queue: VecDeque<String> = functions.iter().cloned().collect();
+    while let Some(name) = queue.pop_front() {
+        if lowered.contains_key(&name) {
+            continue;
+        }
+        let result = session.lower(&name);
+        if let Ok(function) = &result
+            && function.runnable
+        {
+            let mut named = Vec::new();
+            collect_named_calls(&function.program, true, &mut named);
+            queue.extend(named);
+        }
+        lowered.insert(name, result);
+    }
+    // The required entries: the main file's functions (authored order),
+    // then every cycle member a required program references, settled to
+    // a fixed point in discovery order. A required entry that cannot
+    // emit makes the crate not runnable.
+    let mut required: Vec<String> = functions.clone();
+    let mut index = 0;
+    while index < required.len() {
+        if let Some(Ok(function)) = lowered.get(&required[index])
+            && function.runnable
+        {
+            let mut siblings = Vec::new();
+            collect_named_calls(&function.program, false, &mut siblings);
+            for sibling in siblings {
+                if !required.contains(&sibling) {
+                    required.push(sibling);
+                }
+            }
+        }
+        index += 1;
+    }
+    // Run-time code reaches module functions no emitted program calls
+    // (a formula handed in as a `Code` input may name any of them): when
+    // any lowered program evaluates code, every scalar-ABI function of
+    // the merged tree - imported ones included - joins as a helper root,
+    // so the module table carries its adapter. Helpers never make the
+    // crate not runnable; one that cannot emit is skipped.
+    let evaluates_code = lowered.values().any(|function| {
+        matches!(function, Ok(function) if function.runnable && contains_code_evaluate(&function.program))
+    });
+    let mut extra_roots: Vec<String> = Vec::new();
+    if evaluates_code {
+        for item in &tree.items {
+            let emath_core::tree::Item::Declaration(decl) = item else {
+                continue;
+            };
+            if decl.as_kind != "function"
+                || lowered.contains_key(&decl.name)
+                || !declared_scalar_abi(decl, &objects)
+            {
+                continue;
+            }
+            let result = session.lower(&decl.name);
+            lowered.insert(decl.name.clone(), result);
+            extra_roots.push(decl.name.clone());
+        }
+    }
     // The emitted entry's true result carrier per function,
     // pre-lowered once over the main-file functions before any
     // rendering: a `CallSibling` register carries the callee's
@@ -213,52 +285,22 @@ pub fn emit_constructor_crate(
     // Rat-typed inlined carrier joining an Int-declared recursive
     // tail emits the ratio carrier at the entry). The input kinds
     // mirror the entry ABI's declared carriers exactly.
-    let mut sibling_kinds: std::collections::BTreeMap<String, ValueKind> =
-        std::collections::BTreeMap::new();
+    let mut sibling_kinds: BTreeMap<String, ValueKind> = BTreeMap::new();
     for name in functions.iter() {
-        let Ok(lowered) = emath_exec_ir::constructor_emir::lower_constructor_function(&tree, name)
-        else {
+        let Some(Ok(lowered)) = lowered.get(name) else {
             continue;
         };
-        let declared = tree
-            .items
-            .iter()
-            .find_map(|item| match item {
-                emath_core::tree::Item::Declaration(decl) if decl.name == *name => Some(
-                    emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs"),
-                ),
-                _ => None,
-            })
-            .unwrap_or_default();
         let mut kinds = InputKinds::new();
         let mut input_names = Vec::new();
-        for input in &lowered.inputs {
-            let signature = declared
-                .iter()
-                .find(|(declared, _)| declared == input)
-                .and_then(|(_, ty)| {
-                    emath_exec_ir::constructor_emir::constructor_type_signature(ty, &objects)
-                });
+        for (input, signature) in entry_inputs(&tree, name, &lowered.inputs, &objects) {
             kinds.insert(
                 input.clone(),
                 signature
                     .as_deref()
                     .map_or(ValueKind::I64, ValueKind::from_signature),
             );
-            input_names.push(input.clone());
+            input_names.push(input);
         }
-        let declared_output = tree.items.iter().find_map(|item| match item {
-            emath_core::tree::Item::Declaration(decl) if decl.name == *name => {
-                let outputs =
-                    emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
-                let (output, ty) = outputs.first()?;
-                let signature = emath_exec_ir::constructor_emir::constructor_type_signature(
-                    ty, &objects,
-                )?;
-                Some((output.clone(), signature))
-            }
-            _ => None,
-        });
         let body_kind = program_kind(&lowered.program, &input_names, &[], &kinds);
         // The entry ABI law, mirrored: a `CodeValue` body result
         // projects checked onto the declared scalar carrier at the
@@ -269,8 +311,7 @@ pub fn emit_constructor_crate(
         // `CallSibling` register kind must match what the emitted
         // entry actually returns.
         let sibling_kind = if body_kind == ValueKind::CodeValue {
-            declared_output
-                .as_ref()
+            declared_output(&tree, name, &objects)
                 .map(|(_, signature)| ValueKind::from_signature(signature.as_str()))
                 .unwrap_or(body_kind)
         } else {
@@ -279,107 +320,168 @@ pub fn emit_constructor_crate(
         sibling_kinds.insert(name.clone(), sibling_kind);
     }
     let _sibling_scope = SiblingEntryScope::enter(sibling_kinds);
-    // One named entry per runnable function: sibling calls (pilot p8)
-    // need both functions in the same crate, so entries carry their
-    // function names instead of a shared `entry` symbol. A sibling
-    // entry call (a recursion-cycle edge) may name a function beyond
-    // the main file - an imported cycle member - so emission settles
-    // the referenced set to a fixed point: every `CallSibling` name
-    // reachable in an emitted program gets its own entry, main-file
-    // functions first in authored order, then cycle members as
-    // referenced.
-    let mut worklist: std::collections::VecDeque<String> =
-        functions.iter().cloned().collect();
-    let mut emitted: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    while let Some(name) = worklist.pop_front() {
-        if !emitted.insert(name.clone()) {
+    // Entries render callees-first (post-order over the named-call
+    // graph, cycles cut at the open ancestor) so every entry's ABI is
+    // registered before a caller renders: a caller's named frame whose
+    // carriers equal the callee's ABI becomes a call to that entry
+    // instead of the callee's body inlined again at every site (the
+    // multiplicative blowup of nested sibling calls). Helpers - named
+    // callees outside the required set, imported ones included - emit
+    // only to serve those calls: a helper that cannot emit or names a
+    // cycle member without an entry is skipped and its callers keep
+    // inlining. Tree-lane functions (named up front, so cycle edges
+    // rendered before their target emits agree) are called through
+    // their non-resetting body fn.
+    let callees_of = |name: &str| -> Vec<String> {
+        let mut named = Vec::new();
+        if let Some(Ok(function)) = lowered.get(name)
+            && function.runnable
+        {
+            collect_named_calls(&function.program, true, &mut named);
+        }
+        named.reverse();
+        named
+    };
+    let mut post_order: Vec<String> = Vec::new();
+    let mut visited: BTreeSet<String> = BTreeSet::new();
+    for root in required.iter().chain(&extra_roots) {
+        if !visited.insert(root.clone()) {
             continue;
         }
-        let mut pending_refs = Vec::new();
-        match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, &name) {
-                Ok(lowered) => {
-                    if !lowered.runnable {
-                        runnable = false;
-                        unresolved.extend(lowered.unresolved);
-                        rust.push_str(&format!(
-                            "// `{name}` is not marked runnable: unresolved symbolic code\n"
-                        ));
-                        continue;
-                    }
-                    collect_call_sibling_names(&lowered.program, &mut pending_refs);
-                    needs_module_table |= crate::contains_tree_ops(&lowered.program);
-                    needs_definition_table |= crate::contains_body_ops(&lowered.program);
-                    // Declared carriers ground the entry ABI; an untyped
-                    // input falls back to the numeric lane's Int. The
-                    // merged tree resolves imported cycle members too.
-                    let declared = tree
-                        .items
-                        .iter()
-                        .find_map(|item| match item {
-                            emath_core::tree::Item::Declaration(decl) if decl.name == name => Some(
-                                emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs"),
-                            ),
-                            _ => None,
-                        })
-                        .unwrap_or_default();
-                    let inputs: Vec<(String, Option<String>)> = lowered
-                        .inputs
-                        .iter()
-                        .map(|input| {
-                            let signature = declared
-                                .iter()
-                                .find(|(declared, _)| declared == input)
-                                .and_then(|(_, ty)| {
-                                    emath_exec_ir::constructor_emir::constructor_type_signature(
-                                        ty, &objects,
-                                    )
-                                });
-                            (input.clone(), signature)
-                        })
-                        .collect();
-                    // The single-output declaration is the carrier
-                    // authority at the expression-template boundary (the
-                    // checked projection site); multi-output functions
-                    // pack a record and never carry a raw union result.
-                    let output = tree
-                        .items
-                        .iter()
-                        .find_map(|item| match item {
-                            emath_core::tree::Item::Declaration(decl) if decl.name == name => {
-                                let outputs =
-                                    emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
-                                let (output, ty) = outputs.first()?;
-                                let signature =
-                                    emath_exec_ir::constructor_emir::constructor_type_signature(
-                                        ty, &objects,
-                                    )?;
-                                Some((output.clone(), signature))
-                            }
-                            _ => None,
-                        });
-                    match emit_constructor_entry(&lowered.program, &name, &inputs, output.as_ref().map(|(output, signature)| (output.as_str(), signature.as_str())), &records) {
-                        Ok(body) => {
-                            rust.push_str(&format!("// function `{name}`\n"));
-                            rust.push_str(&body);
-                            rust.push('\n');
-                        }
-                            Err(error) => {
-                            runnable = false;
-                            unresolved.push(error.to_string());
-                            rust.push_str(&format!("// `{name}` is not marked runnable: {error}\n"));
-                        }
+        let mut stack: Vec<(String, Vec<String>)> = vec![(root.clone(), callees_of(root))];
+        loop {
+            let Some(top) = stack.last_mut() else {
+                break;
+            };
+            match top.1.pop() {
+                Some(next) => {
+                    if visited.insert(next.clone()) {
+                        let callees = callees_of(&next);
+                        stack.push((next, callees));
                     }
                 }
-            Err(error) => {
-                runnable = false;
-                unresolved.push(error);
+                None => {
+                    if let Some((name, _)) = stack.pop() {
+                        post_order.push(name);
+                    }
+                }
             }
         }
-        // Every cycle member referenced by this program gets its own
-        // entry; the worklist settles to a fixed point.
-        worklist.extend(pending_refs);
     }
-    if needs_module_table {
+    let tree_lane: BTreeSet<String> = lowered
+        .iter()
+        .filter_map(|(name, function)| match function {
+            Ok(function) if crate::contains_tree_ops(&function.program) => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
+    let _entry_scope = EntryAbiScope::enter(tree_lane);
+    // Text and refusals collect per function and assemble in the
+    // required order (main file first, cycle members as discovered),
+    // helpers last - the render order is an implementation detail.
+    let mut rendered: BTreeMap<String, String> = BTreeMap::new();
+    let mut refusals: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut helpers: Vec<String> = Vec::new();
+    let mut emitted_entries: Vec<(String, Vec<(String, Option<String>)>, EntryAbi)> = Vec::new();
+    for name in &post_order {
+        let is_required = required.contains(name);
+        let function = match lowered.get(name) {
+            Some(Ok(function)) => function,
+            Some(Err(error)) => {
+                if is_required {
+                    runnable = false;
+                    refusals.insert(name.clone(), vec![error.clone()]);
+                }
+                continue;
+            }
+            None => continue,
+        };
+        if !function.runnable {
+            if is_required {
+                runnable = false;
+                refusals.insert(name.clone(), function.unresolved.clone());
+                rendered.insert(
+                    name.clone(),
+                    format!("// `{name}` is not marked runnable: unresolved symbolic code\n"),
+                );
+            }
+            continue;
+        }
+        if is_required {
+            needs_module_table |= crate::contains_tree_ops(&function.program);
+            needs_definition_table |= crate::contains_body_ops(&function.program);
+        } else {
+            let mut siblings = Vec::new();
+            collect_named_calls(&function.program, false, &mut siblings);
+            if siblings
+                .iter()
+                .any(|sibling| sibling != name && entry_abi(sibling).is_none())
+            {
+                continue;
+            }
+        }
+        // Declared carriers ground the entry ABI; an untyped input
+        // falls back to the numeric lane's Int. The merged tree
+        // resolves imported functions too. The single-output
+        // declaration is the carrier authority at the
+        // expression-template boundary (the checked projection site);
+        // multi-output functions pack a record and never carry a raw
+        // union result.
+        let inputs = entry_inputs(&tree, name, &function.inputs, &objects);
+        let output = declared_output(&tree, name, &objects);
+        match emit_constructor_entry_abi(
+            &function.program,
+            name,
+            &inputs,
+            output
+                .as_ref()
+                .map(|(output, signature)| (output.as_str(), signature.as_str())),
+            &records,
+        ) {
+            Ok((body, abi)) => {
+                emitted_entries.push((name.clone(), inputs.clone(), abi.clone()));
+                register_entry_abi(name, abi);
+                if !is_required {
+                    needs_module_table |= crate::contains_tree_ops(&function.program);
+                    needs_definition_table |= crate::contains_body_ops(&function.program);
+                    helpers.push(name.clone());
+                }
+                rendered.insert(name.clone(), format!("// function `{name}`\n{body}\n"));
+            }
+            Err(error) => {
+                if is_required {
+                    runnable = false;
+                    refusals.insert(name.clone(), vec![error.to_string()]);
+                    rendered.insert(
+                        name.clone(),
+                        format!("// `{name}` is not marked runnable: {error}\n"),
+                    );
+                }
+            }
+        }
+    }
+    for name in required.iter().chain(&helpers) {
+        if let Some(text) = rendered.get(name) {
+            rust.push_str(text);
+        }
+        if let Some(refused) = refusals.remove(name) {
+            unresolved.extend(refused);
+        }
+    }
+    // A union-lane executor (`evaluate`/`evaluate_callable` over a Code
+    // input) reads the table without carrying the tree lane.
+    if needs_module_table || rust.contains("&__EMATH_MODULE_TABLE") {
+        // The tree evaluator's route into module code: one adapter per
+        // emitted entry whose ABI crosses as scalars (a run-time
+        // formula calling a module function runs its compiled entry).
+        let mut callables = Vec::new();
+        for (name, inputs, abi) in &emitted_entries {
+            if let Some(adapter) = scalar_entry_adapter(name, inputs, abi) {
+                rust.push_str(&adapter);
+                callables.push(format!("({name:?}, emath_callable_{name})"));
+            }
+        }
+        let callables = callables.join(", ");
         let globals = module_table
             .iter()
             .map(|(name, opaque, _)| format!("({name:?}, {opaque})"))
@@ -391,7 +493,7 @@ pub fn emit_constructor_crate(
             .collect::<Vec<_>>()
             .join(", ");
         rust.push_str(&format!(
-            "#[allow(dead_code)]\nstatic __EMATH_MODULE_TABLE: emath_rt::code_tree::ModuleTable = emath_rt::code_tree::ModuleTable {{ globals: &[{globals}], stamps: &[{stamps}] }};\n\n"
+            "#[allow(dead_code)]\nstatic __EMATH_MODULE_TABLE: emath_rt::code_tree::ModuleTable = emath_rt::code_tree::ModuleTable {{ globals: &[{globals}], stamps: &[{stamps}], callables: &[{callables}] }};\n\n"
         ));
     }
     // The definition table (bead emath-quote-body-defs-trto7): the
@@ -461,12 +563,154 @@ pub fn emit_constructor_crate(
     })
 }
 
-/// Collect every `CallSibling` name reachable in a program's ops,
-/// including nested control/collection/frame bodies (a recursion-cycle
-/// edge can sit under any binder). The emission worklist uses this to
-/// give every referenced cycle member its own entry fn.
-fn collect_call_sibling_names(
+/// Whether a program evaluates quoted code at any depth (the run-time
+/// lane that can call module functions through the table).
+fn contains_code_evaluate(program: &emath_exec_ir::EmirProgram) -> bool {
+    use emath_exec_ir::EmirOp;
+    program.ops.iter().any(|(op, _)| match op {
+        EmirOp::CodeEvaluate { .. } => true,
+        EmirOp::Branch {
+            then_body,
+            else_body,
+            ..
+        } => contains_code_evaluate(then_body) || contains_code_evaluate(else_body),
+        EmirOp::CallFrame { body, .. }
+        | EmirOp::ProgramLiteral { body, .. }
+        | EmirOp::Fold { body, .. }
+        | EmirOp::Collect { body, .. } => contains_code_evaluate(body),
+        EmirOp::Iterate { body, stop, .. } => {
+            contains_code_evaluate(body) || stop.as_ref().is_some_and(contains_code_evaluate)
+        }
+        _ => false,
+    })
+}
+
+/// Whether a function declares a scalar ABI (Int/Rat/Bool inputs and
+/// one Int/Rat/Bool output) - the carriers a module-callable adapter
+/// crosses.
+fn declared_scalar_abi(
+    decl: &emath_core::tree::Declaration,
+    objects: &std::collections::BTreeSet<String>,
+) -> bool {
+    let scalar = |ty: &emath_core::tree::TypeExpr| {
+        matches!(
+            emath_exec_ir::constructor_emir::constructor_type_signature(ty, objects).as_deref(),
+            Some("Int" | "Rat" | "Bool")
+        )
+    };
+    let outputs = emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
+    outputs.len() == 1
+        && scalar(&outputs[0].1)
+        && emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs")
+            .iter()
+            .all(|(_, ty)| scalar(ty))
+}
+
+/// A module function's compiled entry adapted to the scalar union for
+/// the tree evaluator (`ModuleTable::callables`): each argument projects
+/// checked onto the declared Int/Rat/Bool parameter (the slot names the
+/// parameter), the result wraps back into the union. A tree-lane entry
+/// is called through its body fn, so a run's mint continues. Entries
+/// with any non-scalar parameter or result get no adapter - a run-time
+/// call to them refuses by name in the evaluator.
+fn scalar_entry_adapter(
+    name: &str,
+    inputs: &[(String, Option<String>)],
+    abi: &EntryAbi,
+) -> Option<String> {
+    let project = |kind: &ValueKind| match kind {
+        ValueKind::I64 => Some("project_i64"),
+        ValueKind::Rational => Some("project_ratio"),
+        ValueKind::Bool => Some("project_bool"),
+        _ => None,
+    };
+    let wrap = match abi.result {
+        ValueKind::I64 => "Int",
+        ValueKind::Rational => "Rat",
+        ValueKind::Bool => "Bool",
+        _ => return None,
+    };
+    if abi.inputs.len() != inputs.len() {
+        return None;
+    }
+    let args = abi
+        .inputs
+        .iter()
+        .zip(inputs)
+        .enumerate()
+        .map(|(index, (kind, (param, _)))| {
+            Some(format!(
+                "emath_rt::code::{}(&__args[{index}], {param:?})?",
+                project(kind)?
+            ))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let arity = abi.inputs.len();
+    let target = internal_entry_name(name);
+    Some(format!(
+        "#[allow(dead_code)]\nfn emath_callable_{name}(__args: &[emath_rt::code::CodeValue]) -> Result<emath_rt::code::CodeValue, String> {{\n    if __args.len() != {arity} {{\n        return Err(format!(\"type: `{name}` expects {arity} argument(s), got {{}}\", __args.len()));\n    }}\n    Ok(emath_rt::code::CodeValue::{wrap}(crate::{target}({})?))\n}}\n\n",
+        args.join(", ")
+    ))
+}
+
+/// The entry parameters for one function: each lowered input with its
+/// declared carrier signature (`None` = untyped, the numeric lane's Int).
+fn entry_inputs(
+    tree: &SyntaxTree,
+    name: &str,
+    inputs: &[String],
+    objects: &std::collections::BTreeSet<String>,
+) -> Vec<(String, Option<String>)> {
+    let declared = tree
+        .items
+        .iter()
+        .find_map(|item| match item {
+            emath_core::tree::Item::Declaration(decl) if decl.name == name => Some(
+                emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs"),
+            ),
+            _ => None,
+        })
+        .unwrap_or_default();
+    inputs
+        .iter()
+        .map(|input| {
+            let signature = declared
+                .iter()
+                .find(|(declared, _)| declared == input)
+                .and_then(|(_, ty)| {
+                    emath_exec_ir::constructor_emir::constructor_type_signature(ty, objects)
+                });
+            (input.clone(), signature)
+        })
+        .collect()
+}
+
+/// A function's first declared output with its carrier signature, when
+/// the interchange maps it.
+fn declared_output(
+    tree: &SyntaxTree,
+    name: &str,
+    objects: &std::collections::BTreeSet<String>,
+) -> Option<(String, String)> {
+    tree.items.iter().find_map(|item| match item {
+        emath_core::tree::Item::Declaration(decl) if decl.name == name => {
+            let outputs = emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
+            let (output, ty) = outputs.first()?;
+            let signature =
+                emath_exec_ir::constructor_emir::constructor_type_signature(ty, objects)?;
+            Some((output.clone(), signature))
+        }
+        _ => None,
+    })
+}
+
+/// Collect every sibling name reachable in a program's ops, including
+/// nested control/collection/frame bodies (a call can sit under any
+/// binder): recursion-cycle edges (`CallSibling`) always, and the
+/// callees of named inlined frames when `frames` is set.
+fn collect_named_calls(
     program: &emath_exec_ir::EmirProgram,
+    frames: bool,
     out: &mut Vec<String>,
 ) {
     use emath_exec_ir::EmirOp;
@@ -478,17 +722,22 @@ fn collect_call_sibling_names(
                 else_body,
                 ..
             } => {
-                collect_call_sibling_names(then_body, out);
-                collect_call_sibling_names(else_body, out);
+                collect_named_calls(then_body, frames, out);
+                collect_named_calls(else_body, frames, out);
             }
-            EmirOp::CallFrame { body, .. }
-            | EmirOp::ProgramLiteral { body, .. }
+            EmirOp::CallFrame { body, callee, .. } => {
+                if frames && let Some(callee) = callee {
+                    out.push(callee.clone());
+                }
+                collect_named_calls(body, frames, out);
+            }
+            EmirOp::ProgramLiteral { body, .. }
             | EmirOp::Fold { body, .. }
-            | EmirOp::Collect { body, .. } => collect_call_sibling_names(body, out),
+            | EmirOp::Collect { body, .. } => collect_named_calls(body, frames, out),
             EmirOp::Iterate { body, stop, .. } => {
-                collect_call_sibling_names(body, out);
+                collect_named_calls(body, frames, out);
                 if let Some(stop) = stop {
-                    collect_call_sibling_names(stop, out);
+                    collect_named_calls(stop, frames, out);
                 }
             }
             _ => {}

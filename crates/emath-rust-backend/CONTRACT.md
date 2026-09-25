@@ -71,6 +71,58 @@ predicts the rendered Rust type:
   same frame-input laws (numeric boundaries, closure handle clones, owned
   non-copy carriers), and the register kind carries the callee's declared
   result.
+- Entry reuse (emath-49o8): an inlined sibling frame names its callee
+  (`CallFrame.callee`). Entries emit callees-first (post-order over the
+  named-call graph) and register their ABI (parameter carriers, returned
+  carrier); a named frame whose `frame_input_kind` carriers and inferred
+  result equal the callee's registered ABI renders as `crate::callee(args)?`
+  instead of re-inlining the body. Same computation over the same kinds, so
+  the site's register kind is unchanged; any disagreement (a call-site
+  specialization, a `CodeValue` body the entry projects, a diverging body)
+  keeps the inline frame. Named callees outside the main file emit as helper
+  entries only to serve these calls (a helper that cannot emit is skipped,
+  never a refusal). This removes the multiplicative blowup of nested sibling
+  calls: linalg's lib 156k -> 12k lines, autodiff's 302k -> 32k, and the
+  117-module census 1.76M -> 0.71M lines with byte-identical behavior on the
+  conformance lanes. A tree-lane entry is a public `reset_mint()` wrapper over
+  a `emath_body_<name>` body fn; in-crate calls (named frames and
+  `CallSibling` edges) target the body fn so a run's mint never restarts
+  mid-run (the VM mints once per query).
+- Applied evaluate: `CodeEvaluate { applied: Some(Union(n)) }` over a
+  bare `Code` kinds as a closure of `n` union parameters yielding the
+  union and renders `evaluate_callable(&__EMATH_MODULE_TABLE)?` spread
+  over an `Rc<dyn Fn(CodeValue, ..)>`; scalar arguments wrap into the
+  union at the call. `Declared(sig)` kinds as the declared arrow when it
+  is one stage of scalar (Int/Rat/Bool) parameters with a scalar result
+  (`declared_scalar_arrow`), rendering the same callable behind an
+  adapter: arguments wrap into the union, the result projects checked
+  (`evaluated result` slot); any other arrow refuses by name.
+- Module callables: when the crate emits `__EMATH_MODULE_TABLE`, every
+  emitted entry whose ABI is scalar (Int/Rat/Bool parameters and
+  result) also gets an adapter `emath_callable_<name>` in the table's
+  `callables`: arguments project checked onto the declared parameters
+  (the slot names the parameter), the arity is checked, the result
+  wraps into the union, and a tree-lane entry is called through its
+  body fn. The rt tree evaluator reaches module code only through these.
+  When any lowered program evaluates code (`CodeEvaluate` at any depth),
+  every merged-tree function with a declared scalar ABI - imported ones
+  included, and ones no emitted program calls - joins the emission as a
+  helper root, so a run-time formula can reach it (a formula handed in
+  as a `Code` input may name any of them). Helpers never make the crate
+  not runnable; one that cannot emit is skipped and its run-time call
+  refuses by name.
+- Call-marshal bridge (`node_into`): a node-family value crossing into
+  a declared `Code` parameter unwraps/rebuilds through `node_as_code`,
+  and into a declared sequence of code (`sequence(Code)`,
+  `sequence((Code, Code))`) maps `node_items` through the same bridge,
+  recursively - at recursive self calls, cycle-edge sibling calls, and
+  entry-reuse calls alike. A union arm beside a typed scalar arm joins onto the typed
+  carrier in the kind walk, matching the render's checked projection.
+  The module table static emits whenever emitted code references it.
+- `RecordField` over a scalar (Int, Float64, Bool, ExactInt, Text) or
+  callable carrier refuses by name (`field `f` projected off a <kind>
+  carrier`): such a projection is an application the lowering misread,
+  and the artifact never claims runnable over Rust that cannot compile.
 
 Authored lists join Int/ExactInt/Rat representations before construction or cons.
 Concatenation borrows each input once, sums lengths without cloning, allocates

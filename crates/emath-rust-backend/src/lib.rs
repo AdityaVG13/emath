@@ -268,6 +268,20 @@ pub fn emit_constructor_entry(
     output: Option<(&str, &str)>,
     records: &[AuthoredRecord],
 ) -> Result<String, BackendError> {
+    emit_constructor_entry_abi(program, function_name, inputs, output, records)
+        .map(|(entry, _)| entry)
+}
+
+/// [`emit_constructor_entry`] plus the entry's carrier ABI (parameter
+/// carriers in input order, the carrier the entry returns) - the crate
+/// emission registers it so later named frames can call the entry.
+pub(crate) fn emit_constructor_entry_abi(
+    program: &emath_exec_ir::EmirProgram,
+    function_name: &str,
+    inputs: &[(String, Option<String>)],
+    output: Option<(&str, &str)>,
+    records: &[AuthoredRecord],
+) -> Result<(String, crate::codegen_render::EntryAbi), BackendError> {
     use crate::codegen_render::{
         program_kind, value_expr, AuthoredRecordScope, InputKinds, ReferenceScope, SelfWrapperScope,
         ValueKind,
@@ -281,6 +295,7 @@ pub fn emit_constructor_entry(
     }
     let _records = AuthoredRecordScope::enter(scope_records);
     let mut kinds = InputKinds::new();
+    let mut input_carriers = Vec::new();
     let mut params = Vec::new();
     let mut self_params = Vec::new();
     let mut self_args = Vec::new();
@@ -300,6 +315,7 @@ pub fn emit_constructor_entry(
         // the parameter directly.
         self_params.push(format!("{ident}: {}", render_ty(&kind.rust_ty()?)));
         self_args.push(ident);
+        input_carriers.push(kind.clone());
         kinds.insert(name.clone(), kind);
     }
     let params = params.join(", ");
@@ -308,7 +324,7 @@ pub fn emit_constructor_entry(
     // The expression-template boundary: the union collapses onto the
     // declared carrier through the checked projection; without a
     // declared scalar output there is no carrier to collapse onto.
-    let (result_ty, body) = if result_kind == ValueKind::CodeValue {
+    let (result_ty, body, result_carrier) = if result_kind == ValueKind::CodeValue {
         let Some((output_name, signature)) = output else {
             return Err(BackendError::UnsupportedType(
                 "an expression-template result needs a declared Int/Rat/Bool output to project its carrier".into(),
@@ -336,7 +352,7 @@ pub fn emit_constructor_entry(
                 )));
             }
         };
-        (render_ty(&declared.rust_ty()?), projected)
+        (render_ty(&declared.rust_ty()?), projected, declared)
     } else {
         let result_ty = if result_kind == ValueKind::Never {
             // A body whose every path refuses never produces a value
@@ -361,28 +377,45 @@ pub fn emit_constructor_entry(
         // inference that cannot see the enclosing join.
         let _wrapper = SelfWrapperScope::enter(result_kind.clone());
         let body = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
-        (result_ty, body)
+        (result_ty, body, result_kind)
     };
-    let entry_name = escape_ident(function_name);
+    let abi = crate::codegen_render::EntryAbi {
+        inputs: input_carriers,
+        result: result_carrier,
+    };
     // The shared-tree prologue: a tree-lane entry resets the per-run
     // mint state at its start, so every run of the same entry mints
     // identical `#scope.{id}` tokens (deterministic per run; the
     // entry is the artifact's counterpart of the VM's per-query
-    // engine state).
-    let prologue = if contains_tree_ops(program) {
-        "    emath_rt::code_tree::reset_mint();\n"
+    // engine state). The public entry is the reset wrapper over a
+    // body fn; in-crate calls target the body fn so a run's mint is
+    // never restarted mid-run.
+    let (entry_name, wrapper) = if contains_tree_ops(program) {
+        let body_name = crate::codegen_render::tree_entry_body_name(function_name);
+        let wrapper = format!(
+            "pub fn {}({params}) -> Result<{result_ty}, String> {{\n    emath_rt::code_tree::reset_mint();\n    {body_name}({})\n}}\n#[doc(hidden)]\n",
+            escape_ident(function_name),
+            self_args.join(", ")
+        );
+        (body_name, wrapper)
     } else {
-        ""
+        (escape_ident(function_name), String::new())
     };
     if contains_call_self(program) {
         let self_params = self_params.join(", ");
         let call_args = self_args.join(", ");
-        Ok(format!(
-            "pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{prologue}    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        Ok({body})\n    }}\n    Ok(__self({call_args})?)\n}}\n"
+        Ok((
+            format!(
+                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        Ok({body})\n    }}\n    Ok(__self({call_args})?)\n}}\n"
+            ),
+            abi,
         ))
     } else {
-        Ok(format!(
-            "pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{prologue}    Ok({body})\n}}\n"
+        Ok((
+            format!(
+                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    Ok({body})\n}}\n"
+            ),
+            abi,
         ))
     }
 }

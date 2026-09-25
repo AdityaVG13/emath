@@ -13,13 +13,14 @@
 use std::rc::Rc;
 
 use emath_rt::code::{
-    code_mul, evaluate_expr, free_names_expr, open_expr, substitute_expr, CodeValue,
+    code_eq, code_mul, evaluate_callable_expr, evaluate_expr, free_names_expr, open_expr,
+    substitute_expr, CodeValue,
 };
 use emath_rt::code_tree::{
     check_scope, dependency_snapshot_tree, evaluate_tree, free_names_tree, make_quoted, node_eq,
-    node_field, node_index, node_record, node_tag, quote_body_node, rebuild_node, reset_mint,
+    node_field, node_index, node_items, node_record, node_tag, quote_body_node, rebuild_node, reset_mint,
     substitute_tree, verify_deps, view_node, view_quoted, view_tree, CodeTree, DefinitionRow,
-    DefinitionTable, ModuleTable, NodeValue, TreeBinary, TreeUnary,
+    DefinitionTable, ModuleTable, NodeValue, TreeBinary, TreeDomain, TreeUnary,
 };
 use emath_test_harness::{Probe, boot};
 
@@ -347,7 +348,7 @@ fn probe() {
         };
         p.eq(
             "int-plus-int-stays-int",
-            evaluate_tree(&int_sum, &inputs(&[])),
+            evaluate_tree(&int_sum, &inputs(&[]), &ModuleTable::EMPTY),
             Ok(CodeValue::Int(5)),
         );
         let rat_zero = CodeTree::Binary {
@@ -357,7 +358,7 @@ fn probe() {
         };
         p.eq(
             "rational-zero-never-collapses",
-            evaluate_tree(&rat_zero, &inputs(&[])),
+            evaluate_tree(&rat_zero, &inputs(&[]), &ModuleTable::EMPTY),
             Ok(CodeValue::Rat((0, 1))),
         );
         let division = CodeTree::Binary {
@@ -367,7 +368,7 @@ fn probe() {
         };
         p.eq(
             "division-stays-rational",
-            evaluate_tree(&division, &inputs(&[])),
+            evaluate_tree(&division, &inputs(&[]), &ModuleTable::EMPTY),
             Ok(CodeValue::Rat((2, 1))),
         );
         let short_circuit = CodeTree::Binary {
@@ -380,7 +381,7 @@ fn probe() {
         };
         p.eq(
             "and-short-circuits",
-            evaluate_tree(&short_circuit, &inputs(&[])),
+            evaluate_tree(&short_circuit, &inputs(&[]), &ModuleTable::EMPTY),
             Ok(CodeValue::Bool(false)),
         );
         let open = CodeTree::Binary {
@@ -388,7 +389,7 @@ fn probe() {
             left: Box::new(CodeTree::Path(vec!["x".to_string()])),
             right: Box::new(CodeTree::Literal(CodeValue::Int(1))),
         };
-        match evaluate_tree(&open, &inputs(&[])) {
+        match evaluate_tree(&open, &inputs(&[]), &ModuleTable::EMPTY) {
             Ok(_) => {
                 p.fail("unbound-refuses", "an unbound name must refuse");
             }
@@ -430,6 +431,7 @@ fn probe() {
         let table = ModuleTable {
             globals: &[("f", false)],
             stamps: &[("f", 42)],
+            callables: &[],
         };
         let calls_f = CodeTree::Call {
             function: Box::new(CodeTree::Path(vec!["f".to_string()])),
@@ -448,6 +450,7 @@ fn probe() {
         let changed = ModuleTable {
             globals: &[("f", false)],
             stamps: &[("f", 43)],
+            callables: &[],
         };
         match verify_deps(&std::collections::BTreeMap::from([("f".to_string(), 42u64)]), &changed) {
             Ok(()) => {
@@ -526,6 +529,28 @@ fn probe() {
                 );
             }
         }
+        // The call-marshal bridge into a declared sequence parameter:
+        // a family sequence and a tuple both yield their items in
+        // order; anything else refuses typed.
+        let tuple = NodeValue::Tuple(vec![
+            NodeValue::Scalar(CodeValue::Int(1)),
+            NodeValue::Scalar(CodeValue::Int(2)),
+        ]);
+        let items_equal = |node: &NodeValue, want: &[i64]| {
+            node_items(node).is_ok_and(|items| {
+                items.len() == want.len()
+                    && items.iter().zip(want).all(|(item, want)| {
+                        node_eq(item, &NodeValue::Scalar(CodeValue::Int(*want))) == Ok(true)
+                    })
+            })
+        };
+        p.demand("sequence-items", items_equal(&sequence, &[10, 20]), "sequence yields [10, 20]");
+        p.demand("tuple-items", items_equal(&tuple, &[1, 2]), "tuple yields [1, 2]");
+        p.demand(
+            "scalar-has-no-items",
+            node_items(&NodeValue::Scalar(CodeValue::Int(1))).is_err(),
+            "a scalar is not a sequence",
+        );
     });
 
     // 8. Reconstruction refusals: node kinds outside the emitted
@@ -550,14 +575,17 @@ fn probe() {
                 );
             }
         }
-        match rebuild_node(&node_tag("Closure")) {
+        // `Recur` is a node kind the VM rebuilds but the artifact tree
+        // does not carry (Closure was the representative kind until
+        // eb50799 brought it into the emitted subset).
+        match rebuild_node(&node_tag("Recur")) {
             Ok(_) => {
-                p.fail("closure-refuses", "a Closure node must refuse in this cut");
+                p.fail("recur-refuses", "a Recur node must refuse in this cut");
             }
             Err(fault) => {
                 p.demand(
                     "named-not-yet-emitted",
-                    fault == "node `Closure` is not yet emitted in artifact trees",
+                    fault == "node `Recur` is not yet emitted in artifact trees",
                     &format!("the boundary refusal must be named: {fault}"),
                 );
             }
@@ -900,6 +928,99 @@ fn probe() {
             "bind-preserves-tree",
             node_eq(&bound_view, &original_view),
             Ok(true),
+        );
+    });
+
+    // Applied evaluate (`f = quote.evaluate(code)` then `f(a)`): each
+    // argument meets its binder's recorded domain before it binds, by
+    // the VM's scalar admission - `Rat` widens an Int exactly, `Int`
+    // refuses a ratio by name (never a silent answer). A made closure
+    // carries the `Rat` domain, as the VM's make rebuilds it.
+    p.case("applied-domain-admission", |p| {
+        let successor = |domain: &str| {
+            open_expr(
+                Vec::new(),
+                CodeTree::Closure {
+                    param: "x".to_string(),
+                    domain: TreeDomain::Scalar(domain.to_string()),
+                    body: Box::new(CodeTree::Binary {
+                        op: TreeBinary::Add,
+                        left: Box::new(CodeTree::Path(vec!["x".to_string()])),
+                        right: Box::new(CodeTree::Literal(CodeValue::Int(1))),
+                    }),
+                },
+                None,
+                std::collections::BTreeMap::new(),
+            )
+        };
+        let apply = |code, argument: CodeValue| {
+            evaluate_callable_expr(code, &ModuleTable::EMPTY).and_then(|f| f(&[argument]))
+        };
+        let equals = |got: &Result<CodeValue, String>, want: CodeValue| {
+            matches!(got, Ok(value) if code_eq(value, &want) == Ok(true))
+        };
+        let got = apply(successor("Rat"), CodeValue::Int(2));
+        p.demand("rat-admits-int", equals(&got, CodeValue::Int(3)), &format!("{got:?}"));
+        let got = apply(successor("Rat"), CodeValue::Rat((1, 2)));
+        p.demand("rat-admits-rat", equals(&got, CodeValue::Rat((3, 2))), &format!("{got:?}"));
+        let got = apply(successor("Int"), CodeValue::Int(2));
+        p.demand("int-admits-int", equals(&got, CodeValue::Int(3)), &format!("{got:?}"));
+        let got = apply(successor("Int"), CodeValue::Rat((1, 2)));
+        p.demand(
+            "int-refuses-rat",
+            matches!(&got, Err(e) if e == "type: closure domain `Int` does not admit the argument `1/2`"),
+            &format!("{got:?}"),
+        );
+        reset_mint();
+        let made = view_quoted(successor("Int"), &ModuleTable::EMPTY)
+            .make(&ModuleTable::EMPTY)
+            .expect("the viewed closure rebuilds");
+        let got = apply(made, CodeValue::Rat((1, 2)));
+        p.demand("made-closure-is-rat", equals(&got, CodeValue::Rat((3, 2))), &format!("{got:?}"));
+    });
+
+    // Module calls in the tree evaluator: a call to a module function
+    // runs the table's compiled-entry adapter (arguments evaluated left
+    // to right, then passed as scalars); a bound name is a scalar and
+    // refuses as not callable (the VM's words); a function the table
+    // does not carry refuses by name.
+    p.case("tree-module-calls", |p| {
+        fn triple(args: &[CodeValue]) -> Result<CodeValue, String> {
+            code_mul(&args[0], &CodeValue::Int(3))
+        }
+        static MODULE: ModuleTable = ModuleTable {
+            globals: &[("triple", false)],
+            stamps: &[("triple", 7)],
+            callables: &[("triple", triple)],
+        };
+        let call = |name: &str, arg: CodeTree| CodeTree::Call {
+            function: Box::new(CodeTree::Path(vec![name.to_string()])),
+            args: vec![arg],
+        };
+        let sum = CodeTree::Binary {
+            op: TreeBinary::Add,
+            left: Box::new(CodeTree::Literal(CodeValue::Int(1))),
+            right: Box::new(CodeTree::Path(vec!["x".to_string()])),
+        };
+        let x_is = |n: i64| {
+            std::collections::BTreeMap::from([(String::from("x"), CodeValue::Int(n))])
+        };
+        p.eq(
+            "module-call-computes",
+            evaluate_tree(&call("triple", sum.clone()), &x_is(4), &MODULE),
+            Ok(CodeValue::Int(15)),
+        );
+        p.eq(
+            "bound-name-is-not-callable",
+            evaluate_tree(&call("x", sum.clone()), &x_is(4), &MODULE),
+            Err(String::from("type: value is not callable: 4")),
+        );
+        p.eq(
+            "uncarried-call-refuses",
+            evaluate_tree(&call("triple", sum), &x_is(4), &ModuleTable::EMPTY),
+            Err(String::from(
+                "tree: call `triple` is not emitted in the scalar tree evaluator",
+            )),
         );
     });
 

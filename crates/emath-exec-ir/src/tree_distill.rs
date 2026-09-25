@@ -10,7 +10,18 @@
 
 use emath_core::tree::{BinaryOp, Expr, ExprKind, UnaryOp};
 use emath_rt::code::CodeValue;
-use emath_rt::code_tree::{CodeTree, TreeBinary, TreeUnary};
+use emath_rt::code_tree::{CodeTree, TreeBinary, TreeDomain, TreeUnary};
+
+/// The VM's recorded domain shape for a function literal's binder, in
+/// the artifact tree's vocabulary.
+fn tree_domain(domain: &Expr) -> TreeDomain {
+    use crate::constructor_layer::DomainShape;
+    match crate::constructor_layer::domain_shape_of_expr(domain) {
+        DomainShape::Scalar(name) => TreeDomain::Scalar(name),
+        shape @ DomainShape::Sequence(_) => TreeDomain::Sequence(shape.to_string()),
+        DomainShape::Unknown => TreeDomain::Unknown,
+    }
+}
 
 fn canonical_ratio(numer: &str, denom: &str) -> Result<CodeValue, String> {
     let numer: i128 = numer
@@ -108,11 +119,12 @@ pub(crate) fn distill_tree(expr: &Expr) -> Result<CodeTree, String> {
         // The definition-table body lane: `function_body_expr` wraps
         // every table body in `FunctionAbs` binders (one per input),
         // so a transparent module body distills exactly when its
-        // binder wrapper does. The declared domain is not carried -
-        // the fragment is walked and made, never applied (the tree's
-        // Closure law mirrors the VM's `FunctionAbs` view).
-        ExprKind::FunctionAbs { param, body, .. } => Ok(CodeTree::Closure {
+        // binder wrapper does. The binder domain is recorded exactly as
+        // the VM records it (`domain_shape_of_expr`), so an applied
+        // evaluate checks arguments against the same shape.
+        ExprKind::FunctionAbs { param, domain, body } => Ok(CodeTree::Closure {
             param: param.clone(),
+            domain: tree_domain(domain),
             body: Box::new(distill_tree(body)?),
         }),
         ExprKind::Float(_) => Err(String::from(

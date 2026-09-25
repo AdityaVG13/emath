@@ -620,6 +620,7 @@ mod scratch;
 mod setup;
 mod value;
 
+pub(crate) use call::domain_shape_of_expr;
 pub use admit::*;
 pub use checkpoint::*;
 pub use eval::*;

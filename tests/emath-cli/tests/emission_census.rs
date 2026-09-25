@@ -10,14 +10,20 @@
 //! COUNT is pinned so a module silently losing runnable status fails the
 //! gate and forces a conscious update, with the drift named.
 //!
-//! Determinism: modules walk in sorted order and report sorted; scratch
-//! dirs are unique per run and never deleted (repo law); the four
-//! compile lanes take disjoint sorted chunks. Runtime is the sweep's
-//! (~7 minutes on one machine) - this is the DSR census lane, not part
-//! of a fast feedback loop.
+//! Determinism: modules walk in sorted order and report sorted; the
+//! compile lanes pull from one shared sorted queue. Each module emits
+//! into its stable dir (`common::emitted_crate_dir`, shared with the
+//! conformance lanes, never deleted): an unchanged emission re-runs as a
+//! cargo no-op and a changed one recompiles incrementally, so only a
+//! cold cache pays the full sweep.
+//!
+//! Knobs: `EMATH_EMIT_LANES=<n>` sets the compile-lane count (default
+//! 4); `EMATH_CENSUS_ONLY=<substring>` restricts the sweep to matching
+//! module paths (the pin is skipped - a partial census cannot count).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
 mod common;
@@ -124,17 +130,84 @@ mod common;
 /// tangent/double-root misses, the priority pick, the exact
 /// bisection with dyadic-exact and nondyadic-banded rows, and the
 /// event-aware rollout's terminal/reset/dedup/chatter outcomes).
-/// Remaining 6: derivative (its two newtons call a closure yielded
-/// by quote.evaluate over a transformed template - the
-/// closure-call callee-signature seam; every other row emits
-/// through linalg's import), levenberg (unknown value carriers
-/// through the numeric-program law), walk (quote.open/quote.view
-/// carriers), rewriting (quote.make and the substitute carrier
-/// mismatch), discovery (heterogeneous Rat -> Bool quoted
-/// functions), sieve (buffer carrier ops are VM-only in this cut).
-const NOT_RUNNABLE_PINNED: usize = 6;
+/// 6 -> 5 with the rewriting pass (emath-49o8): search/rewriting
+/// refused on `quote.make(quote.evaluate(source))` - make over an
+/// evaluated SCALAR, where the make lane took only node records and
+/// codes - and on `quote.substitute(quote(function x in Rat: x + 1),
+/// x, 7)`, an Int constant crossing into a Rat-carried template.
+/// Make now rebuilds a scalar (union, Int, Rat, Bool) as the closed
+/// literal of its exact value (rationals stay rational - the 5/6
+/// fence), and the substitute value crosses the template carrier
+/// through the shared numeric boundary (exact Int-to-Rat widening,
+/// checked narrowing). rewriting emits and compiles offline with its
+/// 6 authored rows still green in the VM and 6 conformance pins
+/// (the AvoidCapture query is not an emitted entry). 5 -> 4 with the
+/// curried-model pass (emath-49o8): numerics/levenberg's model seam
+/// `model_at = predict(params)` binds a PARTIAL application of a
+/// declared `A -> B -> C` input, but the def was not marked
+/// closure-valued, so `model_at(t)` lowered as the projection
+/// `t.model_at` (unknown carriers downstream; the runnable
+/// `predict_at` emitted `&t.model_at` over an f64). Defs now carry
+/// the curried stage count of declared arrows and function literals
+/// - an application leaving stages unapplied binds a closure - and a
+/// projection off a scalar or callable carrier refuses by name. The
+/// planted-problem functions' literal `function p in
+/// sequence[Float64]: function t in Float64: ..` fell to the untyped
+/// numeric-program lane because the bracket domain `sequence[T]` had
+/// no signature; it now types as `Vector<T>`. levenberg emits and
+/// compiles offline with its 61 authored rows still green in the VM
+/// and 61 conformance pins. 4 -> 3 with the dynamic-family pass
+/// (emath-49o8): quote/walk declared `packed: Fragment` and untyped
+/// `items: sequence`, neither of which had an interchange signature,
+/// so the entries fell back to Int and quote.open/quote.view refused.
+/// Both are the dynamic node family (`Fragment` package records, the
+/// heterogeneous `sequence`); emitted tuples are positional family
+/// sequences whose `_N` indexes them. Fixing that exposed a lying
+/// `runnable: true`: the callee inside the `quote.open term in packed:
+/// walk_term(term)` binder body never joined the sibling map (the
+/// called-name walk skipped binder bodies), so the call lowered as
+/// the projection `term.walk_term` - the walk now descends binder
+/// bodies and a projection off a code carrier refuses by name. walk
+/// emits and compiles offline with its 7 authored rows still green
+/// in the VM and 8 conformance pins. 3 -> 2 with the applied-evaluate
+/// pass (emath-49o8): search/discovery evaluates a bare `Code`
+/// conjecture (`claim = quote.evaluate(conjecture.claim)`) and APPLIES
+/// it (`claim(domain[at])`) - a quoted function literal Rat -> Bool,
+/// where the expression-template lane knew evaluate only as a scalar.
+/// An evaluated def (or in-place callee) applied with one consistent
+/// arity now lowers as the applied evaluate: the rt closes the code
+/// once (stale/unbound refusals at the same point) and returns a
+/// callable over the value union that binds the literal's parameters
+/// and runs the body through the scalar tree evaluator. A union arm
+/// beside a typed arm joins onto the typed carrier (the render's
+/// existing checked projection, now agreed by the kind walk), and code
+/// values compare by tree + dependencies so records with Code fields
+/// derive PartialEq. discovery emits and compiles offline with its 4
+/// authored rows still green in the VM and 4 conformance pins.
+/// 2 -> 1 with the declared-arrow evaluate pass (emath-49o8, the user
+/// accepted the design 2026-09-25): analysis/derivative's newtons pass
+/// `df = quote.evaluate(derivative_of(f_term))` - a quoted function
+/// built at run time - into `newton_solve`'s declared `df: Rat -> Rat`.
+/// An evaluated def passed into a declared arrow parameter now lowers
+/// as `CodeApplication::Declared`: the artifact adapts the rt's closed
+/// callable to the declared scalar arrow (arguments wrap into the
+/// union, the result projects checked). The derived body runs through
+/// the rt scalar tree evaluator (run-time code cannot be compiled
+/// ahead of time; a formula calling a module function refuses by name
+/// there). Compiling the module for the first time also exposed the
+/// d_form <-> d_arms cycle edge passing a viewed node sequence into
+/// the declared `sequence((Code, Code))` parameter: the call-marshal
+/// bridge now maps family sequences into declared sequences of code.
+/// derivative emits and compiles offline with its 35 authored rows
+/// still green in the VM and 33 conformance rows pinning emitted == VM
+/// (two rows' givens - `xs[i]`, a nested quote - are outside the
+/// distilled tree subset and stay VM-only, labeled). Remaining 1:
+/// sieve (buffer carrier ops are VM-only in this cut - an intentional
+/// fence, `machine_buffer_basename`).
+const NOT_RUNNABLE_PINNED: usize = 1;
 
-/// Fixed compile-lane count (the sweep's `-P 4`).
+/// Default compile-lane count (the sweep's `-P 4`); `EMATH_EMIT_LANES`
+/// overrides it.
 const LANES: usize = 4;
 
 fn repo_root() -> PathBuf {
@@ -175,8 +248,12 @@ struct Row {
 }
 
 /// Emit one module and, when the emitter claims it runnable, compile
-/// the emitted crate offline.
-fn census_row(bin: &Path, module: &Path, out: &Path) -> Row {
+/// the emitted crate's lib offline (`--lib`: a conformance driver left
+/// in the shared dir is the conformance lane's business, not the
+/// census's).
+fn census_row(bin: &Path, module: &Path) -> Row {
+    let out = common::emitted_crate_dir(module);
+    let _lock = common::lock_emitted_crate(&out);
     let build = Command::new(bin)
         .args([
             "build",
@@ -200,17 +277,7 @@ fn census_row(bin: &Path, module: &Path, out: &Path) -> Row {
     if !row.runnable {
         return row;
     }
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let compiled = Command::new(&cargo)
-        .args([
-            "build",
-            "--offline",
-            "--manifest-path",
-            out.join("Cargo.toml").to_str().expect("utf8 manifest"),
-        ])
-        .env("CARGO_TARGET_DIR", out.join("target"))
-        .output()
-        .expect("run cargo build for emitted crate");
+    let compiled = common::cargo_build_emitted(&out, &["--lib"]);
     if compiled.status.success() {
         row
     } else {
@@ -239,16 +306,8 @@ fn census_row(bin: &Path, module: &Path, out: &Path) -> Row {
 fn not_runnable_lanes_answer_by_name() {
     let bin = common::emath_bin();
     let module = repo_root().join("language/modules/quote/walk.emath");
-    let run_id = format!(
-        "{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
-    );
-    let out = std::env::temp_dir().join(format!("emath_walk_lane_{run_id}"));
-    std::fs::create_dir_all(&out).expect("create scratch dir");
+    let out = common::emitted_crate_dir(&module);
+    let _lock = common::lock_emitted_crate(&out);
     let build = Command::new(bin)
         .args([
             "build",
@@ -277,52 +336,39 @@ fn not_runnable_lanes_answer_by_name() {
 #[test]
 fn emission_census_every_runnable_module_compiles_offline() {
     let bin = common::emath_bin();
-    let modules = census_modules();
+    let only = std::env::var("EMATH_CENSUS_ONLY")
+        .ok()
+        .filter(|only| !only.is_empty());
+    let modules: Vec<PathBuf> = census_modules()
+        .into_iter()
+        .filter(|module| {
+            only.as_deref()
+                .is_none_or(|only| module.to_string_lossy().contains(only))
+        })
+        .collect();
     assert!(
         !modules.is_empty(),
-        "census found no modules under language/modules"
+        "census found no modules under language/modules (EMATH_CENSUS_ONLY={only:?})"
     );
+    let lanes = std::env::var("EMATH_EMIT_LANES")
+        .ok()
+        .and_then(|lanes| lanes.parse::<usize>().ok())
+        .filter(|lanes| *lanes > 0)
+        .unwrap_or(LANES);
 
-    let run_id = format!(
-        "{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
-    );
-    let scratch = |module: &Path| -> PathBuf {
-        let stem = module.file_stem().and_then(|s| s.to_str()).expect("stem");
-        let parent = module
-            .parent()
-            .and_then(|p| p.file_name())
-            .and_then(|p| p.to_str())
-            .expect("parent");
-        std::env::temp_dir().join(format!(
-            "emath_census_{run_id}_{}__{parent}",
-            stem.replace(['-', '.'], "_")
-        ))
-    };
-
-    // Disjoint sorted chunks: lane i takes modules i, i+LANES, ... -
-    // each lane's cargo runs in its own per-module target dir, so the
-    // lanes never contend on a build lock.
+    // One shared sorted queue: each lane pulls the next module when it
+    // finishes one, so a heavy module never strands a lane's whole
+    // chunk behind it. Every module owns its target dir, so the lanes
+    // never contend on a build lock.
+    let next = AtomicUsize::new(0);
     let (tx, rx) = mpsc::channel::<Row>();
     std::thread::scope(|scope| {
-        for lane in 0..LANES {
+        for _ in 0..lanes {
             let tx = tx.clone();
-            let chunk: Vec<PathBuf> = modules
-                .iter()
-                .enumerate()
-                .filter(|(index, _)| index % LANES == lane)
-                .map(|(_, module)| module.clone())
-                .collect();
-            let bin = bin.to_path_buf();
+            let (next, modules) = (&next, &modules);
             scope.spawn(move || {
-                for module in chunk {
-                    let out = scratch(&module);
-                    let row = census_row(&bin, &module, &out);
-                    let _ = tx.send(row);
+                while let Some(module) = modules.get(next.fetch_add(1, Ordering::Relaxed)) {
+                    let _ = tx.send(census_row(bin, module));
                 }
             });
         }
@@ -355,6 +401,9 @@ fn emission_census_every_runnable_module_compiles_offline() {
     );
 
     let not_runnable: Vec<&Row> = rows.iter().filter(|row| !row.runnable).collect();
+    if only.is_some() {
+        return;
+    }
     assert_eq!(
         not_runnable.len(),
         NOT_RUNNABLE_PINNED,

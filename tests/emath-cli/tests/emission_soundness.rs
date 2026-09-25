@@ -36,6 +36,13 @@
 //!     beside an exact machine-root arm) emitted E0308 if/else
 //!     pairs; the kind walk joins the pair onto the exact carrier
 //!     and the render widens the i64 arm through `ExactInt::from`.
+//!     Pinned by behavior, not text: `emission_conformance_powers`
+//!     compiles the emitted powers crate and runs the widened arms
+//!     (`zeroth_root`, `zero`); dropping the widening fails it with
+//!     11 E0308 errors. (A text pin of `ExactInt::from((0i64))` broke
+//!     on c24c0a9's behavior-preserving move of the widening into the
+//!     shared branch-join law, which renders without the inner
+//!     parentheses - a change-detector, removed.)
 //! (6) Rat == Int-literal equality cast the Int side through f64
 //!     (E0308 against the `(i128, i128)` tuple carrier); the Int
 //!     side now widens to canonical ratio parts and compares
@@ -45,6 +52,14 @@
 //! the clamped bounds, `pow_int(2, 300)` exact decimal through the
 //! Big tail, i64 lanes unchanged); the emitted distributions crate
 //! compiles with the exact equality in place.
+//!
+//! (7) Sibling calls inlined the callee's whole body at every call
+//!     site, so a chain of functions each calling the previous one
+//!     twice emitted 2^depth copies of the leaf (linalg's lib was
+//!     156k lines, autodiff's 302k). A sibling frame whose carriers
+//!     equal the callee's entry ABI now calls that entry; the leaf is
+//!     emitted once. Value acceptance: the 18 emission-conformance
+//!     lanes and the census compile and pin emitted == VM unchanged.
 
 mod common;
 use emath_cli::EXIT_OK;
@@ -187,6 +202,39 @@ fn probe() {
     p.finish();
 }
 
+/// A doubling chain `twice_k(x) = twice_{k-1}(twice_{k-1}(x))` over one
+/// leaf: inlined sibling frames multiply the leaf 2^depth times.
+fn sibling_chain(depth: usize) -> String {
+    let mut source = String::from(
+        "emath function leaf:\n    inputs:\n        x: Int\n    outputs:\n        y: Int\n    definitions:\n        y = x * 7919 + 1\n",
+    );
+    let mut previous = String::from("leaf");
+    for level in 1..=depth {
+        source.push_str(&format!(
+            "\nemath function twice_{level}:\n    inputs:\n        x: Int\n    outputs:\n        y: Int\n    definitions:\n        y = {previous}({previous}(x))\n"
+        ));
+        previous = format!("twice_{level}");
+    }
+    source
+}
+
+#[test]
+fn probe_sibling_calls_share_entries() {
+    let mut p = Probe::new("emission soundness: a sibling call reuses the callee's entry instead of re-inlining its body");
+    p.case("doubling-chain-emits-leaf-once", |p| {
+        let src = scratch("chain-src").with_extension("emath");
+        let out = scratch("chain-out");
+        std::fs::write(&src, sibling_chain(8)).expect("write source");
+        let (text, code) = build(&src, &["--out", &out.to_string_lossy(), "--json"]);
+        p.eq("exit", code, EXIT_OK as i32);
+        p.contains("runnable", &text, "\"runnable\": true");
+        let lib = std::fs::read_to_string(out.join("src/lib.rs")).expect("emitted lib");
+        p.eq("leaf body copies", lib.matches("7919").count(), 1);
+        p.contains("callers call the leaf entry", &lib, "crate::leaf(");
+    });
+    p.finish();
+}
+
 #[test]
 fn probe_exact_boundaries() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -205,11 +253,6 @@ fn probe_exact_boundaries() {
             "negated order comparison parenthesizes the whole comparison",
             &lib,
             "Ordering::Less)",
-        );
-        p.contains(
-            "i64 branch arm widens to the exact carrier",
-            &lib,
-            "emath_rt::ExactInt::from((0i64))",
         );
     });
 

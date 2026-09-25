@@ -12,7 +12,7 @@ use emath_core::tree::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{CodeSubRef, DomainObligation, EmirOp, EmirProgram, EmirValue};
+use crate::{CodeApplication, CodeSubRef, DomainObligation, EmirOp, EmirProgram, EmirValue};
 use crate::constructor_layer::{machine_buffer_basename, machine_int_basename};
 use crate::exact_int::ExactInt;
 
@@ -28,9 +28,41 @@ pub fn lower_constructor_function(
     tree: &SyntaxTree,
     name: &str,
 ) -> Result<LoweredFunction, String> {
-    let mut cache = BTreeMap::new();
-    let mut visiting = BTreeSet::new();
-    lower_named(tree, name, &mut cache, &mut visiting)
+    ConstructorLowering::new(tree).lower(name)
+}
+
+/// One module's lowering session. Every root lowers exactly as
+/// [`lower_constructor_function`] would, but roots lowered through one
+/// session share each PATH-INDEPENDENT callee result: a runnable
+/// function whose lowering met no open ancestor (no cycle edge, no
+/// `CallSibling` anywhere in its inlined tree) and whose every inlined
+/// callee is itself path-independent. Such a result cannot depend on
+/// which root reached it - an ancestor reachable from the function
+/// would close a cycle through it and surface as a cycle edge in its
+/// own lowering - so sharing it changes no emitted byte and spares the
+/// crate emission from re-lowering every callee tree once per root.
+pub struct ConstructorLowering<'a> {
+    tree: &'a SyntaxTree,
+    shared: BTreeMap<String, LoweredFunction>,
+}
+
+impl<'a> ConstructorLowering<'a> {
+    pub fn new(tree: &'a SyntaxTree) -> Self {
+        Self {
+            tree,
+            shared: BTreeMap::new(),
+        }
+    }
+
+    /// Lower one root function (see [`lower_constructor_function`]).
+    ///
+    /// # Errors
+    /// The same named lowering refusals as [`lower_constructor_function`].
+    pub fn lower(&mut self, name: &str) -> Result<LoweredFunction, String> {
+        let mut cache = BTreeMap::new();
+        let mut visiting = BTreeSet::new();
+        lower_named(self.tree, name, &mut cache, &mut visiting, &mut self.shared)
+    }
 }
 
 /// `f = quote.evaluate(cand)`: the def binds the specialized unary
@@ -105,7 +137,11 @@ fn lower_named(
     name: &str,
     cache: &mut BTreeMap<String, LoweredFunction>,
     visiting: &mut BTreeSet<String>,
+    shared: &mut BTreeMap<String, LoweredFunction>,
 ) -> Result<LoweredFunction, String> {
+    if let Some(hit) = shared.get(name) {
+        return Ok(hit.clone());
+    }
     if let Some(hit) = cache.get(name) {
         return Ok(hit.clone());
     }
@@ -139,17 +175,22 @@ fn lower_named(
     }
     let mut siblings = BTreeMap::new();
     let mut entry_refs = BTreeMap::new();
-    let mut callees = BTreeSet::new();
+    let mut call_sites = BTreeMap::new();
     for (_, expr) in &defs {
-        collect_called_names(expr, &mut callees);
+        collect_call_sites(expr, &mut call_sites);
     }
+    let callees: BTreeSet<String> = call_sites.keys().cloned().collect();
     let objects = object_kinds(tree);
     let object_names: BTreeSet<String> = objects.keys().cloned().collect();
+    // Path independence (see `ConstructorLowering`): no open ancestor
+    // met here, and every inlined callee path-independent itself.
+    let mut independent = true;
     for callee in callees {
         if callee == name || !function_exists(tree, &callee) {
             continue;
         }
         if visiting.contains(&callee) {
+            independent = false;
             // The cycle edge: this callee is an open ancestor, so its
             // body cannot inline here (the cycle would nest forever).
             // Reference its emitted entry fn instead - the backend
@@ -159,8 +200,9 @@ fn lower_named(
             entry_refs.insert(callee, signatures);
             continue;
         }
-        match lower_named(tree, &callee, cache, visiting) {
+        match lower_named(tree, &callee, cache, visiting, shared) {
             Ok(other) if other.runnable => {
+                independent &= shared.contains_key(&callee);
                 // Authored input carriers for the inlined frame: an
                 // argument with no self-evident kind (an empty `[]`)
                 // recovers its carrier from the callee's declaration.
@@ -179,7 +221,7 @@ fn lower_named(
     let mut lowerer = Lowerer {
         inputs: inputs.clone(),
         locals: BTreeMap::new(),
-        siblings,
+        siblings: std::rc::Rc::new(siblings),
         entry_siblings: entry_refs,
         objects,
         ops: Vec::new(),
@@ -225,8 +267,39 @@ fn lower_named(
         cache.insert(name.to_string(), lowered.clone());
         return Ok(lowered);
     }
+    // Known curried stage counts by name (declared arrow inputs,
+    // function-literal defs, and defs that bind a partial application
+    // of either): an application that leaves stages unapplied binds a
+    // closure value.
+    let mut arrow_stages: BTreeMap<String, usize> = section_typed_fields(decl, "inputs")
+        .into_iter()
+        .filter_map(|(input, ty)| {
+            let stages = arrow_type_stages(&ty);
+            (stages > 0).then_some((input, stages))
+        })
+        .collect();
     for (def_name, expr) in &defs {
-        match lowerer.expr(expr) {
+        // `f = quote.evaluate(code)` used as a function: passed into a
+        // declared arrow parameter of a module function (one agreed
+        // signature - `newton_solve(f, df, ..)` with `df: Rat -> Rat`),
+        // or applied in place with one agreed argument count. The
+        // evaluated value is then a quoted function literal used as a
+        // callable (the VM's law - evaluate yields the closure).
+        let applied = match &expr.kind {
+            ExprKind::Call { function, args }
+                if is_quote_evaluate_call(function) && args.len() == 1 =>
+            {
+                evaluate_application(tree, &call_sites, def_name, &object_names)
+            }
+            _ => None,
+        };
+        let lowered = match (&expr.kind, applied) {
+            (ExprKind::Call { args, .. }, Some(applied)) => {
+                lowerer.lower_applied_evaluate(&args[0], applied)
+            }
+            _ => lowerer.expr(expr),
+        };
+        match lowered {
             Ok(value) => {
                 lowerer.locals.insert(def_name.clone(), value);
                 // A def bound to a closure value is closure-valued:
@@ -235,20 +308,41 @@ fn lower_named(
                 // literal, a path naming a known arrow name, a call
                 // to a declared function with a single arrow output
                 // (`fam = MakeFamily(0)` then `fam(1/2)` is the lift
-                // pattern's applied-local shape), and a
+                // pattern's applied-local shape), a
                 // `quote.evaluate` call (`f = quote.evaluate(cand)`
-                // then `f(x)` is the program-space application seam).
-                let closure_valued = match &expr.kind {
-                    ExprKind::FunctionAbs { .. } => true,
-                    ExprKind::Path { segments, .. } => {
-                        segments.len() == 1 && lowerer.arrow_names.contains(&segments[0])
+                // then `f(x)` is the program-space application seam),
+                // and a partial application of a declared arrow
+                // (`model_at = predict(params)` on `A -> B -> C` binds
+                // the `B -> C` stage - the curried model seam).
+                let residual = match &expr.kind {
+                    ExprKind::FunctionAbs { .. } => Some(literal_stages(expr)),
+                    ExprKind::Path { segments, .. } if segments.len() == 1 => {
+                        arrow_stages.get(&segments[0]).copied()
                     }
-                    ExprKind::Call { function, .. } => {
-                        call_binds_closure(tree, function)
-                            || is_quote_evaluate_call(function)
-                    }
-                    _ => false,
+                    ExprKind::Call { function, args } => match &function.kind {
+                        ExprKind::Path { segments, .. } if segments.len() == 1 => arrow_stages
+                            .get(&segments[0])
+                            .and_then(|stages| stages.checked_sub(args.len()))
+                            .filter(|remaining| *remaining > 0),
+                        _ => None,
+                    },
+                    _ => None,
                 };
+                let closure_valued = residual.is_some()
+                    || match &expr.kind {
+                        ExprKind::FunctionAbs { .. } => true,
+                        ExprKind::Path { segments, .. } => {
+                            segments.len() == 1 && lowerer.arrow_names.contains(&segments[0])
+                        }
+                        ExprKind::Call { function, .. } => {
+                            call_binds_closure(tree, function)
+                                || is_quote_evaluate_call(function)
+                        }
+                        _ => false,
+                    };
+                if let Some(residual) = residual {
+                    arrow_stages.insert(def_name.clone(), residual);
+                }
                 if closure_valued {
                     lowerer.arrow_names.insert(def_name.clone());
                 }
@@ -303,8 +397,100 @@ fn lower_named(
         runnable: true,
         unresolved,
     };
+    if independent && !contains_call_sibling(&lowered.program) {
+        shared.insert(name.to_string(), lowered.clone());
+    }
     cache.insert(name.to_string(), lowered.clone());
     Ok(lowered)
+}
+
+/// Whether a program carries a recursion-cycle edge at any depth.
+fn contains_call_sibling(program: &EmirProgram) -> bool {
+    program.ops.iter().any(|(op, _)| match op {
+        EmirOp::CallSibling { .. } => true,
+        EmirOp::Branch {
+            then_body,
+            else_body,
+            ..
+        } => contains_call_sibling(then_body) || contains_call_sibling(else_body),
+        EmirOp::CallFrame { body, .. }
+        | EmirOp::ProgramLiteral { body, .. }
+        | EmirOp::Fold { body, .. }
+        | EmirOp::Collect { body, .. } => contains_call_sibling(body),
+        EmirOp::Iterate { body, stop, .. } => {
+            contains_call_sibling(body) || stop.as_ref().is_some_and(contains_call_sibling)
+        }
+        _ => false,
+    })
+}
+
+/// Curried stage count of a declared type: one argument per stage,
+/// `A -> B -> C` folds as `A -> (B -> C)` (two stages); 0 for a
+/// non-arrow.
+fn arrow_type_stages(ty: &TypeExpr) -> usize {
+    match &ty.kind {
+        TypeKind::Fn { codomain, .. } => 1 + arrow_type_stages(codomain),
+        _ => 0,
+    }
+}
+
+/// Stage count a function literal is known to carry: one per nested
+/// literal (`function p: function t: ..` is two stages). A body that
+/// yields a closure some other way is not counted - an undercount only
+/// leaves a later application on the field-access reading, which the
+/// backend refuses by name over a callable carrier.
+fn literal_stages(expr: &Expr) -> usize {
+    match &expr.kind {
+        ExprKind::FunctionAbs { body, .. } => 1 + literal_stages(body),
+        _ => 0,
+    }
+}
+
+/// How an evaluated def is used as a function, from its call sites:
+/// the one declared arrow signature every module-function parameter it
+/// is passed into agrees on, else the one argument count it is applied
+/// with. Anything else (no use as a function, disagreeing uses) keeps
+/// the plain evaluated value.
+fn evaluate_application(
+    tree: &SyntaxTree,
+    call_sites: &BTreeMap<String, Vec<Vec<Option<String>>>>,
+    def_name: &str,
+    object_names: &BTreeSet<String>,
+) -> Option<CodeApplication> {
+    let mut declared = BTreeSet::new();
+    for (callee, sites) in call_sites {
+        if callee == def_name || !function_exists(tree, callee) {
+            continue;
+        }
+        let (inputs, _) = authored_signatures(tree, callee, object_names);
+        for site in sites {
+            for (position, arg) in site.iter().enumerate() {
+                if arg.as_deref() == Some(def_name) {
+                    match inputs.get(position) {
+                        Some(signature) if signature.starts_with("Fn<") => {
+                            declared.insert(signature.clone());
+                        }
+                        _ => return None,
+                    }
+                }
+            }
+        }
+    }
+    if declared.len() == 1 {
+        return declared.pop_first().map(CodeApplication::Declared);
+    }
+    if !declared.is_empty() {
+        return None;
+    }
+    let arities: BTreeSet<usize> = call_sites
+        .get(def_name)?
+        .iter()
+        .map(Vec::len)
+        .collect();
+    let [arity] = arities.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    u16::try_from(arity).ok().map(CodeApplication::Union)
 }
 
 fn function_exists(tree: &SyntaxTree, name: &str) -> bool {
@@ -323,7 +509,9 @@ struct Lowerer {
     /// signatures (one per declared input, empty = unknown). The
     /// backend recovers degenerate argument kinds (an empty `[]`)
     /// from the declaration instead of guessing.
-    siblings: BTreeMap<String, (EmirProgram, Vec<String>)>,
+    /// Shared (`Rc`): nested closure lowerers see the same map, and a
+    /// map of whole inlined programs is never deep-copied per scope.
+    siblings: std::rc::Rc<BTreeMap<String, (EmirProgram, Vec<String>)>>,
     /// Sibling calls that close a recursion cycle (the callee is an
     /// open ancestor, so its body cannot inline): name -> authored
     /// (input carriers, output carrier). Lowered as `CallSibling` -
@@ -420,6 +608,7 @@ impl Lowerer {
             inputs,
             state: Vec::new(),
             declared: Vec::new(),
+            callee: None,
         }))
     }
 
@@ -539,6 +728,21 @@ impl Lowerer {
         Err(format!("unbound `{name}` in emission"))
     }
 
+    /// `quote.evaluate(code)` whose value is used as a function: the
+    /// evaluated quoted function is a callable (the VM's closure; its
+    /// body runs per application) of the application's carrier.
+    fn lower_applied_evaluate(
+        &mut self,
+        code: &Expr,
+        applied: CodeApplication,
+    ) -> Result<EmirValue, String> {
+        let code = self.expr(code)?;
+        Ok(self.push(EmirOp::CodeEvaluate {
+            code,
+            applied: Some(applied),
+        }))
+    }
+
     fn lower_named_call(&mut self, segments: &[String], args: &[Expr]) -> Result<EmirValue, String> {
         let called = segments.join(".");
         if called == "length" && args.len() == 1 {
@@ -623,7 +827,7 @@ impl Lowerer {
                 }
                 ("quote.evaluate", 1) => {
                     let code = self.expr(&args[0])?;
-                    Ok(self.push(EmirOp::CodeEvaluate { code }))
+                    Ok(self.push(EmirOp::CodeEvaluate { code, applied: None }))
                 }
                 // The shared-tree pair (bead
                 // emath-shared-tree-view-make-bp8nu): view opens a
@@ -702,6 +906,7 @@ impl Lowerer {
                 inputs,
                 state: Vec::new(),
                 declared,
+                callee: Some(called),
             }));
         }
         // A callee bound in the enclosing frame is a closure value:
@@ -930,6 +1135,7 @@ impl Lowerer {
                         inputs,
                         state: Vec::new(),
                         declared,
+                        callee: None,
                     }))
                 }
                 ExprKind::Path { segments, .. } => self.lower_named_call(segments, args),
@@ -948,7 +1154,20 @@ impl Lowerer {
                     // without a callable carrier refuses by name at
                     // the render boundary (the same fence the direct
                     // closure calls keep).
-                    let program = self.expr(function)?;
+                    // `quote.evaluate(code)(args)`: the evaluated
+                    // quoted function applied in place.
+                    let program = match &other {
+                        ExprKind::Call {
+                            function: inner,
+                            args: inner_args,
+                        } if is_quote_evaluate_call(inner) && inner_args.len() == 1 => {
+                            let arity = u16::try_from(args.len()).map_err(|_| {
+                                String::from("quote.evaluate applied to too many arguments")
+                            })?;
+                            self.lower_applied_evaluate(&inner_args[0], CodeApplication::Union(arity))?
+                        }
+                        _ => self.expr(function)?,
+                    };
                     let mut inputs = Vec::new();
                     for arg in args {
                         inputs.push(self.expr(arg)?);
@@ -1005,7 +1224,18 @@ impl Lowerer {
                 if let ExprKind::FunctionAbs { param, body: inner, .. } = &body.kind {
                     let mut free = BTreeSet::new();
                     collect_free_names(inner, param, &mut free);
-                    let free: Vec<String> = free.into_iter().collect();
+                    // A module function CALLED in the body is a
+                    // dependency, not an open constant (the VM's capture
+                    // law): the compiled template calls it as a sibling.
+                    // Other free names keep the open-constant lane.
+                    let mut called = BTreeMap::new();
+                    collect_call_sites(inner, &mut called);
+                    let free: Vec<String> = free
+                        .into_iter()
+                        .filter(|name| {
+                            !(self.module_stamps.contains_key(name) && called.contains_key(name))
+                        })
+                        .collect();
                     let mut inputs = vec![param.clone()];
                     inputs.extend(free.iter().cloned());
                     let mut child = Lowerer {
@@ -1234,7 +1464,7 @@ fn lower_closed(
     let mut lowerer = Lowerer {
         inputs: inputs.to_vec(),
         locals: BTreeMap::new(),
-        siblings: BTreeMap::new(),
+        siblings: std::rc::Rc::default(),
         entry_siblings: BTreeMap::new(),
         objects: BTreeMap::new(),
         ops: Vec::new(),
@@ -1387,6 +1617,21 @@ fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>) -> Option
                 "Int" | "Rat" | "Bool" | "Text" | "Float64" => Some(name.clone()),
                 _ => objects.contains_key(name).then(|| format!("Record<{name}>")),
             }
+        }
+        // The bracket spelling `sequence[T]` (a type in expression
+        // position parses as an index) names the same carrier as
+        // `sequence(T)`.
+        ExprKind::Index { value, indices } => {
+            let ExprKind::Path { segments, .. } = &value.kind else {
+                return None;
+            };
+            let [element] = indices.as_slice() else {
+                return None;
+            };
+            (segments.last()? == "sequence")
+                .then(|| domain_signature(element, objects))
+                .flatten()
+                .map(|element| format!("Vector<{element}>"))
         }
         ExprKind::Call { function, args } => {
             let ExprKind::Path { segments, .. } = &function.kind else {
@@ -1644,38 +1889,52 @@ fn collect_unresolved(expr: &Expr, out: &mut Vec<String>) {
     }
 }
 
-fn collect_called_names(expr: &Expr, out: &mut BTreeSet<String>) {
+/// Every call through a dotted path callee reachable in an expression:
+/// callee name -> one entry per call site, the site's arguments by
+/// position (`Some(name)` where the argument is a bare local name).
+/// Callee names build the sibling map; the sites give an evaluated
+/// def's application arity and the declared arrows it is passed into.
+fn collect_call_sites(expr: &Expr, out: &mut BTreeMap<String, Vec<Vec<Option<String>>>>) {
     match &expr.kind {
         ExprKind::Call { function, args } => {
             if let ExprKind::Path { segments, .. } = &function.kind {
-                out.insert(segments.join("."));
+                let site = args
+                    .iter()
+                    .map(|arg| match &arg.kind {
+                        ExprKind::Path { segments, .. } if segments.len() == 1 => {
+                            Some(segments[0].clone())
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                out.entry(segments.join(".")).or_default().push(site);
             }
-            collect_called_names(function, out);
+            collect_call_sites(function, out);
             for arg in args {
-                collect_called_names(arg, out);
+                collect_call_sites(arg, out);
             }
         }
-        ExprKind::Unary { value, .. } => collect_called_names(value, out),
+        ExprKind::Unary { value, .. } => collect_call_sites(value, out),
         ExprKind::Binary { left, right, .. } => {
-            collect_called_names(left, out);
-            collect_called_names(right, out);
+            collect_call_sites(left, out);
+            collect_call_sites(right, out);
         }
         ExprKind::If {
             condition,
             then_value,
             else_value,
         } => {
-            collect_called_names(condition, out);
-            collect_called_names(then_value, out);
-            collect_called_names(else_value, out);
+            collect_call_sites(condition, out);
+            collect_call_sites(then_value, out);
+            collect_call_sites(else_value, out);
         }
         ExprKind::FunctionAbs { body, domain, .. } => {
-            collect_called_names(domain, out);
-            collect_called_names(body, out);
+            collect_call_sites(domain, out);
+            collect_call_sites(body, out);
         }
         ExprKind::Recur { body, ty, .. } => {
-            collect_called_names(ty, out);
-            collect_called_names(body, out);
+            collect_call_sites(ty, out);
+            collect_call_sites(body, out);
         }
         ExprKind::Cases {
             subject,
@@ -1683,35 +1942,60 @@ fn collect_called_names(expr: &Expr, out: &mut BTreeSet<String>) {
             else_arm,
         } => {
             if let Some(subject) = subject {
-                collect_called_names(subject, out);
+                collect_call_sites(subject, out);
             }
             for (cond, value) in arms {
-                collect_called_names(cond, out);
-                collect_called_names(value, out);
+                collect_call_sites(cond, out);
+                collect_call_sites(value, out);
             }
-            collect_called_names(else_arm, out);
+            collect_call_sites(else_arm, out);
         }
         ExprKind::List(items) | ExprKind::Tuple(items) => {
             for item in items {
-                collect_called_names(item, out);
+                collect_call_sites(item, out);
             }
         }
         ExprKind::Index { value, indices } => {
-            collect_called_names(value, out);
+            collect_call_sites(value, out);
             for index in indices {
-                collect_called_names(index, out);
+                collect_call_sites(index, out);
             }
+        }
+        // A binder body can carry a call (`quote.open term in packed:
+        // walk_term(term)`); without this arm the callee never joins
+        // the sibling map and the one-argument call falls through to
+        // the field-access reading (`term.walk_term`).
+        ExprKind::CallableBinder {
+            callee,
+            domain,
+            body,
+            ..
+        } => {
+            collect_call_sites(callee, out);
+            collect_call_sites(domain, out);
+            collect_call_sites(body, out);
         }
         // A cons head can carry a call (`[row_dot(tab, i, v), ..acc]`);
         // without this arm the callee never joins the sibling map and
         // the call falls through to the not-yet-emitted refusal.
         ExprKind::SequenceCons { head, tail } => {
-            collect_called_names(head, out);
-            collect_called_names(tail, out);
+            collect_call_sites(head, out);
+            collect_call_sites(tail, out);
         }
         ExprKind::Record { fields, .. } => {
             for (_, field) in fields {
-                collect_called_names(field, out);
+                collect_call_sites(field, out);
+            }
+        }
+        // A quoted body's calls name MODULE functions (the hygiene law:
+        // a quote never sees the frame's locals), so its callees join
+        // the sibling map - a compiled template calls them - but its
+        // sites stay out of the frame's application arities.
+        ExprKind::Quote { body } => {
+            let mut quoted = BTreeMap::new();
+            collect_call_sites(body, &mut quoted);
+            for callee in quoted.into_keys() {
+                out.entry(callee).or_default();
             }
         }
         _ => {}
@@ -1781,15 +2065,20 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
                     )),
                     _ => Some("Code".into()),
                 },
-                "sequence" => {
-                    let GenericArg::Type(element) = generic_args.first()? else {
-                        return None;
-                    };
-                    Some(format!(
+                // An unparameterized `sequence` is the VM's
+                // heterogeneous list: its carrier is the dynamic node
+                // family (`Sequence`), not a typed vector.
+                "sequence" => match generic_args.first() {
+                    None => Some("Sequence".into()),
+                    Some(GenericArg::Type(element)) => Some(format!(
                         "Vector<{}>",
                         constructor_type_signature(element, objects)?
-                    ))
-                }
+                    )),
+                    Some(_) => None,
+                },
+                // A Fragment package (a viewed child: term + minted
+                // Scope witness) is a node-family record.
+                "Fragment" => Some("Fragment".into()),
                 name if objects.contains(name) => Some(format!("Record<{name}>")),
                 _ => None,
             }
@@ -2158,7 +2447,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
     let mut step = Lowerer {
         inputs: vec!["__index".into(), "__acc".into(), param.to_string()],
         locals: BTreeMap::new(),
-        siblings: BTreeMap::new(),
+        siblings: std::rc::Rc::default(),
         entry_siblings: BTreeMap::new(),
         objects: BTreeMap::new(),
         ops: Vec::new(),
@@ -2189,7 +2478,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
     let mut outer = Lowerer {
         inputs: vec![param.to_string()],
         locals: BTreeMap::new(),
-        siblings: BTreeMap::new(),
+        siblings: std::rc::Rc::default(),
         entry_siblings: BTreeMap::new(),
         objects: BTreeMap::new(),
         ops: Vec::new(),

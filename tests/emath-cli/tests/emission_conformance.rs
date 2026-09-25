@@ -33,7 +33,14 @@
 //! adaptive-walk pins), and `language/modules/algebra/linalg.emath`
 //! (the substitute-seam + sparse/dense/hessian pins), and
 //! `language/modules/analysis/evolution/events.emath` (the event-data
-//! + closure-field pins) — the same givens,
+//! + closure-field pins), `language/modules/search/rewriting.emath`
+//! (the scalar-make + substitute-carrier pins), and
+//! `language/modules/numerics/levenberg.emath` (the curried-closure
+//! model-seam pins), `language/modules/quote/walk.emath` (the
+//! Fragment + dynamic-sequence node-family pins),
+//! `language/modules/search/discovery.emath` (the applied-evaluate
+//! pins), and `language/modules/analysis/derivative.emath` (the
+//! derived-derivative-into-Newton pins) — the same givens,
 //! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
@@ -55,30 +62,14 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Scratch dir for one lane run. Unique per process so repeated runs never
-/// collide and nothing is ever deleted (no cleanup per repo law).
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "emath_conf_{}_{}_{}",
-        name,
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&dir).expect("create scratch dir");
-    dir
-}
-
 /// Full conformance lane for one module. Returns the named diff text for
 /// every failing row (empty when emitted == VM on all pins).
+///
+/// The emitted crate lives in the module's stable dir (shared with the
+/// emission census, see `common::emitted_crate_dir`): an unchanged emission
+/// and driver re-run as a cargo no-op, a changed one recompiles
+/// incrementally.
 fn run_lane(module_rel: &str, driver_src: &str) -> Vec<String> {
-    let name = std::path::Path::new(module_rel)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .expect("module file stem")
-        .to_string();
     let module = repo_root().join(module_rel);
 
     // 1. VM truth: the authored rows pass in the VM.
@@ -89,7 +80,8 @@ fn run_lane(module_rel: &str, driver_src: &str) -> Vec<String> {
     );
 
     // 2. Emit: runnable, nothing unresolved.
-    let out = scratch(&name);
+    let out = common::emitted_crate_dir(&module);
+    let _lock = common::lock_emitted_crate(&out);
     let (text, code) = cli(&[
         "build",
         module.to_str().expect("utf8 module path"),
@@ -111,22 +103,10 @@ fn run_lane(module_rel: &str, driver_src: &str) -> Vec<String> {
     //    the authored pins against the emitted entries.
     let bin_dir = out.join("src").join("bin");
     std::fs::create_dir_all(&bin_dir).expect("create src/bin");
-    std::fs::write(bin_dir.join("conf_driver.rs"), driver_src).expect("write driver");
+    common::write_if_changed(&bin_dir.join("conf_driver.rs"), driver_src);
 
     // 4. Compile the emitted crate offline (no deps by construction).
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let status = Command::new(&cargo)
-        .args([
-            "build",
-            "--offline",
-            "--manifest-path",
-            out.join("Cargo.toml").to_str().expect("utf8 manifest"),
-            "--bin",
-            "conf_driver",
-        ])
-        .env("CARGO_TARGET_DIR", out.join("target"))
-        .output()
-        .expect("run cargo build for emitted crate");
+    let status = common::cargo_build_emitted(&out, &["--bin", "conf_driver"]);
     assert!(
         status.status.success(),
         "emitted crate must compile: {}{}",
@@ -564,7 +544,10 @@ fn main() {
 
 #[test]
 fn emission_conformance_allocate() {
-    let diffs = run_lane("language/modules/optimization/allocate.emath", ALLOCATE_DRIVER);
+    let diffs = run_lane(
+        "language/modules/optimization/allocate.emath",
+        ALLOCATE_DRIVER,
+    );
     assert!(
         diffs.is_empty(),
         "emitted allocate disagrees with the VM on:\n{}",
@@ -1855,10 +1838,7 @@ fn main() {
 
 #[test]
 fn emission_conformance_modular() {
-    let diffs = run_lane(
-        "language/modules/cryptology/modular.emath",
-        MODULAR_DRIVER,
-    );
+    let diffs = run_lane("language/modules/cryptology/modular.emath", MODULAR_DRIVER);
     assert!(
         diffs.is_empty(),
         "emitted modular disagrees with the VM on:\n{}",
@@ -2173,10 +2153,7 @@ fn main() {
 
 #[test]
 fn emission_conformance_quadratic() {
-    let diffs = run_lane(
-        "language/modules/exact/quadratic.emath",
-        QUADRATIC_DRIVER,
-    );
+    let diffs = run_lane("language/modules/exact/quadratic.emath", QUADRATIC_DRIVER);
     assert!(
         diffs.is_empty(),
         "emitted quadratic disagrees with the VM on:\n{}",
@@ -2224,10 +2201,7 @@ fn main() {
 
 #[test]
 fn emission_conformance_bounds() {
-    let diffs = run_lane(
-        "language/modules/numerics/bounds.emath",
-        BOUNDS_DRIVER,
-    );
+    let diffs = run_lane("language/modules/numerics/bounds.emath", BOUNDS_DRIVER);
     assert!(
         diffs.is_empty(),
         "emitted bounds disagrees with the VM on:\n{}",
@@ -2288,10 +2262,7 @@ fn main() {
 
 #[test]
 fn emission_conformance_surfaces() {
-    let diffs = run_lane(
-        "language/modules/geometry/surfaces.emath",
-        SURFACES_DRIVER,
-    );
+    let diffs = run_lane("language/modules/geometry/surfaces.emath", SURFACES_DRIVER);
     assert!(
         diffs.is_empty(),
         "emitted surfaces disagrees with the VM on:\n{}",
@@ -2854,10 +2825,7 @@ fn main() {
 
 #[test]
 fn emission_conformance_matching() {
-    let diffs = run_lane(
-        "language/modules/discrete/matching.emath",
-        MATCHING_DRIVER,
-    );
+    let diffs = run_lane("language/modules/discrete/matching.emath", MATCHING_DRIVER);
     assert!(
         diffs.is_empty(),
         "emitted matching disagrees with the VM on:\n{}",
@@ -3667,10 +3635,7 @@ fn main() {
 
 #[test]
 fn emission_conformance_stiff() {
-    let diffs = run_lane(
-        "language/modules/mechanics/stiff.emath",
-        STIFF_DRIVER,
-    );
+    let diffs = run_lane("language/modules/mechanics/stiff.emath", STIFF_DRIVER);
     assert!(
         diffs.is_empty(),
         "emitted stiff disagrees with the VM on:\n{}",
@@ -4130,10 +4095,7 @@ fn main() {
 
 #[test]
 fn emission_conformance_linalg() {
-    let diffs = run_lane(
-        "language/modules/algebra/linalg.emath",
-        LINALG_DRIVER,
-    );
+    let diffs = run_lane("language/modules/algebra/linalg.emath", LINALG_DRIVER);
     assert!(
         diffs.is_empty(),
         "emitted linalg disagrees with the VM on:\n{}",
@@ -4803,6 +4765,916 @@ fn emission_conformance_events() {
     assert!(
         diffs.is_empty(),
         "emitted events disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+/// Rewriting lane pins (emath-49o8): search/rewriting refused on two
+/// seams - `quote.make(quote.evaluate(source))` rebuilt code from an
+/// evaluated SCALAR (the make lane took only node records and codes),
+/// and `quote.substitute(quote(function x in Rat: x + 1), x, 7)` crossed
+/// an Int constant into a Rat-carried template (refused instead of the
+/// VM's exact Int-to-Rat admission). Make now rebuilds a scalar as the
+/// closed literal of its exact value and the substitute value crosses
+/// the carrier through the shared numeric boundary. The query
+/// (AvoidCapture) is not an emitted entry.
+const REWRITING_DRIVER: &str = r#"
+//! Authored pins of search/rewriting.emath against the emitted crate.
+//! Transcription boundary: `quote.identity(a) != quote.identity(b)` pins
+//! as structural inequality of the two codes' views (identity is the
+//! VM's content hash; the artifact carries no hash counterpart).
+
+use rewriting::emath_rt::code::{evaluate_expr, open_expr, CodeValue, ExprCode};
+use rewriting::emath_rt::code_tree::{node_eq, CodeTree, ModuleTable, TreeBinary};
+use rewriting::{fold_code, hypothesis_value, shadowing_preserved};
+
+type R = (i128, i128);
+
+// Distilled-tree builders (the same shapes quote(...) distills).
+fn int(value: i64) -> CodeTree {
+    CodeTree::Literal(CodeValue::Int(value))
+}
+
+fn bin(op: TreeBinary, left: CodeTree, right: CodeTree) -> CodeTree {
+    CodeTree::Binary {
+        op,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+fn closed(tree: CodeTree) -> ExprCode {
+    open_expr(Vec::new(), tree, None, std::collections::BTreeMap::new())
+}
+
+// The folded value must stay on the RATIONAL carrier (the int-truncation
+// fence): an Int result is a diff even when numerically equal.
+fn rat_value(got: &Result<CodeValue, String>, want: R) -> Option<String> {
+    match got {
+        Ok(CodeValue::Rat((n, d))) if n * want.1 == want.0 * d => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn rq(got: &Result<R, String>, want: R) -> Option<String> {
+    match got {
+        Ok(v) if v.0 * want.1 == want.0 * v.1 => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn main() {
+    let mut failures = 0usize;
+    let mut check = |name: &str, diff: Option<String>, vm: &str| {
+        if let Some(diff) = diff {
+            failures += 1;
+            println!("DIFF {name} EMITTED {diff}; VM = {vm}");
+        }
+    };
+
+    // example <fold_changes_code_preserves_value>: source = quote(5 / 1 + 2 * 3)
+    let source = closed(bin(
+        TreeBinary::Add,
+        bin(TreeBinary::Div, int(5), int(1)),
+        bin(TreeBinary::Mul, int(2), int(3)),
+    ));
+    match fold_code(source.clone()) {
+        Ok(folded) => {
+            check(
+                "fold_changes_code_preserves_value/value",
+                rat_value(&evaluate_expr(&folded, &ModuleTable::EMPTY), (11, 1)),
+                "11/1",
+            );
+            let same = node_eq(
+                folded.view(&ModuleTable::EMPTY),
+                source.view(&ModuleTable::EMPTY),
+            );
+            check(
+                "fold_changes_code_preserves_value/code",
+                match same {
+                    Ok(false) => None,
+                    other => Some(format!("{other:?}")),
+                },
+                "the folded code differs from the source",
+            );
+        }
+        Err(e) => check("fold_changes_code_preserves_value", Some(format!("Err({e})")), "11/1"),
+    }
+
+    // example <fold_keeps_rational_fence>: source = quote(1 / 2 + 1 / 3)
+    let source = closed(bin(
+        TreeBinary::Add,
+        bin(TreeBinary::Div, int(1), int(2)),
+        bin(TreeBinary::Div, int(1), int(3)),
+    ));
+    let got = fold_code(source).and_then(|folded| evaluate_expr(&folded, &ModuleTable::EMPTY));
+    check("fold_keeps_rational_fence", rat_value(&got, (5, 6)), "5/6");
+
+    // examples <edit_six_gives_eleven>, <edit_seven_gives_twelve>
+    check("edit_six_gives_eleven", rq(&hypothesis_value((6, 1)), (11, 1)), "11/1");
+    check("edit_seven_gives_twelve", rq(&hypothesis_value((7, 1)), (12, 1)), "12/1");
+
+    // example <bound_shadow_not_substituted>: unused = 0
+    check("bound_shadow_not_substituted", rq(&shadowing_preserved(0), (3, 1)), "3/1");
+
+    if failures > 0 {
+        panic!("{failures} rewriting row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_rewriting() {
+    let diffs = run_lane("language/modules/search/rewriting.emath", REWRITING_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted rewriting disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+/// Levenberg lane pins (emath-49o8): numerics/levenberg refused on two
+/// seams of the curried model closure. `model_at = predict(params)`
+/// binds a PARTIAL application of the declared `sequence[Float64] ->
+/// Float64 -> Float64` input - a closure value - but the def was not
+/// marked closure-valued, so `model_at(t)` lowered as the field
+/// projection `t.model_at` (its register kind unknown; the runnable
+/// `predict_at` even emitted `&t.model_at` over an f64). Defs now carry
+/// the curried stage count of declared arrows and function literals,
+/// and an application leaving stages unapplied binds a closure; a
+/// projection off a scalar or callable carrier refuses by name. The
+/// literal `function p in sequence[Float64]: function t in Float64:
+/// ..` fell to the untyped numeric-program lane because the bracket
+/// domain spelling `sequence[T]` had no signature; it now types as
+/// `Vector<T>` and the literal carries the typed closure ABI.
+const LEVENBERG_DRIVER: &str = r#"
+//! Authored pins of numerics/levenberg.emath against the emitted crate.
+
+use std::rc::Rc;
+
+use levenberg::EmathRecord_DampingPolicy as Policy;
+use levenberg::EmathRecord_LmStep as LmStep;
+use levenberg::*;
+
+type Obs = Rc<dyn Fn(f64) -> Result<f64, String>>;
+type Pred = Rc<dyn Fn(&Vec<f64>) -> Result<Obs, String>>;
+
+// function p in sequence[Float64]: function t in Float64: p[0] + p[1] * t
+fn affine() -> Pred {
+    Rc::new(|p: &Vec<f64>| -> Result<Obs, String> {
+        let p = p.clone();
+        Ok(Rc::new(move |t: f64| Ok(p[0] + p[1] * t)))
+    })
+}
+
+fn v(xs: &[f64]) -> Vec<f64> {
+    xs.to_vec()
+}
+
+fn m(rows: &[&[f64]]) -> Vec<Vec<f64>> {
+    rows.iter().map(|row| row.to_vec()).collect()
+}
+
+fn within(x: f64, lo: f64, hi: f64) -> bool {
+    x > lo && x < hi
+}
+
+fn policy(max_iters: i64) -> Policy {
+    Policy {
+        step: 0.000001,
+        lambda0: 0.001,
+        up: 10.0,
+        down: 10.0,
+        floor: 0.000000000001,
+        break_lambda: 1000000000000.0,
+        max_iters,
+        tolerance: 0.000000000001,
+    }
+}
+
+fn marq() -> Policy {
+    marquardt_policy(0).expect("marquardt card")
+}
+
+fn main() {
+    let mut failures = 0usize;
+    let mut row = |name: &str, ok: bool, got: String, vm: &str| {
+        if !ok {
+            failures += 1;
+            println!("DIFF {name} EMITTED {got}; VM = {vm}");
+        }
+    };
+    macro_rules! pin {
+        ($name:expr, $got:expr, |$v:ident| $ok:expr, $vm:expr) => {{
+            let got = $got;
+            let ok = match &got {
+                Ok($v) => $ok,
+                Err(_) => false,
+            };
+            row($name, ok, format!("{got:?}"), $vm);
+        }};
+    }
+    macro_rules! refuses {
+        ($name:expr, $got:expr, $atom:expr) => {{
+            let got = $got;
+            let ok = matches!(&got, Err(e) if e == $atom);
+            row($name, ok, format!("{got:?}"), $atom);
+        }};
+    }
+
+    pin!("curried_seam_applies", predict_at(affine(), v(&[2.0, 3.0]), 1.0), |r| *r == 5.0, "5");
+    pin!("exact_interpolation_is_zero", sse_at(affine(), v(&[0.0, 1.0]), v(&[2.0, 5.0]), v(&[2.0, 3.0]), 0, 0.0), |r| *r == 0.0, "0");
+    pin!("unit_residual_squares_to_one", sse_at(affine(), v(&[0.0, 1.0]), v(&[2.0, 6.0]), v(&[2.0, 3.0]), 0, 0.0), |r| *r == 1.0, "1");
+    pin!("residuals_in_data_order", residual_list(affine(), v(&[0.0, 1.0]), v(&[2.0, 6.0]), v(&[2.0, 3.0]), 1, vec![]), |r| *r == [0.0, -1.0], "[0, -1]");
+    pin!("shifts_one_slot_keeps_order", shifted_from(v(&[1.0, 2.0, 3.0]), 1, 0.5, 2, vec![]), |r| *r == [1.0, 2.5, 3.0], "[1, 2.5, 3]");
+    pin!("affine_jacobian_is_exact", jacobian_row(affine(), 2.0, v(&[2.0, 3.0]), v(&[1.0, 1.0]), 0.000001, 1, vec![]),
+        |r| within(r[0], 0.999999999, 1.000000001) && within(r[1], 1.999999999, 2.000000001), "[~1, ~2]");
+    pin!("weights_scale_the_column", jacobian_row(affine(), 1.0, v(&[2.0, 3.0]), v(&[1.0, 2.0]), 0.000001, 1, vec![]),
+        |r| within(r[1], 1.999999999, 2.000000001), "[_, ~2]");
+    pin!("one_row_per_data_row_ascending", jacobian_of(affine(), v(&[1.0, 2.0]), v(&[2.0, 3.0]), v(&[1.0, 1.0]), 0.000001, 1, vec![]),
+        |r| within(r[0][1], 0.999999999, 1.000000001) && within(r[1][1], 1.999999999, 2.000000001), "rows [_, ~1], [_, ~2]");
+    pin!("finite_values_pass", finite_row(v(&[1.0, 2.0]), 1), |r| *r, "true");
+    pin!("finite_matrix_passes", finite_matrix(m(&[&[1.0, 0.0], &[0.0, 1.0]]), 1), |r| *r, "true");
+    let jac = || m(&[&[1.0, 1.0], &[1.0, 2.0]]);
+    pin!("gram_entry_sums_over_rows", normal_sum(jac(), 1, 1, 0, 0.0), |r| *r == 5.0, "5");
+    pin!("cross_entry_is_three", normal_sum(jac(), 0, 1, 0, 0.0), |r| *r == 3.0, "3");
+    pin!("damping_lands_on_the_diagonal_only", normal_row(jac(), 0.5, 0, 1, vec![]), |r| *r == [2.5, 3.0], "[2.5, 3]");
+    pin!("damped_normal_matrix", normal_of(jac(), 0.5, 1, vec![]), |r| *r == m(&[&[2.5, 3.0], &[3.0, 5.5]]), "[[2.5, 3], [3, 5.5]]");
+    pin!("gradient_sums_jacobian_times_residuals", gradient_at(jac(), v(&[0.0, 1.0]), 1, 0, 0.0), |r| *r == 2.0, "2");
+    pin!("full_gradient_vector", gradient_of(jac(), v(&[0.0, 1.0]), 1, vec![]), |r| *r == [1.0, 2.0], "[1, 2]");
+    let normal = || m(&[&[2.0, 3.0], &[3.0, 5.0]]);
+    pin!("block_form_appends_the_rhs", augment_row(normal(), v(&[9.0, 8.0]), 0, 2, vec![]), |r| *r == [2.0, 3.0, 9.0], "[2, 3, 9]");
+    pin!("every_row_augmented", augment_all(normal(), v(&[9.0, 8.0]), 1, vec![]),
+        |r| r[0][2] == 9.0 && r[1][0] == 3.0 && r[1][2] == 8.0, "[[2,3,9],[3,5,8]]");
+    pin!("subtract_scaled_pivot_row", elim_row(v(&[5.0, 7.0]), v(&[1.0, 1.0]), 2.0, 1, vec![]), |r| *r == [3.0, 5.0], "[3, 5]");
+    let aug = || m(&[&[2.0, 0.0], &[4.0, 4.0]]);
+    pin!("clears_the_column_below_the_pivot", elim_all(aug(), 0, 1, true, vec![]),
+        |r| r[0][0] == 2.0 && r[1][0] == 0.0 && r[1][1] == 4.0, "[[2,0],[0,4]]");
+    pin!("failed_pivot_leaves_rows_untouched", elim_all(aug(), 0, 1, false, vec![]),
+        |r| r[1][0] == 4.0 && r[1][1] == 4.0, "[[2,0],[4,4]]");
+    pin!("already_triangular_system_solves", solve_columns(m(&[&[1.0, 0.0, 3.0], &[0.0, 1.0, 4.0]]), 0),
+        |r| r.ok && r.rows[0][2] == 3.0 && r.rows[1][2] == 4.0, "ok, rhs [3, 4]");
+    pin!("zero_pivot_column_refuses", solve_columns(m(&[&[0.0, 0.0, 1.0]]), 0), |r| !r.ok, "ok false");
+    let tri = || m(&[&[2.0, 1.0, 9.0], &[0.0, 4.0, 8.0]]);
+    pin!("tail_contribution", back_sum(tri(), v(&[2.0]), 0, 1, 2, 0.0), |r| *r == 2.0, "2");
+    pin!("upper_triangular_solve", back_from(tri(), vec![], 1, 2), |r| *r == [3.5, 2.0], "[3.5, 2]");
+    pin!("two_by_two_system", solve_damped(m(&[&[3.0, 1.0], &[1.0, 2.0]]), v(&[9.0, 8.0])),
+        |r| within(r.step[0], 1.999999999999, 2.000000000001) && within(r.step[1], 2.999999999999, 3.000000000001), "step ~[2, 3]");
+    pin!("needs_pivoting", solve_damped(m(&[&[0.0, 1.0], &[1.0, 0.0]]), v(&[7.0, 5.0])),
+        |r| within(r.step[0], 4.999999999999, 5.000000000001) && within(r.step[1], 6.999999999999, 7.000000000001), "step ~[5, 7]");
+    pin!("singular_refuses_not_faults", solve_damped(m(&[&[1.0, 2.0], &[2.0, 4.0]]), v(&[3.0, 6.0])), |r| !r.ok, "ok false");
+    let ok_step = || LmStep { ok: true, step: v(&[1.5, 2.5]) };
+    let no_step = || LmStep { ok: false, step: vec![] };
+    pin!("ok_step_reads_the_slot", step_or_zero(ok_step(), 0), |r| *r == 1.5, "1.5");
+    pin!("index_beyond_the_step_is_zero", step_or_zero(ok_step(), 5), |r| *r == 0.0, "0");
+    pin!("not_ok_step_is_zero_everywhere", step_or_zero(no_step(), 0), |r| *r == 0.0, "0");
+    pin!("subtracts_the_step", apply_step(v(&[2.0, 3.0]), LmStep { ok: true, step: v(&[0.5, 1.0]) }, 1, vec![]), |r| *r == [1.5, 2.0], "[1.5, 2]");
+    pin!("failed_solve_keeps_the_current_point", apply_step(v(&[2.0, 3.0]), no_step(), 1, vec![]), |r| *r == [2.0, 3.0], "[2, 3]");
+    let line = |got: &Vec<f64>, tol: f64| within(got[0], 2.0 - tol, 2.0 + tol) && within(got[1], 3.0 - tol, 3.0 + tol);
+    let ts = || v(&[0.0, 1.0]);
+    let ys = || v(&[2.0, 5.0]);
+    let ones = || v(&[1.0, 1.0]);
+    pin!("affine_recovery_in_one_accepted_chain", lm_advance(affine(), ts(), ys(), ones(), ones(), 10.0, 0.001, 0.0, false, 0, marq()),
+        |r| r.converged && line(&r.params, 0.000000001), "converged, params ~(2, 3)");
+    pin!("stalled_progress_converges_without_counting", lm_iter(affine(), ts(), ys(), ones(), ones(), 0.001, 10.0, true, 7, marq()),
+        |r| r.converged && r.iters == 7 && r.sse == 10.0, "converged, iters 7, sse 10");
+    pin!("zero_cap_refuses_to_advance", lm_iter(affine(), ts(), ys(), ones(), ones(), 0.001, 0.0, false, 0, policy(0)),
+        |r| !r.converged && r.iters == 0, "not converged, iters 0");
+    refuses!("empty_data_refuses", damped_fit(affine(), vec![], vec![], ones(), ones(), marq()), "empty_data");
+    refuses!("length_mismatch_refuses", damped_fit(affine(), ts(), v(&[2.0]), ones(), ones(), marq()), "data_length_mismatch");
+    refuses!("weight_arity_refuses", damped_fit(affine(), ts(), ys(), ones(), v(&[1.0]), marq()), "weight_arity_mismatch");
+    refuses!("empty_parameters_refuse", damped_fit(affine(), v(&[0.0]), v(&[2.0]), vec![], vec![], marq()), "empty_parameters");
+    pin!("affine_recovery_converges", damped_fit(affine(), ts(), ys(), ones(), ones(), marq()),
+        |r| r.converged && line(&r.params, 0.000001), "converged, params ~(2, 3)");
+    pin!("classic_raises_and_sheds_at_the_same_rate", marquardt_policy(0),
+        |r| r.up == r.down && r.lambda0 > 0.000001 && r.lambda0 < 0.1, "up == down, lambda0 in (1e-6, 0.1)");
+    pin!("bold_retries_ten_times_harder_than_it_sheds", bold_policy(0),
+        |r| r.up == 10.0 * r.down && r.lambda0 < 0.00001, "up == 10 down, lambda0 < 1e-5");
+    pin!("cautious_sheds_ten_times_slower_than_it_raises", cautious_policy(0),
+        |r| r.down == 10.0 * r.up && r.lambda0 > 0.01, "down == 10 up, lambda0 > 0.01");
+    pin!("compatibility_entry_recovers_the_line", levenberg_fit(affine(), ts(), ys(), ones(), ones()), |r| line(r, 0.000001), "~(2, 3)");
+    pin!("three_passes_charge_three_nanos", iter_penalty(3, 0.0), |r| within(*r, 0.0000000029, 0.0000000031), "~3e-9");
+    pin!("zero_passes_charge_nothing", iter_penalty(0, 0.0), |r| *r == 0.0, "0");
+    pin!("non_converged_is_dominated", fit_cost(affine(), ts(), ys(), ones(), ones(), policy(0)), |r| *r == 1000000.0, "1e6");
+    pin!("converged_cost_is_sse_plus_work_charge", fit_cost(affine(), ts(), ys(), ones(), ones(), marq()), |r| *r < 0.000001, "< 1e-6");
+    pin!("cautious_leads_the_rack", card_at(0), |r| r.lambda0 == 0.1 && r.down == 100.0, "lambda0 0.1, down 100");
+    pin!("classic_sits_in_the_middle", card_at(1), |r| r.lambda0 == 0.001, "lambda0 0.001");
+    pin!("bold_closes_the_rack", card_at(2), |r| r.lambda0 == 0.000001, "lambda0 1e-6");
+    pin!("beyond_the_rack_falls_to_bold", card_at(9), |r| r.lambda0 == 0.000001, "lambda0 1e-6");
+    pin!("exact_tie_breaks_to_the_first_card", tune_damping(affine(), ts(), ys(), v(&[2.0, 3.0]), ones(), 0, 0, 2000000.0),
+        |r| r.lambda0 == 0.1 && r.down == 100.0, "lambda0 0.1, down 100");
+    pin!("recovers_planted_rational_decay", PlantedFit(0), |r| *r, "true");
+    pin!("classic_card_constants", MarquardtCardIsClassic(0), |r| *r, "true");
+    pin!("cautious_takes_six", CardIters(0), |r| *r == 6, "6");
+    pin!("classic_takes_four", CardIters(1), |r| *r == 4, "4");
+    pin!("bold_takes_four", CardIters(2), |r| *r == 4, "4");
+    pin!("cap_is_a_dial", CustomCardCap(0), |r| *r, "true");
+    pin!("tuner_picks_bold", TunePicksWinner(0), |r| *r, "true");
+
+    if failures > 0 {
+        panic!("{failures} levenberg row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_levenberg() {
+    let diffs = run_lane("language/modules/numerics/levenberg.emath", LEVENBERG_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted levenberg disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+/// Walk lane pins (emath-49o8): quote/walk refused on two carriers its
+/// declarations name. `packed: Fragment` had no interchange signature,
+/// so the entry carried the numeric fallback Int and `quote.open`
+/// refused it; the untyped `items: sequence` of walk_list/walk_pairs
+/// had none either, so `quote.view(items[i])` refused. A `Fragment`
+/// and an unparameterized `sequence` are the dynamic node family (the
+/// VM's package records and heterogeneous lists), and tuples built in
+/// emitted code are positional family sequences whose `_N` indexes
+/// them (the typed lane's tuple law, extended to the family).
+const WALK_DRIVER: &str = r#"
+//! Authored pins of quote/walk.emath against the emitted crate. The
+//! givens are built the way the VM builds them: `quote(...)` as the
+//! distilled tree, `quote.view(..)` through the runtime's own view.
+
+use walk::emath_rt::code::{code_eq, evaluate_expr, open_expr, CodeValue, ExprCode};
+use walk::emath_rt::code_tree::{
+    node_as_code, node_field, node_index, view_quoted, CodeTree, ModuleTable, NodeValue,
+    TreeBinary,
+};
+use walk::{walk, walk_list, walk_pairs, walk_term};
+
+fn int(value: i64) -> CodeTree {
+    CodeTree::Literal(CodeValue::Int(value))
+}
+
+fn add(left: CodeTree, right: CodeTree) -> CodeTree {
+    CodeTree::Binary {
+        op: TreeBinary::Add,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+fn closed(tree: CodeTree) -> ExprCode {
+    open_expr(Vec::new(), tree, None, std::collections::BTreeMap::new())
+}
+
+fn code_node(tree: CodeTree) -> NodeValue {
+    NodeValue::Code(Box::new(closed(tree)))
+}
+
+// `quote.evaluate(code) == want` under the VM's value equality.
+fn evaluates_to(code: Result<ExprCode, String>, want: i64) -> Option<String> {
+    let value = code.and_then(|code| evaluate_expr(&code, &ModuleTable::EMPTY));
+    match &value {
+        Ok(v) if code_eq(v, &CodeValue::Int(want)) == Ok(true) => None,
+        other => Some(format!("{other:?}")),
+    }
+}
+
+fn empty(got: &Result<NodeValue, String>) -> Option<String> {
+    match got {
+        Ok(NodeValue::Sequence(items)) if items.is_empty() => None,
+        other => Some(format!("{other:?}")),
+    }
+}
+
+fn main() {
+    let mut failures = 0usize;
+    let mut check = |name: &str, diff: Option<String>, vm: &str| {
+        if let Some(diff) = diff {
+            failures += 1;
+            println!("DIFF {name} EMITTED {diff}; VM = {vm}");
+        }
+    };
+
+    // example <open_add_left>: packed = quote.view(quote(2 + 1)).args[0]
+    let packed = node_field(view_quoted(closed(add(int(2), int(1))), &ModuleTable::EMPTY), "args")
+        .and_then(|args| node_index(args, 0));
+    check(
+        "open_add_left",
+        evaluates_to(packed.and_then(walk), 2),
+        "evaluate(result) == 2",
+    );
+
+    // examples <literal>, <sum>
+    check("literal", evaluates_to(walk_term(closed(int(3))), 3), "3");
+    check("sum", evaluates_to(walk_term(closed(add(int(2), int(1)))), 3), "3");
+
+    // walk_list <empty>, <one_literal>
+    check("walk_list/empty", empty(&walk_list(NodeValue::Sequence(vec![]), 0)), "length 0");
+    let got = walk_list(NodeValue::Sequence(vec![code_node(int(3))]), 0)
+        .and_then(|result| node_index(result, 0))
+        .and_then(node_as_code);
+    check("walk_list/one_literal", evaluates_to(got, 3), "evaluate(result[0]) == 3");
+
+    // walk_pairs <empty>, <one_pair>: items = [(quote(2), quote(1))]
+    check("walk_pairs/empty", empty(&walk_pairs(NodeValue::Sequence(vec![]), 0)), "length 0");
+    let pair = NodeValue::Tuple(vec![code_node(int(2)), code_node(int(1))]);
+    let result = walk_pairs(NodeValue::Sequence(vec![pair]), 0);
+    let part = |field: &str| {
+        result
+            .clone()
+            .and_then(|result| node_index(result, 0))
+            .and_then(|first| node_field(first, field))
+            .and_then(node_as_code)
+    };
+    check("walk_pairs/one_pair/_0", evaluates_to(part("_0"), 2), "evaluate(result[0]._0) == 2");
+    check("walk_pairs/one_pair/_1", evaluates_to(part("_1"), 1), "evaluate(result[0]._1) == 1");
+
+    if failures > 0 {
+        panic!("{failures} walk row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_walk() {
+    let diffs = run_lane("language/modules/quote/walk.emath", WALK_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted walk disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+/// Discovery lane pins (emath-49o8): search/discovery refused because
+/// `claim = quote.evaluate(conjecture.claim)` then `claim(domain[at])`
+/// APPLIES the evaluated value - a quoted function literal Rat -> Bool
+/// carried by a bare `Code` - and the expression-template lane only
+/// knew evaluate as a scalar. A def (or in-place callee) bound to
+/// `quote.evaluate` and applied with one consistent arity now lowers as
+/// the applied evaluate: the rt closes the code once (the same
+/// stale/unbound refusals, at the same point) and returns a callable
+/// over the value union that binds the literal's parameters and runs the
+/// body through the shared scalar tree evaluator (a non-function code
+/// refuses `type: value is not callable`, the VM's words). The union
+/// result beside a typed arm joins onto the typed carrier (the render's
+/// existing checked projection, now agreed by the kind walk), and code
+/// values compare by tree + dependencies (the node family's code law),
+/// so records with Code fields derive PartialEq. The quoted literal's
+/// binder domain rides the distilled tree, so an argument outside it
+/// refuses `type` exactly as the VM's closure does
+/// (`claim_domain_is_checked`: an Int claim at the point 1/2).
+const DISCOVERY_DRIVER: &str = r#"
+//! Authored pins of search/discovery.emath against the emitted crate.
+//! The conjectures are built as the distilled trees `quote(...)` yields.
+
+use discovery::emath_rt::code::{open_expr, CodeValue, ExprCode};
+use discovery::emath_rt::code_tree::{CodeTree, TreeBinary, TreeDomain};
+use discovery::{challenge_conjecture, EmathRecord_Conjecture as Conjecture};
+
+type R = (i128, i128);
+
+fn int(value: i64) -> CodeTree {
+    CodeTree::Literal(CodeValue::Int(value))
+}
+
+fn x() -> CodeTree {
+    CodeTree::Path(vec!["x".to_string()])
+}
+
+fn bin(op: TreeBinary, left: CodeTree, right: CodeTree) -> CodeTree {
+    CodeTree::Binary {
+        op,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+// quote(function x in <domain>: body)
+fn function_in(domain: &str, body: CodeTree) -> ExprCode {
+    open_expr(
+        Vec::new(),
+        CodeTree::Closure {
+            param: "x".to_string(),
+            domain: TreeDomain::Scalar(domain.to_string()),
+            body: Box::new(body),
+        },
+        None,
+        std::collections::BTreeMap::new(),
+    )
+}
+
+// x * x > 0 / 1
+fn square_positive() -> ExprCode {
+    function_in("Rat", bin(
+        TreeBinary::Gt,
+        bin(TreeBinary::Mul, x(), x()),
+        bin(TreeBinary::Div, int(0), int(1)),
+    ))
+}
+
+fn always() -> ExprCode {
+    function_in("Rat", CodeTree::Literal(CodeValue::Bool(true)))
+}
+
+// x != 0 / 1
+fn nonzero() -> ExprCode {
+    function_in("Rat", bin(TreeBinary::Ne, x(), bin(TreeBinary::Div, int(0), int(1))))
+}
+
+fn main() {
+    let mut failures = 0usize;
+    let mut check = |name: &str, ok: bool, got: String, vm: &str| {
+        if !ok {
+            failures += 1;
+            println!("DIFF {name} EMITTED {got}; VM = {vm}");
+        }
+    };
+    let domain3: Vec<R> = vec![(1, 1), (0, 1), (-1, 1)];
+
+    // example <falsifies_overbroad_claim>
+    let got = challenge_conjecture(
+        Conjecture { claim: square_positive(), assumption: always() },
+        domain3.clone(),
+        3,
+    );
+    check(
+        "falsifies_overbroad_claim",
+        matches!(&got, Ok(r) if r.status == 2 && r.counterexample == 1 && r.visited == 2),
+        format!("{got:?}"),
+        "status 2, counterexample 1, visited 2",
+    );
+
+    // example <narrowed_assumption_excludes_counterexample>
+    let got = challenge_conjecture(
+        Conjecture { claim: square_positive(), assumption: nonzero() },
+        domain3.clone(),
+        3,
+    );
+    check(
+        "narrowed_assumption_excludes_counterexample",
+        matches!(&got, Ok(r) if r.status == 1 && r.counterexample == -1 && r.witnesses.len() == 2),
+        format!("{got:?}"),
+        "status 1, counterexample -1, 2 witnesses",
+    );
+
+    // example <budget_is_not_proof>
+    let got = challenge_conjecture(
+        Conjecture { claim: square_positive(), assumption: always() },
+        vec![(1, 1), (0, 1)],
+        1,
+    );
+    check(
+        "budget_is_not_proof",
+        matches!(&got, Ok(r) if r.status == 0 && r.visited == 1),
+        format!("{got:?}"),
+        "status 0, visited 1",
+    );
+
+    // example <malformed_claim_refuses>: claim = quote(unbound_conjecture_name)
+    let unbound = open_expr(
+        vec!["unbound_conjecture_name".to_string()],
+        CodeTree::Path(vec!["unbound_conjecture_name".to_string()]),
+        None,
+        std::collections::BTreeMap::new(),
+    );
+    let got = challenge_conjecture(
+        Conjecture { claim: unbound, assumption: always() },
+        vec![(1, 1)],
+        1,
+    );
+    check(
+        "malformed_claim_refuses",
+        matches!(&got, Err(e) if e.starts_with("unbound_code")),
+        format!("{got:?}"),
+        "diagnostic.code == unbound_code",
+    );
+
+    // example <claim_calls_a_module_function>: the claim's body calls the
+    // module predicate `exceeds(x * x, 0 / 1)` - the tree evaluator runs
+    // the compiled entry through the module table
+    let calls_module = function_in(
+        "Rat",
+        CodeTree::Call {
+            function: Box::new(CodeTree::Path(vec!["exceeds".to_string()])),
+            args: vec![bin(TreeBinary::Mul, x(), x()), bin(TreeBinary::Div, int(0), int(1))],
+        },
+    );
+    let got = challenge_conjecture(
+        Conjecture { claim: calls_module, assumption: always() },
+        domain3.clone(),
+        3,
+    );
+    check(
+        "claim_calls_a_module_function",
+        matches!(&got, Ok(r) if r.status == 2 && r.counterexample == 1),
+        format!("{got:?}"),
+        "status 2, counterexample 1",
+    );
+
+    // example <claim_domain_is_checked>: claim = quote(function x in Int:
+    // x * x > 0), applied to the Rat point 1/2
+    let int_claim = function_in("Int", bin(TreeBinary::Gt, bin(TreeBinary::Mul, x(), x()), int(0)));
+    let got = challenge_conjecture(
+        Conjecture { claim: int_claim, assumption: always() },
+        vec![(1, 2)],
+        1,
+    );
+    check(
+        "claim_domain_is_checked",
+        matches!(&got, Err(e) if e.starts_with("type:")),
+        format!("{got:?}"),
+        "diagnostic.code == type",
+    );
+
+    if failures > 0 {
+        panic!("{failures} discovery row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_discovery() {
+    let diffs = run_lane("language/modules/search/discovery.emath", DISCOVERY_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted discovery disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+/// Derivative lane pins (emath-49o8): analysis/derivative's two
+/// composed newtons refused because `df = quote.evaluate(derivative_of(
+/// f_term))` is a quoted function built at RUN time (the derived
+/// derivative), carried by a bare `Code`, and PASSED - not applied - to
+/// `newton_solve`'s declared `df: Rat -> Rat`. Inside the solver the
+/// call `df(x)` had no callable carrier. An evaluated def that crosses
+/// into a declared arrow parameter now lowers as the typed applied
+/// evaluate: the rt closes the code once and the artifact adapts the
+/// union callable to the declared `Rat -> Rat` (arguments wrap into the
+/// union, the result projects checked onto the declared carrier). The
+/// derived derivative's body runs through the rt scalar tree evaluator
+/// (user-accepted 2026-09-25: run-time code cannot be compiled ahead of
+/// time; a formula calling a module function refuses by name there).
+const DERIVATIVE_DRIVER: &str = r#"
+//! Authored pins of analysis/derivative.emath against the emitted
+//! crate. Givens are built as the distilled trees `quote(...)` yields.
+//! Transcription boundaries (VM-only rows, labeled): <d_index_refuses_
+//! at_the_make_seam> quotes `xs[i]` and <d_receipt_construction_
+//! refuses> quotes a nested `quote(x)` - neither Index nor Quotation is
+//! in the distilled tree subset, so the given cannot be built here.
+
+use std::collections::BTreeMap;
+
+use derivative::emath_rt::code::{code_eq, open_expr, CodeValue, ExprCode};
+use derivative::emath_rt::code_tree::{
+    free_names_tree, node_as_code, node_eq, node_field, node_index, node_tag, CodeTree,
+    ModuleTable, NodeValue, TreeBinary, TreeDomain, TreeUnary,
+};
+use derivative::EmathRecord_IterResult as IterResult;
+use derivative::*;
+
+type R = (i128, i128);
+
+fn code(tree: CodeTree) -> ExprCode {
+    open_expr(free_names_tree(&tree), tree, None, BTreeMap::new())
+}
+fn int(n: i64) -> CodeTree {
+    CodeTree::Literal(CodeValue::Int(n))
+}
+fn var(name: &str) -> CodeTree {
+    CodeTree::Path(vec![name.to_string()])
+}
+fn bin(op: TreeBinary, l: CodeTree, r: CodeTree) -> CodeTree {
+    CodeTree::Binary { op, left: Box::new(l), right: Box::new(r) }
+}
+fn add(l: CodeTree, r: CodeTree) -> CodeTree {
+    bin(TreeBinary::Add, l, r)
+}
+fn mul(l: CodeTree, r: CodeTree) -> CodeTree {
+    bin(TreeBinary::Mul, l, r)
+}
+fn pow(l: CodeTree, r: CodeTree) -> CodeTree {
+    bin(TreeBinary::Pow, l, r)
+}
+fn z() -> ExprCode {
+    code(var("z"))
+}
+fn fn_z(body: CodeTree) -> ExprCode {
+    code(CodeTree::Closure {
+        param: "z".to_string(),
+        domain: TreeDomain::Scalar("Rat".to_string()),
+        body: Box::new(body),
+    })
+}
+
+// quote.evaluate(...) == want, under the VM's value equality.
+fn value(got: Result<ExprCode, String>, want: CodeValue) -> Option<String> {
+    let got = got.and_then(|code| code.evaluate(&ModuleTable::EMPTY));
+    match &got {
+        Ok(v) if code_eq(v, &want) == Ok(true) => None,
+        other => Some(format!("{other:?}")),
+    }
+}
+fn at(code: &Result<ExprCode, String>, name: &str, n: i64) -> Result<ExprCode, String> {
+    code.clone().map(|code| code.substitute(name, CodeValue::Int(n)))
+}
+fn refused<T: std::fmt::Debug>(got: &Result<T, String>) -> Option<String> {
+    match got {
+        Err(e) if e.starts_with("transformation_rule_unavailable") => None,
+        other => Some(format!("{other:?}")),
+    }
+}
+fn view(code: &ExprCode) -> NodeValue {
+    code.view(&ModuleTable::EMPTY)
+}
+fn field(node: &NodeValue, name: &str) -> NodeValue {
+    node_field(node, name).unwrap_or_else(|e| node_tag(&format!("<{e}>")))
+}
+fn arg(node: &NodeValue, i: i64) -> NodeValue {
+    node_field(node, "args")
+        .and_then(|args| node_index(args, i))
+        .unwrap_or_else(|e| node_tag(&format!("<{e}>")))
+}
+fn sub_view(node: NodeValue) -> NodeValue {
+    match node_as_code(&node) {
+        Ok(code) => view(&code),
+        Err(e) => node_tag(&format!("<{e}>")),
+    }
+}
+fn is_tag(node: &NodeValue, tag: &str) -> bool {
+    node_eq(node, node_tag(tag)) == Ok(true)
+}
+fn iter_eq(got: &Result<IterResult, String>, want: &IterResult) -> Option<String> {
+    let q = |a: R, b: R| a.0 * b.1 == b.0 * a.1;
+    match got {
+        Ok(r) if r.kind == want.kind
+            && q(r.root, want.root)
+            && q(r.residual, want.residual)
+            && r.updates == want.updates
+            && r.den_bits == want.den_bits
+            && q(r.bracket_lo, want.bracket_lo)
+            && q(r.bracket_hi, want.bracket_hi) => None,
+        other => Some(format!("{other:?}")),
+    }
+}
+
+fn main() {
+    let mut failures = 0usize;
+    let mut check = |name: &str, diff: Option<String>, vm: &str| {
+        if let Some(diff) = diff {
+            failures += 1;
+            println!("DIFF {name} EMITTED {diff}; VM = {vm}");
+        }
+    };
+    let ok = |cond: bool, got: &dyn std::fmt::Debug| (!cond).then(|| format!("{got:?}"));
+    let int_v = CodeValue::Int;
+    let d = |form: CodeTree| d_form(code(form), z());
+
+    let got = literal_exp(code(int(3)));
+    check("literal_extracts", ok(matches!(got, Ok(3)), &got), "3");
+    check("cube_expands", value(at(&pow_product(z(), 3), "z", 2), int_v(8)), "8");
+    let got = d_elems(vec![], 0, z());
+    check("elems_empty", ok(matches!(&got, Ok(v) if v.is_empty()), &got), "length 0");
+    let arms = d_arms(vec![vec![code(int(0)), z()], vec![code(int(1)), code(mul(var("z"), var("z")))]], 0, z());
+    check("arms_kept_in_order/length", ok(matches!(&arms, Ok(v) if v.len() == 2), &arms), "2");
+    let part = |i: usize, j: usize| arms.clone().and_then(|v| v.get(i).and_then(|p| p.get(j)).cloned().ok_or_else(|| "missing".to_string()));
+    check("arms_kept_in_order/pattern", value(part(0, 0), int_v(0)), "0");
+    check("arms_kept_in_order/value", value(at(&part(1, 1), "z", 5), int_v(10)), "10");
+
+    check("d_literal_zero", value(d(int(3)), int_v(0)), "0");
+    check("d_var_one", value(d(var("z")), int_v(1)), "1");
+    check("d_other_var_zero", value(d(var("w")), int_v(0)), "0");
+    check("d_sum_value", value(at(&d(add(mul(int(3), var("z")), int(5))), "z", 7), int_v(3)), "3");
+    let product = || mul(var("z"), add(var("z"), int(1)));
+    check("d_product_value", value(at(&d(product()), "z", 3), int_v(7)), "7");
+    let got = d(product());
+    let shape = got.as_ref().map(|result| {
+        let root = view(result);
+        let left = sub_view(arg(&root, 0));
+        let right = sub_view(arg(&root, 1));
+        is_tag(&field(&root, "kind"), "Call")
+            && is_tag(&field(&root, "callee"), "Add")
+            && is_tag(&field(&left, "callee"), "Mul")
+            && is_tag(&field(&sub_view(arg(&left, 0)), "kind"), "Literal")
+            && is_tag(&field(&right, "callee"), "Mul")
+            && is_tag(&field(&sub_view(arg(&right, 1)), "kind"), "Call")
+    });
+    check("d_product_structure", ok(matches!(shape, Ok(true)), &got), "Add(Mul(Literal, _), Mul(_, Call))");
+    let quotient = bin(TreeBinary::Div, add(mul(var("z"), var("z")), int(1)), add(var("z"), int(3)));
+    check("d_quotient_value", value(at(&d(quotient), "z", 2), CodeValue::Rat((3, 5))), "3/5");
+    let neg = CodeTree::Unary { op: TreeUnary::Neg, value: Box::new(var("z")) };
+    check("d_neg_value", value(at(&d(neg), "z", 5), int_v(-1)), "-1");
+    check("d_pow_cube", value(at(&d(pow(var("z"), int(3))), "z", 2), int_v(12)), "12");
+    check("d_pow_linear", value(at(&d(pow(var("z"), int(1))), "z", 9), int_v(1)), "1");
+    check("d_pow_zero", value(d(pow(var("z"), int(0))), int_v(0)), "0");
+    let got = d(pow(var("z"), int(3)));
+    let root_ok = got.as_ref().map(|r| {
+        let root = view(r);
+        is_tag(&field(&root, "kind"), "Call") && is_tag(&field(&root, "callee"), "Add")
+    });
+    check("d_pow_made_has_no_pow_node", ok(matches!(root_ok, Ok(true)), &got), "root Add call");
+    check("d_pow_free_exponent_refuses", refused(&d(pow(var("z"), var("w")))), "transformation_rule_unavailable");
+    let branch = || CodeTree::If {
+        condition: Box::new(bin(TreeBinary::Lt, var("z"), int(10))),
+        then_value: Box::new(mul(var("z"), var("z"))),
+        else_value: Box::new(add(var("z"), int(1))),
+    };
+    let got = d(branch());
+    check("d_branch_regions/then", value(at(&got, "z", 3), int_v(6)), "6");
+    check("d_branch_regions/otherwise", value(at(&got, "z", 20), int_v(1)), "1");
+    let untouched = got.as_ref().map(|r| {
+        let root = view(r);
+        let condition = field(&root, "condition");
+        let bound = is_tag(&field(&sub_view(arg(&sub_view(condition.clone()), 1)), "kind"), "Literal");
+        let truth = node_as_code(&condition)
+            .map(|c| c.substitute("z", CodeValue::Int(3)))
+            .and_then(|c| c.evaluate(&ModuleTable::EMPTY));
+        is_tag(&field(&root, "kind"), "Branch") && bound && truth == Ok(CodeValue::Bool(true))
+    });
+    check("d_branch_condition_untouched", ok(matches!(untouched, Ok(true)), &got), "Branch, guard kept, true at 3");
+    let got = d(CodeTree::Tuple(vec![var("z"), int(3), mul(var("z"), var("z"))]));
+    let element = |i: i64| {
+        got.as_ref()
+            .map_err(|e| e.clone())
+            .and_then(|r| node_field(view(r), "elements"))
+            .and_then(|elements| node_index(elements, i))
+            .and_then(node_as_code)
+    };
+    let kind_ok = got.as_ref().map(|r| is_tag(&field(&view(r), "kind"), "Sequence"));
+    check("d_sequence_elementwise/kind", ok(matches!(kind_ok, Ok(true)), &got), "Sequence");
+    check("d_sequence_elementwise/0", value(at(&element(0), "z", 5), int_v(1)), "1");
+    check("d_sequence_elementwise/1", value(element(1), int_v(0)), "0");
+    check("d_sequence_elementwise/2", value(at(&element(2), "z", 5), int_v(10)), "10");
+    check("d_projection_refuses_at_the_make_seam", refused(&d(CodeTree::Path(vec!["a".into(), "f".into()]))), "transformation_rule_unavailable");
+    let got = d(mul(var("w"), var("z"))).map(|r| r.substitute("w", CodeValue::Int(2)));
+    check("d_closure_outer_var", value(at(&got, "z", 3), int_v(2)), "2");
+    check("d_bool_call_refuses", refused(&d(bin(TreeBinary::Lt, var("z"), int(3)))), "transformation_rule_unavailable");
+    let mystery = CodeTree::Call { function: Box::new(var("mystery")), args: vec![var("z")] };
+    check("d_opaque_callee_refuses", refused(&d(mystery)), "transformation_rule_unavailable");
+
+    let got = derivative_of(fn_z(mul(var("z"), var("z"))));
+    let body = got.as_ref().map_err(|e| e.clone()).and_then(|r| node_field(view(r), "body")).and_then(node_as_code);
+    check("derivative_of_square", value(at(&body, "z", 3), int_v(6)), "6");
+    let closure_ok = got.as_ref().map(|r| is_tag(&field(&view(r), "kind"), "Closure"));
+    check("derivative_of_is_a_closure", ok(matches!(closure_ok, Ok(true)), &got), "Closure");
+    check("derivative_of_non_function_refuses", refused(&derivative_of(code(add(var("z"), int(1))))), "transformation_rule_unavailable");
+
+    let got = linearity_law(0);
+    check("additivity_and_homogeneity_hold", ok(matches!(got, Ok(true)), &got), "true");
+    let got = square_fn((3, 1));
+    check("square_fn_values", ok(matches!(got, Ok((9, 1))), &got), "9/1");
+    let got = chain_rule_law(0);
+    check("composition_identity_holds", ok(matches!(got, Ok(true)), &got), "true");
+    let got = quotient_rule_law(0);
+    check("quotient_identity_holds", ok(matches!(got, Ok(true)), &got), "true");
+
+    let want = IterResult { kind: 1, root: (17, 12), residual: (1, 144), updates: 2, den_bits: 4, bracket_lo: (0, 1), bracket_hi: (0, 1) };
+    check("sqrt_two_receipt_matches_the_hand_supplied_baseline", iter_eq(&sqrt2_newton_composed(0), &want), "kind 1, 17/12, 1/144, 2 updates");
+    // The module-callee newton: f and the run-time df both call square_fn.
+    let want = IterResult { kind: 1, root: (91, 72), residual: (7075, 373248), updates: 2, den_bits: 7, bracket_lo: (0, 1), bracket_hi: (0, 1) };
+    check("cube_root_two_through_a_module_callee", iter_eq(&cube_root_newton_composed(0), &want), "kind 1, 91/72, 7075/373248, 2 updates");
+    // A run-time formula calling an IMPORTED module function (abs_rat,
+    // from analysis.equations.iteration): quote(abs_rat(z) + 1) at -2.
+    // The VM's capture: abs_rat resolves as a module callable (a
+    // dependency), so the open set is {z} only.
+    let form = open_expr(
+        vec!["z".to_string()],
+        add(CodeTree::Call { function: Box::new(var("abs_rat")), args: vec![var("z")] }, int(1)),
+        None,
+        BTreeMap::new(),
+    );
+    let got = evaluate_at(form, (-2, 1));
+    check("imported_callee_in_a_runtime_formula", ok(matches!(got, Ok(r) if r.0 == 3 * r.1), &got), "3/1");
+    // int_bits is imported but unreachable from every function of the
+    // module - only the run-time formula calls it: quote(int_bits(201) +
+    // z) at 1/2 (bits(201) = 8).
+    let form = open_expr(
+        vec!["z".to_string()],
+        add(CodeTree::Call { function: Box::new(var("int_bits")), args: vec![int(201)] }, var("z")),
+        None,
+        BTreeMap::new(),
+    );
+    let got = evaluate_at(form, (1, 2));
+    check("unreachable_imported_callee_in_a_runtime_formula", ok(matches!(got, Ok(r) if 2 * r.0 == 17 * r.1), &got), "17/2");
+    let got = dyadic_exact_newton_composed(0);
+    check(
+        "dyadic_root_is_exact_kind_zero",
+        ok(matches!(&got, Ok(r) if r.kind == 0 && r.root.0 * 2 == r.root.1 && r.residual.0 == 0), &got),
+        "kind 0, root 1/2, residual 0",
+    );
+
+    if failures > 0 {
+        panic!("{failures} derivative row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_derivative() {
+    let diffs = run_lane("language/modules/analysis/derivative.emath", DERIVATIVE_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted derivative disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

@@ -2,6 +2,18 @@
 
 use super::{EmirValue, BuiltinId, EmirSliceAxis, EmirProgram, FoldCombine, CellClass, VectorScalarOp, ReduceId};
 
+/// How an evaluated quoted function is used, which fixes its carrier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CodeApplication {
+    /// Applied in place to this many arguments (`f = quote.evaluate(c)`
+    /// then `f(a, b)`): a callable over the value union.
+    Union(u16),
+    /// Passed into a declared arrow parameter (`newton_solve(f, df, ..)`
+    /// with `df: Rat -> Rat`): a callable of that carrier signature -
+    /// arguments cross into the union, the result projects checked.
+    Declared(String),
+}
+
 /// The `quote.substitute` reference. Statically resolved at lowering
 /// (the authored spellings: a string literal or a single-segment
 /// name path) or carried as a runtime node-family operand - the
@@ -206,11 +218,19 @@ pub enum EmirOp {
     /// input, empty = unknown). The backend uses them to recover the
     /// kind of degenerate argument expressions (an empty `[]` literal
     /// has no element kind of its own); evaluation ignores them.
+    ///
+    /// `callee` names the module function whose body this frame
+    /// inlines (`None` for recur and immediate-lambda frames). The
+    /// backend may render a named frame as a call to that function's
+    /// emitted entry when the frame's carriers equal the entry ABI -
+    /// the same computation, emitted once instead of at every call
+    /// site. Evaluation ignores it.
     CallFrame {
         body: EmirProgram,
         inputs: Vec<EmirValue>,
         state: Vec<EmirValue>,
         declared: Vec<String>,
+        callee: Option<String>,
     },
     /// Re-enter the active recursive program with a new input frame.
     /// Generic self-application; not a mathematical leaf.
@@ -341,8 +361,15 @@ pub enum EmirOp {
     /// template - through the compiled factory when the tree came
     /// from a static template literal, through the shared scalar
     /// tree evaluator when it was made from node records.
+    ///
+    /// `applied` is set when the evaluated value is used as a function
+    /// (see [`CodeApplication`]): over an expression template the
+    /// value is then a quoted function literal, a callable whose body
+    /// runs per application (the VM's closure). `None` is the value
+    /// itself.
     CodeEvaluate {
         code: EmirValue,
+        applied: Option<CodeApplication>,
     },
     /// `quote.view(code)`: open a Code value (or Fragment package)
     /// into its structural node records - the shared tree walked

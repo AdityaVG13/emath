@@ -27,6 +27,84 @@ thread_local! {
     /// emits the ratio spelling against an Int-declared tail.
     static SIBLING_ENTRY_KINDS: std::cell::RefCell<Vec<BTreeMap<String, ValueKind>>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    /// The emitted entry ABI per module function, registered as each
+    /// entry emits (callees before callers), beside the crate's
+    /// tree-lane functions (their internal calls target the
+    /// non-resetting body fn). A named `CallFrame` whose frame carriers
+    /// equal its callee's registered ABI renders as a call to that
+    /// entry instead of re-inlining the body at the site.
+    static ENTRY_ABIS: std::cell::RefCell<Vec<(BTreeMap<String, EntryAbi>, std::collections::BTreeSet<String>)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// One emitted entry's carrier ABI: the parameter carriers in input
+/// order and the carrier the entry actually returns.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct EntryAbi {
+    pub(crate) inputs: Vec<ValueKind>,
+    pub(crate) result: ValueKind,
+}
+
+/// Guarded entry-ABI table (see `ENTRY_ABIS`): one crate emission's
+/// registry over its tree-lane function names, popped on drop. Outside
+/// a scope no entry is registered and every named frame inlines.
+pub(crate) struct EntryAbiScope;
+impl EntryAbiScope {
+    pub(crate) fn enter(tree_lane: std::collections::BTreeSet<String>) -> Self {
+        ENTRY_ABIS.with(|stack| stack.borrow_mut().push((BTreeMap::new(), tree_lane)));
+        Self
+    }
+}
+impl Drop for EntryAbiScope {
+    fn drop(&mut self) {
+        ENTRY_ABIS.with(|stack| stack.borrow_mut().pop());
+    }
+}
+
+/// Register an emitted entry's ABI in the innermost scope.
+pub(crate) fn register_entry_abi(name: &str, abi: EntryAbi) {
+    ENTRY_ABIS.with(|stack| {
+        if let Some((table, _)) = stack.borrow_mut().last_mut() {
+            table.insert(name.to_string(), abi);
+        }
+    });
+}
+
+/// A module function's emitted entry ABI, when it has one.
+pub(crate) fn entry_abi(name: &str) -> Option<EntryAbi> {
+    ENTRY_ABIS.with(|stack| {
+        stack
+            .borrow()
+            .last()
+            .and_then(|(table, _)| table.get(name).cloned())
+    })
+}
+
+/// The body fn of a tree-lane entry. The public entry resets the
+/// shared-tree mint (one deterministic token sequence per run) and
+/// delegates here; calls from inside a run - sibling cycle edges and
+/// named frames - target this fn, so they continue the caller's mint
+/// instead of restarting it (the VM mints once per query). The name
+/// carries no `__` run: control-scope rendering renames `__e*`
+/// registers textually.
+pub(crate) fn tree_entry_body_name(name: &str) -> String {
+    format!("emath_body_{name}")
+}
+
+/// The fn an in-crate call to `name` targets: the tree-lane body fn
+/// when the crate emits `name` on the tree lane, else the entry itself.
+pub(crate) fn internal_entry_name(name: &str) -> String {
+    let tree_lane = ENTRY_ABIS.with(|stack| {
+        stack
+            .borrow()
+            .last()
+            .is_some_and(|(_, tree_lane)| tree_lane.contains(name))
+    });
+    if tree_lane {
+        tree_entry_body_name(name)
+    } else {
+        escape_ident(name)
+    }
 }
 
 /// Guarded entry onto the wrapper-carrier stack (see
@@ -153,6 +231,9 @@ impl ValueKind {
                 "Program" => ValueKind::Program,
                 "BigInt" => ValueKind::BigInt,
                 "Code" => ValueKind::ExprCode,
+                // The dynamic node family: a Fragment package record
+                // and the unparameterized (heterogeneous) sequence.
+                "Fragment" | "Sequence" => ValueKind::Node,
                 "Complex" | "Complex<Float64>" => ValueKind::Complex,
                 "emath_rt::Tensor" => ValueKind::Tensor,
                 text if text.starts_with("Tensor<") || text.starts_with("SameTensor<") => {
@@ -369,9 +450,22 @@ pub(super) fn branch_carrier(
         // law, element-wise through vectors (an Int-element arm
         // widens exactly into the Rat-element vector at the arm
         // boundary); a declared Int context narrows back at the
-        // checked i64 boundary. Pairs the law cannot fold stay
-        // unrepresentable.
-        join_arm_kinds(left, right)
+        // checked i64 boundary. A union arm (an evaluated template or
+        // applied quoted function) beside a typed scalar arm takes the
+        // typed carrier - the render projects the union arm checked
+        // (`if can: claim(x) else: false` is Bool). Pairs the law
+        // cannot fold stay unrepresentable.
+        match (&left, &right) {
+            (ValueKind::CodeValue, typed) | (typed, ValueKind::CodeValue)
+                if matches!(
+                    typed,
+                    ValueKind::I64 | ValueKind::Rational | ValueKind::ExactInt | ValueKind::Bool
+                ) =>
+            {
+                typed.clone()
+            }
+            _ => join_arm_kinds(left, right),
+        }
     }
 }
 
@@ -412,6 +506,24 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
         return ValueKind::Rational;
     }
     kind
+}
+
+/// A declared arrow signature an evaluated expression template can be
+/// adapted to: one stage of scalar (Int, Rat, Bool) parameters with a
+/// scalar result - the carriers the value union crosses both ways.
+pub(crate) fn declared_scalar_arrow(signature: &str) -> Option<ValueKind> {
+    let scalar = |kind: &ValueKind| {
+        matches!(kind, ValueKind::I64 | ValueKind::Rational | ValueKind::Bool)
+    };
+    match ValueKind::from_signature(signature) {
+        kind @ ValueKind::Closure { .. } => match &kind {
+            ValueKind::Closure { params, result } if params.iter().all(scalar) && scalar(result) => {
+                Some(kind)
+            }
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Native callable carrier for a closure kind: `dyn Fn(P...) ->
@@ -820,12 +932,28 @@ pub(super) fn kind_of_op(
         // closure over the template's carrier (a def bound to it is
         // callable), or - for an expression template - the computed
         // union scalar, projected at the typed boundary.
-        EmirOp::CodeEvaluate { code } => match kind_at(kinds, *code) {
+        // An expression template whose value is APPLIED is a quoted
+        // function literal: a callable over the value union, one union
+        // parameter per applied argument, yielding the union.
+        // Passed into a declared arrow, it carries that arrow's
+        // signature when the render can adapt it (scalar parameters and
+        // result); otherwise the carrier is unknown and the render
+        // refuses by name.
+        EmirOp::CodeEvaluate { code, applied } => match kind_at(kinds, *code) {
             ValueKind::Code(carrier) => ValueKind::Closure {
                 params: vec![carrier.as_ref().clone()],
                 result: carrier,
             },
-            ValueKind::ExprCode => ValueKind::CodeValue,
+            ValueKind::ExprCode => match applied {
+                Some(emath_exec_ir::CodeApplication::Union(arity)) => ValueKind::Closure {
+                    params: vec![ValueKind::CodeValue; usize::from(*arity)],
+                    result: Box::new(ValueKind::CodeValue),
+                },
+                Some(emath_exec_ir::CodeApplication::Declared(signature)) => {
+                    declared_scalar_arrow(signature).unwrap_or(ValueKind::Other)
+                }
+                None => ValueKind::CodeValue,
+            },
             _ => ValueKind::Other,
         },
         // A call consumes the callee's declared parameters one stage
@@ -919,6 +1047,7 @@ pub(super) fn kind_of_op(
             inputs,
             state,
             declared,
+            ..
         } => {
             let names = (0..inputs.len())
                 .map(|index| format!("__frame_input_{index}"))

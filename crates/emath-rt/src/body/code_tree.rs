@@ -130,6 +130,46 @@ impl TreeUnary {
     }
 }
 
+/// A function literal's recorded binder domain - the VM's
+/// `DomainShape`, narrowed to what an applied union argument can meet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TreeDomain {
+    /// A scalar carrier spelling: `Int`, `Rat`, `Bool`, `Float64`.
+    Scalar(String),
+    /// A sequence domain, by its VM spelling (`sequence(Rat)`): no
+    /// union scalar is a sequence, so it admits none.
+    Sequence(String),
+    /// Not reconstructible from the authored domain: admits every
+    /// argument with no claim (the VM's `Unknown`).
+    Unknown,
+}
+
+impl TreeDomain {
+    /// The VM's `domain_shape_admits_value` over the scalar union:
+    /// `Int` admits Int, `Rat` admits Int and Rat, `Bool` admits Bool.
+    pub fn admits(&self, value: &CodeValue) -> bool {
+        match self {
+            TreeDomain::Unknown => true,
+            TreeDomain::Sequence(_) => false,
+            TreeDomain::Scalar(name) => matches!(
+                (name.as_str(), value),
+                ("Int", CodeValue::Int(_))
+                    | ("Rat", CodeValue::Int(_) | CodeValue::Rat(_))
+                    | ("Bool", CodeValue::Bool(_))
+            ),
+        }
+    }
+}
+
+impl core::fmt::Display for TreeDomain {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            TreeDomain::Scalar(name) | TreeDomain::Sequence(name) => f.write_str(name),
+            TreeDomain::Unknown => f.write_str("unknown"),
+        }
+    }
+}
+
 /// The distilled expression tree: exactly the shapes the view/make
 /// walk consumes in the emitted subset. `List` and `Tuple` authoring
 /// both distill to [`CodeTree::Tuple`] (both view as a `Sequence`
@@ -151,11 +191,13 @@ pub enum CodeTree {
         op: TreeUnary,
         value: Box<CodeTree>,
     },
-    /// A function literal (the VM's `FunctionAbs` view): the binder's
-    /// parameter name and the body tree. The declared domain is not
-    /// carried - the fragment is walked and made, never applied.
+    /// A function literal (the VM's `FunctionAbs`): the binder's
+    /// parameter name, its recorded domain, and the body tree. The view
+    /// does not expose the domain (the VM's view does not); an applied
+    /// evaluate checks each argument against it.
     Closure {
         param: String,
+        domain: TreeDomain,
         body: Box<CodeTree>,
     },
     Tuple(Vec<CodeTree>),
@@ -217,7 +259,7 @@ pub fn node_eq(
                     .zip(b.iter())
                     .all(|(x, y)| node_eq(x, y).unwrap_or(false))
         }
-        (NodeValue::Code(a), NodeValue::Code(b)) => a.tree == b.tree && a.deps == b.deps,
+        (NodeValue::Code(a), NodeValue::Code(b)) => a == b,
         _ => false,
     })
 }
@@ -275,6 +317,17 @@ pub fn node_field(value: impl std::borrow::Borrow<NodeValue>, field: &str) -> Re
         }
         NodeValue::Sequence(items) if field == "length" => {
             Ok(NodeValue::Scalar(CodeValue::Int(items.len() as i64)))
+        }
+        // An emitted tuple lowers as a positional sequence (the typed
+        // lane's tuple law), so `_N` indexes a family sequence too.
+        NodeValue::Sequence(items) if field.starts_with('_') => {
+            let index = field[1..]
+                .parse::<usize>()
+                .map_err(|_| format!("type: value has no field `{field}`"))?;
+            items
+                .get(index)
+                .cloned()
+                .ok_or_else(|| "invalid_index: sequence index out of range".to_string())
         }
         _ => Err(format!("type: value has no field `{field}`")),
     }
@@ -360,20 +413,40 @@ impl NodeValue {
 /// each callable's declaration stamp (for dependency snapshots and
 /// the `stale_dependency` refusal). Const-constructible so the
 /// backend emits it as one crate-level static.
+#[derive(Clone, Copy)]
 pub struct ModuleTable {
     /// (name, opaque) per module callable.
     pub globals: &'static [(&'static str, bool)],
     /// (name, declaration stamp) per module callable - the same
     /// FNV-1a digest the VM's `decl_stamp` computes.
     pub stamps: &'static [(&'static str, u64)],
+    /// (name, entry adapter) per module function whose compiled entry
+    /// crosses as scalars: the tree evaluator's route into module code
+    /// (a run-time formula calling a module function).
+    pub callables: &'static [(&'static str, ModuleCallable)],
 }
+
+/// A module function's compiled entry adapted to the scalar union:
+/// arguments project checked onto the declared parameter carriers, the
+/// result wraps back into the union.
+pub type ModuleCallable = fn(&[CodeValue]) -> Result<CodeValue, String>;
 
 impl ModuleTable {
     /// The empty table (no module callables).
     pub const EMPTY: ModuleTable = ModuleTable {
         globals: &[],
         stamps: &[],
+        callables: &[],
     };
+
+    /// The compiled entry adapter of module function `name`, when the
+    /// artifact carries one.
+    pub fn callable(&self, name: &str) -> Option<ModuleCallable> {
+        self.callables
+            .iter()
+            .find(|(callable, _)| *callable == name)
+            .map(|(_, entry)| *entry)
+    }
 
     /// Whether `name` is a module callable, and whether it is opaque.
     pub fn opaque_global(&self, name: &str) -> Option<bool> {
@@ -713,7 +786,7 @@ pub fn view_tree(tree: &CodeTree, module: &ModuleTable) -> NodeValue {
                 ],
             )
         }),
-        CodeTree::Closure { param, body } => with_mint(|mint| {
+        CodeTree::Closure { param, body, .. } => with_mint(|mint| {
             // The VM's `FunctionAbs` view: the binder's parameter as a
             // name tag, the body as Code, and the minted scope package
             // carrying the binder.
@@ -882,6 +955,16 @@ pub fn open_node(package: impl std::borrow::Borrow<NodeValue>) -> Result<ExprCod
     }
 }
 
+/// The items of a family sequence or tuple - the call-marshal bridge
+/// for a declared sequence parameter (`sequence(Code)`,
+/// `sequence((Code, Code))`), whose items then cross one by one.
+pub fn node_items(node: impl std::borrow::Borrow<NodeValue>) -> Result<Vec<NodeValue>, String> {
+    match node.borrow() {
+        NodeValue::Sequence(items) | NodeValue::Tuple(items) => Ok(items.clone()),
+        _ => Err(String::from("type: expected a sequence value")),
+    }
+}
+
 /// A node value in a Code position (the call-marshal bridge): a Code
 /// node unwraps to its own ExprCode unchanged (the VM's call arguments
 /// ARE codes); any other node value rebuilds into a factory-free,
@@ -986,8 +1069,11 @@ pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
                         Some(NodeValue::Code(code)) => code.tree.clone(),
                         _ => return Err(String::from("Closure body is not code")),
                     };
+                    // The VM's make rebuilds a Closure node over the
+                    // `Rat` domain (the view carries no domain).
                     Ok(CodeTree::Closure {
                         param,
+                        domain: TreeDomain::Scalar(String::from("Rat")),
                         body: Box::new(body),
                     })
                 }
@@ -1093,15 +1179,17 @@ pub fn substitute_tree(tree: &CodeTree, reference: &str, replacement: &CodeTree)
             op: *op,
             value: Box::new(substitute_tree(value, reference, replacement)),
         },
-        CodeTree::Closure { param, body } => {
+        CodeTree::Closure {
+            param,
+            domain,
+            body,
+        } => {
             if param == reference {
-                CodeTree::Closure {
-                    param: param.clone(),
-                    body: body.clone(),
-                }
+                tree.clone()
             } else {
                 CodeTree::Closure {
                     param: param.clone(),
+                    domain: domain.clone(),
                     body: Box::new(substitute_tree(body, reference, replacement)),
                 }
             }
@@ -1147,7 +1235,7 @@ fn collect_free_names(tree: &CodeTree, free: &mut BTreeSet<String>) {
             collect_free_names(right, free);
         }
         CodeTree::Unary { value, .. } => collect_free_names(value, free),
-        CodeTree::Closure { param, body } => {
+        CodeTree::Closure { param, body, .. } => {
             // The binder binds its parameter inside the body: the
             // body's free names minus the parameter.
             let mut inner = BTreeSet::new();
@@ -1202,12 +1290,14 @@ pub fn verify_deps(
 /// carrier rules), with short-circuit boolean combinators and the
 /// VM's `if` admission. Free names resolve from the input
 /// environment; a name the environment does not supply refuses
-/// `unbound_code`. Calls and global references refuse by name: the
-/// emitted subset resolves callables at compile time, and a made
-/// tree's runtime call graph is not an interpreter this lane ships.
+/// `unbound_code`. A call to a module function runs that function's
+/// compiled entry through the module table (`ModuleTable::callables`,
+/// arguments crossing as scalars); a call the table does not carry and
+/// a global value reference refuse by name.
 pub fn evaluate_tree(
     tree: &CodeTree,
     inputs: &BTreeMap<String, CodeValue>,
+    module: &ModuleTable,
 ) -> Result<CodeValue, String> {
     use super::code::{code_add, code_as_bool, code_cmp, code_div, code_eq, code_mul, code_neg, code_not, code_sub};
     match tree {
@@ -1225,34 +1315,46 @@ pub fn evaluate_tree(
                 CodeTree::Path(segments) => segments.join("."),
                 _ => String::from("expression"),
             };
-            let _ = args;
-            Err(format!(
-                "tree: call `{name}` is not emitted in the scalar tree evaluator"
-            ))
+            // A bound name is a scalar, never a function (the VM's
+            // words); a module function calls its compiled entry
+            // through the table, arguments evaluated left to right.
+            if let Some(value) = inputs.get(&name) {
+                return Err(format!("type: value is not callable: {value}"));
+            }
+            let Some(callable) = module.callable(&name) else {
+                return Err(format!(
+                    "tree: call `{name}` is not emitted in the scalar tree evaluator"
+                ));
+            };
+            let values = args
+                .iter()
+                .map(|arg| evaluate_tree(arg, inputs, module))
+                .collect::<Result<Vec<_>, _>>()?;
+            callable(&values)
         }
         CodeTree::Closure { param, .. } => Err(format!(
             "tree: closure `{param} -> _` is not a scalar value in the tree evaluator"
         )),
         CodeTree::Binary { op, left, right } => match op {
             TreeBinary::And => {
-                if code_as_bool(&evaluate_tree(left, inputs)?)? {
-                    code_as_bool(&evaluate_tree(right, inputs)?)
+                if code_as_bool(&evaluate_tree(left, inputs, module)?)? {
+                    code_as_bool(&evaluate_tree(right, inputs, module)?)
                         .map(CodeValue::Bool)
                 } else {
                     Ok(CodeValue::Bool(false))
                 }
             }
             TreeBinary::Or => {
-                if code_as_bool(&evaluate_tree(left, inputs)?)? {
+                if code_as_bool(&evaluate_tree(left, inputs, module)?)? {
                     Ok(CodeValue::Bool(true))
                 } else {
-                    code_as_bool(&evaluate_tree(right, inputs)?)
+                    code_as_bool(&evaluate_tree(right, inputs, module)?)
                         .map(CodeValue::Bool)
                 }
             }
             _ => {
-                let left = evaluate_tree(left, inputs)?;
-                let right = evaluate_tree(right, inputs)?;
+                let left = evaluate_tree(left, inputs, module)?;
+                let right = evaluate_tree(right, inputs, module)?;
                 match op {
                     TreeBinary::Add => code_add(&left, &right),
                     TreeBinary::Sub => code_sub(&left, &right),
@@ -1272,7 +1374,7 @@ pub fn evaluate_tree(
             }
         },
         CodeTree::Unary { op, value } => {
-            let value = evaluate_tree(value, inputs)?;
+            let value = evaluate_tree(value, inputs, module)?;
             match op {
                 TreeUnary::Neg => code_neg(&value),
                 TreeUnary::Not => code_not(&value).map(CodeValue::Bool),
@@ -1287,10 +1389,10 @@ pub fn evaluate_tree(
             then_value,
             else_value,
         } => {
-            if code_as_bool(&evaluate_tree(condition, inputs)?)? {
-                evaluate_tree(then_value, inputs)
+            if code_as_bool(&evaluate_tree(condition, inputs, module)?)? {
+                evaluate_tree(then_value, inputs, module)
             } else {
-                evaluate_tree(else_value, inputs)
+                evaluate_tree(else_value, inputs, module)
             }
         }
     }

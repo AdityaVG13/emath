@@ -505,7 +505,7 @@ pub(super) fn admit_input_type(ty: &TypeExpr, value: &CValue) -> Result<(), Cons
 /// (`function x in <domain>`): `Rat`, `sequence(Rat)`, or
 /// [`DomainShape::Unknown`] when the tag does not carry a
 /// reconstructible shape.
-pub(in crate::constructor_layer) fn domain_shape_of_expr(expr: &Expr) -> DomainShape {
+pub(crate) fn domain_shape_of_expr(expr: &Expr) -> DomainShape {
     match &expr.kind {
         ExprKind::Path { segments, .. } if segments.len() == 1 => match segments[0].as_str() {
             "Int" | "Rat" | "Bool" | "Float64" => DomainShape::Scalar(segments[0].clone()),

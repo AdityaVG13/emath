@@ -153,7 +153,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
                 out.push(*reference);
             }
         }
-        EmirOp::CodeEvaluate { code } => out.push(*code),
+        EmirOp::CodeEvaluate { code, .. } => out.push(*code),
         EmirOp::CodeView { code } => out.push(*code),
         EmirOp::CodeMake { node } => out.push(*node),
         EmirOp::CodeBody { code } => out.push(*code),
