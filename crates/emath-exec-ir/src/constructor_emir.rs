@@ -933,7 +933,33 @@ impl Lowerer {
                     }))
                 }
                 ExprKind::Path { segments, .. } => self.lower_named_call(segments, args),
-                other => Err(format!("call is not yet emitted: {other:?}")),
+                other => {
+                    // A callee that is itself an expression: the
+                    // field-access call `base.guard(args...)` parses
+                    // as an application of the field-access call
+                    // (`Call { function: Call { Path[guard],
+                    // [base] }, args }`), and `f(x)(y)` applies a
+                    // call's result. The VM's law is general - the
+                    // callee is a VALUE (the projected field, the
+                    // call's result) and the arguments apply stage
+                    // by stage through its signature - so the
+                    // expression lowers as a value and the arguments
+                    // cross through the closure-call lane. A callee
+                    // without a callable carrier refuses by name at
+                    // the render boundary (the same fence the direct
+                    // closure calls keep).
+                    let program = self.expr(function)?;
+                    let mut inputs = Vec::new();
+                    for arg in args {
+                        inputs.push(self.expr(arg)?);
+                    }
+                    if inputs.is_empty() {
+                        return Err(format!(
+                            "call is not yet emitted: {other:?}"
+                        ));
+                    }
+                    Ok(self.push(EmirOp::CallValue { program, inputs }))
+                }
             },
             ExprKind::FunctionAbs { param, domain, body } => {
                 let (nested, captures) = self.lower_function_abs(param, domain, body)?;

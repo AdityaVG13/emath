@@ -187,17 +187,62 @@ pub fn emit_record_definitions(records: &[AuthoredRecord]) -> Result<String, Bac
     let mut rust = String::new();
     for record in records {
         let mut fields = String::new();
+        let mut closure_fields = Vec::new();
         for (field, signature) in &record.fields {
-            let ty = render_ty(&ValueKind::from_signature(signature).rust_ty()?);
+            let kind = ValueKind::from_signature(signature);
+            if matches!(kind, ValueKind::Closure { .. }) {
+                closure_fields.push(field.clone());
+            }
+            let ty = render_ty(&kind.rust_ty()?);
             // Escape field names the same way the record-literal
             // render does, so `EmathRecord_X { field_: .. }` sites and
             // the struct definition agree (authored names may be Rust
             // keywords, e.g. `move`).
             fields.push_str(&format!("    pub {}: {ty},\n", escape_ident(field)));
         }
+        if closure_fields.is_empty() {
+            rust.push_str(&format!(
+                "#[derive(Clone, Debug, PartialEq)]\npub struct EmathRecord_{} {{\n{fields}}}\n\n",
+                escape_ident(&record.name)
+            ));
+            continue;
+        }
+        // A record with closure-carrier fields (the event module's
+        // `guard`/`reset` handles) cannot derive Debug or PartialEq:
+        // `dyn Fn` carries neither. The hand-impls state the VM's
+        // law: data fields compare and print structurally, closure
+        // fields compare by shared-handle identity (the same identity
+        // fallback the VM's buffer law uses - a callable has no total
+        // value equality) and print as `<closure>`.
+        let name = format!("EmathRecord_{}", escape_ident(&record.name));
+        let debug_fields = record
+            .fields
+            .iter()
+            .map(|(field, _)| {
+                if closure_fields.contains(field) {
+                    format!(".field(\"{field}\", &\"<closure>\")")
+                } else {
+                    format!(".field(\"{field}\", &self.{})", escape_ident(field))
+                }
+            })
+            .collect::<String>();
+        let eq_fields = record
+            .fields
+            .iter()
+            .map(|(field, _)| {
+                if closure_fields.contains(field) {
+                    format!("std::rc::Rc::ptr_eq(&self.{0}, &other.{0})", escape_ident(field))
+                } else {
+                    format!("self.{0} == other.{0}", escape_ident(field))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" && ");
         rust.push_str(&format!(
-            "#[derive(Clone, Debug, PartialEq)]\npub struct EmathRecord_{} {{\n{fields}}}\n\n",
-            escape_ident(&record.name)
+            "#[derive(Clone)]\npub struct {name} {{\n{fields}}}\n\n\
+             impl std::fmt::Debug for {name} {{\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{\n        f.debug_struct(\"{name}\"){debug_fields}.finish()\n    }}\n}}\n\n\
+             impl PartialEq for {name} {{\n    fn eq(&self, other: &Self) -> bool {{\n        {eq_fields}\n    }}\n}}\n\n",
+            fields = fields,
         ));
     }
     Ok(rust)

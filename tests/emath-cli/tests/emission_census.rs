@@ -23,7 +23,7 @@ use std::sync::mpsc;
 mod common;
 
 /// The pinned not-runnable census (2026-09-24, the refusal-lane pass):
-/// 7 modules across the named refusal lanes. Update this number ONLY
+/// 6 modules across the named refusal lanes. Update this number ONLY
 /// with a bead that names the lane that changed. History: 15 until
 /// the operator-tag-witness pass, which unblocked analysis/autodiff,
 /// analysis/bvp_newton, and optimization/advanced (the schema-tag
@@ -105,16 +105,34 @@ mod common;
 /// linalg emits and compiles offline with its 94 authored rows still
 /// green in the VM and 28 conformance rows pinning emitted == VM
 /// (the grad_quote substitute+evaluate round trip over the emitted
-/// ExprCode included). Remaining 7: derivative (its two newtons call
-/// a closure yielded by quote.evaluate over a transformed template -
-/// the closure-call callee-signature seam; every other row emits
-/// through linalg's import), events (the general Call guard),
-/// levenberg (unknown value carriers through the numeric-program
-/// law), walk (quote.open/quote.view carriers), rewriting (quote.make
-/// and the substitute carrier mismatch), discovery (heterogeneous
-/// Rat -> Bool quoted functions), sieve (buffer carrier ops are
-/// VM-only in this cut).
-const NOT_RUNNABLE_PINNED: usize = 7;
+/// ExprCode included). 7 -> 6 with the event-data pass (emath-49o8):
+/// analysis/evolution/events refused on ONE seam - `events[i].guard(
+/// sa.t, sa)` is a record field's CLOSURE called where it is
+/// projected, and the application parses with the field-access call
+/// as its function expression, a shape the blanket `call is not yet
+/// emitted` fence refused. The callee now lowers as a VALUE and the
+/// arguments cross through the closure-call lane (the VM's law: the
+/// callee is a value, curried stages apply through the signature; a
+/// callee without a callable carrier still refuses by name at the
+/// render boundary). The Event record also carries closure fields
+/// (`Rc<dyn Fn>` handles) which derive neither Debug nor PartialEq -
+/// records with closure-carrier fields now hand-impl both, closures
+/// by shared-handle identity (the buffer law) and printing as
+/// `<closure>`. events emits and compiles offline with its 26
+/// authored rows still green in the VM and 26 conformance rows
+/// pinning emitted == VM (the sign-change window with its labeled
+/// tangent/double-root misses, the priority pick, the exact
+/// bisection with dyadic-exact and nondyadic-banded rows, and the
+/// event-aware rollout's terminal/reset/dedup/chatter outcomes).
+/// Remaining 6: derivative (its two newtons call a closure yielded
+/// by quote.evaluate over a transformed template - the
+/// closure-call callee-signature seam; every other row emits
+/// through linalg's import), levenberg (unknown value carriers
+/// through the numeric-program law), walk (quote.open/quote.view
+/// carriers), rewriting (quote.make and the substitute carrier
+/// mismatch), discovery (heterogeneous Rat -> Bool quoted
+/// functions), sieve (buffer carrier ops are VM-only in this cut).
+const NOT_RUNNABLE_PINNED: usize = 6;
 
 /// Fixed compile-lane count (the sweep's `-P 4`).
 const LANES: usize = 4;

@@ -31,7 +31,9 @@
 //! shared-state record + curried-closure pins), and
 //! `language/modules/mechanics/stiff.emath` (the implicit-solve +
 //! adaptive-walk pins), and `language/modules/algebra/linalg.emath`
-//! (the substitute-seam + sparse/dense/hessian pins) — the same givens,
+//! (the substitute-seam + sparse/dense/hessian pins), and
+//! `language/modules/analysis/evolution/events.emath` (the event-data
+//! + closure-field pins) — the same givens,
 //! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
@@ -4135,6 +4137,672 @@ fn emission_conformance_linalg() {
     assert!(
         diffs.is_empty(),
         "emitted linalg disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const EVENTS_DRIVER: &str = r#"
+//! Authored pins of analysis/evolution/events.emath against the
+//! emitted crate (emath-49o8, the event-data lane).
+//!
+//! The module refused on one seam: `events[i].guard(sa.t, sa)` - a
+//! record field's CLOSURE called where it is projected. The call
+//! parses as an application whose function is the field-access call
+//! itself, and that shape hit the blanket `call is not yet emitted`
+//! fence. The callee now lowers as a value and the arguments cross
+//! through the closure-call lane (the VM's law: the callee is a
+//! value, stages apply through the signature). The Event record also
+//! carries closure fields (`Rc<dyn Fn>` handles), which derive
+//! neither Debug nor PartialEq - the record now hand-impls both,
+//! closures by shared-handle identity (the buffer law) and printing
+//! as `<closure>`. These rows pin the whole module: the direction
+//! walk, the sign-change window with its labeled misses, the scan
+//! and priority pick, the exact bisection (dyadic exact, nondyadic
+//! banded to 1/2^40), and the event-aware rollout with its terminal,
+//! reset, same-instant dedup, and chatter outcomes.
+//! Transcription boundaries: ratios compare cross-multiplied; guard
+//! and reset closures are hand-built over the same exact arithmetic
+//! the authored fixtures spell.
+
+use events::{
+    bracket_at, crosses, event_bracket_root, event_directions_ok, event_rollout,
+    event_rollout_at, pick_at, pick_event, scan_at, scan_events, EmathRecord_EmbeddedPair as P,
+    EmathRecord_Event as E, EmathRecord_EventRun as Run, EmathRecord_SimState as S,
+};
+
+type R = (i128, i128);
+type Guard = std::rc::Rc<
+    dyn Fn(R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<R, String>>, String>,
+>;
+type Reset = std::rc::Rc<dyn Fn(&S) -> Result<S, String>>;
+type Flow = std::rc::Rc<
+    dyn Fn(R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<S, String>>, String>,
+>;
+type UnaryR = std::rc::Rc<dyn Fn(R) -> Result<R, String>>;
+
+fn q(n: i128, d: i128) -> R {
+    (n, d)
+}
+
+// The Cash-Karp 5(4) tableau exactly as one_step's cash_karp_pair
+// spells it (the artifact inlines the constructor, so the driver
+// transcribes the record the authored fixture names).
+fn cash_karp_pair() -> P {
+    P {
+        s: 6,
+        a: vec![
+            q(0, 1), q(0, 1), q(0, 1), q(0, 1), q(0, 1), q(0, 1),
+            q(1, 5), q(0, 1), q(0, 1), q(0, 1), q(0, 1), q(0, 1),
+            q(3, 40), q(9, 40), q(0, 1), q(0, 1), q(0, 1), q(0, 1),
+            q(3, 10), q(0 - 9, 10), q(6, 5), q(0, 1), q(0, 1), q(0, 1),
+            q(0 - 11, 54), q(5, 2), q(0 - 70, 27), q(35, 27), q(0, 1), q(0, 1),
+            q(1631, 55296), q(175, 512), q(575, 13824), q(44275, 110592), q(253, 4096), q(0, 1),
+        ],
+        b: vec![q(37, 378), q(0, 1), q(250, 621), q(125, 594), q(0, 1), q(512, 1771)],
+        c: vec![q(0, 1), q(1, 5), q(3, 10), q(3, 5), q(1, 1), q(7, 8)],
+        b_hat: vec![
+            q(2825, 27648),
+            q(0, 1),
+            q(18575, 48384),
+            q(13525, 55296),
+            q(277, 14336),
+            q(1, 4),
+        ],
+    }
+}
+
+fn st(t: R, y0: R) -> S {
+    S { t, y: vec![y0] }
+}
+
+fn r_sub(a: R, b: R) -> R {
+    red((a.0 * b.1 - b.0 * a.1, a.1 * b.1))
+}
+
+fn r_mul(a: R, b: R) -> R {
+    red((a.0 * b.0, a.1 * b.1))
+}
+
+// The emitted lane's checked rational ops refuse noncanonical
+// carriers (E-RAT-001), so every driver-produced ratio passes through
+// the same canonicalization: positive denominator, gcd-divided,
+// zero as (0, 1).
+fn gcd(a: i128, b: i128) -> i128 {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
+}
+
+fn red(r: R) -> R {
+    let (mut n, mut d) = r;
+    if d < 0 {
+        n = -n;
+        d = -d;
+    }
+    if n == 0 {
+        return (0, 1);
+    }
+    let g = gcd(n.abs(), d);
+    (n / g, d / g)
+}
+
+fn eq(a: &R, b: &R) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+fn lt(a: &R, b: &R) -> bool {
+    a.0 * b.1 < b.0 * a.1
+}
+
+fn bq(got: &Result<bool, String>, want: bool) -> Option<String> {
+    match got {
+        Ok(v) if *v == want => None,
+        Ok(v) => Some(format!("{v}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn dq(got: &Result<R, String>, want: R) -> Option<String> {
+    match got {
+        Ok(v) if eq(v, &want) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn iq(got: &Result<i64, String>, want: i64) -> Option<String> {
+    match got {
+        Ok(v) if *v == want => None,
+        Ok(v) => Some(format!("{v}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn lq(got: &Result<Vec<i64>, String>, want: &[i64]) -> Option<String> {
+    match got {
+        Ok(v) if v == want => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn runq(
+    got: &Result<Run, String>,
+    t: R,
+    y: &[R],
+    complete: bool,
+    attempts_used: i64,
+    rejections: i64,
+    events_fired: i64,
+    outcome: i64,
+) -> Option<String> {
+    let want = format!(
+        "t={:?} y={:?} complete={complete} attempts={attempts_used} rej={rejections} fired={events_fired} outcome={outcome}",
+        t, y
+    );
+    match got {
+        Ok(v)
+            if eq(&v.t, &t)
+                && v.y.len() == y.len()
+                && v.y.iter().zip(y).all(|(a, b)| eq(a, b))
+                && v.complete == complete
+                && v.attempts_used == attempts_used
+                && v.rejections == rejections
+                && v.events_fired == events_fired
+                && v.outcome == outcome => None,
+        Ok(v) => Some(format!(
+            "t={:?} y={:?} complete={} attempts={} rej={} fired={} outcome={} (want {want})",
+            v.t, v.y, v.complete, v.attempts_used, v.rejections, v.events_fired, v.outcome
+        )),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+// guard = y[0] (the identity guard)
+fn guard_y0() -> Guard {
+    std::rc::Rc::new(|_t: R| {
+        Ok(std::rc::Rc::new(|s: &S| Ok(s.y[0].clone())))
+    })
+}
+
+// guard = y[0] - n/d
+fn guard_y0_minus(n: i128, d: i128) -> Guard {
+    std::rc::Rc::new(move |_t: R| {
+        Ok(std::rc::Rc::new(move |s: &S| {
+            let y = s.y[0].clone();
+            Ok(red((y.0 * d - n * y.1, y.1 * d)))
+        }))
+    })
+}
+
+// guard = n/d - y[0]
+fn guard_const_minus(n: i128, d: i128) -> Guard {
+    std::rc::Rc::new(move |_t: R| {
+        Ok(std::rc::Rc::new(move |s: &S| {
+            let y = s.y[0].clone();
+            Ok(red((n * y.1 - d * y.0, d * y.1)))
+        }))
+    })
+}
+
+// guard = (y[0] - 1/2)^2 (the tangency fixture)
+fn guard_tangent() -> Guard {
+    std::rc::Rc::new(|_t: R| {
+        Ok(std::rc::Rc::new(|s: &S| {
+            let half = r_sub(s.y[0].clone(), q(1, 2));
+            Ok(r_mul(half, half))
+        }))
+    })
+}
+
+// guard = -(y[0] - 1/4)(y[0] - 3/4) (the double-root fixture)
+fn guard_double_root() -> Guard {
+    std::rc::Rc::new(|_t: R| {
+        Ok(std::rc::Rc::new(|s: &S| {
+            let a = r_sub(s.y[0].clone(), q(1, 4));
+            let b = r_sub(s.y[0].clone(), q(3, 4));
+            Ok(r_sub(q(0, 1), r_mul(a, b)))
+        }))
+    })
+}
+
+fn reset_id() -> Reset {
+    std::rc::Rc::new(|s: &S| Ok(s.clone()))
+}
+
+// reset: y[0] + 1
+fn reset_add1() -> Reset {
+    std::rc::Rc::new(|s: &S| {
+        Ok(S {
+            t: s.t,
+            y: vec![red((s.y[0].0 + s.y[0].1, s.y[0].1))],
+        })
+    })
+}
+
+// reset: y[0] = 0 (the chatter fixture)
+fn reset_zero() -> Reset {
+    std::rc::Rc::new(|s: &S| Ok(S { t: s.t, y: vec![q(0, 1)] }))
+}
+
+// f: y' = c (constant derivative, the authored fixture family)
+fn flow_const(c: i128) -> Flow {
+    std::rc::Rc::new(move |t: R| {
+        Ok(std::rc::Rc::new(move |_s: &S| Ok(S { t, y: vec![q(c, 1)] })))
+    })
+}
+
+// g = th - 3/4 (the dyadic-root fixture)
+fn g_shift_three_quarters() -> UnaryR {
+    std::rc::Rc::new(|th: R| Ok(red((th.0 * 4 - 3 * th.1, th.1 * 4))))
+}
+
+// g = 3*th - 1 (the nondyadic 1/3-root fixture)
+fn g_three_th_minus_one() -> UnaryR {
+    std::rc::Rc::new(|th: R| Ok(red((3 * th.0 - th.1, th.1))))
+}
+
+fn ev(guard: Guard, direction: i64, terminal: bool, priority: i64, reset: Reset) -> E {
+    E { guard, direction, terminal, priority, reset }
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <valid_directions> (event_directions_ok)
+    let got = event_directions_ok(vec![ev(guard_y0(), 1, false, 0, reset_id())], 0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF valid_directions EMITTED {diff}; VM = true");
+    }
+    // example <invalid_direction>
+    let got = event_directions_ok(vec![ev(guard_y0(), 2, false, 0, reset_id())], 0);
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF invalid_direction EMITTED {diff}; VM = false");
+    }
+
+    // example <strict_rising_crosses> (crosses: the sign-change
+    // window)
+    let got = crosses(1, q(0 - 1, 1), q(1, 1));
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF strict_rising_crosses EMITTED {diff}; VM = true");
+    }
+    // example <rising_filtered_for_falling_event>
+    let got = crosses(0 - 1, q(0 - 1, 1), q(1, 1));
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF rising_filtered_for_falling_event EMITTED {diff}; VM = false");
+    }
+    // example <zero_at_right_endpoint_is_completed>
+    let got = crosses(1, q(0 - 1, 1), q(0, 1));
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF zero_at_right_endpoint_is_completed EMITTED {diff}; VM = true");
+    }
+    // example <zero_at_left_endpoint_is_root>
+    let got = crosses(1, q(0, 1), q(1, 1));
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF zero_at_left_endpoint_is_root EMITTED {diff}; VM = true");
+    }
+    // example <both_zero_is_no_crossing>
+    let got = crosses(0, q(0, 1), q(0, 1));
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF both_zero_is_no_crossing EMITTED {diff}; VM = false");
+    }
+    // example <tangent_window_misses>
+    let got = crosses(0, q(1, 1), q(1, 1));
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF tangent_window_misses EMITTED {diff}; VM = false");
+    }
+
+    // example <scans_in_declaration_order> (scan_at: THE field-call
+    // seam - events[i].guard projected and applied)
+    let scan_events_fixture = || {
+        vec![
+            ev(guard_y0_minus(1, 2), 1, false, 0, reset_id()),
+            ev(guard_const_minus(1, 4), 0, false, 0, reset_id()),
+        ]
+    };
+    let got = scan_at(
+        scan_events_fixture(),
+        st(q(0, 1), q(0, 1)),
+        st(q(1, 1), q(1, 1)),
+        1,
+        vec![],
+    );
+    if let Some(diff) = lq(&got, &[0, 1]) {
+        failures += 1;
+        println!("DIFF scans_in_declaration_order EMITTED {diff}; VM = [0, 1]");
+    }
+    // example <wrapper_scans_in_declaration_order> (scan_events)
+    let got = scan_events(
+        scan_events_fixture(),
+        st(q(0, 1), q(0, 1)),
+        st(q(1, 1), q(1, 1)),
+    );
+    if let Some(diff) = lq(&got, &[0, 1]) {
+        failures += 1;
+        println!("DIFF wrapper_scans_in_declaration_order EMITTED {diff}; VM = [0, 1]");
+    }
+
+    // example <priority_wins> (pick_at: strictly smaller priority)
+    let prio_fixture = |pa: i64, pb: i64| {
+        vec![
+            ev(guard_y0(), 0, false, pa, reset_id()),
+            ev(guard_y0(), 0, false, pb, reset_id()),
+        ]
+    };
+    let got = pick_at(prio_fixture(5, 1), vec![0, 1], 1, 0 - 1);
+    if let Some(diff) = iq(&got, 1) {
+        failures += 1;
+        println!("DIFF priority_wins EMITTED {diff}; VM = 1");
+    }
+    // example <tie_keeps_declaration_order> (ties REPLACE: the
+    // earlier declaration wins)
+    let got = pick_at(prio_fixture(2, 2), vec![0, 1], 1, 0 - 1);
+    if let Some(diff) = iq(&got, 0) {
+        failures += 1;
+        println!("DIFF tie_keeps_declaration_order EMITTED {diff}; VM = 0");
+    }
+
+    // example <empty_scan_answers_minus_one> (pick_event)
+    let got = pick_event(vec![ev(guard_y0(), 0, false, 0, reset_id())], vec![]);
+    if let Some(diff) = iq(&got, 0 - 1) {
+        failures += 1;
+        println!("DIFF empty_scan_answers_minus_one EMITTED {diff}; VM = -1");
+    }
+    // example <wrapper_picks_the_strict_priority_winner>
+    let got = pick_event(prio_fixture(5, 1), vec![0, 1]);
+    if let Some(diff) = iq(&got, 1) {
+        failures += 1;
+        println!("DIFF wrapper_picks_the_strict_priority_winner EMITTED {diff}; VM = 1");
+    }
+
+    // example <dyadic_root_found_exactly> (bracket_at: exact
+    // bisection - dyadic roots found EXACTLY)
+    let got = bracket_at(g_shift_three_quarters(), q(0, 1), q(1, 1), q(0 - 3, 4), 40);
+    if let Some(diff) = dq(&got, q(3, 4)) {
+        failures += 1;
+        println!("DIFF dyadic_root_found_exactly EMITTED {diff}; VM = 3/4");
+    }
+    // example <nondyadic_root_bracketed> (root 1/3 banded to 1/2^40,
+    // never returned exactly)
+    let got = bracket_at(g_three_th_minus_one(), q(0, 1), q(1, 1), q(0 - 1, 1), 40);
+    let band = q(1, 1099511627776);
+    let verdict = match &got {
+        Ok(v)
+            if lt(&r_sub(v.clone(), q(1, 3)), &band)
+                && lt(&r_sub(q(1, 3), v.clone()), &band)
+                && !eq(v, &q(1, 3)) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    };
+    if let Some(diff) = verdict {
+        failures += 1;
+        println!("DIFF nondyadic_root_bracketed EMITTED {diff}; VM = within 1/2^40 of 1/3, != 1/3");
+    }
+
+    // example <dyadic_root_at_the_entry_seam> (event_bracket_root)
+    let got = event_bracket_root(g_shift_three_quarters());
+    if let Some(diff) = dq(&got, q(3, 4)) {
+        failures += 1;
+        println!("DIFF dyadic_root_at_the_entry_seam EMITTED {diff}; VM = 3/4");
+    }
+    // example <nondyadic_root_banded_at_the_entry_seam>
+    let got = event_bracket_root(g_three_th_minus_one());
+    let band = q(1, 1099511627776);
+    let verdict = match &got {
+        Ok(v)
+            if lt(&r_sub(v.clone(), q(1, 3)), &band)
+                && lt(&r_sub(q(1, 3), v.clone()), &band)
+                && !eq(v, &q(1, 3)) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    };
+    if let Some(diff) = verdict {
+        failures += 1;
+        println!("DIFF nondyadic_root_banded_at_the_entry_seam EMITTED {diff}; VM = within 1/2^40 of 1/3, != 1/3");
+    }
+
+    // example <terminal_event_exact_half> (event_rollout_at: y' = -1
+    // from y = 1, guard y - 1/2 falls through 1/2 at exactly t = 1/2)
+    let pair = cash_karp_pair();
+    let tol = || vec![q(1, 4)];
+    let got = event_rollout_at(
+        flow_const(0 - 1),
+        pair.clone(),
+        4,
+        5,
+        tol(),
+        tol(),
+        q(1, 1),
+        q(1, 4),
+        q(1, 1),
+        8,
+        4,
+        vec![ev(guard_y0_minus(1, 2), 0 - 1, true, 0, reset_id())],
+        0,
+        0,
+        0,
+        q(0, 1),
+        false,
+        st(q(0, 1), q(1, 1)),
+        q(1, 1),
+    );
+    if let Some(diff) = runq(&got, q(1, 2), &[q(1, 2)], false, 1, 0, 1, 3) {
+        failures += 1;
+        println!("DIFF terminal_event_exact_half EMITTED {diff}; VM = t=1/2 y=[1/2] terminal");
+    }
+
+    // example <reset_continues_to_exact_end> (y' = 1, guard y - 3/4,
+    // reset adds 1, completes at t = 1 with y = 2 exactly)
+    let got = event_rollout_at(
+        flow_const(1),
+        pair.clone(),
+        4,
+        5,
+        tol(),
+        tol(),
+        q(1, 1),
+        q(1, 4),
+        q(1, 1),
+        8,
+        4,
+        vec![ev(guard_y0_minus(3, 4), 1, false, 0, reset_add1())],
+        0,
+        0,
+        0,
+        q(0, 1),
+        false,
+        st(q(0, 1), q(0, 1)),
+        q(1, 1),
+    );
+    if let Some(diff) = runq(&got, q(1, 1), &[q(2, 1)], true, 2, 0, 1, 0) {
+        failures += 1;
+        println!("DIFF reset_continues_to_exact_end EMITTED {diff}; VM = t=1 y=[2] complete");
+    }
+
+    // example <initial_root_fires_once_then_dedup> (root AT the
+    // initial time fires once; the same-instant refire suppresses)
+    let got = event_rollout_at(
+        flow_const(1),
+        pair.clone(),
+        4,
+        5,
+        tol(),
+        tol(),
+        q(3, 4),
+        q(1, 4),
+        q(3, 4),
+        8,
+        4,
+        vec![ev(guard_y0(), 1, false, 0, reset_id())],
+        0,
+        0,
+        0,
+        q(0, 1),
+        false,
+        st(q(0, 1), q(0, 1)),
+        q(3, 2),
+    );
+    if let Some(diff) = runq(&got, q(3, 2), &[q(3, 2)], true, 3, 0, 1, 0) {
+        failures += 1;
+        println!("DIFF initial_root_fires_once_then_dedup EMITTED {diff}; VM = t=3/2 y=[3/2] complete");
+    }
+
+    // example <chatter_exhausts_event_budget> (reset moves the state
+    // back below the threshold: re-crossings exhaust the budget)
+    let got = event_rollout_at(
+        flow_const(1),
+        pair.clone(),
+        4,
+        5,
+        tol(),
+        tol(),
+        q(3, 4),
+        q(1, 4),
+        q(3, 4),
+        16,
+        3,
+        vec![ev(guard_y0_minus(3, 4), 1, false, 0, reset_zero())],
+        0,
+        0,
+        0,
+        q(0, 1),
+        false,
+        st(q(0, 1), q(0, 1)),
+        q(4, 1),
+    );
+    if let Some(diff) = runq(&got, q(9, 4), &[q(0, 1)], false, 3, 0, 3, 2) {
+        failures += 1;
+        println!("DIFF chatter_exhausts_event_budget EMITTED {diff}; VM = t=9/4 y=[0] chatter");
+    }
+
+    // example <tangent_guard_never_fires> ((y - 1/2)^2 touches zero
+    // without crossing: the sign-change window misses it - labeled)
+    let got = event_rollout_at(
+        flow_const(1),
+        pair.clone(),
+        4,
+        5,
+        tol(),
+        tol(),
+        q(1, 1),
+        q(1, 4),
+        q(1, 1),
+        8,
+        4,
+        vec![ev(guard_tangent(), 0, true, 0, reset_id())],
+        0,
+        0,
+        0,
+        q(0, 1),
+        false,
+        st(q(0, 1), q(0, 1)),
+        q(1, 1),
+    );
+    if let Some(diff) = runq(&got, q(1, 1), &[q(1, 1)], true, 1, 0, 0, 0) {
+        failures += 1;
+        println!("DIFF tangent_guard_never_fires EMITTED {diff}; VM = t=1 y=[1] complete, 0 events");
+    }
+
+    // example <double_root_window_misses_both> (two crossings inside
+    // one segment: endpoint signs agree, the window sees nothing)
+    let got = event_rollout_at(
+        flow_const(1),
+        pair.clone(),
+        4,
+        5,
+        tol(),
+        tol(),
+        q(1, 1),
+        q(1, 4),
+        q(1, 1),
+        8,
+        4,
+        vec![ev(guard_double_root(), 0, true, 0, reset_id())],
+        0,
+        0,
+        0,
+        q(0, 1),
+        false,
+        st(q(0, 1), q(0, 1)),
+        q(1, 1),
+    );
+    if let Some(diff) = runq(&got, q(1, 1), &[q(1, 1)], true, 1, 0, 0, 0) {
+        failures += 1;
+        println!("DIFF double_root_window_misses_both EMITTED {diff}; VM = t=1 y=[1] complete, 0 events");
+    }
+
+    // example <final_time_root_fires_and_completes> (event_rollout:
+    // the crossing completes exactly at the final time, theta = 1)
+    let got = event_rollout(
+        flow_const(1),
+        pair.clone(),
+        4,
+        5,
+        tol(),
+        tol(),
+        q(3, 4),
+        q(1, 4),
+        q(3, 4),
+        8,
+        4,
+        vec![ev(guard_y0_minus(3, 4), 1, false, 0, reset_id())],
+        st(q(0, 1), q(0, 1)),
+        q(3, 4),
+    );
+    if let Some(diff) = runq(&got, q(3, 4), &[q(3, 4)], true, 1, 0, 1, 0) {
+        failures += 1;
+        println!("DIFF final_time_root_fires_and_completes EMITTED {diff}; VM = t=3/4 y=[3/4] complete");
+    }
+
+    // example <wrong_direction_event_stays_silent> (a falling
+    // crossing against a RISING event: direction filtering keeps it
+    // silent)
+    let got = event_rollout(
+        flow_const(0 - 1),
+        pair,
+        4,
+        5,
+        tol(),
+        tol(),
+        q(1, 1),
+        q(1, 4),
+        q(1, 1),
+        8,
+        4,
+        vec![ev(guard_y0_minus(1, 2), 1, true, 0, reset_id())],
+        st(q(0, 1), q(1, 1)),
+        q(1, 1),
+    );
+    if let Some(diff) = runq(&got, q(1, 1), &[q(0, 1)], true, 1, 0, 0, 0) {
+        failures += 1;
+        println!("DIFF wrong_direction_event_stays_silent EMITTED {diff}; VM = t=1 y=[0] complete, 0 events");
+    }
+
+    if failures > 0 {
+        panic!("{failures} events row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_events() {
+    let diffs = run_lane(
+        "language/modules/analysis/evolution/events.emath",
+        EVENTS_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted events disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }
