@@ -23,7 +23,7 @@ use std::sync::mpsc;
 mod common;
 
 /// The pinned not-runnable census (2026-09-24, the refusal-lane pass):
-/// 8 modules across the named refusal lanes. Update this number ONLY
+/// 7 modules across the named refusal lanes. Update this number ONLY
 /// with a bead that names the lane that changed. History: 15 until
 /// the operator-tag-witness pass, which unblocked analysis/autodiff,
 /// analysis/bvp_newton, and optimization/advanced (the schema-tag
@@ -76,14 +76,45 @@ mod common;
 /// inlined implicit solves emit with the three laws that refused by
 /// record name. Both modules emit and compile offline with their 19
 /// and 28 authored rows still green in the VM (the conformance lanes
-/// pin every row emitted == VM, refusal atoms exact). Remaining 8:
-/// derivative/linalg (quote.substitute's static reference string),
-/// events (the general Call guard), levenberg (unknown value
-/// carriers through the numeric-program law), walk (quote.open/
-/// quote.view carriers), rewriting (quote.make and the substitute
-/// carrier mismatch), discovery (heterogeneous Rat -> Bool quoted
-/// functions), sieve (buffer carrier ops are VM-only in this cut).
-const NOT_RUNNABLE_PINNED: usize = 8;
+/// pin every row emitted == VM, refusal atoms exact). 8 -> 7 with
+/// the substitute-seam pass (emath-49o8): algebra/linalg refused
+/// through quote.substitute's static reference seam - d_form's chain
+/// rule reads the callee fragment's binder name at runtime (a
+/// minted-scope tag record whose type name IS the binder), which the
+/// emitted lane had no spelling for. The reference now rides as a
+/// node-family operand (CodeSubRef's dynamic arm through
+/// reference_name), a node-carried replacement substitutes
+/// structurally through quote.make (substitute_tree - the VM's
+/// value_to_expr law), the program template carries its distilled
+/// tree so quote.view opens it (the distillation is soft: a template
+/// outside the distilled subset, like a float carrier, keeps the
+/// factory lane and view refuses by name at runtime), tuple domains
+/// kind as positional sequences (_N projects checked), and a concat
+/// with any node-family operand stays in the family. Three root
+/// engine laws landed with the lane: the residual fold KEEPS
+/// quote.evaluate and quote.substitute over a runtime code input
+/// (the call survives to emission - before, literal_exp's Int
+/// collapsed onto the un-evaluated code and every numeric use
+/// misrendered); the branch join is one law in kind and render
+/// (branch_carrier: a degenerate `[]` base arm yields to the family
+/// tail, so `if done: [] else: family-recursive` renders one carrier
+/// instead of `vec!()` against the family concat); and the
+/// sibling-kind table carries the ENTRY ABI (a CodeValue body
+/// projects onto the declared carrier at the boundary - the callee's
+/// emitted return type is what every caller renders against).
+/// linalg emits and compiles offline with its 94 authored rows still
+/// green in the VM and 28 conformance rows pinning emitted == VM
+/// (the grad_quote substitute+evaluate round trip over the emitted
+/// ExprCode included). Remaining 7: derivative (its two newtons call
+/// a closure yielded by quote.evaluate over a transformed template -
+/// the closure-call callee-signature seam; every other row emits
+/// through linalg's import), events (the general Call guard),
+/// levenberg (unknown value carriers through the numeric-program
+/// law), walk (quote.open/quote.view carriers), rewriting (quote.make
+/// and the substitute carrier mismatch), discovery (heterogeneous
+/// Rat -> Bool quoted functions), sieve (buffer carrier ops are
+/// VM-only in this cut).
+const NOT_RUNNABLE_PINNED: usize = 7;
 
 /// Fixed compile-lane count (the sweep's `-P 4`).
 const LANES: usize = 4;

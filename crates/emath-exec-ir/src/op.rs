@@ -2,6 +2,17 @@
 
 use super::{EmirValue, BuiltinId, EmirSliceAxis, EmirProgram, FoldCombine, CellClass, VectorScalarOp, ReduceId};
 
+/// The `quote.substitute` reference. Statically resolved at lowering
+/// (the authored spellings: a string literal or a single-segment
+/// name path) or carried as a runtime node-family operand - the
+/// minted-scope packaging spells binder names as tag records whose
+/// type name IS the name (the VM's dynamic reference law).
+#[derive(Clone, Debug, PartialEq)]
+pub enum CodeSubRef {
+    Static(String),
+    Dyn(EmirValue),
+}
+
 /// Domain-neutral execution instructions.
 ///
 /// Mathematical feature identity never appears as a variant. Feature behavior
@@ -310,15 +321,16 @@ pub enum EmirOp {
         deps: std::collections::BTreeMap<String, u64>,
     },
     /// `quote.substitute(code, name, value)`: bind one open name by
-    /// partial application. The reference is a static string resolved
-    /// at lowering; the value is a runtime scalar of the template's
+    /// partial application. The reference is static (resolved at
+    /// lowering) or a runtime node-family operand whose tag name is
+    /// the binder; the value is a runtime scalar of the template's
     /// carrier (any scalar carrier for an expression template).
     /// Binding a name that is not open is a no-op
     /// (tree-substitution parity: substituting an absent name leaves
     /// the code unchanged).
     CodeSubstitute {
         code: EmirValue,
-        reference: String,
+        reference: CodeSubRef,
         value: EmirValue,
     },
     /// `quote.evaluate(code)`: the guarded executor. Open code

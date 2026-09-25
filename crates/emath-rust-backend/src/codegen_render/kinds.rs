@@ -202,6 +202,19 @@ impl ValueKind {
                                 .collect(),
                             result: Box::new(parse(result, remaining - 1)),
                         }
+                    } else if text.starts_with("Tuple<") && text.ends_with('>') {
+                        // A tuple kinds as the positional sequence
+                        // its literals lower to (ListCreate): the
+                        // element carrier joins the declared element
+                        // domains - the vector-element law, so a
+                        // heterogeneous tuple refuses exactly where
+                        // its literal does.
+                        let parts = split_signature_parts(&text[6..text.len() - 1]);
+                        let joined = parts
+                            .iter()
+                            .map(|part| parse(part, remaining - 1))
+                            .fold(ValueKind::Other, join_tuple_element);
+                        ValueKind::Vector(Box::new(joined))
                     } else {
                         ValueKind::Other
                     }
@@ -326,6 +339,42 @@ pub(super) fn kind_is_degenerate(kind: &ValueKind) -> bool {
     }
 }
 
+/// The carrier one branch renders when its arms carry these kinds -
+/// one law, one spelling, shared by the kind walk's `Branch` rule and
+/// the render's arm-widening (the two computed different joins when
+/// the arms disagreed: the kind rule yields a degenerate side to the
+/// other arm's concrete carrier while the render joined bare, so an
+/// `if done: [] else: <family tail>` kinded as the family but
+/// rendered `vec!()` against it).
+pub(super) fn branch_carrier(
+    left: ValueKind,
+    right: ValueKind,
+    left_is_call_self: bool,
+    right_is_call_self: bool,
+) -> ValueKind {
+    let left_degenerate = kind_is_degenerate(&left);
+    let right_degenerate = kind_is_degenerate(&right);
+    if left == ValueKind::Never
+        || (left_is_call_self && right != ValueKind::Other)
+        || (left_degenerate && !right_degenerate && right != ValueKind::Other)
+    {
+        right
+    } else if right == ValueKind::Never
+        || (right_is_call_self && left != ValueKind::Other)
+        || (right_degenerate && !left_degenerate && left != ValueKind::Other)
+    {
+        left
+    } else {
+        // One representation: the arms fold under the scalar join
+        // law, element-wise through vectors (an Int-element arm
+        // widens exactly into the Rat-element vector at the arm
+        // boundary); a declared Int context narrows back at the
+        // checked i64 boundary. Pairs the law cannot fold stay
+        // unrepresentable.
+        join_arm_kinds(left, right)
+    }
+}
+
 /// Recover a frame input's kind from the callee's authored
 /// declaration when the argument's own kind is degenerate (an empty
 /// `[]` literal carries no element kind of its own). The declaration
@@ -410,6 +459,21 @@ pub(super) fn callable_ty(
 /// Split a `Fn<...>` signature body on top-level commas (nested
 /// `<...>` stays intact), so `Fn<Int,Record<CS>,Rat>` yields the
 /// parameter parts `["Int", "Record<CS>"]` and result `"Rat"`.
+/// The tuple element join: the vector-element law over the declared
+/// tuple domains (Other absorbs, the integers widen, anything else
+/// keeps the left spelling - the same join a tuple literal takes).
+fn join_tuple_element(left: ValueKind, right: ValueKind) -> ValueKind {
+    match (left, right) {
+        (ValueKind::Other, right) => right,
+        (ValueKind::I64, ValueKind::ExactInt) | (ValueKind::ExactInt, ValueKind::I64) => {
+            ValueKind::ExactInt
+        }
+        (ValueKind::I64 | ValueKind::ExactInt, ValueKind::Rational)
+        | (ValueKind::Rational, ValueKind::I64 | ValueKind::ExactInt) => ValueKind::Rational,
+        (left, _) => left,
+    }
+}
+
 fn split_signature_parts(text: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0usize;
@@ -518,7 +582,7 @@ pub(super) fn kind_at(kinds: &[ValueKind], value: EmirValue) -> ValueKind {
 
 /// True when a body's result register is a direct self-call (the
 /// tail-recursive shape; its kind is the enclosing function's own).
-fn result_is_call_self(program: &EmirProgram) -> bool {
+pub(super) fn result_is_call_self(program: &EmirProgram) -> bool {
     program
         .ops
         .get(program.result.0 as usize)
@@ -650,6 +714,20 @@ pub(super) fn kind_of_op(
                 )
             {
                 return ValueKind::I64;
+            }
+            // A tuple-position projection (`_0`, `_1`, ...) off a
+            // sequence-kinded receiver: the positional element
+            // carrier - a tuple lowers as a sequence and `_N` indexes
+            // it (the VM's tuple field law). A node-family receiver
+            // keeps the dynamic family arm above.
+            if let Some(index) = field
+                .strip_prefix('_')
+                .and_then(|text| text.parse::<usize>().ok())
+            {
+                if let ValueKind::Vector(element) = kind_at(kinds, *record) {
+                    let _ = index;
+                    return *element.clone();
+                }
             }
             // A part projection off the Rational carrier carries the
             // exact-integer parts (`CValue::Rat { num, den }`); the
@@ -872,10 +950,18 @@ pub(super) fn kind_of_op(
         }
         // Authored cons preserves the element carrier (records stay
         // records), unlike the Float64 dense-lane concat above.
-        EmirOp::ListConcat(values) => match numeric_element_kind(values, kinds) {
-            ValueKind::Vector(element) => ValueKind::Vector(element),
-            other => ValueKind::Vector(Box::new(other)),
-        },
+        EmirOp::ListConcat(values) => {
+            // A concat with any node-family operand stays in the
+            // family (the VM's node-sequence law): typed-sequence
+            // operands fold into the family at the render.
+            if values.iter().any(|value| kind_at(kinds, *value) == ValueKind::Node) {
+                return ValueKind::Node;
+            }
+            match numeric_element_kind(values, kinds) {
+                ValueKind::Vector(element) => ValueKind::Vector(element),
+                other => ValueKind::Vector(Box::new(other)),
+            }
+        }
         EmirOp::DenseValues(_) => ValueKind::Vector(Box::new(ValueKind::F64)),
         EmirOp::DenseRepack { template, .. } => match kind_at(kinds, *template) {
             ValueKind::DenseLayout(kind) => {
@@ -932,27 +1018,12 @@ pub(super) fn kind_of_op(
             // (an empty `[]` literal carries no element kind) yields
             // to the other side's concrete kind: `if done: [] else:
             // moves(k)` joins to the moves carrier.
-            let left_degenerate = kind_is_degenerate(&left);
-            let right_degenerate = kind_is_degenerate(&right);
-            if left == ValueKind::Never
-                || (result_is_call_self(then_body) && right != ValueKind::Other)
-                || (left_degenerate && !right_degenerate && right != ValueKind::Other)
-            {
-                right
-            } else if right == ValueKind::Never
-                || (result_is_call_self(else_body) && left != ValueKind::Other)
-                || (right_degenerate && !left_degenerate && left != ValueKind::Other)
-            {
-                left
-            } else {
-                // One representation: the arms fold under the scalar
-                // join law, element-wise through vectors (an
-                // Int-element arm widens exactly into the Rat-element
-                // vector at the arm boundary); a declared Int context
-                // narrows back at the checked i64 boundary. Pairs the
-                // law cannot fold stay unrepresentable.
-                join_arm_kinds(left, right)
-            }
+            branch_carrier(
+                left,
+                right,
+                result_is_call_self(then_body),
+                result_is_call_self(else_body),
+            )
         }
         EmirOp::ListCreate(values)
         | EmirOp::SetCreate {

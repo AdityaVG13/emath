@@ -33,6 +33,13 @@ pub type CodeFactory<V> = Rc<dyn Fn(&[V]) -> Result<Unary<V>, String>>;
 /// A quoted program template with its open constants.
 pub struct Code<V: Clone + 'static> {
     free: Vec<String>,
+    /// The distilled tree the literal carried (the dual
+    /// representation the union lane already carries - the
+    /// view/make seam reads structure through it). `None` on a
+    /// substituted or made value: a bound constant is a factory
+    /// fact, not a tree splice, and a made-from-nodes program value
+    /// never carried one.
+    tree: Option<super::code_tree::CodeTree>,
     make: CodeFactory<V>,
 }
 
@@ -40,6 +47,7 @@ impl<V: Clone + 'static> Clone for Code<V> {
     fn clone(&self) -> Self {
         Code {
             free: self.free.clone(),
+            tree: self.tree.clone(),
             make: Rc::clone(&self.make),
         }
     }
@@ -48,7 +56,37 @@ impl<V: Clone + 'static> Clone for Code<V> {
 /// Open a compiled template: `free` names the open constants in the
 /// order the factory consumes their values.
 pub fn open<V: Clone + 'static>(free: Vec<String>, make: CodeFactory<V>) -> Code<V> {
-    Code { free, make }
+    Code { free, tree: None, make }
+}
+
+/// Open a compiled template WITH its distilled tree: the literal
+/// lane carries both representations so `quote.view` can open a
+/// program template's structure. `substitute` closes the tree lane
+/// (a bound constant is a factory splice, not a tree rewrite);
+/// made-from-nodes program values never carried one.
+pub fn open_with_tree<V: Clone + 'static>(
+    free: Vec<String>,
+    tree: super::code_tree::CodeTree,
+    make: CodeFactory<V>,
+) -> Code<V> {
+    Code { free, tree: Some(tree), make }
+}
+
+impl<V: Clone + 'static> Code<V> {
+    /// `quote.view` over a program template: the distilled tree the
+    /// literal carried. A substituted or made value has no tree lane
+    /// - the refusal names it, never guessing.
+    pub fn view(
+        &self,
+        module: &super::code_tree::ModuleTable,
+    ) -> Result<super::code_tree::NodeValue, String> {
+        match &self.tree {
+            Some(tree) => Ok(super::code_tree::view_tree(tree, module)),
+            None => Err(String::from(
+                "type: quote.view over a substituted or made program value has no tree lane in this cut",
+            )),
+        }
+    }
 }
 
 /// Bind one open constant by partial application.
@@ -65,7 +103,10 @@ pub fn substitute<V: Clone + 'static>(code: &Code<V>, reference: &str, value: V)
         all.extend_from_slice(&rest[position..]);
         inner(&all)
     });
-    Code { free, make }
+    // The tree lane closes: a bound constant is a factory splice,
+    // not a tree rewrite (view over a substituted value refuses by
+    // name through `Code::view`).
+    Code { free, tree: None, make }
 }
 
 /// The guarded executor: closed code yields the specialized unary
@@ -410,6 +451,41 @@ pub fn substitute_expr(
     }
 }
 
+/// Substitute a whole made subtree into an expression template (the
+/// VM's `value_to_expr` law: any replacement value rebuilds into the
+/// replacement tree; a node-record value arrives here through
+/// `quote.make`). The reference must be open (an absent name is the
+/// no-op parity). A structural replacement cannot splice the
+/// compiled factory - the factory drops and evaluation falls to the
+/// shared scalar tree evaluator, the same lane `quote.make` results
+/// take. Open names recompute over the spliced tree (the replacement
+/// may itself carry open names) and the dependency snapshots merge.
+pub fn substitute_tree_expr(
+    code: impl std::borrow::Borrow<ExprCode>,
+    reference: &str,
+    replacement: impl std::borrow::Borrow<ExprCode>,
+) -> ExprCode {
+    let code = code.borrow();
+    let replacement = replacement.borrow();
+    if !code.free.iter().any(|name| name == reference) {
+        return code.clone();
+    }
+    let tree = super::code_tree::substitute_tree(
+        &code.tree,
+        reference,
+        &replacement.tree,
+    );
+    let free = super::code_tree::free_names_tree(&tree);
+    let mut deps = code.deps.clone();
+    deps.extend(replacement.deps.clone());
+    ExprCode {
+        free,
+        tree,
+        make: None,
+        deps,
+    }
+}
+
 /// The opened term of a plain Code value (the VM's `open_fragment`
 /// over a Code): the same tree with the compiled factory and the
 /// capture-time snapshot dropped - an opened term claims nothing.
@@ -485,6 +561,15 @@ impl ExprCode {
     }
     pub fn substitute(&self, reference: &str, value: CodeValue) -> ExprCode {
         substitute_expr(self, reference, value)
+    }
+    /// The structural substitution (a made subtree as the
+    /// replacement - the VM's `value_to_expr` law).
+    pub fn substitute_tree(
+        &self,
+        reference: &str,
+        replacement: impl std::borrow::Borrow<ExprCode>,
+    ) -> ExprCode {
+        substitute_tree_expr(self, reference, replacement)
     }
     pub fn evaluate(&self, module: &super::code_tree::ModuleTable) -> Result<CodeValue, String> {
         evaluate_expr(self, module)

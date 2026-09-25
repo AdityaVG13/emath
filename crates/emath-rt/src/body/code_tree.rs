@@ -239,6 +239,20 @@ pub fn node_list(elements: Vec<NodeValue>) -> NodeValue {
     NodeValue::Sequence(elements)
 }
 
+/// Sequence concatenation over the node family (the VM's concat law
+/// for family values): every operand must be a family sequence and
+/// elements keep their family spelling.
+pub fn node_concat_all(values: Vec<NodeValue>) -> Result<NodeValue, String> {
+    let mut elements = Vec::new();
+    for value in values {
+        let NodeValue::Sequence(items) = value else {
+            return Err(String::from("type: concat requires sequences"));
+        };
+        elements.extend(items);
+    }
+    Ok(NodeValue::Sequence(elements))
+}
+
 /// Record field projection (the VM's `project_field` over the node
 /// family): a missing field is a typed refusal, never a silent
 /// default.
@@ -281,6 +295,28 @@ pub fn node_index(sequence: impl std::borrow::Borrow<NodeValue>, index: i64) -> 
         .ok_or_else(|| String::from("invalid_index: sequence index out of range"))
 }
 
+/// The `quote.substitute` reference over the node family: a record's
+/// type name IS the binder name (the minted-scope packaging spells
+/// binder names as tag records), and a Code node wrapping a Path
+/// names its joined segments - the VM's dynamic reference forms.
+/// Anything else refuses by name, never guessing a binder.
+pub fn substitute_reference(
+    value: impl std::borrow::Borrow<NodeValue>,
+) -> Result<String, String> {
+    match value.borrow() {
+        NodeValue::Record(name, _) => Ok(name.clone()),
+        NodeValue::Code(code) => match &code.tree {
+            CodeTree::Path(segments) => Ok(segments.join(".")),
+            _ => Err(String::from(
+                "type: quote.substitute reference must name a binder",
+            )),
+        },
+        _ => Err(String::from(
+            "type: quote.substitute reference must name a binder",
+        )),
+    }
+}
+
 impl NodeValue {
     /// The artifact-side walk surface. Emitted registers hold the
     /// family owned, borrowed, or as inlined temporaries; method
@@ -293,6 +329,11 @@ impl NodeValue {
     }
     pub fn index(&self, index: i64) -> Result<NodeValue, String> {
         node_index(self, index)
+    }
+    /// The substitute reference law as a method (the free function
+    /// stays the test seam).
+    pub fn reference_name(&self) -> Result<String, String> {
+        substitute_reference(self)
     }
     pub fn view(&self, module: &ModuleTable) -> Result<NodeValue, String> {
         view_node(self, module)

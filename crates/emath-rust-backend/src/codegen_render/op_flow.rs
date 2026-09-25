@@ -243,19 +243,48 @@ pub(super) fn authored_control_expr(
             };
             let then_kind = arm_kind(then_body);
             let else_kind = arm_kind(else_body);
-            // The arms fold to one carrier: the same join law the
-            // kind walk applies (ExactInt absorbs I64, Rational
-            // absorbs the integers), element-wise through vectors.
-            // Whichever arm the law dominates widens through the
-            // `numeric_boundary_value` the call boundaries use - an
-            // Int arm into a Rat arm, and a Rat-typed inlined carrier
-            // (replace_at's declared Rat signatures instantiated over
-            // Int vectors) joining an Int-recursive tail folds to the
-            // ratio vector with the integer side widening exactly.
-            let joined_kind = super::join_arm_kinds(then_kind.clone(), else_kind.clone());
+            // The arms fold to one carrier: the SAME join law the
+            // kind walk applies (`branch_carrier` - degenerate sides
+            // yield, self-recursive tails take the sibling arm, then
+            // the scalar join element-wise through vectors). The
+            // render's widening must agree with the kind the walk
+            // assigns the branch, or the arms miscompile (an `if
+            // done: [] else: <family tail>` kinds as the family while
+            // a bare join left the arms unrepresentable).
+            let joined_kind = super::kinds::branch_carrier(
+                then_kind.clone(),
+                else_kind.clone(),
+                super::kinds::result_is_call_self(then_body),
+                super::kinds::result_is_call_self(else_body),
+            );
             let then_text = nested(then_body, argument_kinds.clone())?;
             let else_text = nested(else_body, argument_kinds)?;
             let widen = |text: String, kind: &ValueKind, other: &ValueKind| -> String {
+                // A sequence arm joining the node family folds into
+                // the family (the kind walk's degenerate-side law
+                // kinds `if done: [] else: <family tail>` as the
+                // family, and the render must agree with it). A
+                // degenerate arm (the empty base list) IS an empty
+                // family sequence - evaluated for its faults, then
+                // replaced; a family-element arm folds elementwise
+                // through `to_node`. Without the fold the arms
+                // miscompile into E0308 `vec!()` vs family pairs.
+                if joined_kind == ValueKind::Node && matches!(other, ValueKind::Node) {
+                    if let ValueKind::Vector(element) = kind {
+                        if super::node_family(element) {
+                            let folded = super::to_node(
+                                Expr::Raw(text.clone()),
+                                &ValueKind::Vector(element.clone()),
+                            );
+                            return render_expr(&folded);
+                        }
+                        if matches!(**element, ValueKind::Other) {
+                            return format!(
+                                "{{ let _family_arm: Vec<emath_rt::code::CodeValue> = {text}; emath_rt::code_tree::node_list(vec![]) }}"
+                            );
+                        }
+                    }
+                }
                 if !matches!(joined_kind, ValueKind::Other)
                     && *kind != joined_kind
                     && !matches!(kind, ValueKind::Other)

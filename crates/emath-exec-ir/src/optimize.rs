@@ -3,7 +3,7 @@
 //! Capability applications and storage/control instructions are deliberately
 //! opaque. Kernel selection and feature semantics are not optimizer authority.
 
-use crate::{EmirOp, EmirProgram, EmirValue};
+use crate::{CodeSubRef, EmirOp, EmirProgram, EmirValue};
 
 /// Optimize a program without looking through capability boundaries.
 ///
@@ -147,7 +147,12 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         // frame; a literal's nested body registers stay local (the
         // ProgramLiteral rule).
         EmirOp::CodeLiteral { .. } => {}
-        EmirOp::CodeSubstitute { code, value, .. } => out.extend([*code, *value]),
+        EmirOp::CodeSubstitute { code, reference, value } => {
+            out.extend([*code, *value]);
+            if let CodeSubRef::Dyn(reference) = reference {
+                out.push(*reference);
+            }
+        }
         EmirOp::CodeEvaluate { code } => out.push(*code),
         EmirOp::CodeView { code } => out.push(*code),
         EmirOp::CodeMake { node } => out.push(*node),

@@ -30,7 +30,8 @@
 //! `language/modules/analysis/evolution/composition.emath` (the
 //! shared-state record + curried-closure pins), and
 //! `language/modules/mechanics/stiff.emath` (the implicit-solve +
-//! adaptive-walk pins) — the same givens,
+//! adaptive-walk pins), and `language/modules/algebra/linalg.emath`
+//! (the substitute-seam + sparse/dense/hessian pins) — the same givens,
 //! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
@@ -3671,6 +3672,469 @@ fn emission_conformance_stiff() {
     assert!(
         diffs.is_empty(),
         "emitted stiff disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const LINALG_DRIVER: &str = r#"
+//! Authored pins of algebra/linalg.emath against the emitted crate
+//! (emath-49o8, the substitute-lane pass).
+//!
+//! The hess/grad family refused through quote.substitute's
+//! static-reference seam: d_form's chain rule reads the callee
+//! fragment's binder name at runtime (a minted-scope tag record),
+//! which the emitted lane had no spelling for. The reference now
+//! rides as a node-family operand (the tag record's type name IS the
+//! binder - the VM's dynamic reference law), a node-carried
+//! replacement substitutes structurally through quote.make, the
+//! program template carries its distilled tree so quote.view opens
+//! it, tuple domains kind as positional sequences (_N projects
+//! checked), and a concat with any node-family operand stays in the
+//! family. These rows pin every tier: the sparse carrier records,
+//! the dense core, and the quoted differentiator end to end (the
+//! substitute + evaluate round trip on the emitted ExprCode).
+//! Transcription boundaries: ratios compare cross-multiplied; the
+//! driver builds the quoted bodies as distilled trees (the same
+//! shapes quote(...) distills) over the EMPTY module table - the
+//! pinned bodies reference no module globals.
+
+use linalg::{
+    dense_axpy, dense_dot, dense_matvec, grad_quote, hess_col, hess_symmetric, hess_vec,
+    hessian_rows, oscillator_modes, place_row, seq_eq, sp_dense_law, sp_matvec, sp_ok,
+    sp_row_at, sp_to_dense, square_walk, zeros_row, EmathRecord_SpEnt as Ent,
+    EmathRecord_SpMat as Sp,
+};
+
+type R = (i128, i128);
+
+use linalg::emath_rt::code::CodeValue;
+use linalg::emath_rt::code::ExprCode;
+use linalg::emath_rt::code_tree::{CodeTree, ModuleTable, TreeBinary};
+
+fn q(n: i128, d: i128) -> R {
+    (n, d)
+}
+
+fn ent(col: i64, val: R) -> Ent {
+    Ent { col, val }
+}
+
+fn sp(n: i64, rows: &[Vec<Ent>]) -> Sp {
+    Sp {
+        n,
+        rows: rows.to_vec(),
+    }
+}
+
+fn eq(a: &R, b: &R) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+fn lq(got: &Result<Vec<R>, String>, want: &[R]) -> Option<String> {
+    match got {
+        Ok(v)
+            if v.len() == want.len()
+                && v.iter().zip(want).all(|(a, b)| eq(a, b)) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn llq(got: &Result<Vec<Vec<R>>, String>, want: &[&[R]]) -> Option<String> {
+    match got {
+        Ok(v)
+            if v.len() == want.len()
+                && v.iter()
+                    .zip(want)
+                    .all(|(row, want)| {
+                        row.len() == want.len()
+                            && row.iter().zip(want.iter()).all(|(a, b)| eq(a, b))
+                    }) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn bq(got: &Result<bool, String>, want: bool) -> Option<String> {
+    match got {
+        Ok(v) if *v == want => None,
+        Ok(v) => Some(format!("{v}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn rq(got: &Result<R, String>, want: R) -> Option<String> {
+    match got {
+        Ok(v) if eq(&v, &want) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn xq<T: std::fmt::Debug>(got: &Result<T, String>, atom: &str) -> Option<String> {
+    match got {
+        Err(e) if e == atom => None,
+        Ok(v) => Some(format!("Ok({v:?})")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+// Distilled-tree builders (the same shapes quote(...) distills).
+fn path(name: &str) -> CodeTree {
+    CodeTree::Path(vec![name.to_string()])
+}
+
+fn int(value: i64) -> CodeTree {
+    CodeTree::Literal(CodeValue::Int(value))
+}
+
+fn add(left: CodeTree, right: CodeTree) -> CodeTree {
+    CodeTree::Binary {
+        op: TreeBinary::Add,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+fn mul(left: CodeTree, right: CodeTree) -> CodeTree {
+    CodeTree::Binary {
+        op: TreeBinary::Mul,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+fn expr(free: &[&str], tree: CodeTree) -> ExprCode {
+    linalg::emath_rt::code::open_expr(
+        free.iter().map(|name| name.to_string()).collect(),
+        tree,
+        None,
+        std::collections::BTreeMap::new(),
+    )
+}
+
+fn var(name: &str) -> ExprCode {
+    expr(&[name], path(name))
+}
+
+// x*x + 2*y*y + x*y (the quadratic fixture every hess row uses)
+fn quadratic_body() -> ExprCode {
+    expr(
+        &["x", "y"],
+        add(
+            add(mul(path("x"), path("x")), mul(mul(int(2), path("y")), path("y"))),
+            mul(path("x"), path("y")),
+        ),
+    )
+}
+
+// x*x*y + y*y*y (the coupled fixture)
+fn coupled_body() -> ExprCode {
+    expr(
+        &["x", "y"],
+        add(
+            mul(mul(path("x"), path("x")), path("y")),
+            mul(mul(path("y"), path("y")), path("y")),
+        ),
+    )
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <sp_ok_true> (sp_ok: the SpMat record lane)
+    let got = sp_ok(sp(2, &[vec![ent(1, q(3, 1))], vec![]]));
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF sp_ok_true EMITTED {diff}; VM = true");
+    }
+    // example <sp_ok_bad_col>
+    let got = sp_ok(sp(2, &[vec![ent(2, q(3, 1))], vec![]]));
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF sp_ok_bad_col EMITTED {diff}; VM = false");
+    }
+
+    // example <zeros_three> (zeros_row: the descending prepend)
+    let got = zeros_row(3, 2);
+    if let Some(diff) = lq(&got, &[q(0, 1), q(0, 1), q(0, 1)]) {
+        failures += 1;
+        println!("DIFF zeros_three EMITTED {diff}; VM = [0, 0, 0]");
+    }
+
+    // example <place_two> (place_row: replace_at through the walk)
+    let got = place_row(
+        vec![ent(0, q(5, 1)), ent(2, q(7, 1))],
+        0,
+        vec![q(0, 1), q(0, 1), q(0, 1)],
+    );
+    if let Some(diff) = lq(&got, &[q(5, 1), q(0, 1), q(7, 1)]) {
+        failures += 1;
+        println!("DIFF place_two EMITTED {diff}; VM = [5, 0, 7]");
+    }
+
+    // example <dense_identity> (sp_to_dense: the materialization)
+    let got = sp_to_dense(
+        sp(2, &[vec![ent(0, q(1, 1))], vec![ent(1, q(1, 1))]]),
+        0,
+    );
+    if let Some(diff) = llq(&got, &[&[q(1, 1), q(0, 1)], &[q(0, 1), q(1, 1)]]) {
+        failures += 1;
+        println!("DIFF dense_identity EMITTED {diff}; VM = [[1, 0], [0, 1]]");
+    }
+
+    // example <row_dot> (sp_row_at: the entry walk, exact Rat)
+    let got = sp_row_at(
+        vec![ent(0, q(2, 1)), ent(2, q(3, 1))],
+        vec![q(1, 1), q(10, 1), q(100, 1)],
+        0,
+        q(0, 1),
+    );
+    if let Some(diff) = rq(&got, q(302, 1)) {
+        failures += 1;
+        println!("DIFF row_dot EMITTED {diff}; VM = 302");
+    }
+
+    // example <sp_matvec_at_matches_the_wrapper_fixture>
+    let a = sp(
+        3,
+        &[
+            vec![ent(0, q(2, 1)), ent(2, q(1, 1))],
+            vec![],
+            vec![ent(1, q(4, 1))],
+        ],
+    );
+    let x = vec![q(1, 1), q(2, 1), q(3, 1)];
+    let got = linalg::sp_matvec_at(a.clone(), x.clone(), 0);
+    if let Some(diff) = lq(&got, &[q(5, 1), q(0, 1), q(8, 1)]) {
+        failures += 1;
+        println!("DIFF sp_matvec_at_matches_the_wrapper_fixture EMITTED {diff}; VM = [5, 0, 8]");
+    }
+
+    // example <sparse_times_vector> (sp_matvec: guard-first)
+    let got = sp_matvec(a.clone(), x.clone());
+    if let Some(diff) = lq(&got, &[q(5, 1), q(0, 1), q(8, 1)]) {
+        failures += 1;
+        println!("DIFF sparse_times_vector EMITTED {diff}; VM = [5, 0, 8]");
+    }
+    // example <sparse_refuses_bad_col> (bad_sp_index, exact)
+    let got = sp_matvec(sp(2, &[vec![ent(5, q(1, 1))], vec![]]), vec![q(1, 1), q(2, 1)]);
+    if let Some(diff) = xq(&got, "bad_sp_index") {
+        failures += 1;
+        println!("DIFF sparse_refuses_bad_col EMITTED {diff}; VM = Err(bad_sp_index)");
+    }
+    // example <sparse_refuses_width>
+    let got = sp_matvec(sp(2, &[vec![ent(0, q(1, 1))], vec![]]), vec![q(1, 1)]);
+    if let Some(diff) = xq(&got, "bad_sp_index") {
+        failures += 1;
+        println!("DIFF sparse_refuses_width EMITTED {diff}; VM = Err(bad_sp_index)");
+    }
+
+    // example <dot_basic> (dense_dot)
+    let got = dense_dot(vec![q(1, 1), q(2, 1)], vec![q(3, 1), q(4, 1)], 0, q(0, 1));
+    if let Some(diff) = rq(&got, q(11, 1)) {
+        failures += 1;
+        println!("DIFF dot_basic EMITTED {diff}; VM = 11");
+    }
+
+    // example <dense_matvec_at_matches_the_wrapper_fixture>
+    let got = linalg::dense_matvec_at(
+        vec![vec![q(2, 1), q(1, 1)], vec![q(1, 1), q(2, 1)]],
+        vec![q(1, 1), q(1, 1)],
+        0,
+    );
+    if let Some(diff) = lq(&got, &[q(3, 1), q(3, 1)]) {
+        failures += 1;
+        println!("DIFF dense_matvec_at_matches_the_wrapper_fixture EMITTED {diff}; VM = [3, 3]");
+    }
+
+    // example <dense_times_vector> (dense_matvec)
+    let got = dense_matvec(
+        vec![vec![q(2, 1), q(1, 1)], vec![q(1, 1), q(2, 1)]],
+        vec![q(1, 1), q(1, 1)],
+    );
+    if let Some(diff) = lq(&got, &[q(3, 1), q(3, 1)]) {
+        failures += 1;
+        println!("DIFF dense_times_vector EMITTED {diff}; VM = [3, 3]");
+    }
+
+    // example <seq_eq_reflexive>
+    let xs = vec![q(3, 1), q(5, 1)];
+    let got = seq_eq(xs.clone(), xs.clone(), 0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF seq_eq_reflexive EMITTED {diff}; VM = true");
+    }
+    // example <seq_eq_one_entry_apart>
+    let got = seq_eq(xs.clone(), vec![q(3, 1), q(0 - 5, 1)], 0);
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF seq_eq_one_entry_apart EMITTED {diff}; VM = false");
+    }
+
+    // example <sparse_agrees_dense> (sp_dense_law: THE agreement law)
+    let got = sp_dense_law(
+        sp(
+            2,
+            &[
+                vec![ent(0, q(2, 1)), ent(1, q(1, 1))],
+                vec![ent(0, q(1, 1)), ent(1, q(2, 1))],
+            ],
+        ),
+        vec![q(3, 1), q(5, 1)],
+    );
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF sparse_agrees_dense EMITTED {diff}; VM = true");
+    }
+
+    // example <square_walk_square>
+    let got = square_walk(vec![vec![q(1, 1), q(0, 1)], vec![q(0, 1), q(1, 1)]], 0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF square_walk_square EMITTED {diff}; VM = true");
+    }
+    // example <square_walk_ragged> (the mat_det ragged refusal fixture)
+    let got = square_walk(vec![vec![q(1, 1), q(2, 1)], vec![q(3, 1)]], 0);
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF square_walk_ragged EMITTED {diff}; VM = false");
+    }
+
+    // example <grad_quote_value> (grad_quote: THE substitute seam -
+    // d_form's dynamic reference, the structural replacement, the
+    // static substitute + evaluate round trip on the emitted ExprCode)
+    let got = grad_quote(quadratic_body(), var("y"));
+    let value = match &got {
+        Ok(code) => code
+            .substitute("x", CodeValue::Int(5))
+            .substitute("y", CodeValue::Int(7))
+            .evaluate(&ModuleTable::EMPTY)
+            .map_err(|e| e.to_string()),
+        Err(e) => Err(e.clone()),
+    };
+    match &value {
+        Ok(CodeValue::Int(v)) if *v == 33 => {}
+        Ok(other) => {
+            failures += 1;
+            println!("DIFF grad_quote_value EMITTED {other:?}; VM = 33");
+        }
+        Err(e) => {
+            failures += 1;
+            println!("DIFF grad_quote_value EMITTED Err({e})");
+        }
+    }
+
+    // example <hess_col_x> (hess_col: one forward sweep on the
+    // j-th partial - the emitted d_form feeds the gradient walk)
+    let vars = vec![var("x"), var("y")];
+    let point = vec![q(5, 1), q(7, 1)];
+    let got = hess_col(quadratic_body(), vars.clone(), point.clone(), 0);
+    if let Some(diff) = lq(&got, &[q(2, 1), q(1, 1)]) {
+        failures += 1;
+        println!("DIFF hess_col_x EMITTED {diff}; VM = [2, 1]");
+    }
+    // example <hess_col_y>
+    let got = hess_col(quadratic_body(), vars.clone(), point.clone(), 1);
+    if let Some(diff) = lq(&got, &[q(1, 1), q(4, 1)]) {
+        failures += 1;
+        println!("DIFF hess_col_y EMITTED {diff}; VM = [1, 4]");
+    }
+
+    // example <axpy_basic> (dense_axpy)
+    let got = dense_axpy(
+        vec![q(1, 1), q(2, 1)],
+        q(3, 1),
+        vec![q(10, 1), q(20, 1)],
+        0,
+    );
+    if let Some(diff) = lq(&got, &[q(13, 1), q(26, 1)]) {
+        failures += 1;
+        println!("DIFF axpy_basic EMITTED {diff}; VM = [13, 26]");
+    }
+
+    // example <hess_vec_walk_matches_the_wrapper_fixture>
+    let got = linalg::hess_vec_walk(
+        quadratic_body(),
+        vars.clone(),
+        point.clone(),
+        vec![q(1, 1), q(2, 1)],
+        0,
+        vec![q(0, 1), q(0, 1)],
+    );
+    if let Some(diff) = lq(&got, &[q(4, 1), q(9, 1)]) {
+        failures += 1;
+        println!("DIFF hess_vec_walk_matches_the_wrapper_fixture EMITTED {diff}; VM = [4, 9]");
+    }
+
+    // example <hess_vec_quadratic> (hess_vec: H v with no dense matrix)
+    let got = hess_vec(
+        quadratic_body(),
+        vars.clone(),
+        point.clone(),
+        vec![q(1, 1), q(2, 1)],
+    );
+    if let Some(diff) = lq(&got, &[q(4, 1), q(9, 1)]) {
+        failures += 1;
+        println!("DIFF hess_vec_quadratic EMITTED {diff}; VM = [4, 9]");
+    }
+
+    // example <hessian_of_quadratic_is_the_matrix> (hessian_rows: THE
+    // consumer law - the form's Hessian IS the matrix)
+    let got = hessian_rows(quadratic_body(), vars.clone(), point.clone(), 0);
+    if let Some(diff) = llq(
+        &got,
+        &[&[q(2, 1), q(1, 1)], &[q(1, 1), q(4, 1)]],
+    ) {
+        failures += 1;
+        println!("DIFF hessian_of_quadratic_is_the_matrix EMITTED {diff}; VM = [[2, 1], [1, 4]]");
+    }
+
+    // example <routes_agree_coupled> (the mixed-partials certificate:
+    // column route == row route EXACTLY on the coupled fixture)
+    let coupled_point = vec![q(3, 1), q(5, 1)];
+    let got = linalg::hess_routes_agree(
+        coupled_body(),
+        vars.clone(),
+        coupled_point.clone(),
+        vec![q(2, 1), q(0 - 1, 1)],
+    );
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF routes_agree_coupled EMITTED {diff}; VM = true");
+    }
+
+    // example <symmetric_coupled> (hess_symmetric: Clairaut on the
+    // off-diagonal - both 6 at (3,5))
+    let got = hess_symmetric(coupled_body(), vars.clone(), coupled_point.clone(), 0, 1);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF symmetric_coupled EMITTED {diff}; VM = true");
+    }
+
+    // example <modes_pinned> (oscillator_modes: the two-mass
+    // stiffness eigenvalues [1, 3])
+    let got = oscillator_modes(0);
+    if let Some(diff) = lq(&got, &[q(1, 1), q(3, 1)]) {
+        failures += 1;
+        println!("DIFF modes_pinned EMITTED {diff}; VM = [1, 3]");
+    }
+
+    if failures > 0 {
+        panic!("{failures} linalg row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_linalg() {
+    let diffs = run_lane(
+        "language/modules/algebra/linalg.emath",
+        LINALG_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted linalg disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

@@ -3,7 +3,7 @@
 use super::{
     BackendError, EmirOp, EmirProgram, EmirValue, Expr, Stmt, ValueKind, checked_integer_operand,
     exact_int_operand, index_f64, kind_at, kind_is_never_indexable, map_runtime_result, operand,
-    owned_operand, render_expr, tensor_index_call, tensor_slice_call, typed_operand,
+    owned_operand, render_expr, tensor_index_call, tensor_slice_call, to_node, typed_operand,
 };
 
 fn authored_list_concat(
@@ -11,6 +11,28 @@ fn authored_list_concat(
     program: &EmirProgram,
     kinds: &[ValueKind],
 ) -> Result<Expr, BackendError> {
+    // A concat with any node-family operand stays in the family (the
+    // VM's node-sequence law): the head list keeps its family
+    // spelling (a tuple of node-carried elements, the Cases arms'
+    // pattern-value pairs) and typed-sequence operands fold into the
+    // family elementwise through the shared bridge.
+    if values.iter().any(|value| kind_at(kinds, *value) == ValueKind::Node) {
+        let folded = values
+            .iter()
+            .map(|value| {
+                let kind = kind_at(kinds, *value);
+                to_node(operand(program, *value), &kind)
+            })
+            .collect::<Vec<_>>();
+        let parts = folded
+            .iter()
+            .map(|value| render_expr(value))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Ok(Expr::Raw(format!(
+            "emath_rt::code_tree::node_concat_all(vec![{parts}])?"
+        )));
+    }
     let target = super::numeric_element_kind(values, kinds);
     let ValueKind::Vector(element) = &target else {
         return Err(BackendError::UnsupportedType(

@@ -247,10 +247,36 @@ pub fn emit_constructor_crate(
             );
             input_names.push(input.clone());
         }
-        sibling_kinds.insert(
-            name.clone(),
-            program_kind(&lowered.program, &input_names, &[], &kinds),
-        );
+        let declared_output = tree.items.iter().find_map(|item| match item {
+            emath_core::tree::Item::Declaration(decl) if decl.name == *name => {
+                let outputs =
+                    emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
+                let (output, ty) = outputs.first()?;
+                let signature = emath_exec_ir::constructor_emir::constructor_type_signature(
+                    ty, &objects,
+                )?;
+                Some((output.clone(), signature))
+            }
+            _ => None,
+        });
+        let body_kind = program_kind(&lowered.program, &input_names, &[], &kinds);
+        // The entry ABI law, mirrored: a `CodeValue` body result
+        // projects checked onto the declared scalar carrier at the
+        // expression-template boundary (the entry emits the declared
+        // carrier as its return type - `quote.evaluate`'s Int is an
+        // Int at every caller, never the raw union). The sibling
+        // table carries the EMITTED entry carrier, so a caller's
+        // `CallSibling` register kind must match what the emitted
+        // entry actually returns.
+        let sibling_kind = if body_kind == ValueKind::CodeValue {
+            declared_output
+                .as_ref()
+                .map(|(_, signature)| ValueKind::from_signature(signature.as_str()))
+                .unwrap_or(body_kind)
+        } else {
+            body_kind
+        };
+        sibling_kinds.insert(name.clone(), sibling_kind);
     }
     let _sibling_scope = SiblingEntryScope::enter(sibling_kinds);
     // One named entry per runnable function: sibling calls (pilot p8)

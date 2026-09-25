@@ -12,7 +12,7 @@ use emath_core::tree::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{DomainObligation, EmirOp, EmirProgram, EmirValue};
+use crate::{CodeSubRef, DomainObligation, EmirOp, EmirProgram, EmirValue};
 use crate::constructor_layer::{machine_buffer_basename, machine_int_basename};
 use crate::exact_int::ExactInt;
 
@@ -599,19 +599,19 @@ impl Lowerer {
                 ("quote.substitute", 3) => {
                     // The reference is static (the VM's authored
                     // spellings): a string literal or a
-                    // single-segment name path; a runtime-derived
-                    // reference (a record tag, a code value) stays
-                    // outside the static lowering.
+                    // single-segment name path. A runtime reference
+                    // rides as a node-family operand - the
+                    // minted-scope packaging spells binder names as
+                    // tag records whose type name IS the name (the
+                    // VM's dynamic reference law).
                     let reference = match &args[1].kind {
-                        ExprKind::Str(reference) => reference.clone(),
+                        ExprKind::Str(reference) => {
+                            CodeSubRef::Static(reference.clone())
+                        }
                         ExprKind::Path { segments, .. } if segments.len() == 1 => {
-                            segments[0].clone()
+                            CodeSubRef::Static(segments[0].clone())
                         }
-                        _ => {
-                            return Err(
-                                "quote.substitute requires a static reference string".into()
-                            )
-                        }
+                        _ => CodeSubRef::Dyn(self.expr(&args[1])?),
                     };
                     let code = self.expr(&args[0])?;
                     let value = self.expr(&args[2])?;
@@ -1000,15 +1000,23 @@ impl Lowerer {
                     };
                     let lowered = child.expr(inner)?;
                     let program = child.finish(lowered);
-                    // The function lane carries no tree (its rt value
-                    // is the monomorphic factory); dependency
-                    // stamping stays a union-lane fact in this cut.
+                    // The dual representation: the compiled factory
+                    // AND the distilled Closure tree (the view seam
+                    // reads a program template's structure through
+                    // it, the same dual-rep the union lane carries).
+                    // Dependency stamping stays a union-lane fact.
+                    // The distillation is soft: a template outside
+                    // the distilled subset (float carriers) keeps
+                    // the factory lane and simply has no tree to
+                    // view - `quote.view` refuses by name at runtime
+                    // instead of poisoning the function's
+                    // runnability.
                     Ok(self.push(EmirOp::CodeLiteral {
                         body: program,
                         param: Some(param.clone()),
                         free,
                         carrier: carrier.to_string(),
-                        tree: None,
+                        tree: crate::tree_distill::distill_tree(body).ok(),
                         deps: BTreeMap::new(),
                     }))
                 } else {
@@ -1759,6 +1767,17 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
                 name if objects.contains(name) => Some(format!("Record<{name}>")),
                 _ => None,
             }
+        }
+        TypeKind::Tuple(elements) => {
+            // A tuple domain kinds as the positional sequence its
+            // literals lower to (ListCreate): the element carrier is
+            // the join of the declared element domains - the same law
+            // a heterogeneous tuple literal refuses under.
+            let mut parts = Vec::new();
+            for element in elements {
+                parts.push(constructor_type_signature(element, objects)?);
+            }
+            Some(format!("Tuple<{}>", parts.join(",")))
         }
         TypeKind::Fn { domain, codomain } => Some(format!(
             "Fn<{},{}>",

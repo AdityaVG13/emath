@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use crate::rust_ir::ast::{BinOp, Block, Expr, Stmt, Ty, UnOp, escape_ident};
 use crate::rust_ir::render::render_expr;
 use emath_exec_ir::optimize::{is_total, operand_registers};
-use emath_exec_ir::{EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
+use emath_exec_ir::{CodeSubRef, EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
 
 use crate::BackendError;
 use crate::codegen_helpers::comparison;
@@ -435,6 +435,22 @@ pub(crate) fn op_expr(
                     _ => value_code,
                 };
                 return Ok(Expr::Raw(format!("({storage}.len() as i64)")));
+            }
+            // A tuple-position projection (`_0`, `_1`, ...) off a
+            // sequence carrier: checked positional indexing - the
+            // VM's tuple field law (out of range refuses by name,
+            // never a silent default). A node-family receiver keeps
+            // the dynamic `field` arm above.
+            if let Some(index) = field
+                .strip_prefix('_')
+                .and_then(|text| text.parse::<usize>().ok())
+            {
+                if let ValueKind::Vector(_) = kind_at(kinds, *record) {
+                    let value_code = render_expr(&operand(program, *record));
+                    return Ok(Expr::Raw(format!(
+                        "(usize::try_from({index}i64).ok().and_then(|index| ({value_code}).get(index)).cloned()).ok_or_else(|| \"invalid_index: sequence index out of range\".to_string())?"
+                    )));
+                }
             }
             // A part projection off the Rational carrier reads the
             // `(i128, i128)` tuple (`numer` = `.0`, `denom` = `.1`) and
@@ -1054,11 +1070,28 @@ pub(crate) fn op_expr(
                 .map(|name| format!("String::from({name:?})"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            Ok(Expr::Raw(format!(
-                "{{ let __code_body = move |{closure_params}| -> Result<{carrier_ty}, String> {{ {tail} }}; \
-             emath_rt::code::open::<{carrier_ty}>(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[{carrier_ty}]| -> Result<{unary_ty}, String> {{ \
+            // The dual representation: the compiled factory for
+            // evaluation, the distilled tree for the view seam (the
+            // same dual-rep the union lane carries). A template
+            // outside the distilled subset (float carriers) carries
+            // the factory alone - `quote.view` on it refuses by name
+            // at runtime, the honest boundary, instead of the
+            // emission refusing the whole function.
+            let open_call = match tree {
+                Some(tree) => format!(
+                    "emath_rt::code::open_with_tree::<{carrier_ty}>(vec![{free_list}], {}, std::rc::Rc::new(move |__code_free: &[{carrier_ty}]| -> Result<{unary_ty}, String> {{ \
              {bindings} let __code_unary: {unary_ty} = std::rc::Rc::new(move |{param}: {carrier_ty}| __code_body({forwarded})); \
-             Ok(__code_unary) }})) }}"
+             Ok(__code_unary) }}))",
+                    tree_expr(tree)
+                ),
+                None => format!(
+                    "emath_rt::code::open::<{carrier_ty}>(vec![{free_list}], std::rc::Rc::new(move |__code_free: &[{carrier_ty}]| -> Result<{unary_ty}, String> {{ \
+             {bindings} let __code_unary: {unary_ty} = std::rc::Rc::new(move |{param}: {carrier_ty}| __code_body({forwarded})); \
+             Ok(__code_unary) }}))",
+                ),
+            };
+            Ok(Expr::Raw(format!(
+                "{{ let __code_body = move |{closure_params}| -> Result<{carrier_ty}, String> {{ {tail} }}; {open_call} }}"
             )))
         }
         EmirOp::CodeSubstitute {
@@ -1066,13 +1099,34 @@ pub(crate) fn op_expr(
             reference,
             value,
         } => {
-            // Partial application of one open name. The reference
-            // resolved statically at lowering. A FUNCTION template
-            // demands the declared carrier (the carrier check is
-            // named at emission; the generic instantiation would not
-            // compile a mismatch anyway). An EXPRESSION template
-            // accepts any scalar - the substitute-time carrier fact -
-            // converted into the union.
+            // Partial application of one open name. The reference is
+            // either resolved statically at lowering (baked into the
+            // call) or a runtime node-family operand: the
+            // minted-scope packaging spells binder names as tag
+            // records whose type name IS the name, extracted through
+            // the family's `reference_name` law (the VM's dynamic
+            // reference forms). A FUNCTION template demands the
+            // declared carrier (the carrier check is named at
+            // emission; the generic instantiation would not compile a
+            // mismatch anyway). An EXPRESSION template accepts any
+            // scalar - the substitute-time carrier fact - converted
+            // into the union.
+
+            let reference_code = match reference {
+                CodeSubRef::Static(name) => format!("{name:?}"),
+                CodeSubRef::Dyn(register) => {
+                    if kind_at(kinds, *register) != ValueKind::Node {
+                        return Err(BackendError::UnsupportedType(
+                            "code-substitute reference must be node-carried for a runtime name"
+                                .into(),
+                        ));
+                    }
+                    format!(
+                        "({}).reference_name()?.as_str()",
+                        render_expr(&operand(program, *register))
+                    )
+                }
+            };
 
             match kind_at(kinds, *code) {
                 ValueKind::Code(carrier) => {
@@ -1091,33 +1145,61 @@ pub(crate) fn op_expr(
                         )));
                     }
                     Ok(Expr::Raw(format!(
-                        "emath_rt::code::substitute(&{}, {:?}, {})",
+                        "emath_rt::code::substitute(&{}, {}, {})",
                         render_expr(&operand(program, *code)),
-                        reference,
+                        reference_code,
                         render_expr(&operand(program, *value))
                     )))
                 }
                 ValueKind::ExprCode => {
                     let value_kind = kind_at(kinds, *value);
-                    if !union_promotable(&value_kind) || value_kind == ValueKind::CodeValue {
-                        let name = |kind: &ValueKind| match kind {
-                            ValueKind::Rational => "Rat".to_string(),
-                            ValueKind::I64 => "Int".to_string(),
-                            ValueKind::Bool => "Bool".to_string(),
-                            other => format!("{other:?}"),
-                        };
-                        return Err(BackendError::UnsupportedType(format!(
-                            "code-substitute into an expression template requires a scalar value, found {}",
-                            name(&value_kind)
-                        )));
+                    // A node-record value (a viewed subtree) or a
+                    // Code value rides the STRUCTURAL lane - the
+                    // VM's `value_to_expr` law: the replacement
+                    // rebuilds into a tree and splices as a tree.
+                    // A scalar keeps the compiled-constant lane.
+                    match value_kind {
+                        ValueKind::Node => {
+                            Ok(Expr::Raw(format!(
+                                "({}).substitute_tree({}, ({}).make(&__EMATH_MODULE_TABLE)?)",
+                                render_expr(&operand(program, *code)),
+                                reference_code,
+                                render_expr(&operand(program, *value))
+                            )))
+                        }
+                        ValueKind::ExprCode => {
+                            Ok(Expr::Raw(format!(
+                                "({}).substitute_tree({}, {})",
+                                render_expr(&operand(program, *code)),
+                                reference_code,
+                                render_expr(&operand(program, *value))
+                            )))
+                        }
+                        value_kind if union_promotable(&value_kind)
+                            && value_kind != ValueKind::CodeValue =>
+                        {
+                            let converted =
+                                to_code_value(operand(program, *value), &value_kind);
+                            Ok(Expr::Raw(format!(
+                                "({}).substitute({}, {})",
+                                render_expr(&operand(program, *code)),
+                                reference_code,
+                                render_expr(&converted)
+                            )))
+                        }
+                        _ => {
+                            let name = |kind: &ValueKind| match kind {
+                                ValueKind::Rational => "Rat".to_string(),
+                                ValueKind::I64 => "Int".to_string(),
+                                ValueKind::Bool => "Bool".to_string(),
+                                other => format!("{other:?}"),
+                            };
+                            Err(BackendError::UnsupportedType(format!(
+                                "code-substitute into an expression template requires a scalar, node-record, or Code value, found {}",
+                                name(&value_kind)
+                            )))
+                        }
                     }
-                    let converted = to_code_value(operand(program, *value), &value_kind);
-                    Ok(Expr::Raw(format!(
-                        "({}).substitute({:?}, {})",
-                        render_expr(&operand(program, *code)),
-                        reference,
-                        render_expr(&converted)
-                    )))
                 }
                 _ => Err(BackendError::UnsupportedType(
                     "code-substitute requires a Code value".into(),
@@ -1165,9 +1247,10 @@ pub(crate) fn op_expr(
                 "({}).view(&__EMATH_MODULE_TABLE)?",
                 render_expr(&operand(program, *code))
             ))),
-            ValueKind::Code(_) => Err(BackendError::UnsupportedType(
-                "quote.view is emitted for expression templates; a unary function template has no tree lane in this cut".into(),
-            )),
+            ValueKind::Code(_) => Ok(Expr::Raw(format!(
+                "({}).view(&__EMATH_MODULE_TABLE)?",
+                render_expr(&operand(program, *code))
+            ))),
             _ => Err(BackendError::UnsupportedType(
                 "quote.view requires a Code or Fragment value".into(),
             )),

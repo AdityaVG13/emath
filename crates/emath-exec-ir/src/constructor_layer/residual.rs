@@ -83,22 +83,33 @@ pub(super) fn fold_expr(
             return match fold_expr(engine, arg, runtime, residuals)? {
                 Folded::Value(CValue::Code(code)) => Ok(Folded::Residual(code.expr)),
                 Folded::Value(other) => Ok(Folded::Value(other)),
-                Folded::Residual(inner) => Ok(Folded::Residual(inner)),
+                // A runtime code input keeps its guarded executor:
+                // the call survives to emission (CodeEvaluate renders
+                // the tree evaluator over the runtime carrier).
+                // Collapsing onto the bare argument would drop the
+                // evaluation - `literal_exp`'s Int became the un
+                // evaluated code and every numeric use misrendered.
+                Folded::Residual(_) => Ok(Folded::Residual(expr.clone())),
             };
         }
         if name == "quote.substitute" {
             let fragment = fold_expr(engine, call_arg(expr, 0)?, runtime, residuals)?;
+            let fragment = match fragment {
+                Folded::Value(value) => value,
+                // A runtime fragment substitutes at runtime
+                // (CodeSubstitute renders the structural lane); the
+                // compile-time splice only applies to a folded
+                // literal fragment.
+                Folded::Residual(_) => {
+                    return Ok(Folded::Residual(expr.clone()));
+                }
+            };
             let reference = substitute_reference(engine, call_arg(expr, 1)?, runtime, residuals)?;
             let replacement = match fold_expr(engine, call_arg(expr, 2)?, runtime, residuals)? {
                 Folded::Value(value) => value_to_expr(&value),
                 Folded::Residual(inner) => inner,
             };
-            let term = match fragment {
-                Folded::Value(value) => {
-                    fragment_term(value).map_err(|message| fault("type", message))?
-                }
-                Folded::Residual(inner) => inner,
-            };
+            let term = fragment_term(fragment).map_err(|message| fault("type", message))?;
             let mut cap_mint: u64 = 0;
             let substituted = substitute_path(&term, &reference, &replacement, &mut cap_mint);
             return Ok(Folded::Value(CValue::Code(Box::new(Code {
