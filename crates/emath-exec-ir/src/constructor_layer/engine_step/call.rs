@@ -318,10 +318,11 @@ impl Engine {
         vals: &[CValue],
     ) -> Result<CValue, ConstructorError> {
         // A tail call reuses the frame, so only the last callee of a chain
-        // is remembered under its own name. A fact function whose result
-        // is a tail call would never be memoized (nor carried); its frame
-        // is remembered here with the value the chain returned, which is
-        // exactly the value its call returns.
+        // is remembered under its own name. A fact (or, under
+        // facts_only_memo, an all-scalar call) whose result is a tail call
+        // would never be memoized (nor carried); its frame is remembered
+        // here with the value the chain returned, which is exactly the
+        // value its call returns.
         let mut facts = Vec::new();
         let value = self.apply_fn_chain(name, decl, vals, &mut facts)?;
         for (fact, args) in facts {
@@ -360,9 +361,12 @@ impl Engine {
             for (input, value) in decl.inputs.iter().zip(vals.iter()) {
                 self.env.insert(input.clone(), value.clone());
             }
+            let snapshot = !self.facts_only_memo;
             if let Some(frame) = self.frames.last_mut() {
                 frame.function = name.clone();
-                frame.env = self.env.clone();
+                if snapshot {
+                    frame.env = self.env.clone();
+                }
                 frame.kont.clear();
             }
             self.charge()?;
@@ -408,7 +412,7 @@ impl Engine {
                             let next_decl = self.functions.get(&next_name).cloned().ok_or_else(
                                 || fault("unbound", format!("unknown function `{next_name}`")),
                             )?;
-                            if name.starts_with(super::super::FACT_PREFIX) {
+                            if self.remembers_tail_caller(&name, &vals) {
                                 facts.push((name.clone(), vals.clone()));
                             }
                             name = next_name;

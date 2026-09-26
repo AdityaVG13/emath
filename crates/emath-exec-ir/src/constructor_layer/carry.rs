@@ -39,6 +39,28 @@ pub struct CarriedEvaluation {
     pub hits: u64,
 }
 
+/// A module with its imports resolved and loaded, ready to evaluate
+/// many times: loading reads and parses every imported file, which a
+/// host running one module per batch would otherwise repeat each batch.
+/// It is a snapshot of the files at `prepare_module` time.
+#[derive(Clone)]
+pub struct PreparedModule {
+    engine: Engine,
+}
+
+impl std::fmt::Debug for PreparedModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedModule")
+            .field("functions", &self.engine.functions.len())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Resolve and load `tree`'s imports (relative to `source`).
+pub fn prepare_module(tree: &SyntaxTree, source: Option<&Path>) -> Result<PreparedModule, ConstructorError> {
+    Ok(PreparedModule { engine: engine_from_tree_at(tree, source)? })
+}
+
 pub(super) fn is_fact_key(key: &str) -> bool {
     key.strip_prefix("call:")
         .is_some_and(|rest| rest.starts_with(FACT_PREFIX))
@@ -53,24 +75,36 @@ pub(super) fn is_fact_key(key: &str) -> bool {
 /// `CarriedEvaluation::value`. A carried hit skips the call's work, so
 /// a warm memo can finish under a limit a cold one exceeds: the limit
 /// is a resource bound, not part of the result.
+///
+/// `carried` is lent to the engine for the evaluation (moved in, not
+/// copied) and comes back holding the fresh facts too, so the cost per
+/// evaluation follows what it computed, not the size of the store.
 pub fn evaluate_function_carrying(
-    tree: &SyntaxTree,
+    module: &PreparedModule,
     name: &str,
     inputs: &BTreeMap<String, CValue>,
-    source: Option<&Path>,
-    carried: &BTreeMap<String, CValue>,
+    carried: &mut BTreeMap<String, CValue>,
     work_limit: u64,
 ) -> Result<CarriedEvaluation, ConstructorError> {
-    let mut engine = engine_from_tree_at(tree, source)?;
+    let mut engine = module.engine.clone();
     engine.work_limit = work_limit;
     engine.facts_only_memo = true;
-    engine.memo = carried.clone();
+    engine.memo = std::mem::take(carried);
     let value = engine.eval_entry(name, inputs);
     let hits = engine.fact_hits.get();
-    let fresh = std::mem::take(&mut engine.memo)
-        .into_iter()
-        .filter(|(key, _)| is_fact_key(key) && !carried.contains_key(key))
-        .collect();
+    let mut memo = std::mem::take(&mut engine.memo);
+    let mut fresh = Vec::new();
+    for key in std::mem::take(&mut engine.memo_added) {
+        if is_fact_key(&key) {
+            if let Some(value) = memo.get(&key) {
+                fresh.push((key, value.clone()));
+            }
+        } else {
+            memo.remove(&key);
+        }
+    }
+    fresh.sort_by(|a, b| a.0.cmp(&b.0));
+    *carried = memo;
     Ok(CarriedEvaluation { value, fresh, hits })
 }
 

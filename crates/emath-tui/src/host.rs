@@ -29,7 +29,7 @@ use std::sync::Arc;
 
 use emath_core::tree::{Declaration, GenericArg, Item, StmtKind, SyntaxTree, TypeExpr, TypeKind};
 use emath_exec_ir::constructor_layer::{
-    evaluate_function_carrying, fact_identity, load_scratch, save_scratch, BatchLedgerEntry,
+    evaluate_function_carrying, fact_identity, load_scratch, prepare_module, save_scratch, BatchLedgerEntry, PreparedModule,
     CValue, ConstructorError, ScratchIdentity, DEFAULT_WORK,
 };
 use emath_exec_ir::exact_int::ExactInt;
@@ -313,6 +313,9 @@ pub struct LoopHost {
     surface: SessionSurface,
     identity: ScratchIdentity,
     facts: Option<FactCarry>,
+    /// The module with its imports loaded, built at the first
+    /// evaluation and reused by every later one.
+    prepared: RefCell<Option<PreparedModule>>,
     /// Engine steps allowed per Seed/Step evaluation.
     work: u64,
     /// The observations bound to the Step's evidence input.
@@ -425,6 +428,7 @@ impl LoopHost {
             surface,
             identity,
             facts,
+            prepared: RefCell::new(None),
             work: DEFAULT_WORK,
             evidence: Arc::new(Vec::new()),
         })
@@ -486,33 +490,21 @@ impl LoopHost {
     }
 
     pub(crate) fn evaluate(&self, name: &str, inputs: &BTreeMap<String, CValue>) -> Result<CValue, HostFault> {
+        if self.prepared.borrow().is_none() {
+            let module = prepare_module(&self.tree, Some(&self.path)).map_err(HostFault::from)?;
+            *self.prepared.borrow_mut() = Some(module);
+        }
+        let prepared = self.prepared.borrow();
+        let module = prepared.as_ref().expect("prepared above");
         let Some(facts) = &self.facts else {
-            return evaluate_function_carrying(
-                &self.tree,
-                name,
-                inputs,
-                Some(&self.path),
-                &BTreeMap::new(),
-                self.work,
-            )
-            .map_err(HostFault::from)?
-            .value
-            .map_err(HostFault::from);
+            return evaluate_function_carrying(module, name, inputs, &mut BTreeMap::new(), self.work)
+                .map_err(HostFault::from)?
+                .value
+                .map_err(HostFault::from);
         };
-        let run = evaluate_function_carrying(
-            &self.tree,
-            name,
-            inputs,
-            Some(&self.path),
-            &facts.carried.borrow(),
-            self.work,
-        )
-        .map_err(HostFault::from)?;
+        let run = evaluate_function_carrying(module, name, inputs, &mut facts.carried.borrow_mut(), self.work)
+            .map_err(HostFault::from)?;
         facts.hits.set(facts.hits.get() + run.hits);
-        facts
-            .carried
-            .borrow_mut()
-            .extend(run.fresh.iter().cloned());
         facts.fresh.borrow_mut().extend(run.fresh);
         run.value.map_err(HostFault::from)
     }

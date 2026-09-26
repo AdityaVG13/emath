@@ -570,6 +570,7 @@ impl Default for Checkpoint {
     }
 }
 
+#[derive(Clone)]
 struct Engine {
     env: Environment,
     /// Sharing a declaration avoids copying its body on every tail call.
@@ -601,6 +602,10 @@ struct Engine {
     /// evaluation that never suspends would pay for a key per call (its
     /// arguments serialized, often a whole archive).
     facts_only_memo: bool,
+    /// Keys this evaluation added to `memo`, in insertion order, while
+    /// the carried store is lent in (`carry`): they are split back out
+    /// afterwards instead of copying the whole store.
+    memo_added: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -632,7 +637,7 @@ mod value;
 
 pub(crate) use call::domain_shape_of_expr;
 pub use admit::*;
-pub use carry::{evaluate_function_carrying, fact_identity, CarriedEvaluation, FACT_PREFIX};
+pub use carry::{evaluate_function_carrying, fact_identity, prepare_module, CarriedEvaluation, PreparedModule, FACT_PREFIX};
 pub use checkpoint::*;
 pub use eval::*;
 pub use query::*;

@@ -44,6 +44,7 @@ pub(super) fn empty_engine() -> Engine {
         expect_atoms: Cell::new(false),
         fact_hits: Cell::new(0),
         facts_only_memo: false,
+        memo_added: Vec::new(),
     }
 }
 

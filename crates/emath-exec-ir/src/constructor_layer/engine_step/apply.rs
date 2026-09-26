@@ -109,9 +109,12 @@ impl Engine {
             if !clos.param.is_empty() {
                 self.env.insert(clos.param.clone(), args[0].clone());
             }
+            let snapshot = !self.facts_only_memo;
             if let Some(frame) = self.frames.last_mut() {
                 frame.function = frame_name;
-                frame.env = self.env.clone();
+                if snapshot {
+                    frame.env = self.env.clone();
+                }
                 frame.kont.clear();
             }
             self.set_frame_next("body");

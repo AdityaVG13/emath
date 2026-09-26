@@ -45,7 +45,14 @@ impl Engine {
             return;
         }
         if let Some(key) = call_memo_key(name, args) {
-            self.memo.insert(key, value);
+            if self.facts_only_memo {
+                if !self.memo.contains_key(&key) {
+                    self.memo_added.push(key.clone());
+                    self.memo.insert(key, value);
+                }
+            } else {
+                self.memo.insert(key, value);
+            }
         }
     }
 
@@ -58,6 +65,15 @@ impl Engine {
         !self.facts_only_memo
             || name.starts_with(super::super::FACT_PREFIX)
             || args.iter().all(|arg| matches!(arg, CValue::Int(_) | CValue::Rat { .. } | CValue::Bool(_)))
+    }
+
+    /// A body that tail-calls hands its frame to the callee, so the
+    /// caller is remembered with the chain's final value. Under
+    /// `facts_only_memo` that is every call `memoizes` keeps; under the
+    /// all-calls memo only facts, since a tail loop threading a sequence
+    /// would serialize it at every step.
+    pub(in crate::constructor_layer) fn remembers_tail_caller(&self, name: &str, args: &[CValue]) -> bool {
+        name.starts_with(super::super::FACT_PREFIX) || (self.facts_only_memo && self.memoizes(name, args))
     }
 
     pub(in crate::constructor_layer) fn completed_closure(
@@ -111,18 +127,28 @@ impl Engine {
         });
     }
 
+    // Frame environments exist for `snapshot` (suspend and resume). An
+    // evaluation under `facts_only_memo` never suspends, and a snapshot
+    // taken here would make the next binding copy the whole environment
+    // (it is copy-on-write), so those evaluations skip it.
     pub(in crate::constructor_layer) fn set_frame_next(&mut self, next: &str) {
+        let snapshot = !self.facts_only_memo;
         if let Some(frame) = self.frames.last_mut() {
             frame.next = next.to_string();
             frame.pc = self.visit as u64;
-            frame.env = self.env.clone();
+            if snapshot {
+                frame.env = self.env.clone();
+            }
         }
     }
 
     pub(in crate::constructor_layer) fn refresh_frame(&mut self) {
+        let snapshot = !self.facts_only_memo;
         if let Some(frame) = self.frames.last_mut() {
             frame.pc = self.visit as u64;
-            frame.env = self.env.clone();
+            if snapshot {
+                frame.env = self.env.clone();
+            }
         }
     }
 
