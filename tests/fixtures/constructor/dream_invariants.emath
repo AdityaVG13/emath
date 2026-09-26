@@ -1,0 +1,304 @@
+# A dream that discovers conservation laws in four exact worlds.
+#
+#   world 0  1D elastic collisions (sites [m, v]); train: two bodies,
+#            held-out: three and four bodies
+#   world 1  rotation by (3/5, 4/5) (one site [q, p])
+#   world 2  leapfrog for the harmonic oscillator with step h (one site
+#            [q, p, h]; train h = 1/2 and 1, held-out h = 1/3)
+#   world 3  a contraction (control: nothing is conserved)
+#
+# A level searches keys world * 256 + degree * 16 + mask with
+# `search.invariants`: a key's score is the number of laws its
+# vocabulary adds to the library (fewer monomials break ties), or the
+# vocabulary size when it adds none. `dream_carry` is the library. At
+# a close `dream_next` appends the incumbent's laws; a level that adds
+# none is a fixed point and the run closes.
+#
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/constructor/dream_invariants.emath
+
+use search.archive
+use search.experiments
+use search.research
+use search.invariants
+
+emath function dream_carry:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Invariant)
+    definitions:
+        result = []
+    tests:
+        example <every_law_holds_on_its_world>:
+            given unused = 0
+            expect lib_holds(result, 0)
+
+emath function lib_holds:
+    inputs:
+        lib: sequence(Invariant)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        w = if i >= length(lib): 0 else: lib[i].world
+        ok = if i >= length(lib): true else: inv_holds(lib[i], world_train(w), 0) and inv_holds(lib[i], world_held(w), 0)
+        result = if i >= length(lib): true else: if ok: lib_holds(lib, i + 1) else: false
+
+# ---- trajectories ----
+
+emath function set_site:
+    inputs:
+        s: sequence(sequence(Rat))
+        i: Int
+        site: sequence(Rat)
+        k: Int
+    outputs:
+        result: sequence(sequence(Rat))
+    definitions:
+        result = if k >= length(s): [] else: [(if k == i: site else: s[k]), ..set_site(s, i, site, k + 1)]
+
+emath function trajectory:
+    inputs:
+        step: sequence(sequence(Rat)) -> Int -> sequence(sequence(Rat))
+        s: sequence(sequence(Rat))
+        t: Int
+        n: Int
+    outputs:
+        result: sequence(sequence(sequence(Rat)))
+    definitions:
+        result = if t >= n: [s] else: [s, ..trajectory(step, step(s)(t), t + 1, n)]
+
+emath function collide:
+    # Elastic collision of bodies t mod (n - 1) and the next one.
+    inputs:
+        s: sequence(sequence(Rat))
+        t: Int
+    outputs:
+        result: sequence(sequence(Rat))
+    definitions:
+        i = int_rem(t, length(s) - 1)
+        m1 = s[i][0]
+        v1 = s[i][1]
+        m2 = s[i + 1][0]
+        v2 = s[i + 1][1]
+        u1 = ((m1 - m2) * v1 + 2 * m2 * v2) / (m1 + m2)
+        u2 = ((m2 - m1) * v2 + 2 * m1 * v1) / (m1 + m2)
+        result = set_site(set_site(s, i, [m1, u1], 0), i + 1, [m2, u2], 0)
+
+emath function rotate:
+    inputs:
+        s: sequence(sequence(Rat))
+        t: Int
+    outputs:
+        result: sequence(sequence(Rat))
+    definitions:
+        q = s[0][0]
+        p = s[0][1]
+        result = [[3 / 5 * q - 4 / 5 * p, 4 / 5 * q + 3 / 5 * p]]
+
+emath function leapfrog:
+    inputs:
+        s: sequence(sequence(Rat))
+        t: Int
+    outputs:
+        result: sequence(sequence(Rat))
+    definitions:
+        q = s[0][0]
+        p = s[0][1]
+        h = s[0][2]
+        half = p - h / 2 * q
+        q2 = q + h * half
+        result = [[q2, half - h / 2 * q2, h]]
+
+emath function contract:
+    inputs:
+        s: sequence(sequence(Rat))
+        t: Int
+    outputs:
+        result: sequence(sequence(Rat))
+    definitions:
+        q = s[0][0]
+        p = s[0][1]
+        result = [[q / 2 + p / 2, p / 2]]
+
+emath function world_step:
+    inputs:
+        w: Int
+    outputs:
+        result: sequence(sequence(Rat)) -> Int -> sequence(sequence(Rat))
+    definitions:
+        result = if w == 0: function s in sequence(sequence(Rat)): function t in Int: collide(s, t) else: if w == 1: function s in sequence(sequence(Rat)): function t in Int: rotate(s, t) else: if w == 2: function s in sequence(sequence(Rat)): function t in Int: leapfrog(s, t) else: function s in sequence(sequence(Rat)): function t in Int: contract(s, t)
+
+emath function trajs_of:
+    inputs:
+        w: Int
+        starts: sequence(sequence(sequence(Rat)))
+        n: Int
+        i: Int
+    outputs:
+        result: sequence(sequence(sequence(sequence(Rat))))
+    definitions:
+        result = if i >= length(starts): [] else: [trajectory(world_step(w), starts[i], 0, n), ..trajs_of(w, starts, n, i + 1)]
+
+emath function world_train:
+    inputs:
+        w: Int
+    outputs:
+        result: sequence(sequence(sequence(sequence(Rat))))
+    definitions:
+        c = [[[1 / 1, 2 / 1], [2 / 1, -1 / 1]], [[1 / 1, 1 / 1], [3 / 1, 0 / 1]], [[2 / 1, 3 / 1], [5 / 1, 1 / 1]], [[3 / 1, -1 / 1], [1 / 1, 4 / 1]], [[1 / 1, 5 / 1], [4 / 1, 2 / 1]]]
+        r = [[[1 / 1, 0 / 1]], [[1 / 1, 2 / 1]]]
+        l = [[[1 / 1, 0 / 1, 1 / 2]], [[0 / 1, 1 / 1, 1 / 2]], [[1 / 1, 1 / 1, 1 / 1]], [[2 / 1, -1 / 1, 1 / 1]], [[1 / 1, 2 / 1, 3 / 2]], [[-1 / 1, 1 / 1, 3 / 2]], [[2 / 1, 1 / 1, 1 / 4]], [[1 / 1, -3 / 1, 1 / 4]]]
+        k = [[[1 / 1, 0 / 1]], [[1 / 1, 2 / 1]]]
+        result = if w == 0: trajs_of(0, c, 1, 0) else: if w == 1: trajs_of(1, r, 5, 0) else: if w == 2: trajs_of(2, l, 6, 0) else: trajs_of(3, k, 5, 0)
+
+emath function world_held:
+    inputs:
+        w: Int
+    outputs:
+        result: sequence(sequence(sequence(sequence(Rat))))
+    definitions:
+        c = [[[1 / 1, 3 / 1], [2 / 1, 0 / 1], [3 / 1, -2 / 1]], [[2 / 1, 1 / 1], [1 / 1, -1 / 1], [4 / 1, 2 / 1], [1 / 1, 0 / 1]]]
+        r = [[[3 / 1, -1 / 1]]]
+        l = [[[1 / 1, 2 / 1, 1 / 3]], [[3 / 1, 0 / 1, 2 / 3]]]
+        k = [[[3 / 1, -1 / 1]]]
+        result = if w == 0: trajs_of(0, c, 5, 0) else: if w == 1: trajs_of(1, r, 5, 0) else: if w == 2: trajs_of(2, l, 6, 0) else: trajs_of(3, k, 5, 0)
+
+emath function world_dyn:
+    inputs:
+        w: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if w == 0: [0, 1] else: if w == 2: [1, 1, 0] else: [1, 1]
+
+emath function world_vars:
+    inputs:
+        w: Int
+    outputs:
+        result: sequence(Code)
+    definitions:
+        result = if w == 0: [quote(m), quote(v)] else: if w == 2: [quote(q), quote(p), quote(h)] else: [quote(q), quote(p)]
+
+# ---- the level ----
+
+emath function assess_key:
+    inputs:
+        lib: sequence(Invariant)
+        k: Int
+    outputs:
+        result: sequence(Invariant)
+    definitions:
+        w = int_quot(k, 256)
+        inner = int_rem(k, 256)
+        result = inv_assess(w, world_train(w), world_held(w), world_dyn(w), world_vars(w), int_quot(inner, 16), int_rem(inner, 16), lib)
+
+emath function key_score:
+    inputs:
+        lib: sequence(Invariant)
+        k: Int
+    outputs:
+        result: Rat
+    definitions:
+        w = int_quot(k, 256)
+        inner = int_rem(k, 256)
+        size = length(inv_basis(world_dyn(w), int_quot(inner, 16), int_rem(inner, 16)))
+        result = inv_score(length(assess_key(lib, k)), size)
+
+emath function full_mask:
+    inputs:
+        w: Int
+    outputs:
+        result: Int
+    definitions:
+        result = inv_pow2(length(world_dyn(w))) - 1
+
+emath function key_moves:
+    # Degree and variable moves inside the world, then the same degree
+    # over every other world's full vocabulary.
+    inputs:
+        k: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        w = int_quot(k, 256)
+        inner = int_rem(k, 256)
+        d = int_quot(inner, 16)
+        local = inv_moves(inner, length(world_dyn(w)))
+        result = int_append(add_world(local, w, 0), other_worlds(w, d, 0))
+
+emath function add_world:
+    inputs:
+        ks: sequence(Int)
+        w: Int
+        i: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if i >= length(ks): [] else: [w * 256 + ks[i], ..add_world(ks, w, i + 1)]
+
+emath function other_worlds:
+    inputs:
+        w: Int
+        d: Int
+        v: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        rest = if v >= 4: [] else: other_worlds(w, d, v + 1)
+        result = if v >= 4: [] else: if v == w: rest else: [v * 256 + inv_key(d, full_mask(v)), ..rest]
+
+emath function key_admit:
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        w = int_quot(k, 256)
+        result = k >= 0 and w <= 3 and inv_admit(int_rem(k, 256), world_dyn(w), 4)
+
+emath function dream_next:
+    inputs:
+        state: LoopState
+    outputs:
+        result: sequence(Invariant)
+    definitions:
+        lib = dream_carry(0)
+        result = invariant_append(lib, assess_key(lib, state.archive[state.incumbent].key), 0)
+
+emath function invariant_append:
+    inputs:
+        a: sequence(Invariant)
+        b: sequence(Invariant)
+        i: Int
+    outputs:
+        result: sequence(Invariant)
+    definitions:
+        result = if i >= length(a): b else: [a[i], ..invariant_append(a, b, i + 1)]
+
+emath function MakeScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        lib = dream_carry(0)
+        result = function k in Int: function cs in CaseSet: key_score(lib, k)
+
+emath function SeedLaws:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(inv_key(1, 3), function k in Int: k / 1, CaseSet: {ids: [0]}, MakeScore(0), function k in Int: function cs in CaseSet: -1, 1, 0, 1, 1)
+
+emath function StepLaws:
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, function k in Int: k / 1, function k in Int: key_admit(k), function k in Int: key_moves(k), function k in Int: 0, function f in Int: 8, MakeScore(0), MakeScore(0), function k in Int: function cs in CaseSet: -1, function k in Int: true, function s in Rat: false, function a in Rat: function b in Rat: a > b, function k in Int: function cs in CaseSet: cs, budget)

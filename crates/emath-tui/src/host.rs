@@ -485,7 +485,7 @@ impl LoopHost {
         }
     }
 
-    fn evaluate(&self, name: &str, inputs: &BTreeMap<String, CValue>) -> Result<CValue, HostFault> {
+    pub(crate) fn evaluate(&self, name: &str, inputs: &BTreeMap<String, CValue>) -> Result<CValue, HostFault> {
         let Some(facts) = &self.facts else {
             return evaluate_function_carrying(
                 &self.tree,

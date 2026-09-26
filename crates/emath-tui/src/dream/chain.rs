@@ -3,7 +3,9 @@
 //!
 //! The seam is an authored pair:
 //! - `emath function dream_carry` (one `Int` input, one output of any
-//!   literal-renderable type C): what a level starts from;
+//!   literal-renderable type C: Int, Rat, Bool, sequences, records, and
+//!   quoted `Code`, written back as `quote(<source>)`): what a level
+//!   starts from;
 //! - `emath function dream_next` (one input of the state type, one
 //!   output of type C): what the closing state says the next level
 //!   should start from.
@@ -27,7 +29,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use emath_core::tree::{Item, SyntaxTree};
-use emath_exec_ir::constructor_layer::{evaluate_function_at, evaluate_tree_at, CValue};
+use emath_exec_ir::constructor_layer::{evaluate_tree_budgeted_at, CValue};
 use emath_exec_ir::exact_int::ExactInt;
 use emath_syntax::parse_str;
 
@@ -95,13 +97,13 @@ pub fn resolve(host: &LoopHost) -> Result<Option<ChainSeam>, HostFault> {
 }
 
 impl ChainSeam {
-    /// `dream_carry(0)` and `dream_next(state)` on this level.
+    /// `dream_carry(0)` and `dream_next(state)` on this level, under the
+    /// run's per-evaluation work allowance.
     pub fn values(&self, host: &LoopHost, state: &CValue) -> Result<(CValue, CValue), HostFault> {
-        let path = Some(host.module_path());
         let zero = BTreeMap::from([(self.carry_input.clone(), CValue::Int(ExactInt::from(0)))]);
-        let carry = evaluate_function_at(host.tree(), CARRY, &zero, path).map_err(HostFault::from)?;
+        let carry = host.evaluate(CARRY, &zero)?;
         let input = BTreeMap::from([(self.next_input.clone(), state.clone())]);
-        let next = evaluate_function_at(host.tree(), NEXT, &input, path).map_err(HostFault::from)?;
+        let next = host.evaluate(NEXT, &input)?;
         Ok((carry, next))
     }
 
@@ -160,13 +162,19 @@ pub fn literal(value: &CValue) -> Result<String, String> {
                 .collect::<Result<Vec<_>, _>>()?;
             format!("{type_name}: {{{}}}", parts.join(", "))
         }
+        CValue::Code(code) => {
+            let mut text = String::new();
+            emath_syntax::formatter::format_expr(&mut text, &code.expr, emath_syntax::formatter::Prec::Root);
+            format!("quote({})", text.trim())
+        }
         other => return Err(format!("dream_next returned {other:?}, which has no authored literal")),
     })
 }
 
 /// Verify a written level: it opens as the same Step surface (parse,
-/// admission, surface) and every authored test passes.
-pub fn verify(path: &Path, target: &str) -> Result<(), String> {
+/// admission, surface) and every authored test passes, each under the
+/// run's per-evaluation work allowance.
+pub fn verify(path: &Path, target: &str, work: u64) -> Result<(), String> {
     LoopHost::open(path, Some(target)).map_err(|fault| format!("{}: {}", fault.code, fault.message))?;
     let source = fs::read_to_string(path).map_err(|err| err.to_string())?;
     emath_syntax::install_source_parser();
@@ -174,7 +182,7 @@ pub fn verify(path: &Path, target: &str) -> Result<(), String> {
     if diagnostics.has_errors() {
         return Err(format!("does not parse: {diagnostics:?}"));
     }
-    let report = evaluate_tree_at(&tree, Some(path)).map_err(|err| format!("does not evaluate: {err}"))?;
+    let report = evaluate_tree_budgeted_at(&tree, Some(path), work).map_err(|err| format!("does not evaluate: {err}"))?;
     let failed: Vec<&str> = report.tests.iter().filter(|t| !t.passed).map(|t| t.label.as_str()).collect();
     if failed.is_empty() {
         Ok(())

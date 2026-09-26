@@ -252,9 +252,11 @@ adds no loop policy and the viewer computes no mathematics.
   without the other, or mismatched types, refuses
   `dream_chain_surface`. At a close, equal `dream_carry(0)` and
   `dream_next(state)` are a fixed point and the run closes as before.
-  Otherwise the current level's source with `dream_carry`'s
-  definitions replaced by one binding of the rendered value (Int,
-  Rat, Bool, sequences and records have literals; anything else
+  Both evaluations, and the verification's authored tests, run under
+  the run's `--work` allowance. Otherwise the current level's source
+  with `dream_carry`'s definitions replaced by one binding of the
+  rendered value (Int, Rat, Bool, sequences, records, and quoted
+  `Code` as `quote(<formatted source>)` have literals; anything else
   rejects) is written to `world/level_NNN.emath` and verified: it
   opens as the same Step surface and every authored test passes. A
   verified file becomes the next level (fresh Seed, `budget0`
@@ -604,8 +606,18 @@ batches 13, 20, 25) and the climb stops where the held-out tasks refuse
 step 4; a fork inside level 3 reproduces the journal. Mutation probes: a
 climb that never accepts fails `evolved-strategy-shortens-each-level`;
 dropping the held-out confirmation makes level 2's file fail its
-authored test (`level_rejected`), failing all three checks.
-Re-bless both with `EMATH_DREAM_BLESS=1`.
+authored test (`level_rejected`), failing all three checks. Its
+`dream_invariants` carries a library of conservation laws
+(`search.invariants`) through the chain over four exact worlds: the
+levels add momentum and energy (1D collisions, train two bodies,
+held-out three and four), `p*p + q*q` (rotation), and the leapfrog's
+shadow energy `4*(p*p) + 4*(q*q) - q*q*h*h`, each written into the next
+level's source as a `quote(...)` literal; the contraction world adds
+nothing and the fourth level closes. Mutation probes: evaluating
+`dream_next` at the default work budget faults level 3; a `Code` value
+without a literal rejects level 2; dropping the held-out trajectories
+from elimination or the product span from the novelty judge changes
+the library. Re-bless both with `EMATH_DREAM_BLESS=1`.
 
 ## No-claim boundaries
 

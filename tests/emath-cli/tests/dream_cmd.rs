@@ -409,6 +409,48 @@ fn dream_strategy() {
 }
 
 #[test]
+fn dream_invariants() {
+    let mut probe = Probe::new("emath dream: levels grow a library of exact conservation laws, each a readable term");
+    let root = std::env::temp_dir().join(format!("emath_dream_invariants_{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("runs root");
+    let root_s = root.display().to_string();
+    let module_s = workspace().join("tests/fixtures/constructor/dream_invariants.emath").display().to_string();
+    let run = root.join("inv");
+    let (out, code) = emath(&[
+        "dream", &module_s, "--target", "StepLaws", "--budget", "1000000", "--plateau-close", "4", "--work",
+        "2000000000", "--run", "inv", "--root", &root_s,
+    ]);
+    assert_eq!(code, Some(0), "{out}");
+    wait_ended(&run.join("journal.jsonl"));
+    let text = std::fs::read_to_string(run.join("journal.jsonl")).unwrap_or_default();
+    // Momentum and energy (collisions), the rotation's radius, and the
+    // leapfrog's step-dependent shadow energy: nothing else, and nothing
+    // from the contraction.
+    let library = "\"carry\":\"[Invariant: {checked: 15, coefs: [1], law: quote(m * v), monos: [[1, 1]], world: 0}, \
+                   Invariant: {checked: 15, coefs: [1], law: quote(m * v * v), monos: [[1, 2]], world: 0}, \
+                   Invariant: {checked: 15, coefs: [1, 1], law: quote(p * p + q * q), monos: [[0, 2], [2, 0]], world: 1}, \
+                   Invariant: {checked: 60, coefs: [4, 4, -1], law: quote(4 * (p * p) + 4 * (q * q) - q * q * h * h), \
+                   monos: [[0, 2, 0], [2, 0, 0], [2, 0, 2]], world: 2}]\"";
+    probe.demand(
+        "four-laws-one-per-level",
+        text.contains("\"t\":\"level_next\",\"batch\":21,\"level\":4,") && text.contains(library),
+        text.clone(),
+    );
+    let level = std::fs::read_to_string(run.join("world/level_004.emath")).unwrap_or_default();
+    probe.demand(
+        "the-library-is-authored-source",
+        level.contains("law: quote(4 * (p * p) + 4 * (q * q) - q * q * h * h)"),
+        level.clone(),
+    );
+    probe.demand(
+        "no-new-law-closes-the-run",
+        text.contains("\"outcome\":\"domain_exhausted\"") && !text.contains("\"level\":5") && !text.contains("world: 3"),
+        text.clone(),
+    );
+    probe.finish();
+}
+
+#[test]
 fn dream_revision() {
     let mut probe = Probe::new("emath dream: evidence revises the model, and the model finds a plan nobody measured");
     let root = std::env::temp_dir().join(format!("emath_dream_revision_{}", std::process::id()));

@@ -947,7 +947,7 @@ impl Driver {
             Ok((literal, text)) => {
                 fs::create_dir_all(self.dir.world()).map_err(|err| io_fault("dream_io", &self.dir.world(), &err))?;
                 write_atomic(&path, &text)?;
-                chain::verify(&path, &self.info.target).map(|()| literal)
+                chain::verify(&path, &self.info.target, self.info.config.work).map(|()| literal)
             }
             Err(reason) => Err(reason),
         };
