@@ -107,7 +107,7 @@ impl Engine {
         }
         let cal = self.eval(callee)?;
         let dom = self.eval(domain)?;
-        let clos = CValue::Closure(Box::new(Closure {
+        let clos = CValue::Closure(std::sync::Arc::new(Closure {
             param: param.to_string(),
             domain: domain_shape_of_expr(domain),
             body: body.clone(),

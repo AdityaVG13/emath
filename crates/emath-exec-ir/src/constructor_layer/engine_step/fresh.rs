@@ -262,12 +262,11 @@ impl Engine {
                 },
             }
         } else if decl.accept.as_deref() == Some("unchecked") {
-            let payload = self.env.get("payload").cloned().or_else(|| {
-                self.env
-                    .values()
-                    .next()
-                    .cloned()
-            });
+            let payload = self
+                .env
+                .get("payload")
+                .cloned()
+                .or_else(|| self.env.first_value().cloned());
             Receipt {
                 execution: "returned".into(),
                 fulfillment: if payload.is_some() {

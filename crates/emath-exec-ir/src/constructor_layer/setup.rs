@@ -1,5 +1,5 @@
 use super::prelude::*;
-use super::{SyntaxTree, Engine, ConstructorError, Path, BTreeSet, Environment, BTreeMap, DEFAULT_WORK, Cell, Item, Declaration, Rc, FnDecl, QueryDecl, ObjectSchema, PathBuf, UseTree};
+use super::{SyntaxTree, Engine, ConstructorError, Path, BTreeSet, Environment, BTreeMap, HashMap, DEFAULT_WORK, Cell, Item, Declaration, Rc, FnDecl, QueryDecl, ObjectSchema, PathBuf, UseTree};
 
 pub(super) fn engine_from_tree(tree: &SyntaxTree) -> Result<Engine, ConstructorError> {
     engine_from_tree_at(tree, None)
@@ -45,6 +45,7 @@ pub(super) fn empty_engine() -> Engine {
         fact_hits: Cell::new(0),
         facts_only_memo: false,
         memo_added: Vec::new(),
+        scalar_memo: HashMap::default(),
     }
 }
 

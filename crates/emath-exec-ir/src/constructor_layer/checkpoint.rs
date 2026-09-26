@@ -1580,7 +1580,7 @@ pub(super) fn decode_cvalue_cur(
                 if !cur.eat_char(')') {
                     return Err(fault("incompatible_checkpoint", "closure not closed"));
                 }
-                CValue::Closure(Box::new(Closure {
+                CValue::Closure(Arc::new(Closure {
                     param,
                     domain,
                     body,

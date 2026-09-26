@@ -9,16 +9,20 @@ impl Engine {
             }
         }
         let cal = self.eval(function)?;
+        if self.facts_only_memo {
+            let vals = self.eval_args_direct(args)?;
+            return self.apply_value(cal, &vals);
+        }
         let mut vals = Vec::new();
         let mut rest: Vec<Rc<Expr>> = args.iter().map(|expr| Rc::new(expr.clone())).collect();
         while !rest.is_empty() {
             let next = rest.remove(0);
-            self.push_kont(Kont::CallArgs {
+            self.push_kont(|| Kont::CallArgs {
                 callee: cal.clone(),
                 done: vals.clone(),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr { expr: next.clone() });
+            self.push_kont(|| Kont::EvalExpr { expr: next.clone() });
             vals.push(self.eval(&next)?);
             self.pop_kont();
             self.pop_kont();
@@ -31,9 +35,16 @@ impl Engine {
         segments: &[String],
         args: &[Expr],
     ) -> Result<Option<CValue>, ConstructorError> {
-        let name = segments.join(".");
+        // Every call resolves here: a plain name skips the join's allocation.
+        let joined;
+        let name: &str = if let [single] = segments {
+            single
+        } else {
+            joined = segments.join(".");
+            &joined
+        };
         if name.starts_with("quote.") {
-            return self.eval_quote_call(&name, args).map(Some);
+            return self.eval_quote_call(name, args).map(Some);
         }
         if segments.len() == 2 && segments[1] == "pack" {
             return self.pack_object(&segments[0], args).map(Some);
@@ -47,14 +58,14 @@ impl Engine {
         if name == "constructor_refuse" {
             return self.eval_constructor_refuse(args).map(Some);
         }
-        if let Some(op) = machine_int_basename(&name) {
+        if let Some(op) = machine_int_basename(name) {
             return self.eval_machine_int(op, args).map(Some);
         }
-        if let Some(op) = machine_buffer_basename(&name) {
+        if let Some(op) = machine_buffer_basename(name) {
             return self.eval_machine_buffer(op, args).map(Some);
         }
-        if let Some(decl) = self.functions.get(&name).cloned() {
-            return self.eval_fn(&name, decl, args).map(Some);
+        if let Some(decl) = self.functions.get(name).cloned() {
+            return self.eval_fn(name, decl, args).map(Some);
         }
         // Postfix `.field` on a non-path receiver is parsed as
         // `field(recv)` — indistinguishable from a call — so the field
@@ -73,7 +84,7 @@ impl Engine {
         // A name the user bound (env) is the user's; the recipe refusal is
         // for UNBOUND names, so a user closure named like a module method
         // still resolves through the ordinary callee evaluation below.
-        if is_refused_recipe(&name) && !self.env.contains_key(&name) {
+        if is_refused_recipe(name) && !self.env.contains_key(name) {
             return Err(fault(
                 "method_unavailable",
                 format!("`{name}` is an ordinary module method, not a constructor operation — import it with `use`, or rename the record field: a field access `recv.{name}` resolves only when the receiver carries a field named `{name}`"),
@@ -226,12 +237,16 @@ impl Engine {
         self.call_depth += 1;
         self.push_frame(name);
         let saved = self.env.clone();
-        let result = self.eval_fn_args(
-            name,
-            decl,
-            Vec::new(),
-            args.iter().map(|expr| Rc::new(expr.clone())).collect(),
-        );
+        let result = if self.facts_only_memo {
+            self.eval_args_direct(args).and_then(|vals| self.apply_fn_body(name, decl, &vals))
+        } else {
+            self.eval_fn_args(
+                name,
+                decl,
+                Vec::new(),
+                args.iter().map(|expr| Rc::new(expr.clone())).collect(),
+            )
+        };
         let exhausted = matches!(
             &result,
             Err(err) if err.code == "budget_exhausted"
@@ -244,6 +259,16 @@ impl Engine {
         result
     }
 
+    /// Arguments left to right, read in place: the `eval_fn_args` order
+    /// without its kont bookkeeping, for an evaluation that never suspends.
+    fn eval_args_direct(&mut self, args: &[Expr]) -> Result<Vec<CValue>, ConstructorError> {
+        let mut vals = Vec::with_capacity(args.len());
+        for arg in args {
+            vals.push(self.eval(arg)?);
+        }
+        Ok(vals)
+    }
+
     pub(in crate::constructor_layer) fn eval_fn_args(
         &mut self,
         name: &str,
@@ -254,12 +279,12 @@ impl Engine {
         let mut rest = rest;
         while !rest.is_empty() {
             let next = rest.remove(0);
-            self.push_kont(Kont::FnCall {
+            self.push_kont(|| Kont::FnCall {
                 name: name.to_string(),
                 done: done.clone(),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr { expr: next.clone() });
+            self.push_kont(|| Kont::EvalExpr { expr: next.clone() });
             done.push(self.eval(&next)?);
             self.pop_kont();
             self.pop_kont();
@@ -298,12 +323,12 @@ impl Engine {
         let mut rest = rest;
         while !rest.is_empty() {
             let next = rest.remove(0);
-            self.push_kont(Kont::CallArgs {
+            self.push_kont(|| Kont::CallArgs {
                 callee: callee.clone(),
                 done: done.clone(),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr { expr: next.clone() });
+            self.push_kont(|| Kont::EvalExpr { expr: next.clone() });
             done.push(self.eval(&next)?);
             self.pop_kont();
             self.pop_kont();

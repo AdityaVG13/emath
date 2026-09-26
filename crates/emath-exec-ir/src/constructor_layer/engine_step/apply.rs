@@ -68,7 +68,7 @@ impl Engine {
     /// configured depth cap.
     pub(in crate::constructor_layer) fn apply_closure_chain(
         &mut self,
-        mut clos: Box<Closure>,
+        mut clos: std::sync::Arc<Closure>,
         mut args: Vec<CValue>,
         saved: Environment,
     ) -> Result<CValue, ConstructorError> {
@@ -87,7 +87,7 @@ impl Engine {
             // Frame reuse: this chain owns one frame; every iteration
             // rebinds it in place instead of pushing another.
             self.env = saved.clone();
-            self.env.extend(clos.env.clone());
+            self.env.extend(clos.env.iter().map(|(name, value)| (name.clone(), value.clone())));
             // The runtime lane of the closure discipline (fbpb6): the
             // argument is checked against the closure's recorded
             // domain BEFORE it binds — the same check-then-bind
@@ -118,7 +118,7 @@ impl Engine {
                 frame.kont.clear();
             }
             self.set_frame_next("body");
-            self.push_kont(Kont::EvalExpr {
+            self.push_kont(|| Kont::EvalExpr {
                 expr: Rc::new(clos.body.clone()),
             });
             self.refresh_frame();

@@ -17,11 +17,18 @@ impl Engine {
         Ok(())
     }
 
-    pub(in crate::constructor_layer) fn push_kont(&mut self, kont: Kont) {
+    // The kont stack is remaining work for a suspended evaluation to
+    // resume. An evaluation under `facts_only_memo` never suspends, so
+    // it keeps no stack: building each node clones expression subtrees.
+    // Every pop then finds the stack empty, which nothing but resume reads.
+    pub(in crate::constructor_layer) fn push_kont(&mut self, kont: impl FnOnce() -> Kont) {
+        if self.facts_only_memo {
+            return;
+        }
         if let Some(frame) = self.frames.last_mut() {
             // Unboxed: the kont stack churns one node per engine step;
             // per-node heap boxes were a malloc/free pair each step.
-            frame.kont.push(kont);
+            frame.kont.push(kont());
         }
     }
 
@@ -49,7 +56,7 @@ impl Engine {
             .checked_sub(1)
             .map(|index| (index, self.frames[index].kont.len()));
         let result = self.eval(expr);
-        if result.is_err() {
+        if result.is_err() && !self.facts_only_memo {
             if let Some((index, depth)) = position {
                 // Insert below the child's pending work, in the original caller
                 // frame even when exhaustion left nested call frames above it.
@@ -209,7 +216,7 @@ impl Engine {
                         .input_types
                         .first()
                         .map_or(DomainShape::Unknown, domain_shape_of_type);
-                    return Ok(CValue::Closure(Box::new(Closure {
+                    return Ok(CValue::Closure(Arc::new(Closure {
                         param,
                         domain,
                         body,
@@ -276,17 +283,20 @@ impl Engine {
             }
             ExprKind::List(items) => self.eval_seq_items(items, false),
             ExprKind::Tuple(items) => self.eval_seq_items(items, true),
+            ExprKind::Record { type_path, fields } if self.facts_only_memo => {
+                self.eval_record_direct(type_path, fields)
+            }
             ExprKind::Record { type_path, fields } => {
                 self.finish_record_fields(type_path.clone(), BTreeMap::new(), fields.clone(), None)
             }
             ExprKind::SequenceCons { head, tail } => {
-                self.push_kont(Kont::ConsLeft {
+                self.push_kont(|| Kont::ConsLeft {
                     head: head.clone(),
                     tail: tail.clone(),
                 });
                 let h = self.eval(head)?;
                 self.pop_kont();
-                self.push_kont(Kont::ConsAfterHead {
+                self.push_kont(|| Kont::ConsAfterHead {
                     head: h.clone(),
                     tail: tail.clone(),
                 });
@@ -302,7 +312,7 @@ impl Engine {
                 let Some(index_expr) = indices.first() else {
                     return Err(fault("invalid_index", "missing index"));
                 };
-                self.push_kont(Kont::IndexAfterSeq {
+                self.push_kont(|| Kont::IndexAfterSeq {
                     seq: seq.clone(),
                     index: Box::new(index_expr.clone()),
                 });
@@ -319,7 +329,7 @@ impl Engine {
                 domain,
                 body,
             } => {
-                Ok(CValue::Closure(Box::new(Closure {
+                Ok(CValue::Closure(Arc::new(Closure {
                     param: param.clone(),
                     // Record the declared domain so both check lanes see
                     // the same shape (the admission lane compares it to
@@ -357,8 +367,8 @@ impl Engine {
                         env: BTreeMap::new(),
                         recursive: Some(name.clone()),
                     };
-                    env.insert(name.clone(), CValue::Closure(Box::new(finished.clone())));
-                    return Ok(CValue::Closure(Box::new(Closure {
+                    env.insert(name.clone(), CValue::Closure(Arc::new(finished.clone())));
+                    return Ok(CValue::Closure(Arc::new(Closure {
                         param: param.clone(),
                         domain: recur_domain,
                         body: *body.clone(),
@@ -366,7 +376,7 @@ impl Engine {
                         recursive: Some(name.clone()),
                     })));
                 }
-                Ok(CValue::Closure(Box::new(Closure {
+                Ok(CValue::Closure(Arc::new(Closure {
                     param: String::new(),
                     domain: recur_domain,
                     body: *body.clone(),
@@ -455,7 +465,7 @@ impl Engine {
                 else_arm,
             } => {
                 if let Some(subject) = subject {
-                    self.push_kont(Kont::MatchWaiting {
+                    self.push_kont(|| Kont::MatchWaiting {
                         subject: subject.clone(),
                         arms: arms.clone(),
                         else_arm: else_arm.clone(),

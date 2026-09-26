@@ -155,7 +155,7 @@ impl Engine {
         let value = match &top {
             Kont::BinLeft { op, left, right } => {
                 let left_value = self.eval(left)?;
-                self.push_kont(Kont::BinRight {
+                self.push_kont(|| Kont::BinRight {
                     op: *op,
                     left: left_value.clone(),
                     right: right.clone(),
@@ -174,7 +174,7 @@ impl Engine {
                 else_value,
             } => match self.eval(condition)? {
                 CValue::Bool(true) => {
-                    self.push_kont(Kont::IfThen {
+                    self.push_kont(|| Kont::IfThen {
                         then_value: then_value.clone(),
                     });
                     let value = self.eval(then_value)?;
@@ -182,7 +182,7 @@ impl Engine {
                     value
                 }
                 CValue::Bool(false) => {
-                    self.push_kont(Kont::IfElse {
+                    self.push_kont(|| Kont::IfElse {
                         else_value: else_value.clone(),
                     });
                     let value = self.eval(else_value)?;
@@ -228,7 +228,7 @@ impl Engine {
             Kont::UnaryAfter { op, value } => apply_unary(*op, self.eval(value)?)?,
             Kont::ConsLeft { head, tail } => {
                 let h = self.eval(head)?;
-                self.push_kont(Kont::ConsAfterHead {
+                self.push_kont(|| Kont::ConsAfterHead {
                     head: h.clone(),
                     tail: tail.clone(),
                 });
@@ -281,7 +281,7 @@ impl Engine {
         };
         let value = match &top {
             Kont::BinLeft { op, right, .. } => {
-                self.push_kont(Kont::BinRight {
+                self.push_kont(|| Kont::BinRight {
                     op: *op,
                     left: incoming.clone(),
                     right: right.clone(),
@@ -297,7 +297,7 @@ impl Engine {
                 ..
             } => match incoming {
                 CValue::Bool(true) => {
-                    self.push_kont(Kont::IfThen {
+                    self.push_kont(|| Kont::IfThen {
                         then_value: then_value.clone(),
                     });
                     let value = self.eval(then_value)?;
@@ -305,7 +305,7 @@ impl Engine {
                     value
                 }
                 CValue::Bool(false) => {
-                    self.push_kont(Kont::IfElse {
+                    self.push_kont(|| Kont::IfElse {
                         else_value: else_value.clone(),
                     });
                     let value = self.eval(else_value)?;
@@ -344,7 +344,7 @@ impl Engine {
             },
             Kont::UnaryAfter { op, .. } => apply_unary(*op, incoming)?,
             Kont::ConsLeft { tail, .. } => {
-                self.push_kont(Kont::ConsAfterHead {
+                self.push_kont(|| Kont::ConsAfterHead {
                     head: incoming.clone(),
                     tail: tail.clone(),
                 });

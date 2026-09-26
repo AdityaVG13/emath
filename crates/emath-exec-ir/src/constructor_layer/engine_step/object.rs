@@ -78,7 +78,7 @@ impl Engine {
         packed_expr: &Expr,
         body: &Expr,
     ) -> Result<CValue, ConstructorError> {
-        self.push_kont(Kont::OpenAfterPacked {
+        self.push_kont(|| Kont::OpenAfterPacked {
             type_name: type_name.to_string(),
             param: param.to_string(),
             packed: Box::new(packed_expr.clone()),
@@ -124,7 +124,7 @@ impl Engine {
         };
         let saved = self.env.clone();
         self.env.insert(param.to_string(), opened);
-        self.push_kont(Kont::EvalExpr {
+        self.push_kont(|| Kont::EvalExpr {
             expr: Rc::new(body.clone()),
         });
         let result = self.eval(body);
@@ -143,7 +143,7 @@ impl Engine {
     ) -> Result<CValue, ConstructorError> {
         for (cond, value) in arms {
             if self.pattern_binds(&scrutinee, cond)? {
-                self.push_kont(Kont::EvalExpr {
+                self.push_kont(|| Kont::EvalExpr {
                     expr: Rc::new(value.clone()),
                 });
                 let result = self.eval(value)?;
@@ -151,7 +151,7 @@ impl Engine {
                 return Ok(result);
             }
         }
-        self.push_kont(Kont::EvalExpr {
+        self.push_kont(|| Kont::EvalExpr {
             expr: Rc::new(else_arm.clone()),
         });
         let result = self.eval(else_arm)?;
@@ -164,10 +164,20 @@ impl Engine {
         arms: &[(Expr, Expr)],
         else_arm: &Expr,
     ) -> Result<CValue, ConstructorError> {
+        if self.facts_only_memo {
+            // No kont stack to resume from: test the arms in place.
+            for (cond, value) in arms {
+                let cond_value = self.eval(cond)?;
+                if self.cases_cond_taken(&cond_value)? {
+                    return self.eval(value);
+                }
+            }
+            return self.eval(else_arm);
+        }
         let mut rest: Vec<(Expr, Expr)> = arms.to_vec();
         while !rest.is_empty() {
             let (cond, value) = rest.remove(0);
-            self.push_kont(Kont::CasesArm {
+            self.push_kont(|| Kont::CasesArm {
                 cond: Box::new(cond.clone()),
                 value: Box::new(value.clone()),
                 rest: rest.clone(),
@@ -176,7 +186,7 @@ impl Engine {
             let cond_value = self.eval(&cond)?;
             self.pop_kont();
             if self.cases_cond_taken(&cond_value)? {
-                self.push_kont(Kont::EvalExpr {
+                self.push_kont(|| Kont::EvalExpr {
                     expr: Rc::new(value.clone()),
                 });
                 let result = self.eval(&value)?;
@@ -184,7 +194,7 @@ impl Engine {
                 return Ok(result);
             }
         }
-        self.push_kont(Kont::EvalExpr {
+        self.push_kont(|| Kont::EvalExpr {
             expr: Rc::new(else_arm.clone()),
         });
         let result = self.eval(else_arm)?;

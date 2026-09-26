@@ -264,6 +264,18 @@ impl Engine {
         items: &[Expr],
         as_tuple: bool,
     ) -> Result<CValue, ConstructorError> {
+        if self.facts_only_memo {
+            // No kont stack to resume from: read the items in place.
+            let mut done = Vec::with_capacity(items.len());
+            for item in items {
+                done.push(self.eval(item)?);
+            }
+            return Ok(if as_tuple {
+                CValue::Tuple(done)
+            } else {
+                CValue::Sequence(std::sync::Arc::new(done))
+            });
+        }
         self.finish_seq_items(
             as_tuple,
             Vec::new(),
@@ -285,12 +297,12 @@ impl Engine {
         let mut rest = rest;
         while !rest.is_empty() {
             let next = rest.remove(0);
-            self.push_kont(Kont::SeqItems {
+            self.push_kont(|| Kont::SeqItems {
                 as_tuple,
                 done: done.clone(),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr { expr: next.clone() });
+            self.push_kont(|| Kont::EvalExpr { expr: next.clone() });
             done.push(self.eval(&next)?);
             self.pop_kont();
             self.pop_kont();
@@ -314,14 +326,14 @@ impl Engine {
         }
         while !rest.is_empty() {
             let (name, value) = rest.remove(0);
-            self.push_kont(Kont::RecordFields {
+            self.push_kont(|| Kont::RecordFields {
                 type_path: type_path.clone(),
                 done: done.clone(),
                 current: name.clone(),
                 current_expr: Box::new(value.clone()),
                 rest: rest.clone(),
             });
-            self.push_kont(Kont::EvalExpr {
+            self.push_kont(|| Kont::EvalExpr {
                 expr: Rc::new(value.clone()),
             });
             done.insert(name, self.eval(&value)?);
@@ -331,13 +343,30 @@ impl Engine {
         self.finish_record(type_path, done)
     }
 
+    /// Evaluate a record literal's fields in place, in source order: the
+    /// `finish_record_fields` path without its kont bookkeeping, for an
+    /// evaluation that never suspends.
+    pub(in crate::constructor_layer) fn eval_record_direct(
+        &mut self,
+        type_path: &[String],
+        fields: &[(String, Expr)],
+    ) -> Result<CValue, ConstructorError> {
+        let mut done = BTreeMap::new();
+        for (name, value) in fields {
+            let value = self.eval(value)?;
+            done.insert(name.clone(), value);
+        }
+        self.finish_record(type_path.to_vec(), done)
+    }
+
     pub(in crate::constructor_layer) fn finish_record(
         &mut self,
         type_path: Vec<String>,
         map: BTreeMap<String, CValue>,
     ) -> Result<CValue, ConstructorError> {
         let type_name = type_path.join(".");
-        if let Some(schema) = self.objects.get(&type_name).cloned() {
+        let checked = self.objects.get(&type_name).filter(|schema| !schema.invariants.is_empty()).cloned();
+        if let Some(schema) = checked {
             let saved = self.env.clone();
             for (name, value) in &map {
                 self.env.insert(name.clone(), value.clone());

@@ -77,10 +77,17 @@ pub(super) fn index_seq(seq: CValue, i: ExactInt) -> Result<CValue, ConstructorE
 pub(super) fn cons_values(head: CValue, tail: CValue) -> Result<CValue, ConstructorError> {
     match tail {
         CValue::Sequence(mut rest) => {
-            // Copy-on-write: the copy happens only when the tail is
-            // still shared; a private tail is mutated in place.
-            std::sync::Arc::make_mut(&mut rest).insert(0, head);
-            Ok(CValue::Sequence(rest))
+            // A private tail is mutated in place. A shared one (still
+            // bound to a name) is copied once into a buffer sized for the
+            // head, not cloned and then grown and shifted.
+            if let Some(items) = std::sync::Arc::get_mut(&mut rest) {
+                items.insert(0, head);
+                return Ok(CValue::Sequence(rest));
+            }
+            let mut items = Vec::with_capacity(rest.len() + 1);
+            items.push(head);
+            items.extend(rest.iter().cloned());
+            Ok(CValue::Sequence(std::sync::Arc::new(items)))
         }
         other => Err(fault(
             "type",

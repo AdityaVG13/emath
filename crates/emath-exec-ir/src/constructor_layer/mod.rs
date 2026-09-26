@@ -4,7 +4,7 @@
 //! recipes are ordinary module functions, not image `FeatureIDs`.
 
 use std::cell::Cell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -72,7 +72,10 @@ pub enum CValue {
         tag: String,
         fields: Vec<CValue>,
     },
-    Closure(Box<Closure>),
+    /// Shared, immutable once built: reading a closure from the
+    /// environment (a callback passed down a recursion) must not copy
+    /// its body and captured environment.
+    Closure(Arc<Closure>),
     Code(Box<Code>),
     Receipt(Box<Receipt>),
     Unit,
@@ -490,38 +493,104 @@ impl<E> ContinuationFrame<E> {
     }
 }
 
-/// Interpreter-local copy-on-write bindings. Snapshot timing is unchanged;
-/// only a mutation copies bindings shared with a saved environment or frame.
-#[derive(Clone, Debug, Default, PartialEq)]
-struct Environment(Rc<BTreeMap<String, CValue>>);
+/// Interpreter-local persistent bindings: a shared list, newest first.
+/// The interpreter saves the environment around almost every binding
+/// construct and then binds into it; with a list the save is a pointer
+/// copy and a binding is one node, where a copy-on-write map copied every
+/// binding the saved environment shared. A newer binding of a name
+/// shadows an older one, which is exactly map-insert replacement as seen
+/// through `get`, `contains_key`, and `into_map`.
+#[derive(Clone, Default)]
+struct Environment(Option<Rc<Binding>>);
+
+struct Binding {
+    name: String,
+    value: CValue,
+    next: Option<Rc<Binding>>,
+}
 
 impl Environment {
-    fn into_map(self) -> BTreeMap<String, CValue> {
-        Rc::unwrap_or_clone(self.0)
+    fn bindings(&self) -> impl Iterator<Item = &Binding> {
+        std::iter::successors(self.0.as_deref(), |binding| binding.next.as_deref())
+    }
+
+    fn get(&self, name: &str) -> Option<&CValue> {
+        self.bindings()
+            .find(|binding| binding.name == name)
+            .map(|binding| &binding.value)
+    }
+
+    fn contains_key(&self, name: &str) -> bool {
+        self.get(name).is_some()
+    }
+
+    fn insert(&mut self, name: String, value: CValue) {
+        let next = self.0.take();
+        self.0 = Some(Rc::new(Binding { name, value, next }));
+    }
+
+    fn extend(&mut self, bindings: impl IntoIterator<Item = (String, CValue)>) {
+        for (name, value) in bindings {
+            self.insert(name, value);
+        }
     }
 
     fn clear(&mut self) {
-        self.0 = Rc::default();
+        *self = Self::default();
+    }
+
+    /// The value of the least visible name: what the map representation
+    /// yielded first.
+    fn first_value(&self) -> Option<&CValue> {
+        let mut first: Option<&Binding> = None;
+        for binding in self.bindings() {
+            if first.is_none_or(|seen| binding.name < seen.name) {
+                first = Some(binding);
+            }
+        }
+        first.and_then(|binding| self.get(&binding.name))
+    }
+
+    fn into_map(self) -> BTreeMap<String, CValue> {
+        let mut map = BTreeMap::new();
+        for binding in self.bindings() {
+            map.entry(binding.name.clone())
+                .or_insert_with(|| binding.value.clone());
+        }
+        map
+    }
+}
+
+impl Drop for Environment {
+    // Unlinks iteratively: a long list must not recurse one frame per node.
+    fn drop(&mut self) {
+        let mut next = self.0.take();
+        while let Some(node) = next {
+            match Rc::try_unwrap(node) {
+                Ok(mut binding) => next = binding.next.take(),
+                Err(_) => break,
+            }
+        }
+    }
+}
+
+impl PartialEq for Environment {
+    fn eq(&self, other: &Self) -> bool {
+        self.clone().into_map() == other.clone().into_map()
+    }
+}
+
+impl std::fmt::Debug for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map().entries(self.clone().into_map()).finish()
     }
 }
 
 impl From<BTreeMap<String, CValue>> for Environment {
     fn from(values: BTreeMap<String, CValue>) -> Self {
-        Self(Rc::new(values))
-    }
-}
-
-impl std::ops::Deref for Environment {
-    type Target = BTreeMap<String, CValue>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for Environment {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        Rc::make_mut(&mut self.0)
+        let mut env = Self::default();
+        env.extend(values);
+        env
     }
 }
 
@@ -606,6 +675,71 @@ struct Engine {
     /// the carried store is lent in (`carry`): they are split back out
     /// afterwards instead of copying the whole store.
     memo_added: Vec<String>,
+    /// Under `facts_only_memo`, the memo for non-fact calls whose
+    /// arguments are small scalars, keyed without building text. These
+    /// entries live for one evaluation and are never carried or saved.
+    scalar_memo: HashMap<String, HashMap<ScalarArgs, CValue, FastHash>, FastHash>,
+}
+
+/// Multiply-rotate hashing (the rustc FxHash scheme) for in-process
+/// memo keys. Not DoS-resistant; the keys are the program's own
+/// arguments, and `SipHash` cost more than the lookups it served.
+#[derive(Clone, Copy, Default)]
+struct FastHasher(u64);
+
+impl std::hash::Hasher for FastHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut word = [0u8; 8];
+            word[..chunk.len()].copy_from_slice(chunk);
+            self.write_u64(u64::from_le_bytes(word));
+        }
+    }
+
+    fn write_u64(&mut self, n: u64) {
+        self.0 = (self.0.rotate_left(5) ^ n).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+
+    fn write_u8(&mut self, n: u8) {
+        self.write_u64(u64::from(n));
+    }
+
+    fn write_u128(&mut self, n: u128) {
+        self.write_u64(n as u64);
+        self.write_u64((n >> 64) as u64);
+    }
+
+    fn write_i128(&mut self, n: i128) {
+        self.write_u128(n as u128);
+    }
+
+    fn write_usize(&mut self, n: usize) {
+        self.write_u64(n as u64);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+type FastHash = std::hash::BuildHasherDefault<FastHasher>;
+
+/// A call's arguments when every one is a `Bool`, a small `Int`, or a
+/// `Rat` with small parts, and there are at most `SCALAR_ARGS` of them.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct ScalarArgs {
+    len: u8,
+    items: [ScalarArg; SCALAR_ARGS],
+}
+
+const SCALAR_ARGS: usize = 8;
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum ScalarArg {
+    Unused,
+    Bool(bool),
+    Int(i128),
+    Rat(i128, i128),
 }
 
 #[derive(Clone)]
