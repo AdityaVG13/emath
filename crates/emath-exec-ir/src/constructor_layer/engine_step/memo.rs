@@ -24,7 +24,7 @@ impl Engine {
         name: &str,
         args: &[CValue],
     ) -> Option<CValue> {
-        if self.memo.is_empty() || !self.memoizes(name) {
+        if self.memo.is_empty() || !self.memoizes(name, args) {
             return None;
         }
         let key = call_memo_key(name, args)?;
@@ -41,7 +41,7 @@ impl Engine {
         args: &[CValue],
         value: CValue,
     ) {
-        if !self.memoizes(name) {
+        if !self.memoizes(name, args) {
             return;
         }
         if let Some(key) = call_memo_key(name, args) {
@@ -49,8 +49,15 @@ impl Engine {
         }
     }
 
-    fn memoizes(&self, name: &str) -> bool {
-        !self.facts_only_memo || name.starts_with(super::super::FACT_PREFIX)
+    /// Under `facts_only_memo`, fact calls are memoized (and carried),
+    /// and so are calls whose arguments are all scalars: their keys cost
+    /// a few bytes, and a fact body re-reads the same tables (`pool(0)`,
+    /// `row(i)`) on every call. Calls carrying sequences or records are
+    /// not, since their key would serialize a whole archive.
+    fn memoizes(&self, name: &str, args: &[CValue]) -> bool {
+        !self.facts_only_memo
+            || name.starts_with(super::super::FACT_PREFIX)
+            || args.iter().all(|arg| matches!(arg, CValue::Int(_) | CValue::Rat { .. } | CValue::Bool(_)))
     }
 
     pub(in crate::constructor_layer) fn completed_closure(

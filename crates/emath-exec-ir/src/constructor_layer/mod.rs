@@ -596,10 +596,10 @@ struct Engine {
     expect_atoms: Cell<bool>,
     /// Memo hits on fact-function calls (see `carry`).
     fact_hits: Cell<u64>,
-    /// Memoize only fact-function calls. The all-calls memo exists so a
-    /// suspended step can replay; an evaluation that never suspends
-    /// pays for a key per call (its arguments serialized, often a whole
-    /// archive) and gets nothing back from non-fact entries.
+    /// Memoize only fact-function calls and all-scalar calls. The
+    /// all-calls memo exists so a suspended step can replay; an
+    /// evaluation that never suspends would pay for a key per call (its
+    /// arguments serialized, often a whole archive).
     facts_only_memo: bool,
 }
 

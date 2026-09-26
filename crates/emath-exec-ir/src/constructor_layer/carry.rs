@@ -47,7 +47,8 @@ pub(super) fn is_fact_key(key: &str) -> bool {
 
 /// Evaluate a named function with `carried` facts pre-loaded into the
 /// call memo, under `work_limit` engine steps. The evaluation never
-/// suspends, so only fact-function calls are memoized. The outer error is a
+/// suspends, so only fact-function calls and all-scalar calls are
+/// memoized, and only fact calls are returned as fresh. The outer error is a
 /// setup failure (no evaluation ran); an evaluation fault is
 /// `CarriedEvaluation::value`. A carried hit skips the call's work, so
 /// a warm memo can finish under a limit a cold one exceeds: the limit
