@@ -17,7 +17,9 @@ use super::input::{on_click, on_key, on_wheel, Action, Key};
 use super::render::{render, Frame as Rendered};
 use super::view::{Ctx, PanelId, RunBadge, View};
 use super::watch::RunWatch;
-use crate::dream::rundir::{fork_run, next_run_name, send_request, spawn_driver, RunDir};
+use crate::dream::driver::spawn_driver;
+use crate::dream::resume::fork_run;
+use crate::dream::rundir::{next_run_name, send_request, RunDir};
 
 /// Viewer options (`--theme`, `--hide`, `--no-measure`).
 #[derive(Clone, Debug, Default)]

@@ -192,13 +192,13 @@ adds no loop policy and the viewer computes no mathematics.
   paths except `level.file`, no pids, no measurement. A record without
   `key` faults `dream_record_contract`; a different schema refuses
   `dream_journal_schema`.
-- **Driver** (`drive(dir)`, the hidden `emath dream __drive <dir>`):
+- **Driver** (`dream::driver::drive(dir)`, the hidden `emath dream __drive <dir>`):
   a live pid in `driver.lock` refuses `dream_run_live`; otherwise the
   run opens fresh or resumes. Loop: poll control, one batch, journal,
   metrics, checkpoint. Checkpoints every `checkpoint_every` batches
   and at pause, stop, close and on request; the newest
   `keep_checkpoints` plus the final one are retained.
-- **Resume law:** the newest checkpoint `C` at or before the last
+- **Resume law** (`dream::resume`): the newest checkpoint `C` at or before the last
   complete `batch` line; the journal is truncated after batch `C`'s
   events (a trailing `end` is dropped) and metrics to batches <= `C`;
   the ladder (watermark, plateau streak, resumes) is refolded from the
@@ -308,7 +308,7 @@ adds no loop policy and the viewer computes no mathematics.
   `max_units`, when the next raise would pass the ceiling),
   `stopped`, `batch_cap` or `fault` (`code` = the HostFault code
   verbatim; the message goes to `run.json`, not the journal).
-- **Export:** `export_run(run, batches|records, csv|jsonl)` is a
+- **Export** (`dream::export`): `export_run(run, batches|records, csv|jsonl)` is a
   deterministic function of the journal; an unknown table or format
   refuses `dream_export`.
 - **Viewer** (`dashboard`): `watch::RunWatch` reads complete journal

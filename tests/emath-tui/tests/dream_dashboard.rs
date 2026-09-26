@@ -16,7 +16,8 @@ use emath_tui::dashboard::render::{body_rect, render, Frame, HitAct, Mode};
 use emath_tui::dashboard::view::{Ctx, Overlay, PanelId, RunBadge, View, ALL_PANELS};
 use emath_tui::dashboard::watch::{derive_badge, RunWatch};
 use emath_tui::dream::journal::{read_events, JournalEvent};
-use emath_tui::dream::rundir::{create_run, send_request, Ack, Driver, Request, RunConfig, RunDir};
+use emath_tui::dream::driver::Driver;
+use emath_tui::dream::rundir::{create_run, send_request, Ack, Request, RunConfig, RunDir};
 
 fn repo(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel)

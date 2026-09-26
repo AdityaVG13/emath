@@ -10,7 +10,7 @@ use emath_exec_ir::constructor_layer::CValue;
 
 use super::canvas::Tok;
 use crate::dream::journal::{JournalEvent, RecordView};
-use crate::dream::rundir::display_value;
+use crate::dream::export::display_value;
 
 /// An exact rational `(num, den)` with `den > 0`.
 pub type Rat = (i128, i128);

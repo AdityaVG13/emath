@@ -65,9 +65,12 @@ use emath_syntax::parse_str;
 use crate::host::{value_rational, HostFault, LoopHost, LoopSession};
 
 pub mod chain;
+pub mod driver;
+pub mod export;
 pub mod inbox;
 pub mod journal;
 pub mod ledger;
+pub mod resume;
 pub mod rundir;
 
 /// The close verdicts, as the level journal spells them (the verdict

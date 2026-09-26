@@ -12,9 +12,10 @@ use emath_tui::dashboard::canvas::THEMES;
 use emath_tui::dashboard::model::{dec4, units};
 use emath_tui::dashboard::view::PanelId;
 use emath_tui::dashboard::watch::RunWatch;
-use emath_tui::dream::rundir::{
-    check_resumable, create_run, drive, export_run, fork_run, list_runs, resolve_run, spawn_driver, RunConfig, RunDir,
-};
+use emath_tui::dream::driver::{drive, spawn_driver};
+use emath_tui::dream::export::{export_run, list_runs};
+use emath_tui::dream::resume::{check_resumable, fork_run};
+use emath_tui::dream::rundir::{create_run, resolve_run, RunConfig, RunDir};
 use emath_tui::host::HostFault;
 
 use crate::{CliExit, EXIT_OK, EXIT_REFUSED};

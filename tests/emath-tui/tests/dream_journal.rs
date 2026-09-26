@@ -8,9 +8,10 @@ use std::path::{Path, PathBuf};
 
 use emath_test_harness::Probe;
 use emath_tui::dream::journal::read_events;
-use emath_tui::dream::rundir::{
-    create_run, drive, export_run, fork_run, send_request, Driver, RunConfig, RunDir,
-};
+use emath_tui::dream::driver::{drive, Driver};
+use emath_tui::dream::export::export_run;
+use emath_tui::dream::resume::fork_run;
+use emath_tui::dream::rundir::{create_run, send_request, RunConfig, RunDir};
 use emath_tui::dream::{run_dream, DreamConfig};
 
 fn fixture(name: &str) -> PathBuf {
