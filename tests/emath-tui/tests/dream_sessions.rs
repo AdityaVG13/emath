@@ -89,6 +89,7 @@ fn dream_sessions() {
             max_batches: 200,
             plateau_close: 3,
             out_dir: Some(out.clone()),
+            ..DreamConfig::default()
         };
         let outcome =
             run_dream(&fixture_path("dream_world_linear.emath"), Some("StepDream"), &config)
@@ -129,6 +130,7 @@ fn dream_sessions() {
             max_batches: 400,
             plateau_close: 3,
             out_dir: None,
+            ..DreamConfig::default()
         };
         let outcome =
             run_dream(&fixture_path("dream_world_linear.emath"), Some("StepDream"), &config)
@@ -162,6 +164,7 @@ fn dream_sessions() {
             max_batches: 200,
             plateau_close: 3,
             out_dir: Some(out),
+            ..DreamConfig::default()
         };
         let outcome =
             run_dream(&fixture_path("dream_unmasterable_linear.emath"), Some("StepDream"), &config)
@@ -198,6 +201,7 @@ fn dream_sessions() {
             max_batches: 200,
             plateau_close: 3,
             out_dir: Some(out),
+            ..DreamConfig::default()
         };
         let outcome =
             run_dream(&fixture_path("dream_plateau_const.emath"), Some("StepDream"), &config)
@@ -233,6 +237,7 @@ fn dream_sessions() {
             max_batches: 5,
             plateau_close: 1000,
             out_dir: Some(out.clone()),
+            ..DreamConfig::default()
         };
         let outcome =
             run_dream(&fixture_path("dream_plateau_const.emath"), Some("StepDream"), &config)
@@ -260,6 +265,7 @@ fn dream_sessions() {
             max_batches: 200,
             plateau_close: 3,
             out_dir: Some(out.clone()),
+            ..DreamConfig::default()
         };
         let result =
             run_dream(&fixture_path("research_step_valley.emath"), Some("StepValley"), &config);
@@ -301,6 +307,7 @@ fn dream_sessions() {
             max_batches: 200,
             plateau_close: 3,
             out_dir: None,
+            ..DreamConfig::default()
         };
         let outcome = run_dream(
             &fixture_path("dream_world_linear.emath"),
@@ -334,6 +341,7 @@ fn dream_sessions() {
             max_batches: 200,
             plateau_close: 3,
             out_dir: Some(out.clone()),
+            ..DreamConfig::default()
         };
         let outcome = run_dream(
             &fixture_path("dream_program_space.emath"),

@@ -313,26 +313,6 @@ pub fn evaluate_function_at(
     source: Option<&Path>,
 ) -> Result<CValue, ConstructorError> {
     let mut engine = engine_from_tree_at(tree, source)?;
-    let decl = engine
-        .functions
-        .get(name)
-        .cloned()
-        .ok_or_else(|| fault("unbound", format!("unknown function `{name}`")))?;
-    let args: Vec<Expr> = decl
-        .inputs
-        .iter()
-        .map(|input| {
-            let value = inputs.get(input).cloned().unwrap_or(CValue::Absent);
-            engine.env.insert(input.clone(), value);
-            Expr {
-                kind: ExprKind::Path {
-                    segments: vec![input.clone()],
-                    generics: None,
-                },
-                source: emath_core::Span::default(),
-            }
-        })
-        .collect();
-    engine.eval_fn(name, decl, &args)
+    engine.eval_entry(name, inputs)
 }
 

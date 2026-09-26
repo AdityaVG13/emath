@@ -1,0 +1,238 @@
+# A deceptive two-half world for search.evolve: crossover is the
+# short road.
+#
+# A genome of four genes over {1, 2, 3} (base-4 key) scores each half
+# on its own case: the half [3, 3] scores 5, the half [1, 1] scores 2,
+# anything else 0; a genome of any other length scores 0 on both. The
+# seed [1, 1, 1, 1] scores 4, and every single-gene move from it breaks
+# a half to 0, so the climb must cross a valley on each half. Once the
+# elites hold one solved half each, one aligned cut joins them into
+# [3, 3, 3, 3] (score 10, the goal).
+#
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/constructor/dream_evolve_crossover.emath --work 4000000000
+#      emath dream tests/fixtures/constructor/dream_evolve_crossover.emath --target StepEvo
+
+use search.archive
+use search.experiments
+use search.research
+use search.evolve
+
+emath function fact_half:
+    # A fact function (`fact_` prefix): the dream host appends each
+    # completed call to the evaluation ledger and every later batch,
+    # run, resume, or fork reuses it instead of recomputing. Its result
+    # is a tail call, so the engine must remember the fact's own frame.
+    inputs:
+        k: Int
+        i: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = half_value(genome_len(k, 4) == 4, gene_at(k, 4, 2 * i), gene_at(k, 4, 2 * i + 1))
+
+emath function half_value:
+    inputs:
+        four: Bool
+        x: Int
+        y: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = if not four: 0 / 1 else: if x == 3 and y == 3: 5 / 1 else: if x == 1 and y == 1: 2 / 1 else: 0 / 1
+
+emath function sum_halves:
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = if j >= length(ids): 0 / 1 else: fact_half(k, ids[j]) + sum_halves(k, ids, j + 1)
+
+emath function worst_half:
+    inputs:
+        k: Int
+        ids: sequence(Int)
+        j: Int
+        best: Int
+    outputs:
+        result: Int
+    definitions:
+        done = j >= length(ids)
+        c = if done: -1 else: ids[j]
+        lower = (not done) and (best < 0 or fact_half(k, c) < fact_half(k, best))
+        result = if done: best else: worst_half(k, ids, j + 1, if lower: c else: best)
+
+emath function EvoSpec:
+    # crossover: 1 opens the crossover family, 0 masks it.
+    inputs:
+        crossover: Int
+    outputs:
+        result: GenomeSpec
+    definitions:
+        result = GenomeSpec: {base: 4, max_len: 6, inserts: [1, 2, 3], elites: 4, capacity: 8, floor: 1, mask: [1, 1, 1, 1, crossover]}
+
+emath function EScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: sum_halves(k, cs.ids, 0)
+
+emath function EWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: worst_half(k, cs.ids, 0, -1)
+
+emath function ECaseScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int -> Rat
+    definitions:
+        result = function k in Int: function i in Int: fact_half(k, i)
+
+emath function SeedEvo:
+    inputs:
+        unused: Int
+    outputs:
+        result: EvolveState
+    definitions:
+        result = evolve_seed(genome_key([1, 1, 1, 1], 4, 0), function k in Int: k / 1, CaseSet: {ids: [0, 1]}, EScore(0), EWitness(0), ECaseScore(0), 1)
+
+emath function step_with:
+    inputs:
+        state: EvolveState
+        crossover: Int
+        budget: Int
+    outputs:
+        result: EvolveState
+    definitions:
+        result = evolve_batch(state, EvoSpec(crossover), function k in Int: k / 1, function k in Int: true, EScore(0), EScore(0), EWitness(0), function k in Int: true, function s in Rat: s == 10 / 1, function a in Rat: function b in Rat: a > b, function k in Int: function cs in CaseSet: cs, ECaseScore(0), budget)
+
+emath function StepEvo:
+    inputs:
+        state: EvolveState
+        budget: Int
+    outputs:
+        result: EvolveState
+    definitions:
+        result = step_with(state, 1, budget)
+
+emath function trap:
+    # Faults (index out of bounds) on the goal genome only.
+    inputs:
+        k: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = if k == genome_key([3, 3, 3, 3], 4, 0): [0 / 1][1] else: 0 / 1
+
+emath function SeedTrap:
+    inputs:
+        unused: Int
+    outputs:
+        result: EvolveState
+    definitions:
+        result = SeedEvo(0)
+
+emath function StepTrap:
+    # StepEvo whose score faults on the goal genome after both of its
+    # fact_half calls completed: the batch that finds the goal faults
+    # with fresh facts in hand.
+    inputs:
+        state: EvolveState
+        budget: Int
+    outputs:
+        result: EvolveState
+    definitions:
+        score = function k in Int: function cs in CaseSet: sum_halves(k, cs.ids, 0) + trap(k)
+        result = evolve_batch(state, EvoSpec(1), function k in Int: k / 1, function k in Int: true, score, score, EWitness(0), function k in Int: true, function s in Rat: s == 10 / 1, function a in Rat: function b in Rat: a > b, function k in Int: function cs in CaseSet: cs, ECaseScore(0), budget)
+
+emath function run_until:
+    # Step until the loop closes (goal 1, exhausted 2, budget 4) or n
+    # batches have run; plateau (3) keeps going, as the dream driver
+    # does.
+    inputs:
+        state: EvolveState
+        crossover: Int
+        n: Int
+    outputs:
+        result: EvolveState
+    definitions:
+        stop = n <= 0 or state.verdict == 1 or state.verdict == 2 or state.verdict == 4
+        next = if stop: state else: step_with(state, crossover, state.used + 100000)
+        result = if stop: state else: run_until(next, crossover, n - 1)
+
+emath function lineage_families:
+    # Move families from the record back to the seed (seed excluded).
+    inputs:
+        arch: sequence(ResearchCandidate)
+        o: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        r = arch[o]
+        result = if r.parent < 0: [] else: [r.family, ..lineage_families(arch, r.parent)]
+
+emath function Probe:
+    inputs:
+        crossover: Int
+        n: Int
+    outputs:
+        batch: Int
+        verdict: Int
+        best: Rat
+        winner: sequence(Int)
+        family: Int
+        proposed: sequence(Int)
+        improved: sequence(Int)
+        lineage: sequence(Int)
+    definitions:
+        s = run_until(SeedEvo(0), crossover, n)
+        r = s.archive[s.incumbent]
+        batch = s.batch
+        verdict = s.verdict
+        best = r.score
+        winner = genome_seq(r.key, 4)
+        family = r.family
+        proposed = s.proposed
+        improved = s.improved
+        lineage = lineage_families(s.archive, s.incumbent)
+
+emath function CrossoverRace:
+    # The same seed, spec and 12-batch allowance, crossover open vs
+    # masked.
+    inputs:
+        n: Int
+    outputs:
+        with_verdict: Int
+        with_winner: sequence(Int)
+        with_crossover: Bool
+        without_best: Rat
+        without_verdict: Int
+    definitions:
+        a = run_until(SeedEvo(0), 1, n)
+        b = run_until(SeedEvo(0), 0, n)
+        with_verdict = a.verdict
+        with_winner = genome_seq(a.archive[a.incumbent].key, 4)
+        with_crossover = seq_has(lineage_families(a.archive, a.incumbent), 4, 0)
+        without_best = b.archive[b.incumbent].score
+        without_verdict = b.verdict
+    tests:
+        example <crossover_is_the_short_road>:
+            # Open: goal [3, 3, 3, 3] within 12 batches through a
+            # lineage with crossover in it. Masked: still below the
+            # goal and still running after 12.
+            given n = 12
+            expect with_verdict == 1
+            expect with_winner == [3, 3, 3, 3]
+            expect with_crossover == true
+            expect without_best < 10 / 1
+            expect without_verdict != 1

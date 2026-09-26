@@ -19,6 +19,12 @@ emath-build = { workspace = true }
 emath-rust-backend = { workspace = true }
 # Experiment host (emath experiment): manifest and audit-ledger JSON.
 emath-artifact = { workspace = true }
+# `emath dream` terminal presenter (SPEC §13): FrankenTUI owns the
+# terminal; the dashboard's pure render path does not need it.
+ftui = { version = "0.7", optional = true }
+
+[features]
+dashboard = ["dep:ftui"]
 
 [lints]
 workspace = true

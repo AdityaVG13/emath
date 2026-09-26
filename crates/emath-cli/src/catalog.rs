@@ -16,6 +16,7 @@ pub const COMMANDS: &[&str] = &[
     "explain",
     "run",
     "loop",
+    "dream",
     "experiment",
     "step",
     "test",
@@ -176,6 +177,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
             "run <file.emath> [--function NAME] [--set name=value] [--set-file path.json] [--work N] [--out dir] [--json]"
         }
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
+        "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--detach] | dream watch|resume|fork|export <run> | dream list",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
@@ -283,6 +285,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         }
         "loop" => {
             "open a research-loop session surface and drive it with line commands (step, run, show, grow-case, save, load); `--script` replays a command file deterministically"
+        }
+        "dream" => {
+            "launch a research run as a background driver writing `.emath/runs/<name>/` and watch it live in a terminal dashboard; `watch`, `resume`, `fork`, `list`, `export` operate on runs; detaching never stops the run"
         }
         "experiment" => {
             "build and measure an explicit baseline and candidate on one workload, then return an authored evaluator's decision; resumable with `--state`"
@@ -481,6 +486,13 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
             "emath run program.emath",
             "emath run program.emath --function AddExact --json",
             "emath run program.emath --set a=2 --set b=1 --json",
+        ],
+        "dream" => &[
+            "emath dream research.emath --target StepDream",
+            "emath dream research.emath --detach --run warmup",
+            "emath dream watch warmup",
+            "emath dream resume warmup --max-batches 500",
+            "emath dream export warmup --format csv -o batches.csv",
         ],
         "step" => &[
             "emath step checkpoint.json --work 100 --json",
@@ -772,6 +784,30 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "-h",
         ],
         "loop" => &["--target", "--budget", "--script", "--help", "-h"],
+        "dream" => &[
+            "--target",
+            "--run",
+            "--overwrite",
+            "--budget",
+            "--budget-step",
+            "--plateau-close",
+            "--max-batches",
+            "--max-units",
+            "--checkpoint-every",
+            "--keep-checkpoints",
+            "--work",
+            "--detach",
+            "--theme",
+            "--hide",
+            "--no-measure",
+            "--root",
+            "--at",
+            "--format",
+            "--table",
+            "-o",
+            "--help",
+            "-h",
+        ],
         "experiment" => &["--state", "--audit-ledger", "--stop-after-pairs", "--help", "-h"],
         "verify" => &["--json", "--help", "-h"],
         "explain" => &["--json", "--provenance", "--show-defaults", "--list-codes", "--help", "-h"],

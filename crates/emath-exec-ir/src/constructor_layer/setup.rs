@@ -42,6 +42,8 @@ pub(super) fn empty_engine() -> Engine {
         scopes: BTreeSet::new(),
         resume_frames: Vec::new(),
         expect_atoms: Cell::new(false),
+        fact_hits: Cell::new(0),
+        facts_only_memo: false,
     }
 }
 

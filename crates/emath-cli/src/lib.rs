@@ -25,6 +25,7 @@ mod cli_dispatch;
 mod cli_json;
 mod cli_parse;
 mod loop_cmd;
+mod dream_cmd;
 mod experiment_cmd;
 mod compiled_search;
 mod project_lock;

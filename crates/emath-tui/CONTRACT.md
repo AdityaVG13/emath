@@ -18,7 +18,10 @@ A module exposes a session surface as an authored pair:
 
 - `emath function Step<Name>` with inputs `(state: T, budget: Int)`
   and exactly one output of type `T` - one `research_batch` per call,
-  with the target's closures lifted to module-level `Make*` functions;
+  with the target's closures lifted to module-level `Make*` functions.
+  An optional third input of type `sequence(Observation)`
+  (`search.observations`) receives the run's evidence (empty outside
+  `emath dream`, and until the inbox delivers some);
 - `emath function Seed<Name>` with exactly one `Int` input and one
   output of type `T` - the initial state.
 
@@ -154,6 +157,195 @@ stop, level, resumes }`; `LevelRecord` is the level journal entry
 (close reason, batches, used units, incumbent key and score, frozen
 case set, path, certificate).
 
+`DreamRun` is the batch-granular form of the same driver:
+`DreamRun::open(module, target, config)` (or `DreamRun::restore` from
+a checkpoint plus a `DreamLadder`), then `advance() -> BatchOutcome`
+runs exactly one `Step` call (the only commit point) and applies the
+ladder/plateau/close laws; `finish()` returns the `DreamOutcome`.
+`run_dream` is a loop over it with identical behavior.
+
+## Dream runs and dashboard contract (B4, bead emath-3vium)
+
+Design authority: `internal/design/dream-dashboard/SPEC.md`. A run is
+one `DreamRun` over one module and target, owned by a driver process
+that writes a run directory; any number of viewers read it. The driver
+adds no loop policy and the viewer computes no mathematics.
+
+- **Run directory** (`dream::rundir`): `create_run(root, name,
+  overwrite, RunConfig, argv)` makes `<root>/<name>/` (default root
+  `.emath/runs`, default name `<target-lowercase>-NNN`; an existing
+  name refuses `dream_run_exists` unless `overwrite`). Files:
+  `journal.jsonl` (canonical), `metrics.jsonl` (measurement),
+  `run.json` (context, `emath.dream.run.v1`, rewritten with `ended`
+  at the end), `control/requests.jsonl` + `control/acks.jsonl`,
+  `driver.lock` (driver pid, removed on clean exit), `driver.log`,
+  `checkpoints/bNNNNNN.scratch` (`emath.scratch.v1`) and
+  `level/level_001.emath` when the module has the emission seam.
+  Whole files are written atomically; journal and metrics lines are
+  appended one complete line per write.
+- **Journal `emath.dream.journal.v1`:** events `start`, `seed`,
+  `records`, `cases`, `batch`, `budget`, `steer`, `evidence`,
+  `evidence_rejected`, `level_next`, `level_rejected`, `level`, `end`, with
+  contiguous `seq` from 1. Record values render through
+  `emath_exec_ir` `render_scratch_value`, so a record reads
+  identically in the journal and in a checkpoint. No timestamps, no
+  paths except `level.file`, no pids, no measurement. A record without
+  `key` faults `dream_record_contract`; a different schema refuses
+  `dream_journal_schema`.
+- **Driver** (`drive(dir)`, the hidden `emath dream __drive <dir>`):
+  a live pid in `driver.lock` refuses `dream_run_live`; otherwise the
+  run opens fresh or resumes. Loop: poll control, one batch, journal,
+  metrics, checkpoint. Checkpoints every `checkpoint_every` batches
+  and at pause, stop, close and on request; the newest
+  `keep_checkpoints` plus the final one are retained.
+- **Resume law:** the newest checkpoint `C` at or before the last
+  complete `batch` line; the journal is truncated after batch `C`'s
+  events (a trailing `end` is dropped) and metrics to batches <= `C`;
+  the ladder (watermark, plateau streak, resumes) is refolded from the
+  kept journal and the checkpoint is loaded. A run is resumable with
+  no `end` or an `end` of `stopped`, `batch_cap` or
+  `budget_exhausted`; otherwise `dream_run_closed`.
+- **Fork:** `fork_run` starts a new run from the source journal
+  truncated at `--at` (default the latest checkpoint) plus that
+  checkpoint; none at or before `--at` refuses `dream_no_checkpoint`.
+- **Evaluation ledger** (`dream::ledger`): a function whose name
+  starts with `fact_` is a fact; its completed calls are memoized
+  across batches, resumes, forks and runs. The fact identity
+  (`emath:facts:v1:<sha256>`, `exec_ir::fact_identity`) hashes every
+  reachable fact definition, the object schemas and the checkpoint
+  ABI, so editing a fact starts a new ledger. The store is
+  `<root>/ledger/<hex>.jsonl` (`emath.dream.ledger.v1`): a header line
+  then `{key, value, run, batch}` lines. A driver tails the file by
+  byte offset: before each batch it carries what sibling drivers
+  appended, after each batch it appends its fresh facts minus any a
+  sibling already wrote. Writers hold an exclusive OS file lock and
+  readers a shared one, so any number of parallel runs under one root
+  share one ledger without duplicates. Facts are flushed on every
+  exit path: a committed batch, a batch whose evaluation faulted (a
+  memo entry exists only for a call that returned, so its completed
+  facts are kept, labelled with the uncommitted batch number), stop,
+  cap, close, and any fault that escapes the loop. A hard kill loses
+  at most the in-flight batch. A writer trims a torn tail (a writer
+  killed mid-write) before appending, and restarts a file with no
+  complete line; any other damage refuses `dream_ledger`. Carrying
+  changes compute only: journals, verdicts and charged logical units
+  are identical with or without the ledger, and with or without
+  siblings (a warm cache never flips a budget verdict).
+  `metrics.jsonl` fills `cache_lookups`, `cache_hits` and
+  `computed_units` (fresh fact calls) per batch, and leaves them
+  `null` for a module with no fact functions. `ledger` is not a valid
+  run name. A fact whose body ends in a tail call is memoized too:
+  every `fact_` frame the tail call replaces is remembered with the
+  chain's final value. A step evaluation never suspends, so it
+  memoizes only `fact_` calls (no key is built for any other call or
+  closure application); results and journals are identical to the
+  all-calls memo.
+- **World copy and write scope:** `create_run` copies the launch
+  module and every local file it imports (a `use a.b` with
+  `<module dir>/a/b.emath` on disk, transitively) into `<run>/world/`.
+  Level 1 runs from that copy, so later edits to the source never
+  reach the run, and the driver writes only under the run directory.
+  Runs created before the copy existed still read the launch module.
+  A fork copies `world/`.
+- **Level chain** (`dream::chain`): the authored pair `dream_carry`
+  (`(Int) -> C`) and `dream_next` (`(T) -> C`, T the state type); one
+  without the other, or mismatched types, refuses
+  `dream_chain_surface`. At a close, equal `dream_carry(0)` and
+  `dream_next(state)` are a fixed point and the run closes as before.
+  Otherwise the current level's source with `dream_carry`'s
+  definitions replaced by one binding of the rendered value (Int,
+  Rat, Bool, sequences and records have literals; anything else
+  rejects) is written to `world/level_NNN.emath` and verified: it
+  opens as the same Step surface and every authored test passes. A
+  verified file becomes the next level (fresh Seed, `budget0`
+  watermark, evidence carried) and the journal gets `level_next
+  {batch, level, file, carry, used, watermark, incumbent, archive,
+  case_ids}`; a file that fails gets `level_rejected {batch, level,
+  file, reason}`, stays on disk, and the run closes (`level`, `end`).
+  Journal batches count across levels. Resume and fork take the level
+  from the last kept `level_next`: a checkpoint after the level began
+  is restored under that level's file; at the level's first boundary
+  the level restarts from its Seed.
+- **Inbox** (`dream::inbox`): `<run>/inbox/*.jsonl`, one observation
+  per line, `{"subject": int, "case": int, "value": number | "n/d"}`.
+  Values are exact (a decimal is its exact rational; exponents and
+  non-integers elsewhere refuse). Before each batch the driver takes
+  every not-yet-taken file in name order whose text ends in a newline
+  (a writer renames a finished file into place). A taken file becomes
+  `evidence {batch, file, source, observations}` (`source` = 1-based
+  evidence ordinal, observations as `Observation` records) or, on any
+  bad line, an empty file, or a Step with no evidence input,
+  `evidence_rejected {batch, file, reason}`; neither is retried. The
+  Step's evidence input then carries every accepted observation in
+  order. The journal is the authority: resume and fork rebuild the
+  evidence from kept events, a file whose event a resume dropped is
+  taken again at the boundary that first took it, and the driver never
+  edits or deletes an inbox file. Evidence is the only way outside
+  information enters a run; it never selects what the run does next.
+- **Work limit:** `--work N` on `start`, `resume` and `fork` (stored
+  as `work` in `run.json`, default the engine's `DEFAULT_WORK`) caps
+  the machine work of one step evaluation. Exhausting it ends the run
+  `budget_exhausted`, which is resumable, so a world that outgrows the
+  cap resumes with a larger `--work` instead of starting over.
+- **Parallel runs:** default run names are claimed with an atomic
+  directory create, so simultaneous launches get distinct names. A
+  driver holds an OS lock on `driver.lock` for its lifetime; that
+  lock, not the pid written in the file, refuses a second driver
+  (`dream_run_live`), and it dies with its process, so a crashed
+  driver never leaves a run locked. The pid is for viewers only.
+- **Control channel:** requests `pause`, `resume`, `step`,
+  `grow_case(id)`, `stop`, `checkpoint` apply at batch boundaries in
+  file order and are acknowledged `applied` or `refused` with a code:
+  `step` while running refuses `dream_not_paused`, `grow_case`
+  without an id `dream_control_arg`, an unknown action
+  `dream_control_unknown`, any request after the end
+  `dream_run_ended`; a `grow_case` host fault refuses with its own
+  code. Only an applied `grow_case` enters the journal (`steer`).
+- **Outcomes:** `end.outcome` is `goal_attained`,
+  `domain_exhausted`, `plateau`, `budget_exhausted` (only under
+  `max_units`, when the next raise would pass the ceiling),
+  `stopped`, `batch_cap` or `fault` (`code` = the HostFault code
+  verbatim; the message goes to `run.json`, not the journal).
+- **Export:** `export_run(run, batches|records, csv|jsonl)` is a
+  deterministic function of the journal; an unknown table or format
+  refuses `dream_export`.
+- **Viewer** (`dashboard`): `watch::RunWatch` reads complete journal
+  lines incrementally from the last byte offset and folds them into
+  `model::RunModel`; `render::render(model, view, ctx, w, h) -> Frame`
+  is pure: a theme-free `canvas::Canvas` of style tokens plus layout
+  and hit regions;
+  `dashboard::app` (feature `dashboard`) is the FrankenTUI presenter
+  that maps tokens to theme colors, owns the terminal, and writes only
+  control requests. The RUN badge precedence is ended, stalled (lock
+  pid not alive), paused, pausing/stopping, running. Record state
+  follows the archive contract: `counterexample >= 0` is refuted,
+  `refusal > 0` is refused (`0` means none). Panels whose data needs
+  engine dependencies D1-D5 show their named empty state.
+- **Presenter** (`dashboard::app`): FrankenTUI's frame budget is strict
+  and generous (its 16 ms default skips presenting any slower frame,
+  which left large runs on a blank screen); idle ticks repaint the last
+  frame and re-render only on new run data, input or animation. Glyphs
+  go through `canvas::Glyphs`: every non-ASCII glyph that FrankenTUI
+  measures wider than one cell (or all of them in its ASCII glyph mode)
+  is painted as its ASCII stand-in; the canvas keeps the canonical
+  glyphs. A crowded body keeps panels in priority order (Score first).
+  Run controls the run cannot take (ended or stalled; step while not
+  paused) drop their status-bar keycap chip.
+- **Fold cost:** each record's ordering fields (score, parent, tier,
+  refusal, counterexample, accepted) are decoded once per journaled
+  state; the shared record list's groups and the parent index are
+  derived once after new events, not per frame. `RunWatch` reads files
+  by (device, inode) and offset, so a journal or metrics file rewritten
+  by a resume or fork is refolded from its first line.
+- **Measured** (not gating; `cargo run --release -p emath-tui-tests
+  --example dream_perf`, synthetic 10,000-batch / 50,001-record journal,
+  Apple M5 Max): ingest (open + fold) median 229 ms (SPEC target < 2 s);
+  160 × 50 Overview frame p95 0.13 ms (target < 8 ms), 9.4 ms for the
+  first frame after new events (rebuilds the derived orderings); before
+  the fold-cost changes the Overview p95 was 323 ms. Peak RSS of a
+  one-shot `watch` of that journal: about 267 MB (debug build); no
+  memory target is claimed.
+
 ## Experiment host contract (`experiment`, `emath experiment`)
 
 `ExperimentHost::admit(manifest)` validates an `emath.experiment.v1`
@@ -247,7 +439,13 @@ with their own codes (`scratch_identity`, `scratch_ledger`,
 `loop_run_cap`, `loop_stream`, `loop_export_emit`,
 `loop_export_state`, `loop_export_compile`) and `dream_*` codes
 (`dream_config`, `dream_verdict`, `dream_emission_surface`,
-`dream_level_exists`, `dream_level_write`, `dream_certificate`).
+`dream_level_exists`, `dream_level_write`, `dream_certificate`;
+runs and control: `dream_run_exists`, `dream_run_name`,
+`dream_run_missing`, `dream_run_live`, `dream_run_closed`,
+`dream_run_ended`, `dream_run_json`, `dream_no_checkpoint`,
+`dream_journal_schema`, `dream_journal_parse`, `dream_journal_io`,
+`dream_record_contract`, `dream_not_paused`, `dream_control_arg`,
+`dream_control_unknown`, `dream_export`, `dream_spawn`, `dream_io`).
 No silent guessing.
 
 ## Determinism class
@@ -260,13 +458,25 @@ same script over the same module produces identical bytes
 (interactive mode adds only the `> ` prompts, which are transcript
 decoration, not data).
 
+Dream runs: the same module, language, target, config and applied
+`steer` events at the same batches produce a byte-identical
+`journal.jsonl`; pausing, stepping, resuming, detaching, attaching,
+checkpoint requests, stop + resume and crash + resume never change it.
+The dashboard's content is a pure function of the journal prefix it
+has read and the view state; with `--no-measure` the rendered frame is
+too. Measurement lives only in `metrics.jsonl` and the viewer's frame
+timer.
+
 ## Unsafe boundary
 
 None. The crate inherits the workspace `forbid(unsafe_code)`.
 
 ## Feature flags
 
-None.
+`dashboard`: adds the `ftui` dependency and compiles `dashboard::app`,
+the terminal presenter. The fold, model, layout and headless render
+are always compiled, so the goldens need no terminal. `emath-cli`
+enables it.
 
 ## Conformance
 
@@ -326,6 +536,76 @@ mid-walk); truncating the rational row rendering fails the Rat-world
 case's literal pins (the level's internal consistency alone cannot
 catch a uniformly wrong renderer - the explicit Rat-literal demands
 are the discriminator).
+`tests/emath-tui/tests/dream_journal.rs` is the run acceptance (SPEC
+A1-A7, A12): byte-identical journals for identical runs, pause/step/
+resume invariance, stop + resume and crash (truncated journal, dead
+lock) + resume equal to the uninterrupted run, a live lock refusing a
+second driver, one `steer` for a grow and a fork at b2 replaying it to
+the same bytes, parity with `run_dream` on close reason, incumbent,
+used, batches and certificate, no context or measurement keys in the
+journal, every outcome's `end` (the fault case runs the linear
+world's `StepDreamFault` surface, whose second batch reads past the
+world and ends `fault` with the engine's own code, not resumable),
+and the export tables against
+`tests/fixtures/dream/golden/export-batches.csv`. Mutation probes:
+swapping the `used` and `delta_used` export columns fails
+`a12-export/csv-golden`; ending a fault as `stopped` fails
+`a7-outcomes/fault` and `a7-outcomes/fault-not-resumable`.
+`tests/emath-tui/tests/dream_dashboard.rs` is the viewer acceptance
+(A8-A10, A13): text and style-class goldens for each tab, expanded
+panel, overlay, the ended banner and the size tiers
+(`tests/fixtures/dream/golden/`), the spacing grid on every golden,
+hidden panels costing nothing, and a dead driver shown as stalled.
+It also pins the three theme token tables against SPEC §8.1, the
+glyph fallback (a wide glyph falls back, its narrow neighbours do not,
+and every golden frame has an ASCII stand-in for each glyph), the mouse
+regions (tab, expand/close, row select, wheel, keycap, panel switch,
+click outside), and the fault-after-steer banner with its fork undo.
+The fixture journal is the linear world's two-family trickle surface
+(`StepDreamFamilies`). Mutation probes: dropping the tab click fails
+`mouse/click-tab`; never attributing a fault to its steer fails
+`fault-after-steer/banner`; reversing the panel priority fails
+`golden-size-120x36`; a changed Nordic color fails `a8-theme-tables`;
+ignoring measured widths fails `glyph-fallback/wide-falls-back`.
+It also checks that controls the run cannot take lose their keycap
+chip, that a model folded in two halves (rendered in between) renders
+exactly like a fresh fold, and that an attached `RunWatch` refolds
+after a stop and resume instead of misreading the rewritten journal.
+Mutation probes: dropping the per-ingest reset of the derived
+orderings fails `incremental-fold-renders-like-a-fresh-fold`; not
+refolding a replaced journal fails `watch-follows-a-resume/batches-once`.
+`tests/emath-cli/tests/dream_cmd.rs` is the end-to-end A11: `emath
+dream` on a pipe returns while the detached driver keeps committing,
+and a new `watch` shows the batch the journal holds. Mutation probe:
+making `spawn_driver` wait for the driver fails
+`driver-outlives-viewer`. Its `dream_evidence` drops inbox files into a
+stopped run: a valid file moves the incumbent at the next batch, a bad
+file is journaled `evidence_rejected`, an unfinished file is not taken,
+and a fork with no inbox reproduces the journal byte for byte from the
+kept evidence. Mutation probes: never binding taken evidence fails
+`evidence-moves-the-incumbent`; not replaying evidence on resume/fork
+fails `fork-replays-evidence`; a wrong decimal scale fails
+`taken-once-exact-and-journaled`. Its `dream_revision` drives a Step
+that revises its model (`search.revision`) from inbox evidence: plans
+0, 1, 5, 6 are measured and the run adopts plan 3, which never was.
+Mutation probe: a revision law that never accepts fails
+`revised-model-finds-the-unmeasured-plan`. Its `dream_chain` runs three
+verified levels (starts 0, 3, 6), rejects the fourth on its authored
+test, keeps the source byte-identical, and forks inside level 3 and at
+its first boundary reproduce the journal. Mutation probes: resuming
+without the kept `level_next` fails both `fork-at-*-reproduces`;
+restoring the previous level's checkpoint at a level's first boundary
+fails `fork-at-8-reproduces`; skipping authored tests in verification
+fails `failing-authored-test-rejects-the-level`. Its `dream_strategy`
+carries a strategy genome through the chain: each close revises it once
+(`search.strategy`: training screen, then held-out confirmation under a
+shared cost ceiling), so the levels run on steps 1, 2, 3 (closing at
+batches 13, 20, 25) and the climb stops where the held-out tasks refuse
+step 4; a fork inside level 3 reproduces the journal. Mutation probes: a
+climb that never accepts fails `evolved-strategy-shortens-each-level`;
+dropping the held-out confirmation makes level 2's file fail its
+authored test (`level_rejected`), failing all three checks.
+Re-bless both with `EMATH_DREAM_BLESS=1`.
 
 ## No-claim boundaries
 
@@ -339,7 +619,10 @@ The dream has no self-scheduler: unattended multi-level runs are a
 caller loop around the stop button, not a driver behavior. The level
 file's certificate pins observed data and its own recomputation; it
 is evidence, not a theorem. The dashboard (B4) is implemented strictly from the
-user's design spec; this crate does not design UI. Native-lane parity
+user's design spec; this crate does not design UI. A dream run is one
+level; the engine dependencies D1-D5 (batch report, per-case scores,
+results store, native parity lane, family pinning) are not built, and
+the SPEC's ingest and frame-time targets are not claimed. Native-lane parity
 is claimed exactly as tested: same module, surface, and budget
 schedule produce byte-identical checkpoints on the valley and fitting
 surfaces; other surfaces carry the same contract but their parity is

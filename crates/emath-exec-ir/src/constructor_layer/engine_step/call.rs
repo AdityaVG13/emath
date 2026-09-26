@@ -317,6 +317,26 @@ impl Engine {
         decl: Rc<FnDecl>,
         vals: &[CValue],
     ) -> Result<CValue, ConstructorError> {
+        // A tail call reuses the frame, so only the last callee of a chain
+        // is remembered under its own name. A fact function whose result
+        // is a tail call would never be memoized (nor carried); its frame
+        // is remembered here with the value the chain returned, which is
+        // exactly the value its call returns.
+        let mut facts = Vec::new();
+        let value = self.apply_fn_chain(name, decl, vals, &mut facts)?;
+        for (fact, args) in facts {
+            self.remember_call(&fact, &args, value.clone());
+        }
+        Ok(value)
+    }
+
+    fn apply_fn_chain(
+        &mut self,
+        name: &str,
+        decl: Rc<FnDecl>,
+        vals: &[CValue],
+        facts: &mut Vec<(String, Vec<CValue>)>,
+    ) -> Result<CValue, ConstructorError> {
         let mut name = name.to_string();
         let mut decl = decl;
         let mut vals = vals.to_vec();
@@ -388,6 +408,9 @@ impl Engine {
                             let next_decl = self.functions.get(&next_name).cloned().ok_or_else(
                                 || fault("unbound", format!("unknown function `{next_name}`")),
                             )?;
+                            if name.starts_with(super::super::FACT_PREFIX) {
+                                facts.push((name.clone(), vals.clone()));
+                            }
                             name = next_name;
                             decl = next_decl;
                             vals = args;

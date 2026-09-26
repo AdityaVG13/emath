@@ -1,0 +1,31 @@
+ ● RUNNING
+ L1 · batch 11
+ incumbent #11  0.0000  0
+ budget 176 / 240 u
+ b7 ▲ promoted #11 ← #3  f1 m3  0  (0.0000)
+ b8 ◆ cases +1 (c3) · audit now 5 · archive re-verified
+ b9 $ budget 112 → 240 · batch committed partial, resume…
+ b10 ○ plateau · no promotion · 1/3 toward close
+ b11 ○ plateau · no promotion · 2/3 toward close
+ enlarge the terminal for the dashboard
+
+
+
+
+
+--- style ---
+.G.GGGGGGG
+.tt.t.ttttt.tt
+.GGGGGGGGG.GGG..GGGGGG..G
+.tttttt.ttt.t.ttt.t
+.dd.d.dddddddd.ddd.d.dd..dd.dd..d..dddddddd
+.dd.d.ddddd.dd.dddd.d.ddddd.ddd.d.d.ddddddd.ddddddddddd
+.dd.d.dddddd.ddd.d.ddd.d.ddddd.ddddddddd.dddddddd.ddddddd
+.ddd.d.ddddddd.d.dd.ddddddddd.d.ddd.dddddd.ddddd
+.ddd.d.ddddddd.d.dd.ddddddddd.d.ddd.dddddd.ddddd
+.ddddddd.ddd.dddddddd.ddd.ddd.ddddddddd
+
+
+
+
+

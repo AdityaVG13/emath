@@ -1,0 +1,141 @@
+# A dream that chains levels. One level can only reach keys
+# start .. start + 3 (`dream_carry` is the start) and scores a key by
+# its distance to 10, so no single level reaches the optimum. At each
+# close `dream_next` names the incumbent as the next start; the driver
+# writes that into a new level file inside the run, verifies it, and
+# continues. The authored test `start_within_reach` bounds the start
+# at 6, so the level that would start at 9 fails verification: its
+# file is kept, and the run closes on the level that started at 6.
+#
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/constructor/dream_chain.emath
+
+use search.archive
+use search.experiments
+use search.research
+
+emath function dream_carry:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 0
+    tests:
+        example <start_within_reach>:
+            given unused = 0
+            expect result <= 6
+
+emath function dream_next:
+    inputs:
+        state: LoopState
+    outputs:
+        result: Int
+    definitions:
+        result = state.archive[state.incumbent].key
+
+emath function MakeValueOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        start = dream_carry(0)
+        result = function k in Int: k >= start and k <= start + 3
+
+emath function MakeMoves:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 1
+
+emath function MakeScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: (if k < 10: 10 - k else: k - 10) / 1
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: -1
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: false
+
+emath function MakeBetter:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: cs
+
+emath function SeedChain:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(dream_carry(0), MakeValueOf(0), CaseSet: {ids: [0]}, MakeScore(0), MakeWitness(0), 1, 0, 1, 1)
+
+emath function StepChain:
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)

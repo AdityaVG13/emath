@@ -1,0 +1,137 @@
+# A dream whose Step reads evidence: observations the run did not
+# compute, taken from the run's inbox at batch boundaries. Keys
+# 0..99; a key's score is the lower median of its observed readings,
+# or its prior k when nothing was observed (lower is better). Without
+# evidence the prior keeps k = 0 the incumbent forever; a reading that
+# puts k = 1 below 0 must move the incumbent to 1, because the
+# freshness law re-scores the whole archive every batch.
+#
+# Expected outcome: passes (1 authored test).
+# Run: emath test tests/fixtures/constructor/dream_evidence.emath
+
+use search.archive
+use search.experiments
+use search.research
+use search.observations
+
+emath function evidence_score:
+    inputs:
+        ev: sequence(Observation)
+        k: Int
+    outputs:
+        result: Rat
+    definitions:
+        xs = obs_values(ev, k, -1)
+        result = if length(xs) == 0: k / 1 else: obs_lower_median(xs)
+    tests:
+        example <reading_overrides_prior>:
+            given ev = [Observation: {subject: 1, case_id: 0, value: -1 / 1, source: 1}, Observation: {subject: 1, case_id: 1, value: 1 / 2, source: 1}]
+            given k = 1
+            expect result == -1 / 1
+
+emath function MakeValueOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Rat
+    definitions:
+        result = function k in Int: k / 1
+
+emath function MakeAdmit:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: k >= 0 and k <= 99
+
+emath function MakeMoves:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> sequence(Int)
+    definitions:
+        result = function k in Int: [k + 1]
+
+emath function MakeFamilyOf:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: 0
+
+emath function MakeQuota:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 1
+
+emath function MakeScore:
+    inputs:
+        ev: sequence(Observation)
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: evidence_score(ev, k)
+
+emath function MakeWitness:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Int
+    definitions:
+        result = function k in Int: function cs in CaseSet: -1
+
+emath function MakeHardOk:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Bool
+    definitions:
+        result = function k in Int: true
+
+emath function MakeGoalMet:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Bool
+    definitions:
+        result = function s in Rat: false
+
+emath function MakeBetter:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat -> Rat -> Bool
+    definitions:
+        result = function a in Rat: function b in Rat: a < b
+
+emath function MakeNextCases:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> CaseSet
+    definitions:
+        result = function k in Int: function cs in CaseSet: cs
+
+emath function SeedEvidence:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, MakeValueOf(0), CaseSet: {ids: [0]}, MakeScore([]), MakeWitness(0), 1, 0, 1, 1)
+
+emath function StepEvidence:
+    inputs:
+        state: LoopState
+        budget: Int
+        evidence: sequence(Observation)
+    outputs:
+        result: LoopState
+    definitions:
+        score = MakeScore(evidence)
+        result = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyOf(0), MakeQuota(0), score, score, MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)

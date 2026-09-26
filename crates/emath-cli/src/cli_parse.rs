@@ -1,6 +1,6 @@
 //! CLI entry (`run`), argument parsing, and the command grammar.
 
-use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, PlannerRequest, BuildRequest, execution, loop_cmd, experiment_cmd, compiled_search, language_cmd, parse_check_request, parse_file_json_request, parse_planner_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
+use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, PlannerRequest, BuildRequest, execution, loop_cmd, dream_cmd, experiment_cmd, compiled_search, language_cmd, parse_check_request, parse_file_json_request, parse_planner_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
 
 /// Entry used by main; keeps the CLI testable.
 pub fn run(args: &[String]) -> CliExit {
@@ -105,6 +105,7 @@ pub(super) enum Command {
     Explain(ExplainRequest),
     Run(execution::RunRequest),
     Loop(loop_cmd::LoopRequest),
+    Dream(dream_cmd::DreamRequest),
     Experiment(experiment_cmd::ExperimentRequest),
     Search(compiled_search::SearchRequest),
     Step(execution::RunRequest),
@@ -389,6 +390,18 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         },
         "loop" => require_single_file("loop", loop_cmd::USAGE, rest, loop_cmd::LoopRequest::parse)
             .map(Command::Loop),
+        "dream" => dream_cmd::DreamRequest::parse(rest).map(Command::Dream).ok_or_else(|| {
+            ParseKnownError::Pedagogic(
+                PedagogicError::new(
+                    "E-CLI-USAGE",
+                    "invalid arguments for `emath dream`",
+                    "arguments for `emath dream`",
+                    "emath dream <file.emath> | emath dream watch <run> | emath dream list",
+                )
+                .with_command("dream")
+                .with_usage(format!("emath {}", dream_cmd::USAGE)),
+            )
+        }),
         "experiment" => require_single_file(
             "experiment",
             experiment_cmd::USAGE,

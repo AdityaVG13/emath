@@ -56,11 +56,19 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use emath_core::tree::{Item, StmtKind, SyntaxTree, TypeKind};
-use emath_exec_ir::constructor_layer::{evaluate_function_at, evaluate_tree_at, CValue};
+use emath_exec_ir::constructor_layer::{
+    evaluate_function_at, evaluate_tree_at, BatchLedgerEntry, CValue,
+};
 use emath_exec_ir::exact_int::ExactInt;
 use emath_syntax::parse_str;
 
 use crate::host::{value_rational, HostFault, LoopHost, LoopSession};
+
+pub mod chain;
+pub mod inbox;
+pub mod journal;
+pub mod ledger;
+pub mod rundir;
 
 /// The close verdicts, as the level journal spells them (the verdict
 /// vocabulary is module data; these are the driver's close reasons).
@@ -91,6 +99,9 @@ pub struct DreamConfig {
     /// Where `level_001.emath` is emitted; `None` drives without
     /// emission (and without needing the emission seam).
     pub out_dir: Option<PathBuf>,
+    /// Engine steps allowed per Seed/Step evaluation (a batch whose
+    /// evaluation needs more faults `budget_exhausted`).
+    pub work: u64,
 }
 
 impl Default for DreamConfig {
@@ -101,6 +112,7 @@ impl Default for DreamConfig {
             max_batches: 10_000,
             plateau_close: 3,
             out_dir: None,
+            work: emath_exec_ir::constructor_layer::DEFAULT_WORK,
         }
     }
 }
@@ -220,6 +232,18 @@ fn seam_inputs(tree: &SyntaxTree, function: &str) -> Option<Vec<(String, SeamCar
         return Some(names);
     }
     None
+}
+
+/// Whether the module declares any part of the emission seam
+/// (`dream_world` or `dream_pred`). A run emits when it does; a
+/// half-authored or mismatched seam then refuses by name at open.
+#[must_use]
+pub fn declares_emission_seam(host: &LoopHost) -> bool {
+    host.tree().items.iter().any(|item| {
+        matches!(item, Item::Declaration(decl)
+            if decl.as_kind == "function"
+                && (decl.name == "dream_world" || decl.name == "dream_pred"))
+    })
 }
 
 /// Resolve the emission seam (`dream_world`, `dream_pred`) or refuse
@@ -652,53 +676,184 @@ fn emit_level(
     Ok((path, true))
 }
 
-/// Drive one dream level over an authored dream target.
-///
-/// `target` is the Step function name; `None` requires exactly one
-/// session surface (the host contract). The module owns every loop
-/// law; the driver owns resume, plateau counting, closing, stopping,
-/// and level emission.
-pub fn run_dream(
-    module: &Path,
-    target: Option<&str>,
-    config: &DreamConfig,
-) -> Result<DreamOutcome, HostFault> {
-    if config.budget0 < 1 || config.budget_step < 1 || config.plateau_close < 1 {
-        return Err(HostFault::fault(
-            "dream_config",
-            "budget0, budget_step, and plateau_close must each be at least 1",
-        ));
+/// One committed batch as the driver saw it: the host's ledger entry
+/// plus the dream laws' reaction (the resume raise, the plateau
+/// streak, the close).
+#[derive(Clone, Debug)]
+pub struct BatchOutcome {
+    /// The host's projection of the committed batch.
+    pub entry: BatchLedgerEntry,
+    /// `(from, to)` when the resume law raised the watermark after a
+    /// budget-exhausted batch.
+    pub raised: Option<(i128, i128)>,
+    /// The driver's consecutive-plateau counter after this batch.
+    pub plateau_streak: u32,
+    /// The close reason when this batch closed the level.
+    pub close: Option<&'static str>,
+}
+
+/// The dream ladder's resumable state: what a checkpoint does not
+/// carry (the scratch holds the loop state and ledger; the watermark,
+/// plateau streak, and resume count are the driver's own).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DreamLadder {
+    pub watermark: i128,
+    pub plateau_streak: u32,
+    pub resumes: u64,
+}
+
+/// A batch-granular dream run: [`run_dream`] is a loop over
+/// [`DreamRun::advance`], and the `emath dream` driver interleaves
+/// journaling, checkpoints, and control between batches. The dream
+/// laws (resume, plateau, close, emission) live here and nowhere else.
+pub struct DreamRun {
+    host: LoopHost,
+    config: DreamConfig,
+    seam: Option<EmissionSeam>,
+    session: LoopSession,
+    budget: i128,
+    plateaus: u32,
+    resumes: u64,
+    close: Option<&'static str>,
+}
+
+impl DreamRun {
+    fn validate(config: &DreamConfig) -> Result<(), HostFault> {
+        if config.budget0 < 1 || config.budget_step < 1 || config.plateau_close < 1 {
+            return Err(HostFault::fault(
+                "dream_config",
+                "budget0, budget_step, and plateau_close must each be at least 1",
+            ));
+        }
+        Ok(())
     }
-    let host = LoopHost::open(module, target)?;
-    let seam = match &config.out_dir {
-        Some(_) => Some(resolve_emission(&host)?),
-        None => None,
-    };
-    let mut session = host.begin()?;
 
-    let mut budget = config.budget0;
-    let mut plateaus: u32 = 0;
-    let mut resumes: u64 = 0;
-    let mut batches: u64 = 0;
-    let mut close_reason: Option<&'static str> = None;
+    /// Open a fresh run at the surface's seed state. Every seam refusal
+    /// happens here, before any driving.
+    pub fn open(module: &Path, target: Option<&str>, config: &DreamConfig) -> Result<Self, HostFault> {
+        Self::validate(config)?;
+        let mut host = LoopHost::open(module, target)?;
+        host.set_work(config.work);
+        let seam = match &config.out_dir {
+            Some(_) => Some(resolve_emission(&host)?),
+            None => None,
+        };
+        let session = host.begin()?;
+        Ok(Self {
+            host,
+            config: config.clone(),
+            seam,
+            session,
+            budget: config.budget0,
+            plateaus: 0,
+            resumes: 0,
+            close: None,
+        })
+    }
 
-    while batches < config.max_batches {
-        let entry = session.step(&host, budget)?;
-        batches += 1;
+    /// Reopen a run from a scratch checkpoint and the ladder state the
+    /// caller recorded beside it (the dream journal folds it back).
+    pub fn restore(
+        module: &Path,
+        target: Option<&str>,
+        config: &DreamConfig,
+        checkpoint: &Path,
+        ladder: DreamLadder,
+    ) -> Result<Self, HostFault> {
+        Self::validate(config)?;
+        let mut host = LoopHost::open(module, target)?;
+        host.set_work(config.work);
+        let seam = match &config.out_dir {
+            Some(_) => Some(resolve_emission(&host)?),
+            None => None,
+        };
+        let session = LoopSession::load(&host, checkpoint)?;
+        Ok(Self {
+            host,
+            config: config.clone(),
+            seam,
+            session,
+            budget: ladder.watermark,
+            plateaus: ladder.plateau_streak,
+            resumes: ladder.resumes,
+            close: None,
+        })
+    }
+
+    /// The host (surface, identity, module path).
+    #[must_use]
+    pub fn host(&self) -> &LoopHost {
+        &self.host
+    }
+
+    /// The host, for binding evidence between batches.
+    pub fn host_mut(&mut self) -> &mut LoopHost {
+        &mut self.host
+    }
+
+    /// The live session.
+    #[must_use]
+    pub fn session(&self) -> &LoopSession {
+        &self.session
+    }
+
+    /// The live session, for the curriculum seam (`grow_case`).
+    pub fn session_mut(&mut self) -> &mut LoopSession {
+        &mut self.session
+    }
+
+    /// The watermark the next batch runs under.
+    #[must_use]
+    pub fn watermark(&self) -> i128 {
+        self.budget
+    }
+
+    /// Committed batches (the session revision).
+    #[must_use]
+    pub fn batches(&self) -> u64 {
+        self.session.revision()
+    }
+
+    /// The ladder state a checkpoint needs beside it.
+    #[must_use]
+    pub fn ladder(&self) -> DreamLadder {
+        DreamLadder {
+            watermark: self.budget,
+            plateau_streak: self.plateaus,
+            resumes: self.resumes,
+        }
+    }
+
+    /// Whether emission is configured (the seam resolved at open).
+    #[must_use]
+    pub fn emits(&self) -> bool {
+        self.seam.is_some()
+    }
+
+    /// The close reason once the level closed.
+    #[must_use]
+    pub fn closed(&self) -> Option<&'static str> {
+        self.close
+    }
+
+    /// Drive one batch under the current watermark and apply the dream
+    /// laws to its verdict.
+    pub fn advance(&mut self) -> Result<BatchOutcome, HostFault> {
+        if let Some(reason) = self.close {
+            return Err(HostFault::fault(
+                "dream_closed",
+                format!("the level already closed ({reason}); nothing is left to drive"),
+            ));
+        }
+        let entry = self.session.step(&self.host, self.budget)?.clone();
+        let mut raised = None;
         match entry.verdict {
-            1 => {
-                close_reason = Some("goal_attained");
-                break;
-            }
-            2 => {
-                close_reason = Some("domain_exhausted");
-                break;
-            }
+            1 => self.close = Some("goal_attained"),
+            2 => self.close = Some("domain_exhausted"),
             3 => {
-                plateaus += 1;
-                if plateaus >= config.plateau_close {
-                    close_reason = Some("plateau");
-                    break;
+                self.plateaus += 1;
+                if self.plateaus >= self.config.plateau_close {
+                    self.close = Some("plateau");
                 }
             }
             4 => {
@@ -714,8 +869,10 @@ pub fn run_dream(
                 // while every unit stays charged (the loop's own
                 // `used` meter is untouched; only the watermark
                 // moves).
-                budget = 2 * entry.used + config.budget_step;
-                resumes += 1;
+                let from = self.budget;
+                self.budget = 2 * entry.used + self.config.budget_step;
+                self.resumes += 1;
+                raised = Some((from, self.budget));
             }
             0 => {
                 // Progress resets the plateau counter: a promotion or
@@ -723,7 +880,7 @@ pub fn run_dream(
                 // proof the walk is still moving, so a level only
                 // closes after the plateau survives every growth
                 // cycle the module's curriculum can attempt.
-                plateaus = 0;
+                self.plateaus = 0;
             }
             other => {
                 return Err(HostFault::fault(
@@ -736,52 +893,81 @@ pub fn run_dream(
                 ));
             }
         }
+        Ok(BatchOutcome {
+            entry,
+            raised,
+            plateau_streak: self.plateaus,
+            close: self.close,
+        })
     }
 
-    let Some(close_reason) = close_reason else {
-        return Ok(DreamOutcome {
-            stop: DreamStopReason::MaxBatches,
-            level: None,
-            resumes,
-        });
-    };
+    /// The run's outcome: the level record (with emission and its
+    /// in-process certificate when configured) once closed, else the
+    /// stop-button outcome.
+    pub fn finish(&self) -> Result<DreamOutcome, HostFault> {
+        let Some(close_reason) = self.close else {
+            return Ok(DreamOutcome {
+                stop: DreamStopReason::MaxBatches,
+                level: None,
+                resumes: self.resumes,
+            });
+        };
+        let batches = self.batches();
+        let used = self.session.state_int("used")?;
+        let incumbent = self.session.incumbent_record()?;
+        let incumbent_key = crate::host::value_int(&incumbent, "key")?;
+        let score = value_rational(&incumbent, "score")?;
+        let case_ids = self.session.case_ids()?;
 
-    let used = session.state_int("used")?;
-    let incumbent = session.incumbent_record()?;
-    let incumbent_key = crate::host::value_int(&incumbent, "key")?;
-    let score = value_rational(&incumbent, "score")?;
-    let case_ids = session.case_ids()?;
+        let (path, certificate) = match (&self.config.out_dir, &self.seam) {
+            (Some(out_dir), Some(seam)) => {
+                let (path, certificate) = emit_level(
+                    &self.host,
+                    seam,
+                    out_dir,
+                    close_reason,
+                    batches,
+                    used,
+                    self.resumes,
+                    &self.session,
+                )?;
+                (Some(path), certificate)
+            }
+            _ => (None, false),
+        };
 
-    let (path, certificate) = match (&config.out_dir, &seam) {
-        (Some(out_dir), Some(seam)) => {
-            let (path, certificate) = emit_level(
-                &host,
-                seam,
-                out_dir,
+        Ok(DreamOutcome {
+            stop: DreamStopReason::Closed,
+            level: Some(LevelRecord {
+                level: 1,
                 close_reason,
                 batches,
                 used,
-                resumes,
-                &session,
-            )?;
-            (Some(path), certificate)
-        }
-        _ => (None, false),
-    };
+                incumbent_key,
+                incumbent_score: score,
+                case_ids,
+                path,
+                certificate,
+            }),
+            resumes: self.resumes,
+        })
+    }
+}
 
-    Ok(DreamOutcome {
-        stop: DreamStopReason::Closed,
-        level: Some(LevelRecord {
-            level: 1,
-            close_reason,
-            batches,
-            used,
-            incumbent_key,
-            incumbent_score: score,
-            case_ids,
-            path,
-            certificate,
-        }),
-        resumes,
-    })
+/// Drive one dream level over an authored dream target.
+///
+/// `target` is the Step function name; `None` requires exactly one
+/// session surface (the host contract). The module owns every loop
+/// law; the driver owns resume, plateau counting, closing, stopping,
+/// and level emission.
+pub fn run_dream(
+    module: &Path,
+    target: Option<&str>,
+    config: &DreamConfig,
+) -> Result<DreamOutcome, HostFault> {
+    let mut run = DreamRun::open(module, target, config)?;
+    while run.batches() < config.max_batches && run.closed().is_none() {
+        run.advance()?;
+    }
+    run.finish()
 }

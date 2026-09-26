@@ -21,15 +21,16 @@
 //! scratch produce identical sessions (the engine is deterministic and
 //! the ledger projection reads state fields only).
 
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use emath_core::tree::{Declaration, Item, StmtKind, SyntaxTree, TypeExpr, TypeKind};
+use emath_core::tree::{Declaration, GenericArg, Item, StmtKind, SyntaxTree, TypeExpr, TypeKind};
 use emath_exec_ir::constructor_layer::{
-    evaluate_function_at, load_scratch, save_scratch, BatchLedgerEntry, CValue, ConstructorError,
-    ScratchIdentity,
+    evaluate_function_carrying, fact_identity, load_scratch, save_scratch, BatchLedgerEntry,
+    CValue, ConstructorError, ScratchIdentity, DEFAULT_WORK,
 };
 use emath_exec_ir::exact_int::ExactInt;
 use emath_sema::session::CompilerSession;
@@ -138,6 +139,9 @@ pub struct SessionSurface {
     pub step_state_input: String,
     /// The Step function's budget input name (author-chosen).
     pub step_budget_input: String,
+    /// The Step function's optional third input of type
+    /// `sequence(Observation)`: every observation the host ingested.
+    pub step_evidence_input: Option<String>,
     /// The Seed function's single Int input name (author-chosen).
     pub seed_input: String,
 }
@@ -174,12 +178,39 @@ pub(crate) fn section_fields(decl: &Declaration, section: &str) -> Vec<(String, 
         .collect()
 }
 
+/// Whether input `index` of `decl` is declared `sequence(Observation)`.
+fn is_evidence_input(decl: &Declaration, index: usize) -> bool {
+    let Some(ty) = decl
+        .sections()
+        .filter(|candidate| candidate.name == "inputs")
+        .flat_map(|candidate| candidate.suite.statements.iter())
+        .filter_map(|stmt| match &stmt.kind {
+            StmtKind::FieldDecl { ty, .. } => Some(ty),
+            _ => None,
+        })
+        .nth(index)
+    else {
+        return false;
+    };
+    match &ty.kind {
+        TypeKind::Path { segments, generic_args } => {
+            segments.last().map(String::as_str) == Some("sequence")
+                && matches!(
+                    generic_args.as_slice(),
+                    [GenericArg::Type(element)] if path_type_name(element) == Some("Observation")
+                )
+        }
+        _ => false,
+    }
+}
+
 /// Scan a parsed module for `Step`/`Seed` session surfaces.
 #[must_use]
 pub fn scan_session_surfaces(tree: &SyntaxTree) -> SurfaceScan {
     let mut scan = SurfaceScan::default();
-    // (suffix, (step name, state input, budget input, state type))
-    let mut steps: BTreeMap<String, (String, String, String, String)> = BTreeMap::new();
+    // (suffix, (step name, state input, budget input, state type, evidence input))
+    let mut steps: BTreeMap<String, (String, String, String, String, Option<String>)> =
+        BTreeMap::new();
     let mut seeds: BTreeMap<String, (String, String, String)> = BTreeMap::new();
 
     for item in &tree.items {
@@ -192,7 +223,9 @@ pub fn scan_session_surfaces(tree: &SyntaxTree) -> SurfaceScan {
         if let Some(suffix) = decl.name.strip_prefix("Step") {
             let inputs = section_fields(decl, "inputs");
             let outputs = section_fields(decl, "outputs");
-            let step_shape = inputs.len() == 2
+            let evidence = (inputs.len() == 3 && is_evidence_input(decl, 2))
+                .then(|| inputs[2].0.clone());
+            let step_shape = (inputs.len() == 2 || evidence.is_some())
                 && inputs[0].1.is_some()
                 && inputs[1].1.as_deref() == Some("Int")
                 && outputs.len() == 1
@@ -206,12 +239,13 @@ pub fn scan_session_surfaces(tree: &SyntaxTree) -> SurfaceScan {
                         inputs[0].0.clone(),
                         inputs[1].0.clone(),
                         inputs[0].1.clone().unwrap_or_default(),
+                        evidence,
                     ),
                 );
             } else {
                 scan.problems.push(format!(
                     "`{}` is named like a session Step but its signature is not \
-                     (state: T, budget: Int) -> result: T",
+                     (state: T, budget: Int[, evidence: sequence(Observation)]) -> result: T",
                     decl.name
                 ));
             }
@@ -235,7 +269,7 @@ pub fn scan_session_surfaces(tree: &SyntaxTree) -> SurfaceScan {
         }
     }
 
-    for (suffix, (step, state_input, budget_input, state_type)) in steps {
+    for (suffix, (step, state_input, budget_input, state_type, evidence_input)) in steps {
         match seeds.remove(&suffix) {
             Some((seed, seed_input, seed_state_type)) => {
                 if seed_state_type != state_type {
@@ -251,6 +285,7 @@ pub fn scan_session_surfaces(tree: &SyntaxTree) -> SurfaceScan {
                     state_type,
                     step_state_input: state_input,
                     step_budget_input: budget_input,
+                    step_evidence_input: evidence_input,
                     seed_input,
                 });
             }
@@ -277,6 +312,30 @@ pub struct LoopHost {
     path: PathBuf,
     surface: SessionSurface,
     identity: ScratchIdentity,
+    facts: Option<FactCarry>,
+    /// Engine steps allowed per Seed/Step evaluation.
+    work: u64,
+    /// The observations bound to the Step's evidence input.
+    evidence: Arc<Vec<CValue>>,
+}
+
+/// Completed `fact_*` calls carried from one Seed/Step evaluation into
+/// the next (`constructor_layer::carry`). A carried fact returns the
+/// value its call computes, so carrying changes wall time and engine
+/// work only: states, verdicts, and logical units are unchanged.
+#[derive(Clone, Debug)]
+struct FactCarry {
+    id: String,
+    carried: RefCell<BTreeMap<String, CValue>>,
+    fresh: RefCell<Vec<(String, CValue)>>,
+    hits: Cell<u64>,
+}
+
+/// The facts computed since the last draw, and how many carried facts
+/// were used.
+pub struct FactDraw {
+    pub fresh: Vec<(String, CValue)>,
+    pub hits: u64,
 }
 
 impl LoopHost {
@@ -352,12 +411,110 @@ impl LoopHost {
             language_id: ENGINE_IMAGE.into(),
             target: surface.step.clone(),
         };
+        let facts = fact_identity(&tree, Some(module))
+            .map_err(HostFault::from)?
+            .map(|id| FactCarry {
+                id,
+                carried: RefCell::new(BTreeMap::new()),
+                fresh: RefCell::new(Vec::new()),
+                hits: Cell::new(0),
+            });
         Ok(Self {
             tree,
             path: module.to_path_buf(),
             surface,
             identity,
+            facts,
+            work: DEFAULT_WORK,
+            evidence: Arc::new(Vec::new()),
         })
+    }
+
+    /// Whether the Step declares an evidence input.
+    #[must_use]
+    pub fn takes_evidence(&self) -> bool {
+        self.surface.step_evidence_input.is_some()
+    }
+
+    /// The observations every later Step call receives (`Observation`
+    /// records, in ingestion order).
+    pub fn set_evidence(&mut self, evidence: Vec<CValue>) {
+        self.evidence = Arc::new(evidence);
+    }
+
+    /// Allow `work` engine steps per Seed/Step evaluation (a resource
+    /// bound: exceeding it faults the evaluation; it never changes a
+    /// value that fits).
+    pub fn set_work(&mut self, work: u64) {
+        self.work = work;
+    }
+
+    /// The identity of the module's fact functions and everything they
+    /// reach (`None`: the module declares no `fact_*` function).
+    #[must_use]
+    pub fn fact_id(&self) -> Option<&str> {
+        self.facts.as_ref().map(|facts| facts.id.as_str())
+    }
+
+    /// Carry previously computed facts (a ledger's contents, which must
+    /// belong to `fact_id`). Facts already computed in this process and
+    /// not yet drawn are dropped from the pending draw when the loaded
+    /// set holds them. Returns how many facts are now carried.
+    pub fn carry_facts(&self, loaded: Vec<(String, CValue)>) -> usize {
+        let Some(facts) = &self.facts else {
+            return 0;
+        };
+        let mut carried = facts.carried.borrow_mut();
+        let known: std::collections::BTreeSet<String> =
+            loaded.iter().map(|(key, _)| key.clone()).collect();
+        facts.fresh.borrow_mut().retain(|(key, _)| !known.contains(key));
+        for (key, value) in loaded {
+            carried.entry(key).or_insert(value);
+        }
+        carried.len()
+    }
+
+    /// Take the facts computed since the last draw.
+    pub fn take_facts(&self) -> FactDraw {
+        match &self.facts {
+            Some(facts) => FactDraw {
+                fresh: std::mem::take(&mut *facts.fresh.borrow_mut()),
+                hits: facts.hits.replace(0),
+            },
+            None => FactDraw { fresh: Vec::new(), hits: 0 },
+        }
+    }
+
+    fn evaluate(&self, name: &str, inputs: &BTreeMap<String, CValue>) -> Result<CValue, HostFault> {
+        let Some(facts) = &self.facts else {
+            return evaluate_function_carrying(
+                &self.tree,
+                name,
+                inputs,
+                Some(&self.path),
+                &BTreeMap::new(),
+                self.work,
+            )
+            .map_err(HostFault::from)?
+            .value
+            .map_err(HostFault::from);
+        };
+        let run = evaluate_function_carrying(
+            &self.tree,
+            name,
+            inputs,
+            Some(&self.path),
+            &facts.carried.borrow(),
+            self.work,
+        )
+        .map_err(HostFault::from)?;
+        facts.hits.set(facts.hits.get() + run.hits);
+        facts
+            .carried
+            .borrow_mut()
+            .extend(run.fresh.iter().cloned());
+        facts.fresh.borrow_mut().extend(run.fresh);
+        run.value.map_err(HostFault::from)
     }
 
     /// The chosen surface.
@@ -392,8 +549,7 @@ impl LoopHost {
             self.surface.seed_input.clone(),
             CValue::Int(ExactInt::from(0)),
         )]);
-        let state = evaluate_function_at(&self.tree, &self.surface.seed, &inputs, Some(&self.path))
-            .map_err(HostFault::from)?;
+        let state = self.evaluate(&self.surface.seed, &inputs)?;
         demand_state_record(&state, &self.surface.state_type)?;
         Ok(LoopSession {
             state,
@@ -402,7 +558,7 @@ impl LoopHost {
     }
 
     fn call_step(&self, state: &CValue, budget: i128) -> Result<CValue, HostFault> {
-        let inputs = BTreeMap::from([
+        let mut inputs = BTreeMap::from([
             (
                 self.surface.step_state_input.clone(),
                 state.clone(),
@@ -412,9 +568,10 @@ impl LoopHost {
                 CValue::Int(ExactInt::from(budget)),
             ),
         ]);
-        let next =
-            evaluate_function_at(&self.tree, &self.surface.step, &inputs, Some(&self.path))
-                .map_err(HostFault::from)?;
+        if let Some(name) = &self.surface.step_evidence_input {
+            inputs.insert(name.clone(), CValue::Sequence(Arc::clone(&self.evidence)));
+        }
+        let next = self.evaluate(&self.surface.step, &inputs)?;
         demand_state_record(&next, &self.surface.state_type)?;
         Ok(next)
     }

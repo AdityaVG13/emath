@@ -20,7 +20,9 @@ use crate::exact_int::{
     exact_int_prod_from, exact_int_sum, exact_int_sum_from, exact_int_weighted_prod,
 };
 
-const DEFAULT_WORK: u64 = 1_000_000;
+/// The work limit (engine steps) of one evaluation unless a caller
+/// sets its own.
+pub const DEFAULT_WORK: u64 = 1_000_000;
 
 #[derive(Clone, Debug)]
 pub enum CValue {
@@ -592,6 +594,13 @@ struct Engine {
     resume_frames: Vec<ContinuationFrame<Environment>>,
     /// Only expect rows may resolve unbound single-segment names as fault atoms.
     expect_atoms: Cell<bool>,
+    /// Memo hits on fact-function calls (see `carry`).
+    fact_hits: Cell<u64>,
+    /// Memoize only fact-function calls. The all-calls memo exists so a
+    /// suspended step can replay; an evaluation that never suspends
+    /// pays for a key per call (its arguments serialized, often a whole
+    /// archive) and gets nothing back from non-fact entries.
+    facts_only_memo: bool,
 }
 
 #[derive(Clone)]
@@ -606,6 +615,7 @@ struct ObjectSchema {
 // the original single-file API.
 mod admit;
 mod call;
+mod carry;
 mod checkpoint;
 mod engine_step;
 mod eval;
@@ -622,6 +632,7 @@ mod value;
 
 pub(crate) use call::domain_shape_of_expr;
 pub use admit::*;
+pub use carry::{evaluate_function_carrying, fact_identity, CarriedEvaluation, FACT_PREFIX};
 pub use checkpoint::*;
 pub use eval::*;
 pub use query::*;

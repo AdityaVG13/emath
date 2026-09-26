@@ -1,0 +1,106 @@
+# A dream that evolves its own search strategy across levels. The
+# strategy genome is [step]: the loop proposes k + step from the
+# incumbent. A level searches keys 0..12 for 12 (|k - 12|, lower is
+# better) and closes when its domain is exhausted, so a larger step
+# finishes a level in fewer batches.
+#
+# At each close `dream_next` makes one revision of the genome
+# (`search.strategy`). A strategy is judged by running the same loop
+# for three batches on small tasks (task t: reach key t from 0) and
+# reading the loop-charged cost. Training tasks 8 and 12 favour step 4;
+# held-out tasks 6 and 9 refuse it, so the genome goes [1] -> [2] ->
+# [3] and stops there. The level's own objective is never consulted.
+#
+# Expected outcome: passes (2 authored tests).
+# Run: emath test tests/fixtures/constructor/dream_strategy.emath
+
+use search.archive
+use search.experiments
+use search.research
+use search.strategy_evaluation
+use search.strategy
+
+emath function dream_carry:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [1]
+    tests:
+        example <step_within_domain>:
+            given unused = 0
+            expect result[0] >= 1 and result[0] <= 8
+
+emath function task_batches:
+    inputs:
+        state: LoopState
+        step: Int
+        t: Int
+        n: Int
+    outputs:
+        result: LoopState
+    definitions:
+        score = function k in Int: function cs in CaseSet: (if k < t: t - k else: k - t) / 1
+        next = research_batch(state, function k in Int: k / 1, function k in Int: k >= 0 and k <= 100, function k in Int: [k + step], function k in Int: 0, function f in Int: 1, score, score, function k in Int: function cs in CaseSet: -1, function k in Int: true, function s in Rat: false, function a in Rat: function b in Rat: a < b, function k in Int: function cs in CaseSet: cs, 1000)
+        result = if n < 1: state else: task_batches(next, step, t, n - 1)
+
+emath function task_run:
+    # Strategy g on task t: three batches from key 0 toward key t. The
+    # score is the incumbent's distance, the cost the loop's charge.
+    inputs:
+        g: sequence(Int)
+        t: Int
+    outputs:
+        result: StrategyOutcome
+    definitions:
+        score = function k in Int: function cs in CaseSet: (if k < t: t - k else: k - t) / 1
+        seed = research_seed(0, function k in Int: k / 1, CaseSet: {ids: [0]}, score, function k in Int: function cs in CaseSet: -1, 1, 0, 1, 1)
+        last = task_batches(seed, g[0], t, 3)
+        result = StrategyOutcome: {task_id: t, score: last.archive[last.incumbent].score, costs: CostAccounting: {proposal_cost: 0, compilation_cost: 0, execution_cost: last.used}, hard_ok: true}
+
+emath function evolve_strategy:
+    inputs:
+        g: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = strat_climb(function h in sequence(Int): function t in Int: task_run(h, t), function h in sequence(Int): [[h[0] + 1], [h[0] - 1]], function h in sequence(Int): h[0] >= 1 and h[0] <= 8, g, [8, 12], [6, 9], 200, -1, 1)
+    tests:
+        example <held_out_stops_the_step_at_three>:
+            given g = [3]
+            expect result[0] == 3
+
+emath function dream_next:
+    inputs:
+        state: LoopState
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = evolve_strategy(dream_carry(0))
+
+emath function MakeScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: (12 - k) / 1
+
+emath function SeedStrategy:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(0, function k in Int: k / 1, CaseSet: {ids: [0]}, MakeScore(0), function k in Int: function cs in CaseSet: -1, 1, 0, 1, 1)
+
+emath function StepStrategy:
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        step = dream_carry(0)[0]
+        result = research_batch(state, function k in Int: k / 1, function k in Int: k >= 0 and k <= 12, function k in Int: [k + step], function k in Int: 0, function f in Int: 1, MakeScore(0), MakeScore(0), function k in Int: function cs in CaseSet: -1, function k in Int: true, function s in Rat: false, function a in Rat: function b in Rat: a < b, function k in Int: function cs in CaseSet: cs, budget)

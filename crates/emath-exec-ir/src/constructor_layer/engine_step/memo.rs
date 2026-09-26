@@ -24,11 +24,15 @@ impl Engine {
         name: &str,
         args: &[CValue],
     ) -> Option<CValue> {
-        if self.memo.is_empty() {
+        if self.memo.is_empty() || !self.memoizes(name) {
             return None;
         }
         let key = call_memo_key(name, args)?;
-        self.memo.get(&key).cloned()
+        let hit = self.memo.get(&key).cloned();
+        if hit.is_some() && name.starts_with(super::super::FACT_PREFIX) {
+            self.fact_hits.set(self.fact_hits.get() + 1);
+        }
+        hit
     }
 
     pub(in crate::constructor_layer) fn remember_call(
@@ -37,9 +41,16 @@ impl Engine {
         args: &[CValue],
         value: CValue,
     ) {
+        if !self.memoizes(name) {
+            return;
+        }
         if let Some(key) = call_memo_key(name, args) {
             self.memo.insert(key, value);
         }
+    }
+
+    fn memoizes(&self, name: &str) -> bool {
+        !self.facts_only_memo || name.starts_with(super::super::FACT_PREFIX)
     }
 
     pub(in crate::constructor_layer) fn completed_closure(
@@ -47,7 +58,7 @@ impl Engine {
         clos: &Closure,
         args: &[CValue],
     ) -> Option<CValue> {
-        if self.memo.is_empty() {
+        if self.memo.is_empty() || self.facts_only_memo {
             return None;
         }
         let key = closure_memo_key(clos, args)?;
@@ -60,6 +71,9 @@ impl Engine {
         args: &[CValue],
         value: CValue,
     ) {
+        if self.facts_only_memo {
+            return;
+        }
         if let Some(key) = closure_memo_key(clos, args) {
             self.memo.insert(key, value);
         }

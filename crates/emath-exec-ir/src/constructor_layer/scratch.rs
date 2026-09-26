@@ -184,6 +184,21 @@ fn render_value(value: &CValue, out: &mut String) -> Result<(), ConstructorError
     Ok(())
 }
 
+/// Render one value through the scratch interchange: the same bytes a
+/// checkpoint's state carries. The dream journal renders records with
+/// it, so a record reads identically in the journal and a checkpoint.
+pub fn render_scratch_value(value: &CValue) -> Result<String, ConstructorError> {
+    let mut out = String::new();
+    render_value(value, &mut out)?;
+    Ok(out)
+}
+
+/// Decode one scratch-interchange value (the inverse of
+/// [`render_scratch_value`]).
+pub fn parse_scratch_value(json: &JsonValue) -> Result<CValue, ConstructorError> {
+    parse_value(json)
+}
+
 /// A single-key tagged object, strictly: exactly one entry whose key
 /// is `tag`. Anything else is a malformed value, not a slow path.
 fn tagged<'a>(json: &'a JsonValue, tag: &str) -> Result<&'a JsonValue, ConstructorError> {

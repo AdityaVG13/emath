@@ -384,3 +384,68 @@ emath function RunTrickleInterleave:
             expect v4 == 3
             expect v5 == 0
             expect winner5 == 11
+
+emath function SeedDreamFault:
+    # The fault surface starts where the dream starts.
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = SeedDream(unused)
+
+emath function StepDreamFault:
+    # A Step that refuses on its second batch: the first batch reads
+    # world case 0 and commits; the second reads case 5, past the
+    # 5-case world, and the engine refuses. A run over this surface
+    # must end `fault` with the engine's own code, never a verdict.
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        probe = dream_world(0)[state.batch * 5]
+        result = StepDream(state, budget + probe - 1)
+
+emath function MakeFamilyParity:
+    # Two move families: even keys and odd keys. The partition is the
+    # dashboard fixture's, not the world's law: it splits the walk's
+    # admissions and promotions across families.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function k in Int: int_rem(k, 2)
+
+emath function MakeQuotaOne:
+    # One proposal per family per batch: two families trickle like the
+    # trickle quota, so the walk interleaves plateaus with growth.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function f in Int: 1
+
+emath function SeedDreamFamilies:
+    # The two-family surface starts where the trickle walk starts.
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = SeedDreamTrickle(unused)
+
+emath function StepDreamFamilies:
+    # The trickle walk over two families (the dashboard's fixture run:
+    # budget raises, promotions, refutations, audit growth, plateaus,
+    # a moving incumbent score and a plateau close).
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, MakeValueOf(0), MakeAdmit(0), MakeMoves(0), MakeFamilyParity(0), MakeQuotaOne(0), MakeScore(0), MakeScore(0), MakeWitness(0), MakeHardOk(0), MakeGoalMet(0), MakeBetter(0), MakeNextCases(0), budget)

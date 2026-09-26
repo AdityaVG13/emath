@@ -1,0 +1,101 @@
+  ◆ emath dream     1 Overview    2 Search    3 Evidence    4 Journal    ›  journal.jsonl  expanded
+───────────────────────────────────────────────────────────━━━━━━━━━━━──────────────────────────────────────────────────────────────────────────────────────────
+
+  ╭─ RUN ─────────────╮  ╭─ PROGRESS ──────────╮  ╭─ INCUMBENT ────────────╮  ╭─ BUDGET ─────── 176 / 240 u ─╮  ╭─ THROUGHPUT ───────╮  ╭─ AUDIT ────────────╮
+  │ ● RUNNING       — │  │ L1  ·  batch 11 ●●○ │  │ 0.0000  0          #11 │  │ ━━━━━━━━━━━━━━━━━━━━━━   73% │  │ —          cache — │  │ 5 cases      +1 b8 │
+  ╰───────────────────╯  ╰─────────────────────╯  ╰────────────────────────╯  ╰──────────────────────────────╯  ╰────────────────────╯  ╰────────────────────╯
+
+  ╭─ journal.jsonl ──────────────────────────────────────────────────────────────────────────────────── canonical · metrics are separate   esc to close ─ ✕ ─╮
+  │ {"seq":1,"t":"start","schema":"emath.dream.journal.v1","meaning_id":"emath:meaning:v1:f6c881ae18ee2158d6f9eba807320bec33b0d000b56f6022c03ec36d602d5081"… │
+  │ {"seq":2,"t":"seed","batch":0,"used":1,"watermark":16,"archive":[{"key":0,"score":"0","family":-1}]}                                                     │
+  │ {"seq":3,"t":"records","batch":1,"added":[{"key":5,"score":"0","family":1}],"changed":[{"key":0,"score":"0","family":-1}]}                               │
+  │ {"seq":4,"t":"cases","batch":1,"added":[0]}                                                                                                              │
+  │ {"seq":5,"t":"batch","batch":1,"verdict":0,"verdict_name":"running","used":5,"delta_used":4,"watermark":16,"halted":false,"plateau_streak":0,"incumbent… │
+  │ {"seq":6,"t":"records","batch":2,"added":[{"key":1,"score":"0","family":1},{"key":10,"score":"1","family":0}],"changed":[{"key":0,"score":"1","family":… │
+  │ {"seq":7,"t":"cases","batch":2,"added":[1]}                                                                                                              │
+  │ {"seq":8,"t":"batch","batch":2,"verdict":0,"verdict_name":"running","used":13,"delta_used":8,"watermark":16,"halted":false,"plateau_streak":0,"incumben… │
+  │ {"seq":9,"t":"steer","batch":2,"action":"grow_case","case_id":4}                                                                                         │
+  │ {"seq":10,"t":"records","batch":3,"added":[{"key":4,"score":"3","family":0}],"changed":[{"key":0,"score":"3","family":-1}]}                              │
+  │ {"seq":11,"t":"batch","batch":3,"verdict":4,"verdict_name":"budget_exhausted","used":16,"delta_used":3,"watermark":16,"halted":true,"plateau_streak":0,… │
+  │ {"seq":12,"t":"budget","batch":3,"from":16,"to":48}                                                                                                      │
+  │ {"seq":13,"t":"records","batch":4,"added":[{"key":6,"score":"2","family":0},{"key":15,"score":"2","family":1}],"changed":[{"key":0,"score":"3","family"… │
+  │ {"seq":14,"t":"batch","batch":4,"verdict":3,"verdict_name":"plateau","used":30,"delta_used":14,"watermark":48,"halted":false,"plateau_streak":1,"incumb… │
+  │ {"seq":15,"t":"records","batch":5,"added":[{"key":2,"score":"3","family":0},{"key":9,"score":"3","family":1}],"changed":[{"key":5,"score":"3","family":… │
+  │ {"seq":16,"t":"batch","batch":5,"verdict":3,"verdict_name":"plateau","used":46,"delta_used":16,"watermark":48,"halted":false,"plateau_streak":2,"incumb… │
+  │ {"seq":17,"t":"batch","batch":6,"verdict":4,"verdict_name":"budget_exhausted","used":48,"delta_used":2,"watermark":48,"halted":true,"plateau_streak":2,… │
+  │ {"seq":18,"t":"budget","batch":6,"from":48,"to":112}                                                                                                     │
+  │ {"seq":19,"t":"records","batch":7,"added":[{"key":11,"score":"0","family":1},{"key":20,"score":"3","family":0}],"changed":[{"key":2,"score":"3","family… │
+  │ {"seq":20,"t":"cases","batch":7,"added":[2]}                                                                                                             │
+  │ {"seq":21,"t":"batch","batch":7,"verdict":0,"verdict_name":"running","used":69,"delta_used":21,"watermark":112,"halted":false,"plateau_streak":0,"incum… │
+  │ {"seq":22,"t":"records","batch":8,"added":[{"key":3,"score":"3","family":1},{"key":14,"score":"4","family":0}],"changed":[{"key":0,"score":"4","family"… │
+  │ {"seq":23,"t":"cases","batch":8,"added":[3]}                                                                                                             │
+  │ {"seq":24,"t":"batch","batch":8,"verdict":0,"verdict_name":"running","used":93,"delta_used":24,"watermark":112,"halted":false,"plateau_streak":0,"incum… │
+  │ {"seq":25,"t":"records","batch":9,"added":[{"key":7,"score":"4","family":1}],"changed":[{"key":0,"score":"5","family":-1},{"key":5,"score":"5","family"… │
+  │ {"seq":26,"t":"batch","batch":9,"verdict":4,"verdict_name":"budget_exhausted","used":112,"delta_used":19,"watermark":112,"halted":true,"plateau_streak"… │
+  │ {"seq":27,"t":"budget","batch":9,"from":112,"to":240}                                                                                                    │
+  │ {"seq":28,"t":"records","batch":10,"added":[{"key":16,"score":"4","family":0},{"key":19,"score":"5","family":1}],"changed":[{"key":0,"score":"5","famil… │
+  │ {"seq":29,"t":"batch","batch":10,"verdict":3,"verdict_name":"plateau","used":142,"delta_used":30,"watermark":240,"halted":false,"plateau_streak":1,"inc… │
+  │ {"seq":30,"t":"records","batch":11,"added":[{"key":8,"score":"4","family":0},{"key":21,"score":"4","family":1}],"changed":[{"key":20,"score":"5","famil… │
+  │ {"seq":31,"t":"batch","batch":11,"verdict":3,"verdict_name":"plateau","used":176,"delta_used":34,"watermark":240,"halted":false,"plateau_streak":2,"inc… │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  │                                                                                                                                                          │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+   space  pause    s  step    g  grow    X  stop    f  fork    ⇥  focus    ⏎  close    v  panels    t  theme    ?  help               ● journal #31    frame —
+--- style ---
+..A.ttttt.ttttt.....f.dddddddd....f.dddddd....f.dddddddd....A.ttttttt....d..ddddddddddddd..dddddddd
+lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllAAAAAAAAAAAllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll
+
+..bb.ddd.bbbbbbbbbbbbbb..bb.dddddddd.bbbbbbbbbbb..bb.ddddddddd.bbbbbbbbbbbbb..bb.dddddd.bbbbbbb.ddd.d.ddd.d.bb..bb.dddddddddd.bbbbbbbb..bb.ddddd.bbbbbbbbbbbbb
+..b.G.GGGGGGG.......d.b..b.tt..t..ttttt.tt.WWW.b..b.GGGGGG..d..........AAA.b..b.AAAAAAAAAAAAAAAAffffff...ttt.b..b.d..........ddddd.d.b..b.t.ttttt......II.II.b
+..bbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbb
+
+..BB.AAAAAAAAAAAAA.BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB.ddddddddd.d.ddddddd.ddd.dddddddd...ddd.dd.ddddd.B.A.BB
+..B.fIIIIIfWfIIIfGGGGGGGfIIIIIIIIfGGGGGGGGGGGGGGGGGGGGGGGGfIIIIIIIIIIIIfGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGd.B
+..B.fIIIIIfWfIIIfGGGGGGfIIIIIIIfWfIIIIIIfWfIIIIIIIIIIIfWWfIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWWfff.....................................................B
+..B.fIIIIIfWfIIIfGGGGGGGGGfIIIIIIIfWfIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWWfff...............................B
+..B.fIIIIIfWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIffWff..............................................................................................................B
+..B.fIIIIIfWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGfIIIIIIfWfIIIIIIIIIIIIfWfIIIIIIIIIIIfWWfIIIIIIIIfVVVVVfIIIIIIIIIIIIIIIIfWfIIIIIIIIIId.B
+..B.fIIIIIfWfIIIfGGGGGGGGGfIIIIIIIfWfIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIfWWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfd.B
+..B.fIIIIIfWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIffWff..............................................................................................................B
+..B.fIIIIIfWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGfIIIIIIfWWfIIIIIIIIIIIIfWfIIIIIIIIIIIfWWfIIIIIIIIfVVVVVfIIIIIIIIIIIIIIIIfWfIIIIIIIIId.B
+..B.fIIIIIfWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIfGGGGGGGGGGGfIIIIIIIIIfWf.........................................................................................B
+..B.fIIIIIfWWfIIIfGGGGGGGGGfIIIIIIIfWfIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWWfff..............................B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGGGGGGGGGGfIIIIIIfWWfIIIIIIIIIIIIfWfIIIIIIIIIIIfWWfIIIIIIIIfVVVVfIIIIIIIIIIIIIIIIfWfd.B
+..B.fIIIIIfWWfIIIfGGGGGGGGfIIIIIIIfWfIIIIIIfWWfIIIIfWWf......................................................................................................B
+..B.fIIIIIfWWfIIIfGGGGGGGGGfIIIIIIIfWfIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIfWWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGfIIIIIIfWWfIIIIIIIIIIIIfWWfIIIIIIIIIIIfWWfIIIIIIIIfVVVVVfIIIIIIIIIIIIIIIIfWfIIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGGGfIIIIIIIfWfIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfd.B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGfIIIIIIfWWfIIIIIIIIIIIIfWWfIIIIIIIIIIIfWWfIIIIIIIIfVVVVVfIIIIIIIIIIIIIIIIfWfIIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGGGGGGGGGGfIIIIIIfWWfIIIIIIIIIIIIfWfIIIIIIIIIIIfWWfIIIIIIIIfVVVVfIIIIIIIIIIIIIIIIfWfd.B
+..B.fIIIIIfWWfIIIfGGGGGGGGfIIIIIIIfWfIIIIIIfWWfIIIIfWWWf.....................................................................................................B
+..B.fIIIIIfWWfIIIfGGGGGGGGGfIIIIIIIfWfIIIIIIIfffIIIIIfWWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIfWWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIffWff.............................................................................................................B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGfIIIIIIfWWfIIIIIIIIIIIIfWWfIIIIIIIIIIIfWWWfIIIIIIIIfVVVVVfIIIIIIIIIIIIIIIIfWfIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGGGfIIIIIIIfWfIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIfWWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIffWff.............................................................................................................B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGfIIIIIIfWWfIIIIIIIIIIIIfWWfIIIIIIIIIIIfWWWfIIIIIIIIfVVVVVfIIIIIIIIIIIIIIIIfWfIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGGGfIIIIIIIfWfIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWWfffIIIIIfWfIIIIIIIfGGGfIIIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGGGGGGGGGGfIIIIIIfWWWfIIIIIIIIIIIIfWWfIIIIIIIIIIIfWWWfIIIIIIIIfVVVVfIIIIIIIIIIIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGGfIIIIIIIfWfIIIIIIfWWWfIIIIfWWWf....................................................................................................B
+..B.fIIIIIfWWfIIIfGGGGGGGGGfIIIIIIIfWWfIIIIIIIfffIIIIIfWWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIfWWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGfIIIIIIfWWWfIIIIIIIIIIIIfWWfIIIIIIIIIIIfWWWfIIIIIIIIfVVVVVfIIIIIIIIIIIIIIIIfWfIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGGGfIIIIIIIfWWfIIIIIIIfffIIIIIfWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIfWWfIIIIIIIfGGGfIIIIIIIIfWfffIIIIIIIIIfffIIIIIfWWfIIIIIIIfGGGfIIIIIId.B
+..B.fIIIIIfWWfIIIfGGGGGGGfIIIIIIIfWWfIIIIIIIIIfWfIIIIIIIIIIIIIIfGGGGGGGGGfIIIIIIfWWWfIIIIIIIIIIIIfWWfIIIIIIIIIIIfWWWfIIIIIIIIfVVVVVfIIIIIIIIIIIIIIIIfWfIIIId.B
+..B..........................................................................................................................................................B
+..B..........................................................................................................................................................B
+..B..........................................................................................................................................................B
+..B..........................................................................................................................................................B
+..B..........................................................................................................................................................B
+..B..........................................................................................................................................................B
+..B..........................................................................................................................................................B
+..B..........................................................................................................................................................B
+..BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+
+...KKKKK..ddddd....d..dddd....K..dddd....K..dddd....K..dddd....K..ddddd....K..ddddd....K..dddddd....K..ddddd....K..dddd...............G.ddddddd.ddd....ddddd.d

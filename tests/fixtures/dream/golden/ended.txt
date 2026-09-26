@@ -1,0 +1,101 @@
+  ◆ emath dream     1 Overview    2 Search    3 Evidence    4 Journal              run stepdreamfamilies-001    dream_world_linear.emath  →  StepDreamFamilies
+───────────────────━━━━━━━━━━━━─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  ╭─ RUN ─────────────╮  ╭─ PROGRESS ──────────╮  ╭─ INCUMBENT ────────────╮  ╭─ BUDGET ─────── 214 / 240 u ─╮  ╭─ THROUGHPUT ───────╮  ╭─ AUDIT ────────────╮
+  │ ○ PLATEAU       — │  │ L1  ·  batch 12 ●●● │  │ 0.0000  0          #11 │  │ ━━━━━━━━━━━━━━━━━━━━━━   89% │  │ —          cache — │  │ 5 cases      +1 b8 │
+  ╰───────────────────╯  ╰─────────────────────╯  ╰────────────────────────╯  ╰──────────────────────────────╯  ╰────────────────────╯  ╰────────────────────╯
+
+  ╭─ Incumbent score ──────────────────────────────────────── level 1 · 2 promotions · 5 cases ─ ⤢ ─╮  ╭─ Budget ladder ─────────────── 2 · used + step ─ ⤢ ─╮
+  │ events    ◆    ✎   $    ✗        $   ◆    ◆   $                   │ INCUMBENT               #11 │  │ used 214  of  240 u  ━━━━━━━━━━━━━━━━━━━━━━━━━  89% │
+  │ 2.00 ┤┈┈┈┈┆┈┈┈┈┆┈┈┈┈┈┈┈┈⢀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡀┈┈┈┆┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈ │ 0.0000  0                   │  │                                                     │
+  │           ┆    ┆        ⢸            ┆⡇   ┆                       │ ▼ -2.0000                   │  │ raise  watermark · log scale             ×    units │
+  │           ┆    ┆        ⢸            ┆⡇   ┆                       │                             │  │  seed ▕███████████████                           16 │
+  │           ┆    ┆        ⢸            ┆⡇   ┆                       │ value    11                 │  │    b3 ▕████████████████████           ×3.0       48 │
+  │           ┆    ┆        ⢸            ┆⡇   ┆                       │ tier     ✓ exact            │  │    b6 ▕█████████████████████████      ×2.3      112 │
+  │ 1.00 ┤┈┈┈┈┆┈┈┈┈┆┈┈┈┈┈┈┈┈⢸┈┈┈┈┈┈┈┈┈┈┈┈┆⡇┈┈┈┆┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈ │ move     f1 m3              │  │    b9 ▕█████████████████████████████  ×2.1      240 │
+  │           ┆    ┆        ⢸            ┆⡇   ┆                       │ parent   #3                 │  │                                                     │
+  │           ┆    ┆        ⢸            ┆⡇   ┆                       │ held     since b7  5 ago    │  │                                                     │
+  │           ┆    ┆        ⢸            ┆⡇   ┆                       │ depth    4                  │  │                                                     │
+  │ 0.00 ┤⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉┈┈┈┈┈┈┈┈┈┈┈┈┆⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉ │ plateau  ●●●  3 of 3        │  │ spend / batch  ▂▂▂▄▄▁▅▅▅▇▇█                  Δ 38 u │
+  │       b0                                                      b12 │                             │  │ charged 214 u   computed —   cache —                │
+  ╰─────────────────────────────────────────────────────────────────────────────────────────────────╯  ╰─────────────────────────────────────────────────────╯
+
+  ╭─ Frontier ───────────────────────────────────────────────────── 20 records  ·  ↑↓ select ─ ⤢ ─╮  ╭─ Candidates × cases ────────────────────── c0–c4 ─ ⤢ ─╮
+  │   key     value           score   decimal tier     family move  parent  state                 │  │ 0  1  2  3  4                                         │
+  │ ▶ #11     11                  0    0.0000 ✓ exact  f1     m3    #3      ● incumbent           │  │ ·  ·  ·  ·  ·                                         │
+  │   #1      1                   4    4.0000 ✓ exact  f1     m3    #0      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #3      3                   4    4.0000 ✓ exact  f1     m2    #4      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #6      6                   4    4.0000 ✓ exact  f0     m3    #1      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #7      7                   4    4.0000 ✓ exact  f1     m3    #5      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #8      8                   4    4.0000 ✓ exact  f0     m2    #8      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #9      9                   4    4.0000 ✓ exact  f1     m2    #3      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #15     15                  4    4.0000 ✓ exact  f1     m1    #3      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #16     16                  4    4.0000 ✓ exact  f0     m3    #6      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #21     21                  4    4.0000 ✓ exact  f1     m3    #10     ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #0      0                   5    5.0000 ✓ exact  —      —     seed    ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  │   #2      2                   5    5.0000 ✓ exact  f0     m3    #2      ◌ valley              │  │ ·  ·  ·  ·  ·                                         │
+  ╰───────────────────────────────────────────────────────────────────────────────────────────────╯  ╰─ per-case scores need D2 · refutations shown ─────────╯
+
+  ╭─ Verdicts ─────── plateau ●●● ─ ⤢ ─╮  ╭─ Move families ────────── batch 12 ─ ⤢ ─╮  ╭─ Events ─────────────────────────────────────── journal seq 35 ─ ⤢ ─╮
+  │ ■■■■■■■■■■■■                       │  │ family     admitted      p→a dup ref  ▲ │  │    L1 b7 │ ▲ promoted #11 ← #3  f1 m3  0  (0.0000)                  │
+  │                                    │  │ f0         ██████████    —→1   —   ·  · │  │    L1 b8 │ ◆ cases +1 (c3) · audit now 5 · archive re-verified      │
+  │                                    │  │ f1         ██████████    —→1   —   ·  · │  │    L1 b9 │ $ budget 112 → 240                                       │
+  │                                    │  │                                         │  │   L1 b10 │ ○ plateau · no promotion · 1/3 toward close              │
+  │                                    │  │                                         │  │   L1 b11 │ ○ plateau · no promotion · 2/3 toward close              │
+  │ ■ running  ■ plateau  ■ budget     │  │                                         │  │   L1 b12 │ ○ plateau · no promotion · 3/3 toward close              │
+  │ ■ goal  ■ domain                   │  │                                         │  │   L1 b12 │ ■ level closed · plateau · #11 0 · level/level_001.emath │
+  │ now plateau  ·  3 plateaus close   │  │                                         │  │   L1 b12 │ ■ RUN ENDED · ○ PLATEAU · level/level_001.emath ✓ certi… │
+  ╰────────────────────────────────────╯  ╰─ proposed/dup need D1 ──────────────────╯  ╰─────────────────────────────────────────────────────────────────────╯
+  ■ RUN ENDED · ○ PLATEAU · level/level_001.emath ✓ certificate
+   space  pause    s  step    g  grow    X  stop    f  fork    ⇥  focus    ⏎  expand    v  panels    t  theme    ?  help              ● journal #35    frame —
+--- style ---
+..A.ttttt.ttttt.....A.tttttttt....f.dddddd....f.dddddddd....f.ddddddd..............ttt.ttttttttttttttttttttt....dddddddddddddddddddddddd..d..ddddddddddddddddd
+lllllllllllllllllllAAAAAAAAAAAAlllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll
+
+..bb.ddd.bbbbbbbbbbbbbb..bb.dddddddd.bbbbbbbbbbb..bb.ddddddddd.bbbbbbbbbbbbb..bb.dddddd.bbbbbbb.ddd.d.ddd.d.bb..bb.dddddddddd.bbbbbbbb..bb.ddddd.bbbbbbbbbbbbb
+..b.P.PPPPPPP.......d.b..b.tt..t..ttttt.tt.WWW.b..b.GGGGGG..d..........AAA.b..b.WWWWWWWWWWWWWWWWWWWWff...ttt.b..b.d..........ddddd.d.b..b.t.ttttt......II.II.b
+..bbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbb
+
+..bb.ttttttttt.ttttt.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ddddd.d.d.d.dddddddddd.d.d.ddddd.b.d.bb..bb.tttttt.tttttt.bbbbbbbbbbbbbbb.d.d.dddd.d.dddd.b.d.bb
+..b.dddddd....I....U...W....X........W...I....I...W...................b.ddddddddd...............AAA.b..b.dddd.ttt..dd..ttt.d..WWWWWWWWWWWWWWWWWWWWWWfff..ttt.b
+..b.dddd.fffffiffffiffffffffAAAAAAAAAAAAAAAfffiffffffffffffffffffffff.b.GGGGGG..d...................b..b.....................................................b
+..b...........i....i........A............iA...i.......................b.G.GGGGGGG...................b..b.ddddd..ddddddddd.d.ddd.ddddd.............d....ddddd.b
+..b...........i....i........A............iA...i.......................b.............................b..b..dddd.fPPPPPPPPPPPPPPP...........................tt.b
+..b...........i....i........A............iA...i.......................b.ddddd....tt.................b..b....dd.fPPPPPPPPPPPPPPPPPPPP...........dddd.......tt.b
+..b...........i....i........A............iA...i.......................b.dddd.....G.GGGGG............b..b....dd.fPPPPPPPPPPPPPPPPPPPPPPPPP......dddd......ttt.b
+..b.dddd.fffffiffffiffffffffAffffffffffffiAfffiffffffffffffffffffffff.b.dddd.....tt.tt..............b..b....tt.fWWWWWWWWWWWWWWWWWWWWWWWWWWccc..dddd......AAA.b
+..b...........i....i........A............iA...i.......................b.dddddd...tt.................b..b.....................................................b
+..b...........i....i........A............iA...i.......................b.dddd.....ttttt.tt..t.ttt....b..b.....................................................b
+..b...........i....i........A............iA...i.......................b.ddddd....t..................b..b.....................................................b
+..b.dddd.fAAAAAAAAAAAAAAAAAAAffffffffffffiAAAAAAAAAAAAAAAAAAAAAAAAAAA.b.ddddddd..WWW..W.WW.W........b..b.ddddd.d.ddddd..IIIIIIIIIIII..................t.tt.t.b
+..b.......dd......................................................ddd.b.............................b..b.ddddddd.ttt.t...dddddddd.d...ddddd.d................b
+..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+..bb.tttttttt.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.dd.ddddddd..d..dd.dddddd.b.d.bb..bb.tttttttttt.t.ttttt.bbbbbbbbbbbbbbbbbbbbbb.ddddd.b.d.bb
+..b...ddd.....ddddd...........ddddd...ddddddd.dddd.....dddddd.dddd..dddddd..ddddd.................b..b.I..I..I..I..I.........................................b
+..b.A.AAA.....tt..................t....tttttt.G.GGGGG..tt.....tt....tt......A.AAAAAAAAA...........b..b.f..f..f..f..f.........................................b
+..b...dd......d...................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...dd......d...................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...dd......d...................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...dd......d...................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...dd......d...................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...dd......d...................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...ddd.....dd..................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...ddd.....dd..................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...ddd.....dd..................d....dddddd.d.ddddd..dd.....dd....ddd.....V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...dd......d...................d....dddddd.d.ddddd..d......d.....dddd....V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..b...dd......d...................d....dddddd.d.ddddd..dd.....dd....dd......V.VVVVVV..............b..b.f..f..f..f..f.........................................b
+..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..bb.dddddddd.dddddd.dddd.dd.d.ddddddddddd.ddddd.bbbbbbbbbb
+
+..bb.tttttttt.bbbbbbb.ddddddd.ddd.b.d.bb..bb.tttt.tttttttt.bbbbbbbbbb.ddddd.dd.b.d.bb..bb.tttttt.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ddddddd.ddd.dd.b.d.bb
+..b.GGWPPWGGWPPP.......................b..b.dddddd.....dddddddd......ddd.ddd.ddd..d.b..b....dd.dd.d.G.GGGGGGGG.GGG.t.tt..dd.dd..t..dddddddd..................b
+..b....................................b..b.tt.........AAAAAAAAAA....ttt...f...f..f.b..b....dd.dd.d.I.IIIII.II.tttt.d.ddddd.ddd.d.d.ddddddd.ddddddddddd......b
+..b....................................b..b.tt.........AAAAAAAAAA....ttt...f...f..f.b..b....dd.dd.d.W.WWWWWW.WWW.W.WWW.......................................b
+..b....................................b..b.........................................b..b...dd.ddd.d.P.PPPPPPP.d.dd.ddddddddd.d.ddd.dddddd.ddddd..............b
+..b....................................b..b.........................................b..b...dd.ddd.d.P.PPPPPPP.d.dd.ddddddddd.d.ddd.dddddd.ddddd..............b
+..b.G.ddddddd..P.ddddddd..W.dddddd.....b..b.........................................b..b...dd.ddd.d.P.PPPPPPP.d.dd.ddddddddd.d.ddd.dddddd.ddddd..............b
+..b.A.dddd..V.dddddd...................b..b.........................................b..b...dd.ddd.d.M.MMMMM.MMMMMM.M.MMMMMMM.t.ttt.t.d.ddddddddddddddddddddd.b
+..b.ddd.PPPPPPP..d..d.dddddddd.ddddd...b..b.........................................b..b...dd.ddd.d.P.PPP.PPPPP.P.P.PPPPPPP.P.PPPPPPPPPPPPPPPPPPPPP.P.PPPPPP.b
+..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..bb.dddddddddddd.dddd.dd.bbbbbbbbbbbbbbbbbbb..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+..P.PPP.PPPPP.P.P.PPPPPPP.P.PPPPPPPPPPPPPPPPPPPPP.P.PPPPPPPPPPP
+...ddddd..ddddd....d..dddd....d..dddd....d..dddd....K..dddd....K..ddddd....K..dddddd....K..dddddd....K..ddddd....K..dddd..............d.ddddddd.ddd....ddddd.d
