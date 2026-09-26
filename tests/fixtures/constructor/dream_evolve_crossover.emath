@@ -206,6 +206,35 @@ emath function Probe:
         improved = s.improved
         lineage = lineage_families(s.archive, s.incumbent)
 
+emath function strictly_rising:
+    inputs:
+        xs: sequence(Int)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if i + 1 >= length(xs): true else: xs[i] < xs[i + 1] and strictly_rising(xs, i + 1)
+
+emath function all_indexed:
+    inputs:
+        arch: sequence(ResearchCandidate)
+        keys: sequence(Int)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if i >= length(arch): true else: sorted_has(keys, arch[i].key) and all_indexed(arch, keys, i + 1)
+
+emath function index_exact:
+    # The state's key index is the archive's key set, sorted, one entry
+    # per record: so no key is recorded twice (the dedupe law).
+    inputs:
+        s: EvolveState
+    outputs:
+        result: Bool
+    definitions:
+        result = length(s.keys) == length(s.archive) and strictly_rising(s.keys, 0) and all_indexed(s.archive, s.keys, 0)
+
 emath function CrossoverRace:
     # The same seed, spec and 12-batch allowance, crossover open vs
     # masked.
@@ -217,6 +246,7 @@ emath function CrossoverRace:
         with_crossover: Bool
         without_best: Rat
         without_verdict: Int
+        indexed: Bool
     definitions:
         a = run_until(SeedEvo(0), 1, n)
         b = run_until(SeedEvo(0), 0, n)
@@ -225,6 +255,7 @@ emath function CrossoverRace:
         with_crossover = seq_has(lineage_families(a.archive, a.incumbent), 4, 0)
         without_best = b.archive[b.incumbent].score
         without_verdict = b.verdict
+        indexed = index_exact(a) and index_exact(b)
     tests:
         example <crossover_is_the_short_road>:
             # Open: goal [3, 3, 3, 3] within 12 batches through a
@@ -236,3 +267,20 @@ emath function CrossoverRace:
             expect with_crossover == true
             expect without_best < 10 / 1
             expect without_verdict != 1
+            expect indexed == true
+
+emath function StaleIndex:
+    # A state whose key index misses a record would let the batch
+    # propose that key again: the batch refuses instead of guessing.
+    inputs:
+        unused: Int
+    outputs:
+        result: EvolveState
+    definitions:
+        s = step_with(SeedEvo(0), 1, 100000)
+        stale = EvolveState: {archive: s.archive, incumbent: s.incumbent, case_set: s.case_set, batch: s.batch, used: s.used, verdict: s.verdict, mode: s.mode, proposed: s.proposed, improved: s.improved, case_scores: s.case_scores, keys: [s.archive[0].key]}
+        result = step_with(stale, 1, stale.used + 100000)
+    tests:
+        example <stale_key_index_refuses>:
+            given unused = 0
+            expect diagnostic.code == stale_key_index

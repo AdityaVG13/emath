@@ -451,6 +451,66 @@ fn dream_invariants() {
 }
 
 #[test]
+fn dream_worlds() {
+    let mut probe = Probe::new("emath dream: discoveries ask the next questions, over worlds built from authored parts");
+    let root = std::env::temp_dir().join(format!("emath_dream_worlds_{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("runs root");
+    let root_s = root.display().to_string();
+    let module_s = workspace().join("tests/fixtures/constructor/dream_worlds.emath").display().to_string();
+    let run = root.join("wo");
+    let (out, code) = emath(&[
+        "dream", &module_s, "--target", "StepWorlds", "--budget", "1000000", "--plateau-close", "50", "--work",
+        "2000000000", "--checkpoint-every", "1", "--keep-checkpoints", "40", "--run", "wo", "--root", &root_s,
+    ]);
+    assert_eq!(code, Some(0), "{out}");
+    wait_ended(&run.join("journal.jsonl"));
+    let text = std::fs::read_to_string(run.join("journal.jsonl")).unwrap_or_default();
+    let last_carry = text.lines().filter(|l| l.contains("\"t\":\"level_next\"")).last().unwrap_or("").to_string();
+    // The module only asks for the laws of rotate (1) and contract (4).
+    // Swap (3) and the two reflections (1 then 3 = 25, 3 then 1 = 11)
+    // enter as preservers of the rotation's law, and their own laws
+    // follow.
+    probe.demand(
+        "laws-of-worlds-nobody-listed",
+        last_carry.contains("law: quote(p + q), monos: [[0, 1], [1, 0]], world: 3}")
+            && last_carry.contains("law: quote(3 * p + q), monos: [[0, 1], [1, 0]], world: 11}")
+            && last_carry.contains("law: quote(p + 3 * q), monos: [[0, 1], [1, 0]], world: 25}"),
+        last_carry.clone(),
+    );
+    // The identity (5) and swap-then-swap (27) move nothing: no
+    // question or law ever names them. The contract finds nothing and
+    // retires; so do the preserver questions of the three new laws.
+    probe.demand(
+        "vacuous-worlds-never-asked",
+        !text.contains("world: 5}") && !text.contains("world: 27}") && !text.contains("world: 13}"),
+        text.clone(),
+    );
+    probe.demand(
+        "retired-without-progress",
+        last_carry.contains("retired: [Question: {kind: 0, parent: -1, seed: 0, template: 0, world: 4}, ")
+            && last_carry.contains("tried: [6, 4], won: [4, 1]"),
+        last_carry.clone(),
+    );
+    probe.demand(
+        "empty-agenda-closes-the-run",
+        last_carry.contains("open: []")
+            && last_carry.contains("current: Question: {kind: -1,")
+            && text.contains("\"t\":\"end\",\"batch\":35,\"outcome\":\"domain_exhausted\"")
+            && !run.join("world/level_012.emath").exists(),
+        text.clone(),
+    );
+    let level = std::fs::read_to_string(run.join("world/level_011.emath")).unwrap_or_default();
+    probe.demand("the-agenda-is-authored-source", level.contains("law: quote(p + 3 * q)"), level.clone());
+    let (out, code) = emath(&["dream", "fork", "wo", "--at", "15", "--run", "wo-15", "--root", &root_s]);
+    assert_eq!(code, Some(0), "{out}");
+    let fork = root.join("wo-15").join("journal.jsonl");
+    wait_ended(&fork);
+    let forked = std::fs::read_to_string(&fork).unwrap_or_default();
+    probe.demand("fork-mid-agenda-reproduces", forked == text, format!("{forked}\n---\n{text}"));
+    probe.finish();
+}
+
+#[test]
 fn dream_revision() {
     let mut probe = Probe::new("emath dream: evidence revises the model, and the model finds a plan nobody measured");
     let root = std::env::temp_dir().join(format!("emath_dream_revision_{}", std::process::id()));

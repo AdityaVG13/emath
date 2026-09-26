@@ -1,0 +1,418 @@
+# A dream that invents its own worlds from authored parts.
+#
+# Parts are exact step rules on one site [q, p]:
+#   1 rotate by (3/5, 4/5)     2 shear (q + p, p)     3 swap (p, q)
+#   4 contract (control)       5 identity (vacuous)
+# A world key is a + 8 * b: part a, then part b (b = 0: none). A world
+# is admitted only when each of its parts and the world itself move at
+# least one start: the identity, and swap then swap, never are.
+#
+# Two templates turn discoveries into questions (search.agenda):
+#   0 laws_of(W)       a new exact law L of W asks preservers_of(L),
+#                      unless the control world (contract) conserves L
+#   1 preservers_of(L) a new world W that conserves L on its train and
+#                      held-out trajectories asks laws_of(W); W's copy
+#                      of L joins the library first, so laws_of(W) can
+#                      only find W's other laws
+# The module starts with laws_of(rotate) and laws_of(contract). Every
+# other question is the dream's own. `dream_carry` is the library and
+# the agenda; each level searches the agenda's current question and
+# `dream_next` closes it. An empty agenda is the fixed point that ends
+# the run.
+#
+# Expected outcome: passes (1 authored test).
+# Run: emath dream tests/fixtures/constructor/dream_worlds.emath --target StepWorlds
+
+use search.archive
+use search.experiments
+use search.research
+use search.invariants
+use search.agenda
+
+emath object Worlds:
+    representation:
+        agenda: Agenda
+        laws: sequence(Invariant)
+
+emath function dream_carry:
+    inputs:
+        unused: Int
+    outputs:
+        result: Worlds
+    definitions:
+        result = Worlds: {agenda: agenda_start([laws_of(1), laws_of(4)], 2), laws: []}
+    tests:
+        example <every_law_holds_and_every_world_is_built_from_parts>:
+            given unused = 0
+            expect lib_holds(result.laws, 0)
+            expect agenda_worlds_ok(result.agenda)
+
+# ---- parts and worlds ----
+
+emath function part_step:
+    inputs:
+        x: Int
+        s: sequence(sequence(Rat))
+    outputs:
+        result: sequence(sequence(Rat))
+    definitions:
+        q = s[0][0]
+        p = s[0][1]
+        result = if x == 1: [[3 / 5 * q - 4 / 5 * p, 4 / 5 * q + 3 / 5 * p]] else: if x == 2: [[q + p, p]] else: if x == 3: [[p, q]] else: if x == 4: [[q / 2 + p / 2, p / 2]] else: s
+
+emath function world_apply:
+    inputs:
+        w: Int
+        s: sequence(sequence(Rat))
+    outputs:
+        result: sequence(sequence(Rat))
+    definitions:
+        b = int_quot(w, 8)
+        first = part_step(int_rem(w, 8), s)
+        result = if b == 0: first else: part_step(b, first)
+
+emath function trajectory:
+    inputs:
+        w: Int
+        s: sequence(sequence(Rat))
+        t: Int
+        n: Int
+    outputs:
+        result: sequence(sequence(sequence(Rat)))
+    definitions:
+        result = if t >= n: [s] else: [s, ..trajectory(w, world_apply(w, s), t + 1, n)]
+
+emath function trajs_of:
+    inputs:
+        w: Int
+        starts: sequence(sequence(sequence(Rat)))
+        i: Int
+    outputs:
+        result: sequence(sequence(sequence(sequence(Rat))))
+    definitions:
+        result = if i >= length(starts): [] else: [trajectory(w, starts[i], 0, 5), ..trajs_of(w, starts, i + 1)]
+
+emath function train_starts:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(sequence(sequence(Rat)))
+    definitions:
+        result = [[[1 / 1, 0 / 1]], [[1 / 1, 2 / 1]]]
+
+emath function held_starts:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(sequence(sequence(Rat)))
+    definitions:
+        result = [[[3 / 1, -1 / 1]]]
+
+emath function world_train:
+    inputs:
+        w: Int
+    outputs:
+        result: sequence(sequence(sequence(sequence(Rat))))
+    definitions:
+        result = trajs_of(w, train_starts(0), 0)
+
+emath function world_held:
+    inputs:
+        w: Int
+    outputs:
+        result: sequence(sequence(sequence(sequence(Rat))))
+    definitions:
+        result = trajs_of(w, held_starts(0), 0)
+
+emath function moves_some:
+    # Does world key w (a part alone when w < 8) move any start?
+    inputs:
+        w: Int
+        starts: sequence(sequence(sequence(Rat)))
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if i >= length(starts): false else: if world_apply(w, starts[i]) != starts[i]: true else: moves_some(w, starts, i + 1)
+
+emath function moves_any:
+    inputs:
+        w: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = moves_some(w, train_starts(0), 0) or moves_some(w, held_starts(0), 0)
+
+emath function world_admit:
+    inputs:
+        w: Int
+    outputs:
+        result: Bool
+    definitions:
+        a = int_rem(w, 8)
+        b = int_quot(w, 8)
+        shape = w >= 1 and a >= 1 and a <= 5 and b >= 0 and b <= 5
+        result = if not shape: false else: moves_any(a) and (b == 0 or moves_any(b)) and moves_any(w)
+
+emath function worlds_from:
+    inputs:
+        w: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        rest = if w >= 45: [] else: worlds_from(w + 1)
+        result = if w > 45: [] else: if int_rem(w, 8) >= 1 and int_rem(w, 8) <= 5: [w, ..rest] else: rest
+
+# ---- the library ----
+
+emath function lib_holds:
+    inputs:
+        lib: sequence(Invariant)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        w = if i >= length(lib): 1 else: lib[i].world
+        ok = if i >= length(lib): true else: world_admit(w) and inv_holds(lib[i], world_train(w), 0) and inv_holds(lib[i], world_held(w), 0)
+        result = if i >= length(lib): true else: if ok: lib_holds(lib, i + 1) else: false
+
+emath function questions_ok:
+    inputs:
+        qs: sequence(Question)
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        ok = if i >= length(qs): true else: qs[i].kind != 0 or world_admit(qs[i].world)
+        result = if i >= length(qs): true else: if ok: questions_ok(qs, i + 1) else: false
+
+emath function agenda_worlds_ok:
+    inputs:
+        ag: Agenda
+    outputs:
+        result: Bool
+    definitions:
+        result = questions_ok([ag.current], 0) and questions_ok(ag.open, 0) and questions_ok(ag.asked, 0) and questions_ok(ag.retired, 0)
+
+emath function same_law:
+    inputs:
+        a: Invariant
+        b: Invariant
+    outputs:
+        result: Bool
+    definitions:
+        result = a.monos == b.monos and a.coefs == b.coefs
+
+emath function canon_law:
+    # The first library ordinal carrying the same law as lib[j].
+    inputs:
+        lib: sequence(Invariant)
+        j: Int
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= j: j else: if same_law(lib[i], lib[j]): i else: canon_law(lib, j, i + 1)
+
+emath function known_on:
+    inputs:
+        lib: sequence(Invariant)
+        law: Invariant
+        w: Int
+        i: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if i >= length(lib): false else: if lib[i].world == w and same_law(lib[i], law): true else: known_on(lib, law, w, i + 1)
+
+emath function conserves:
+    inputs:
+        law: Invariant
+        w: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = inv_holds(law, world_train(w), 0) and inv_holds(law, world_held(w), 0)
+
+emath function new_preserver:
+    inputs:
+        lib: sequence(Invariant)
+        law: Invariant
+        w: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if not world_admit(w): false else: if known_on(lib, law, w, 0): false else: conserves(law, w)
+
+emath function invariant_append:
+    inputs:
+        a: sequence(Invariant)
+        b: sequence(Invariant)
+        i: Int
+    outputs:
+        result: sequence(Invariant)
+    definitions:
+        result = if i >= length(a): b else: [a[i], ..invariant_append(a, b, i + 1)]
+
+emath function law_vars:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Code)
+    definitions:
+        result = [quote(q), quote(p)]
+
+emath function laws_at:
+    # The laws vocabulary key k adds to lib for world w.
+    inputs:
+        lib: sequence(Invariant)
+        w: Int
+        k: Int
+    outputs:
+        result: sequence(Invariant)
+    definitions:
+        result = inv_assess(w, world_train(w), world_held(w), [1, 1], law_vars(0), int_quot(k, 16), int_rem(k, 16), lib)
+
+emath function gather_laws:
+    # Every probed vocabulary's new laws for w, in archive order, each
+    # judged against the library grown so far.
+    inputs:
+        lib: sequence(Invariant)
+        w: Int
+        arch: sequence(ResearchCandidate)
+        i: Int
+    outputs:
+        result: sequence(Invariant)
+    definitions:
+        result = if i >= length(arch): lib else: gather_laws(invariant_append(lib, laws_at(lib, w, arch[i].key), 0), w, arch, i + 1)
+
+emath function gather_preservers:
+    # Every probed world that newly conserves lib[j], in archive order;
+    # its copy of the law joins the library.
+    inputs:
+        lib: sequence(Invariant)
+        j: Int
+        arch: sequence(ResearchCandidate)
+        i: Int
+    outputs:
+        result: sequence(Invariant)
+    definitions:
+        law = lib[j]
+        w = if i >= length(arch): 0 else: arch[i].key
+        keep = if i >= length(arch): false else: new_preserver(lib, law, w)
+        copy = Invariant: {world: w, law: law.law, monos: law.monos, coefs: law.coefs, checked: inv_transitions(world_train(w), 0, 0) + inv_transitions(world_held(w), 0, 0)}
+        lib2 = if keep: invariant_append(lib, [copy], 0) else: lib
+        result = if i >= length(arch): lib else: gather_preservers(lib2, j, arch, i + 1)
+
+# ---- questions ----
+
+emath function laws_of:
+    inputs:
+        w: Int
+    outputs:
+        result: Question
+    definitions:
+        result = Question: {kind: 0, world: w, seed: 0, parent: -1, template: 0}
+
+emath function found_from:
+    # The discoveries lib[n..] made while asking q.
+    inputs:
+        lib: sequence(Invariant)
+        q: Question
+        n: Int
+    outputs:
+        result: sequence(Discovery)
+    definitions:
+        seed = if n >= length(lib): 0 else: (if q.kind == 0: n else: q.seed)
+        rest = if n >= length(lib): [] else: found_from(lib, q, n + 1)
+        result = if n >= length(lib): [] else: [Discovery: {kind: q.kind, world: lib[n].world, seed: seed, question: q}, ..rest]
+
+emath function children_from:
+    # The questions lib[n..] ask; parent is the discovery ordinal.
+    inputs:
+        lib: sequence(Invariant)
+        q: Question
+        n: Int
+        parent: Int
+    outputs:
+        result: sequence(Question)
+    definitions:
+        done = n >= length(lib)
+        c = if done: 0 else: canon_law(lib, n, 0)
+        ask = if done: false else: (q.kind == 1 or not conserves(lib[n], 4))
+        child = if done: laws_of(0) else: (if q.kind == 0: Question: {kind: 1, world: lib[c].world, seed: c, parent: parent, template: 1} else: Question: {kind: 0, world: lib[n].world, seed: 0, parent: parent, template: 0})
+        rest = if done: [] else: children_from(lib, q, n + 1, parent + 1)
+        result = if done: [] else: if ask: [child, ..rest] else: rest
+
+emath function dream_next:
+    inputs:
+        state: LoopState
+    outputs:
+        result: Worlds
+    definitions:
+        c = dream_carry(0)
+        q = c.agenda.current
+        n = length(c.laws)
+        lib = if q.kind == 0: gather_laws(c.laws, q.world, state.archive, 0) else: if q.kind == 1: gather_preservers(c.laws, q.seed, state.archive, 0) else: c.laws
+        result = Worlds: {agenda: agenda_close(c.agenda, found_from(lib, q, n), children_from(lib, q, n, length(c.agenda.found))), laws: lib}
+
+# ---- the level: search the current question ----
+
+emath function key_score:
+    inputs:
+        c: Worlds
+        k: Int
+    outputs:
+        result: Rat
+    definitions:
+        q = c.agenda.current
+        size = length(inv_basis([1, 1], int_quot(k, 16), int_rem(k, 16)))
+        result = if q.kind == 0: inv_score(length(laws_at(c.laws, q.world, k)), size) else: if q.kind == 1: (if new_preserver(c.laws, c.laws[q.seed], k): 1 / 1 else: 0 / 1) else: 0 / 1
+
+emath function key_moves:
+    inputs:
+        kind: Int
+        k: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if kind == 0: inv_moves(k, 2) else: if kind == 1: worlds_from(1) else: []
+
+emath function key_admit:
+    inputs:
+        kind: Int
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if kind == 0: inv_admit(k, [1, 1], 2) else: if kind == 1: world_admit(k) else: false
+
+emath function MakeScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        c = dream_carry(0)
+        result = function k in Int: function cs in CaseSet: key_score(c, k)
+
+emath function SeedWorlds:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        c = dream_carry(0)
+        q = c.agenda.current
+        key = if q.kind == 0: inv_key(1, 3) else: if q.kind == 1: c.laws[q.seed].world else: 0
+        result = research_seed(key, function k in Int: k / 1, CaseSet: {ids: [0]}, MakeScore(0), function k in Int: function cs in CaseSet: -1, 1, 0, 1, 1)
+
+emath function StepWorlds:
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        kind = dream_carry(0).agenda.current.kind
+        result = research_batch(state, function k in Int: k / 1, function k in Int: key_admit(kind, k), function k in Int: key_moves(kind, k), function k in Int: 0, function f in Int: 8, MakeScore(0), MakeScore(0), function k in Int: function cs in CaseSet: -1, function k in Int: true, function s in Rat: false, function a in Rat: function b in Rat: a > b, function k in Int: function cs in CaseSet: cs, budget)
