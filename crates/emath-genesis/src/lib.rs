@@ -7,13 +7,12 @@
 //! parser and re-exports this module at its root.
 //!
 //! Facade SPI note: each family module carries its own
-//! `check_version` (`analogue/binder/meaning_provider/morphism/synth`/
-//! tuning) with its OWN error type — six deliberate homonyms, not an
-//! incomplete facade. A root export would either collide six times or
-//! need six aliases; the module path IS the family address. Documented
+//! `check_version` (`binder/meaning_provider/morphism/synth`/
+//! tuning) with its OWN error type — five deliberate homonyms, not an
+//! incomplete facade. A root export would either collide five times or
+//! need five aliases; the module path IS the family address. Documented
 //! intentional SPI, like `core::tree`.
 
-pub mod analogue;
 pub mod binder;
 pub mod csa;
 pub mod forest;
@@ -32,10 +31,6 @@ pub use world_result::{
     WorldResult, evaluate_labeled,
 };
 
-pub use analogue::{
-    ANALOGUE_NO_CLAIM, ANALOGUE_SCHEMA, ANALOGUE_VERSION, AnalogueDomain, AnalogueError,
-    AnalogueReceipt, AnalogueRequest, AnalogueSample, AnalogueVerdict, analogue_id,
-};
 pub use binder::{
     BINDER_SCHEMA, BINDER_VERSION, BinderBudget, BinderDomain, BinderError, BinderFamily,
     BinderKind, BinderTerm, ScopedBinder, binder_id,

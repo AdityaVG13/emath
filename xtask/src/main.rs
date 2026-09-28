@@ -29,7 +29,6 @@ use emath_world_ir::fnv1a64;
 
 mod demo_agent_meaning;
 mod demo_easy_math;
-mod demo_finite_analogues;
 mod demo_finite_worlds;
 mod demo_interpretation_portfolio;
 mod demo_joint_tuning;
@@ -47,7 +46,6 @@ fn main() {
             Some("scoped-binders") => demo_scoped_binders(),
             Some("math-layout") => demo_math_layout(),
             Some("interpretation-portfolio") => demo_interpretation_portfolio::run(),
-            Some("finite-analogues") => demo_finite_analogues::demo(),
             Some("finite-worlds") => demo_finite_worlds::demo(),
             Some("agent-meaning") => demo_agent_meaning::demo(),
             Some("world-morphisms") => demo_world_morphisms::demo(),
@@ -59,7 +57,7 @@ fn main() {
             Some("cache-policy") => demo_cache_policy(),
             other => {
                 eprintln!(
-                    "unknown demo {other:?}; usage: cargo xtask demo <holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|meaning-store|portable-emlib|easy-math|cache-policy>"
+                    "unknown demo {other:?}; usage: cargo xtask demo <holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|meaning-store|portable-emlib|easy-math|cache-policy>"
                 );
                 2
             }
@@ -82,7 +80,7 @@ fn main() {
         serve_web(port)
     } else {
         eprintln!(
-            "usage: cargo xtask demo <holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-analogues|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|meaning-store|portable-emlib|easy-math|cache-policy>"
+            "usage: cargo xtask demo <holes-synthesis|scoped-binders|math-layout|interpretation-portfolio|finite-worlds|agent-meaning|world-morphisms|joint-tuning|source-first-worlds|meaning-store|portable-emlib|easy-math|cache-policy>"
         );
         eprintln!("       cargo xtask generate-language");
         eprintln!("       cargo xtask regen-golden");

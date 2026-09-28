@@ -25,7 +25,7 @@ in `crates/`. Do not park under `tests/` without written authorization.
 - `Observation`, `MetricDefinition`, `MetricKind`, `CandidateAdmission`, `AdmissionStatus` (observed experiment records).
 - `Sampler`: deterministic splitmix64-style pseudo-random samples in `[-1, 1)`.
 - Re-exported module surfaces: `qualitygate` (`GateCheckKind`, `GateVerdict`, `QualityGate`), `promotion` (`decide`, `PromotionDecision`, `PromotionReason`), `stats` (`StatisticalProtocol`, `evaluate_paired`, `OutlierPolicy`, `PairedResult`), `drift` (`DriftMonitor`, `DriftAlert`, `DriftKind`, `DriftBand`), `selector` (`Selector`, `Route`, `Telemetry`), `identity` (`EngineIdentity`, `EngineRole`), `sha256` (`digest`, `hex`), `error` (`LabError`).
-- More modules: `manifest`, `measure` (`HarnessReport`, `Summary`, `DerivedMetric`), `promotion` (`EnginePolicy`, `PromotionOutcome`), `candidate` (`CandidateLoop`, `ParetoArchive`, `Candidate`, `dominates`), `adversarial`, `pilot` (`CachePilot`, `ServeResult`), `supervisor` (`Supervisor`, `TickOutcome`).
+- More modules: `manifest`, `measure` (`HarnessReport`, `Summary`, `DerivedMetric`), `promotion` (`EnginePolicy`, `PromotionOutcome`), `adversarial`, `pilot` (`CachePilot`, `ServeResult`), `supervisor` (`Supervisor`, `TickOutcome`).
 - (not exhaustive; `failure` (`FailureBundle`, `TRUE_DIVERGENCE_POINTER`) and `receipt` (`DecisionReceipt`) also re-export at root.)
 
 ## Invariants
@@ -60,7 +60,6 @@ in `crates/`. Do not park under `tests/` without written authorization.
   - measure: `cv_pct_quarantines_noisy_cells`, `degenerate_samples_have_zero_cv`.
   - promotion: `currently_promoted_non_regressed_stays_on_the_promoted_route`, `regressed_promoted_candidate_is_demoted_not_retained`, `not_promoted_candidate_between_targets_goes_canary`.
   - sha256: `nist_vectors_match`, `digest_is_deterministic`.
-  - candidate: `dominance_requires_no_worse_everywhere_and_strictly_better_somewhere`, `archive_keeps_only_the_non_dominated_front`, `gate_refused_candidate_never_enters_the_archive` (a closed evidence gate refuses with `E-HOST-005` and the Pareto archive stays empty).
 
 ## No-claim boundaries
 - The keep-gate SHA-256 is an identity primitive, not release cryptographic hardening.

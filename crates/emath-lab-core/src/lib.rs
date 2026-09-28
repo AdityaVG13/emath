@@ -11,7 +11,6 @@
 #![forbid(unsafe_code)]
 
 pub mod adversarial;
-pub mod candidate;
 pub mod drift;
 pub mod error;
 pub mod failure;
@@ -29,7 +28,6 @@ pub mod stats;
 pub mod supervisor;
 
 pub use adversarial::{AdversarialCheck, RunFacts, require_comparable, run_all};
-pub use candidate::{Candidate, CandidateLoop, ParetoArchive, dominates};
 pub use drift::{DriftAlert, DriftBand, DriftKind, DriftMonitor};
 pub use error::LabError;
 pub use failure::{

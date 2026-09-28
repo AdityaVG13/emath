@@ -15,19 +15,11 @@ use std::fmt;
 
 mod eval;
 mod run;
-mod simulate;
 
 pub use eval::eval_definitions_values;
 pub use run::{
     run_declaration, run_declaration_with_given, run_direct, run_package, run_package_with_given,
     run_test,
-};
-pub use simulate::{
-    CONSTRUCTOR_SIMULATE_GONE, Continuation, DAEDisposition, DAEIndex, InitializationVerdict,
-    SimulateOptions, StepMethod, Trajectory, TrajectorySample, simulate_continuous,
-    simulate_continuous_dispositioned, simulate_continuous_with, step_continuous,
-    step_continuous_values, explicit_rate_program, explicit_step_program,
-    residual_model_step_program, authored_implicit_explicit_step,
 };
 
 /// Hint stored on declarations that have no `tests:` examples and cannot
