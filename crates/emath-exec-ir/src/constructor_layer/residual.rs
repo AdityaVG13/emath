@@ -279,7 +279,7 @@ pub(super) fn substitute_reference(
         ExprKind::Str(name) => Ok(name.clone()),
         ExprKind::Path { segments, .. } if segments.len() == 1 => Ok(segments[0].clone()),
         _ => match fold_expr(engine, expr, runtime, residuals)? {
-            Folded::Value(CValue::Record { type_name, .. }) => Ok(type_name),
+            Folded::Value(CValue::Record { type_name, .. }) => Ok(type_name.to_string()),
             Folded::Value(CValue::Code(code)) => match &code.expr.kind {
                 ExprKind::Path { segments, .. } => Ok(segments.join(".")),
                 _ => Err(fault(

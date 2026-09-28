@@ -15,7 +15,7 @@ pub(super) fn value_to_expr(value: &CValue) -> Expr {
         CValue::Tuple(items) => ExprKind::Tuple(items.iter().map(value_to_expr).collect()),
         CValue::Code(code) => code.expr.kind.clone(),
         CValue::Record { type_name, fields } => ExprKind::Record {
-            type_path: vec![type_name.clone()],
+            type_path: vec![type_name.to_string()],
             fields: fields
                 .iter()
                 .map(|(k, v)| (k.clone(), value_to_expr(v)))
@@ -440,7 +440,7 @@ pub(super) fn fragment_term(value: CValue) -> Result<Expr, String> {
     match value {
         CValue::Code(code) => Ok(code.expr),
         CValue::Record { type_name, fields }
-            if type_name == "Fragment" || fields.contains_key("term") =>
+            if &*type_name == "Fragment" || fields.contains_key("term") =>
         {
             match fields.get("term") {
                 Some(CValue::Code(code)) => Ok(code.expr.clone()),

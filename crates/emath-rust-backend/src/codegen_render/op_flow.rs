@@ -172,8 +172,12 @@ pub(super) fn authored_control_expr(
                 .map(|index| format!("{prefix}arg_{index}"))
                 .collect::<Vec<_>>();
             let inputs = names.iter().cloned().zip(argument_kinds).collect();
-            Ok(render_expr(&value_expr(body, &names, &[], &inputs)?)
-                .replace("__e", &format!("{prefix}e")))
+            Ok(crate::codegen_render::replace_ident_prefix(
+                &render_expr(&value_expr(body, &names, &[], &inputs)?),
+                "__e",
+                &format!("{prefix}e"),
+                |c| c.is_some_and(|c| c.is_ascii_digit()),
+            ))
         };
     let captures = |args: &[EmirValue], start: usize| -> Result<String, BackendError> {
         let mut source = String::new();

@@ -598,7 +598,7 @@ pub(crate) fn admitted_meaning_id(module: &Path, source: &str) -> Result<String,
 
 fn demand_state_record(state: &CValue, state_type: &str) -> Result<(), HostFault> {
     match state {
-        CValue::Record { type_name, .. } if type_name == state_type => Ok(()),
+        CValue::Record { type_name, .. } if &**type_name == state_type => Ok(()),
         other => Err(HostFault::fault(
             "loop_state_contract",
             format!(

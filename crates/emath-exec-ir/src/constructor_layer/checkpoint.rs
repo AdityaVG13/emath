@@ -1618,7 +1618,7 @@ pub(super) fn decode_cvalue_cur(
                     fields.insert(name, value);
                 }
                 CValue::Record {
-                    type_name,
+                    type_name: type_name.into(),
                     fields: Arc::new(fields),
                 }
             }

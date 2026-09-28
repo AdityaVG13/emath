@@ -371,7 +371,7 @@ fn parse_value(json: &JsonValue) -> Result<CValue, ConstructorError> {
             if let Ok(record) = tagged(json, "record") {
                 let entries = unique_fields(record)?;
                 let type_name = match entry_field(entries, "type")? {
-                    JsonValue::Str(name) => name.clone(),
+                    JsonValue::Str(name) => name.as_str().into(),
                     other => {
                         return Err(fault(
                             "scratch_value",

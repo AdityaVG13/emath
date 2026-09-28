@@ -1,0 +1,52 @@
+# Probe: which quote.view operand shapes refuse in the emitted lane?
+# The VM runs all three (autodiff's proven idioms); emission pins the
+# seam. Ordinary fixture. Not a FeatureID.
+
+emath function sq:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x * x
+
+emath function view_seq_element:
+    # vars[i] over a declared sequence(Code) input.
+    inputs:
+        vars: sequence(Code)
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.view(vars[0]).kind == Local
+    tests:
+        example <local_elem>:
+            given vars = [quote(y)]
+            expect result == true
+
+emath function view_node_arg:
+    # node.args[0]: a Code subterm through a node-record field.
+    inputs:
+        form: Code
+    outputs:
+        result: Bool
+    definitions:
+        node = quote.view(form)
+        result = if node.kind == Call: quote.view(node.args[0]).kind == Literal else: false
+    tests:
+        example <arg_view>:
+            given form = quote(3 + 4)
+            expect result == true
+
+emath function view_body_fragment:
+    # quote.body(...).fragment: the transparent callee's body fragment.
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        b = quote.body(quote(sq))
+        result = if b.kind == Available: quote.view(b.fragment).kind == Closure else: false
+    tests:
+        example <frag_view>:
+            given unused = 0
+            expect result == true

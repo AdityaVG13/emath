@@ -381,13 +381,13 @@ fn export_native_sessions() {
     });
 
     // 13. The metaprogramming consumer proof: the authored
-    //     differentiation module (language/modules/calculus/
-    //     diff.emath) runs natively end-to-end. The session's
+    //     differentiation module (language/modules/analysis/
+    //     derivative.emath) runs natively end-to-end. The session's
     //     prediction opens a minted Fragment package (quote.open -
     //     the binder half of the tree family, witness-validated),
     //     views the opened term, rebuilds the template with made
     //     literals carrying both runtime values, differentiates
-    //     symbolically with d_wrt (view + make + substitute), plugs
+    //     symbolically with d_form (view + make + substitute), plugs
     //     x = 1 by substitution, and evaluates - all inside the
     //     batch loop, checkpoint byte-identical cross-lane (bead
     //     emath-quote-bind-open-consumer-6f86g).

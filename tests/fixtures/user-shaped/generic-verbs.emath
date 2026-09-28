@@ -1,5 +1,8 @@
-# Generic verbs: product-shaped factorials, Euler chi of cells the user
+# Generic verbs: factorial and falling factorial, Euler chi of cells the user
 # supplies, and an NS residual. Not prize labels.
+
+use exact.integers
+use discrete.factorials
 
 emath function GenericVerbs:
     inputs:
@@ -20,13 +23,13 @@ emath function GenericVerbs:
         ns_res: Float64
         ns_div: Float64
     definitions:
-        fact = product i in 1..=n: i
-        fall = product i in 0..k: n - i
+        fact = factorial(n)
+        fall = falling_factorial(n, k)
         chi = vertices - edges + faces
         ns_res = advect + pressure_grad - viscous - accel
         ns_div = div_u
     tests:
-        example <five-fact>:
+        example <five_fact>:
             given n = 5
             given k = 3
             given vertices = 8

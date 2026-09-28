@@ -379,11 +379,31 @@ pub fn emit_constructor_crate(
     // Text and refusals collect per function and assemble in the
     // required order (main file first, cycle members as discovered),
     // helpers last - the render order is an implementation detail.
+    // A function with type parameters has no single carrier ABI: it
+    // emits no entry, and every call site inlines its body as a frame
+    // typed by that site's arguments (one instantiation per call site).
+    let generic: BTreeSet<String> = tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            emath_core::tree::Item::Declaration(decl) if !decl.generics.is_empty() => {
+                Some(decl.name.clone())
+            }
+            _ => None,
+        })
+        .collect();
     let mut rendered: BTreeMap<String, String> = BTreeMap::new();
     let mut refusals: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut helpers: Vec<String> = Vec::new();
     let mut emitted_entries: Vec<(String, Vec<(String, Option<String>)>, EntryAbi)> = Vec::new();
     for name in &post_order {
+        if generic.contains(name) {
+            rendered.insert(
+                name.clone(),
+                format!("// function `{name}` has type parameters: each call site inlines it\n"),
+            );
+            continue;
+        }
         let is_required = required.contains(name);
         let function = match lowered.get(name) {
             Some(Ok(function)) => function,

@@ -427,7 +427,7 @@ impl Engine {
                 fields.insert(output.clone(), value);
             }
             return Ok(CValue::Record {
-                type_name: name.to_string(),
+                type_name: name.into(),
                 fields: Arc::new(fields),
             });
         }

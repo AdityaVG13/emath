@@ -116,9 +116,10 @@ fn authored_signatures(
     let Some(decl) = decl else {
         return (Vec::new(), String::new());
     };
+    let vars: Vec<String> = decl.generics.iter().map(|generic| generic.name.clone()).collect();
     let declared = section_typed_fields(decl, "inputs")
         .iter()
-        .map(|(_, ty)| constructor_type_signature(ty, object_names).unwrap_or_default())
+        .map(|(_, ty)| type_signature(ty, object_names, &vars).unwrap_or_default())
         .collect();
     let outputs = section_typed_fields(decl, "outputs");
     let result = if outputs.len() > 1 {
@@ -467,7 +468,9 @@ fn evaluate_application(
             for (position, arg) in site.iter().enumerate() {
                 if arg.as_deref() == Some(def_name) {
                     match inputs.get(position) {
-                        Some(signature) if signature.starts_with("Fn<") => {
+                        Some(signature)
+                            if signature.starts_with("Fn<") && !signature.contains("Var<") =>
+                        {
                             declared.insert(signature.clone());
                         }
                         _ => return None,
@@ -2038,9 +2041,18 @@ pub fn section_typed_fields(decl: &Declaration, name: &str) -> Vec<(String, Type
 /// "Fn<A,B>". Unmapped forms return None - the caller refuses
 /// emission rather than guessing a carrier.
 pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> Option<String> {
+    type_signature(ty, objects, &[])
+}
+
+/// `vars` are the declaration's type parameters; each renders as
+/// `Var<name>` so a caller can bind it from the arguments it passes.
+fn type_signature(ty: &TypeExpr, objects: &BTreeSet<String>, vars: &[String]) -> Option<String> {
     match &ty.kind {
         TypeKind::Path { segments, generic_args } => {
             let last = segments.last()?;
+            if segments.len() == 1 && generic_args.is_empty() && vars.contains(last) {
+                return Some(format!("Var<{last}>"));
+            }
             match last.as_str() {
                 "Int" | "Nat" => Some("Int".into()),
                 "Rat" => Some("Rat".into()),
@@ -2061,7 +2073,7 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
                 "Code" => match generic_args.first() {
                     Some(GenericArg::Type(carrier)) => Some(format!(
                         "Code<{}>",
-                        constructor_type_signature(carrier, objects)?
+                        type_signature(carrier, objects, vars)?
                     )),
                     _ => Some("Code".into()),
                 },
@@ -2072,7 +2084,7 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
                     None => Some("Sequence".into()),
                     Some(GenericArg::Type(element)) => Some(format!(
                         "Vector<{}>",
-                        constructor_type_signature(element, objects)?
+                        type_signature(element, objects, vars)?
                     )),
                     Some(_) => None,
                 },
@@ -2090,14 +2102,14 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
             // a heterogeneous tuple literal refuses under.
             let mut parts = Vec::new();
             for element in elements {
-                parts.push(constructor_type_signature(element, objects)?);
+                parts.push(type_signature(element, objects, vars)?);
             }
             Some(format!("Tuple<{}>", parts.join(",")))
         }
         TypeKind::Fn { domain, codomain } => Some(format!(
             "Fn<{},{}>",
-            constructor_type_signature(domain, objects)?,
-            constructor_type_signature(codomain, objects)?
+            type_signature(domain, objects, vars)?,
+            type_signature(codomain, objects, vars)?
         )),
         _ => None,
     }
@@ -2180,7 +2192,7 @@ pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate:
                 converted.insert(name.clone(), cvalue_to_emir(field)?);
             }
             Ok(Value::Record {
-                type_name: type_name.clone(),
+                type_name: type_name.to_string(),
                 fields: converted,
             })
         }

@@ -1,5 +1,7 @@
 # Tropical min-plus: meet, times as +, multiplicative unit 0.
 
+use numerics.bounds
+
 emath function TropicalOps:
     inputs:
         unused: Int
@@ -8,7 +10,7 @@ emath function TropicalOps:
         trop_times: Int
         trop_unit: Int
     definitions:
-        meet = min(2, 3)
+        meet = min2(2, 3)
         trop_times = 2 + 5
         trop_unit = 2 + 0
     tests:

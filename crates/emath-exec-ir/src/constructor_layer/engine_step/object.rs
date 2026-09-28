@@ -103,7 +103,7 @@ impl Engine {
         else {
             return Err(fault("type", "open expects a packed object"));
         };
-        if got != type_name {
+        if &**got != type_name {
             return Err(fault(
                 "type",
                 format!("opened `{got}` as `{type_name}`"),

@@ -60,7 +60,7 @@ pub(super) fn function_body_expr(decl: &FnDecl) -> Expr {
 
 pub(super) fn record_kind_name(type_name: &str, fields: &BTreeMap<String, CValue>) -> String {
     match fields.get("kind") {
-        Some(CValue::Record { type_name, .. }) => type_name.clone(),
+        Some(CValue::Record { type_name, .. }) => type_name.to_string(),
         _ => type_name.to_string(),
     }
 }
@@ -150,19 +150,19 @@ pub(super) fn rebuild_expr(value: &CValue) -> Result<Expr, String> {
                     .ok_or_else(|| "Literal node missing value".into()),
                 "Local" | "Global" => {
                     let name = match fields.get("name") {
-                        Some(CValue::Record { type_name, .. }) => type_name.clone(),
+                        Some(CValue::Record { type_name, .. }) => type_name.to_string(),
                         Some(CValue::Code(code)) => match &code.expr.kind {
                             ExprKind::Path { segments, .. } => segments.join("."),
                             _ => return Err("reference name is not a path".into()),
                         },
-                        _ => type_name.clone(),
+                        _ => type_name.to_string(),
                     };
                     Ok(path_expr(&name))
                 }
                 "Call" => rebuild_call(fields),
                 "Closure" => {
                     let param = match fields.get("param") {
-                        Some(CValue::Record { type_name, .. }) => type_name.clone(),
+                        Some(CValue::Record { type_name, .. }) => type_name.to_string(),
                         _ => return Err("Closure missing param".into()),
                     };
                     let body = rebuild_expr(fields.get("body").ok_or("Closure missing body")?)?;
@@ -207,7 +207,7 @@ pub(super) fn rebuild_expr(value: &CValue) -> Result<Expr, String> {
                     let container =
                         rebuild_expr(fields.get("container").ok_or("Projection missing container")?)?;
                     let field = match fields.get("field") {
-                        Some(CValue::Record { type_name, .. }) => type_name.clone(),
+                        Some(CValue::Record { type_name, .. }) => type_name.to_string(),
                         _ => return Err("Projection missing field".into()),
                     };
                     match container.kind {
@@ -253,7 +253,7 @@ pub(super) fn rebuild_expr(value: &CValue) -> Result<Expr, String> {
                             .map(|item| match item {
                                 CValue::Tuple(pair) if pair.len() == 2 => {
                                     let name = match &pair[0] {
-                                        CValue::Record { type_name, .. } => type_name.clone(),
+                                        CValue::Record { type_name, .. } => type_name.to_string(),
                                         _ => return Err("Record field name is not a tag".into()),
                                     };
                                     Ok((name, rebuild_expr(&pair[1])?))
@@ -270,7 +270,7 @@ pub(super) fn rebuild_expr(value: &CValue) -> Result<Expr, String> {
                 }
                 "Recur" => {
                     let name = match fields.get("name") {
-                        Some(CValue::Record { type_name, .. }) => type_name.clone(),
+                        Some(CValue::Record { type_name, .. }) => type_name.to_string(),
                         _ => return Err("Recur missing name".into()),
                     };
                     let ty = rebuild_expr(fields.get("type").ok_or("Recur missing type")?)?;

@@ -131,19 +131,19 @@ impl Engine {
                     if let Some(CValue::Receipt(receipt)) = self.env.get(&segments[0]) {
                         return match segments[1].as_str() {
                             "execution" => Ok(CValue::Record {
-                                type_name: receipt.execution.clone(),
+                                type_name: receipt.execution.as_str().into(),
                                 fields: Arc::new(BTreeMap::new()),
                             }),
                             "fulfillment" => Ok(CValue::Record {
-                                type_name: receipt.fulfillment.clone(),
+                                type_name: receipt.fulfillment.as_str().into(),
                                 fields: Arc::new(BTreeMap::new()),
                             }),
                             "representation" => Ok(CValue::Record {
-                                type_name: receipt.representation.clone(),
+                                type_name: receipt.representation.as_str().into(),
                                 fields: Arc::new(BTreeMap::new()),
                             }),
                             "payload" => Ok(CValue::Record {
-                                type_name: receipt.payload.clone().unwrap_or_default(),
+                                type_name: receipt.payload.as_deref().unwrap_or_default().into(),
                                 fields: Arc::new(BTreeMap::new()),
                             }),
                             "remaining" => Ok(CValue::Sequence(std::sync::Arc::new(
@@ -151,7 +151,7 @@ impl Engine {
                                     .remaining
                                     .iter()
                                     .map(|item| CValue::Record {
-                                        type_name: item.clone(),
+                                        type_name: item.as_str().into(),
                                         fields: Arc::new(BTreeMap::new()),
                                     })
                                     .collect(),
@@ -161,7 +161,7 @@ impl Engine {
                                     .evidence
                                     .iter()
                                     .map(|item| CValue::Record {
-                                        type_name: item.clone(),
+                                        type_name: item.as_str().into(),
                                         fields: Arc::new(BTreeMap::new()),
                                     })
                                     .collect(),

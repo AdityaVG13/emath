@@ -342,7 +342,7 @@ impl Engine {
     ) -> Result<CValue, ConstructorError> {
         match node {
             CValue::Code(code) => Ok(CValue::Code(code)),
-            CValue::Record { type_name, fields } if type_name == "Fragment" => {
+            CValue::Record { type_name, fields } if &*type_name == "Fragment" => {
                 match fields.get("term") {
                     Some(CValue::Code(code)) => Ok(CValue::Code(code.clone())),
                     Some(other) => match rebuild_expr(other) {
@@ -372,7 +372,7 @@ impl Engine {
         let CValue::Record { type_name, fields } = package else {
             return Ok(());
         };
-        if type_name != "Fragment" {
+        if &**type_name != "Fragment" {
             return Ok(());
         }
         if let Some(CValue::Record {
@@ -380,7 +380,7 @@ impl Engine {
             fields: scope,
         }) = fields.get("context")
         {
-            if type_name == "Scope" {
+            if &**type_name == "Scope" {
                 if let Some(CValue::Int(id)) = scope.get("id") {
                     let Some(id) = id.to_i128() else {
                         return Err(fault("invalid_code_construction", "forged Scope witness"));

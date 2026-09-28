@@ -137,7 +137,7 @@ impl Engine {
                     ExprKind::Str(name) => name.clone(),
                     ExprKind::Path { segments, .. } if segments.len() == 1 => segments[0].clone(),
                     _ => match self.eval(&args[1])? {
-                        CValue::Record { type_name, .. } => type_name,
+                        CValue::Record { type_name, .. } => type_name.to_string(),
                         CValue::Code(code) => match &code.expr.kind {
                             ExprKind::Path { segments, .. } => segments.join("."),
                             _ => {

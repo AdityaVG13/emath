@@ -2,7 +2,7 @@
 
 use super::{
     BTreeMap, BackendError, BinOp, Block, EmirOp, EmirProgram, EmirValue, Expr, FoldCombine, Stmt,
-    Ty, UnOp, checked_integer_result, escape_ident, exact_int_operand, flat_ssa, op_expr, operand,
+    Ty, UnOp, checked_integer_result, escape_ident, exact_int_ref, flat_ssa, op_expr, operand,
     owned_value, record_layout, render_expr, rt_call, to_code_value, to_node,
 };
 
@@ -496,7 +496,7 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
     }
     // An Int actual into a Rat-declared parameter widens to the
     // declared ratio carrier (the VM's Int-to-Rat admission,
-    // `sum_rs_at(xs, 0, 0)` with `acc: Rat`): the body's arithmetic
+    // `rat_pow(4, m)` with `p: Rat`): the body's arithmetic
     // and its recursive calls carry Rat registers, so the frame's
     // carrier is the declared one and the caller's actual crosses at
     // the binding.
@@ -506,6 +506,146 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
         return ValueKind::Rational;
     }
     kind
+}
+
+/// A generic callee's declared input signatures with each `Var<name>`
+/// replaced by the kind the call site's arguments bind it to, so an
+/// argument with no carrier of its own (an `[]` seed for `acc: A`)
+/// recovers it from a sibling argument (`f: A -> T -> A`). Variables no
+/// argument binds stay `Var<name>`, which kinds as `Other`.
+pub(super) fn instantiate_declared(arg_kinds: &[ValueKind], declared: &[String]) -> Vec<String> {
+    if !declared.iter().any(|signature| signature.contains("Var<")) {
+        return declared.to_vec();
+    }
+    let mut bound = BTreeMap::new();
+    for (kind, signature) in arg_kinds.iter().zip(declared) {
+        bind_signature_vars(signature, kind, &mut bound);
+    }
+    declared
+        .iter()
+        .map(|signature| substitute_signature_vars(signature, &bound))
+        .collect()
+}
+
+fn bind_signature_vars(signature: &str, kind: &ValueKind, bound: &mut BTreeMap<String, String>) {
+    let signature = signature.trim();
+    if let Some(name) = signature.strip_prefix("Var<").and_then(|rest| rest.strip_suffix('>')) {
+        if !kind_is_degenerate(kind)
+            && let Some(text) = kind_signature(kind)
+        {
+            bound.entry(name.to_string()).or_insert(text);
+        }
+    } else if let Some(inner) = signature.strip_prefix("Vector<").and_then(|rest| rest.strip_suffix('>')) {
+        if let ValueKind::Vector(element) = kind {
+            bind_signature_vars(inner, element, bound);
+        }
+    } else if signature.starts_with("Fn<") && signature.ends_with('>') {
+        let parts = split_signature_parts(&signature[3..signature.len() - 1]);
+        if let (Some((result, params)), ValueKind::Closure { params: kinds, result: out }) =
+            (parts.split_last(), kind)
+            && params.len() == kinds.len()
+        {
+            for (part, kind) in params.iter().zip(kinds) {
+                bind_signature_vars(part, kind, bound);
+            }
+            bind_signature_vars(result, out, bound);
+        }
+    }
+}
+
+fn substitute_signature_vars(signature: &str, bound: &BTreeMap<String, String>) -> String {
+    let mut text = signature.to_string();
+    for (name, kind) in bound {
+        text = text.replace(&format!("Var<{name}>"), kind);
+    }
+    text
+}
+
+/// The signature spelling `from_signature` parses back to `kind`, for
+/// the carriers a type parameter can stand for.
+fn kind_signature(kind: &ValueKind) -> Option<String> {
+    Some(match kind {
+        ValueKind::I64 => "Int".into(),
+        ValueKind::ExactInt => "ExactInt".into(),
+        ValueKind::F64 => "Float64".into(),
+        ValueKind::Rational => "Rat".into(),
+        ValueKind::Bool => "Bool".into(),
+        ValueKind::Text => "Text".into(),
+        ValueKind::BigInt => "BigInt".into(),
+        ValueKind::Complex => "Complex".into(),
+        ValueKind::Vector(element) => format!("Vector<{}>", kind_signature(element)?),
+        ValueKind::Matrix(element) => format!("Matrix<{}>", kind_signature(element)?),
+        ValueKind::Record(name) => format!("Record<{name}>"),
+        ValueKind::Closure { params, result } => {
+            let mut parts = params.iter().map(kind_signature).collect::<Option<Vec<_>>>()?;
+            parts.push(kind_signature(result)?);
+            format!("Fn<{}>", parts.join(","))
+        }
+        _ => return None,
+    })
+}
+
+thread_local! {
+    /// Argument kinds seen at `CallSelf` sites during the kind walk of
+    /// the recursive frame being refined (innermost frame on top). Self
+    /// calls sit inside branch bodies with their own registers, so the
+    /// walk records them where their kinds are known.
+    static SELF_CALL_ARGS: std::cell::RefCell<Vec<Vec<ValueKind>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn record_self_call_args(passed: impl Iterator<Item = ValueKind>) {
+    SELF_CALL_ARGS.with(|stack| {
+        if let Some(top) = stack.borrow_mut().last_mut() {
+            for (index, kind) in passed.enumerate() {
+                if top.len() <= index {
+                    top.resize(index + 1, ValueKind::Other);
+                }
+                if kind_is_degenerate(&top[index]) {
+                    top[index] = kind;
+                }
+            }
+        }
+    });
+}
+
+/// Run a kind walk whose `CallSelf` sites belong to a frame of its own,
+/// returning what it saw.
+fn with_self_call_scope<R>(walk: impl FnOnce() -> R) -> (R, Vec<ValueKind>) {
+    SELF_CALL_ARGS.with(|stack| stack.borrow_mut().push(Vec::new()));
+    let result = walk();
+    let seen = SELF_CALL_ARGS.with(|stack| stack.borrow_mut().pop()).unwrap_or_default();
+    (result, seen)
+}
+
+/// A recursive frame input whose seed carries no element kind (an `[]`
+/// accumulator, or a type-parameter declaration) takes the kind its own
+/// self-calls pass for it: `tabulate_down(f, i, k - 1, [f(k), ..acc])`
+/// fixes `acc` from `f`'s result at this frame's instantiation.
+pub(super) fn refine_recursive_frame_kinds(
+    body: &EmirProgram,
+    names: &[String],
+    states: &[String],
+    frame: &mut InputKinds,
+) {
+    if !crate::contains_call_self(body) {
+        return;
+    }
+    // Each pass can only replace a degenerate kind, so the number of
+    // inputs bounds the passes.
+    for _ in 0..names.len() {
+        let (_, seen) = with_self_call_scope(|| value_kinds(body, names, states, frame));
+        let mut changed = false;
+        for (name, passed) in names.iter().zip(seen) {
+            if frame.get(name).is_none_or(kind_is_degenerate) && !kind_is_degenerate(&passed) {
+                frame.insert(name.clone(), passed);
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
 }
 
 /// A declared arrow signature an evaluated expression template can be
@@ -692,13 +832,24 @@ pub(super) fn kind_at(kinds: &[ValueKind], value: EmirValue) -> ValueKind {
         .unwrap_or(ValueKind::Other)
 }
 
-/// True when a body's result register is a direct self-call (the
-/// tail-recursive shape; its kind is the enclosing function's own).
+/// True when a body's result register is a self-call (the
+/// tail-recursive shape; its kind is the enclosing function's own),
+/// or a branch whose arms both are: an arm sub-program's walk cannot
+/// see the enclosing body's kind, so `if p: self(..) else: self(..)`
+/// must yield to its sibling exactly as a bare self-call does.
 pub(super) fn result_is_call_self(program: &EmirProgram) -> bool {
     program
         .ops
         .get(program.result.0 as usize)
-        .is_some_and(|(op, _)| matches!(op, EmirOp::CallSelf { .. }))
+        .is_some_and(|(op, _)| match op {
+            EmirOp::CallSelf { .. } => true,
+            EmirOp::Branch {
+                then_body,
+                else_body,
+                ..
+            } => result_is_call_self(then_body) && result_is_call_self(else_body),
+            _ => false,
+        })
 }
 
 /// The carrier one branch renders when its arms carry these kinds:
@@ -766,9 +917,6 @@ pub(super) fn kind_of_op(
         | EmirOp::MatrixRows(_)
         | EmirOp::MatrixCols(_) => ValueKind::I64,
         EmirOp::ConstExactInt(_) => ValueKind::ExactInt,
-        EmirOp::ExactIntCall { name, .. } if name == "int_egcd" => {
-            ValueKind::Vector(Box::new(ValueKind::ExactInt))
-        }
         EmirOp::ExactIntCall { .. } => ValueKind::ExactInt,
         EmirOp::IntegerQuotient(left, right) => {
             if kind_at(kinds, *left) == ValueKind::ExactInt
@@ -994,6 +1142,7 @@ pub(super) fn kind_of_op(
         // carrier; the first-argument fallback only serves the recur
         // lane, whose result carrier is not declared here.
         EmirOp::CallSelf { inputs, result } => {
+            record_self_call_args(inputs.iter().map(|value| kind_at(kinds, *value)));
             let declared = if result.is_empty() {
                 ValueKind::Other
             } else {
@@ -1055,7 +1204,9 @@ pub(super) fn kind_of_op(
             let states = (0..state.len())
                 .map(|index| format!("__frame_state_{index}"))
                 .collect::<Vec<_>>();
-            let frame = names
+            let arg_kinds = inputs.iter().map(|value| kind_at(kinds, *value)).collect::<Vec<_>>();
+            let declared = instantiate_declared(&arg_kinds, declared);
+            let mut frame = names
                 .iter()
                 .zip(inputs)
                 .enumerate()
@@ -1069,7 +1220,8 @@ pub(super) fn kind_of_op(
                     (name.clone(), frame_input_kind(kind_at(kinds, *value), None))
                 }))
                 .collect();
-            program_kind(body, &names, &states, &frame)
+            refine_recursive_frame_kinds(body, &names, &states, &mut frame);
+            with_self_call_scope(|| program_kind(body, &names, &states, &frame)).0
         }
         EmirOp::SameDenseShape(..) => ValueKind::Bool,
         EmirOp::ToF64(_) => ValueKind::F64,
@@ -1484,12 +1636,12 @@ fn exact_comparison(
     right: EmirValue,
     kinds: &[ValueKind],
 ) -> Expr {
-    // UFCS fixes both argument types to &ExactInt, accepting owned values and
-    // borrowed captures without allocating copies or mismatching reference depth.
+    // UFCS fixes both argument types to &ExactInt; UFCS arguments do not
+    // auto-deref, so each side must be exactly one reference layer.
     let ordering = Expr::Raw(format!(
-        "<emath_rt::ExactInt as core::cmp::Ord>::cmp(&{}, &{})",
-        render_expr(&exact_int_operand(program, left, kinds)),
-        render_expr(&exact_int_operand(program, right, kinds))
+        "<emath_rt::ExactInt as core::cmp::Ord>::cmp({}, {})",
+        exact_int_ref(program, left, kinds),
+        exact_int_ref(program, right, kinds)
     ));
     Expr::Bin {
         op,
