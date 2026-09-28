@@ -19,4 +19,4 @@ emath function UnmetOrderClaimRefuses:
     tests:
         example <euler_cannot_claim_order_two>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == order_conditions_unmet

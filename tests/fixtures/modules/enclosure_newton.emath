@@ -135,12 +135,10 @@ emath function NewtonRefusalAnchor:
         result = if o.refused == 1: constructor_refuse(quote(representation_budget)) else: o.up
     tests:
         example <representation_budget_refusal_named>:
-            # The guard branch refuses by name; the expect can only be
-            # evaluated against a returned value, so the lane reports
-            # the refusal (the expect-after-refusal convention).
+            # The guard branch refuses by name.
             given p = 64
             given q = 1
-            expect result == result
+            expect diagnostic.code == representation_budget
 
 emath function NewtonProbe:
     inputs:

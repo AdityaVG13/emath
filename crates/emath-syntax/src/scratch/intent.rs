@@ -81,7 +81,8 @@ pub(super) fn lower_intent(
                 inferred: "quoted expression".into(),
                 rationale: "differentiation is an imported transform over `quote`, not a constructor"
                     .into(),
-                replacement: "use calculus.diff; result = quote.evaluate(diff(quote(<expr>)))".into(),
+                replacement: "use analysis.derivative; result = d_form(quote(<expr>), quote(<var>))"
+                    .into(),
                 stability: ExactnessStatus::Inferred,
             });
         }
@@ -91,7 +92,7 @@ pub(super) fn lower_intent(
             notes.push(ScratchNote {
                 inferred: "integrand".into(),
                 rationale: "integration is an imported method, not a constructor identity".into(),
-                replacement: "use analysis.integral; fold a supplied method over the domain".into(),
+                replacement: "use calculus.quadrature; fold a supplied method over the domain".into(),
                 stability: ExactnessStatus::Inferred,
             });
         }

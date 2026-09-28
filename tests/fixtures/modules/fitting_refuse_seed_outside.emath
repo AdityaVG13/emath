@@ -22,4 +22,4 @@ emath function SeedOutsideRefuses:
     tests:
         example <outside>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == seed_outside_domain

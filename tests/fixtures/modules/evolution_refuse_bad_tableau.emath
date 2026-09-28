@@ -18,4 +18,4 @@ emath function BadTableauRefuses:
     tests:
         example <short_a>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == invalid_tableau

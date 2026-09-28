@@ -19,4 +19,4 @@ emath function DirectionMismatchRefuses:
     tests:
         example <forward_direction_backward_target>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == direction_mismatch

@@ -2,10 +2,7 @@
 # solves — triangular substitution, elimination with zero-pivot swap,
 # singular-outcome refusal, ill-conditioning policy gate.
 #
-# Failure-first: authored BEFORE the module exists (first run:
-# E-USE-ADMISSION unbound import). Refusal cases follow the
-# convention: the `failed <name> -- mathematical method refused: <code>`
-# line IS the expected signature.
+# Refusal cases pin the named code with `expect diagnostic.code`.
 
 use algebra.linear.systems
 
@@ -65,7 +62,7 @@ emath function case_singular_refuses:
     tests:
         example <singular_refuses_by_name>:
             given unused = 0
-            expect result == [0 / 1, 0 / 1]
+            expect diagnostic.code == singular_matrix
 
 emath function case_ill_conditioned_refuses:
     # Exact arithmetic needs no pivoting for stability; the pivot floor
@@ -80,7 +77,7 @@ emath function case_ill_conditioned_refuses:
     tests:
         example <pivot_below_policy_refuses>:
             given unused = 0
-            expect result == [0 / 1, 0 / 1]
+            expect diagnostic.code == ill_conditioned
 
 emath function fixture_ill_conditioned_allows_when_floor_zero:
     # The same matrix with floor 0 solves EXACTLY (no float noise in

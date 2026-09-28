@@ -7,7 +7,7 @@
 # Expected outcome: passes (1 authored test).
 # Run: emath test tests/fixtures/modules/integrator_contract_heldout.emath
 
-use search.order_contract_demo
+use research.order_contract_demo
 
 emath function HeldoutVerdict:
     inputs:

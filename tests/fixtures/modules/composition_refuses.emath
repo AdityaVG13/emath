@@ -1,9 +1,7 @@
 # Composition refusal fixtures:
 #
-# Refusal-fixture convention (expect-after-refusal style): each case below
-# REFUSES by name; its "failed <name> -- <message>" line IS the
-# expected signature. The file is authored failure-first — the first
-# run fails at admission (unknown module) before the module exists.
+# Each case below refuses by name, pinned with
+# `expect diagnostic.code == <code>`.
 #
 # Ported refusal semantics:
 #   non_separable_acceleration — the museum's two-momenta probe
@@ -33,7 +31,7 @@ emath function case_non_separable_acceleration:
     tests:
         example <p_dependent_acceleration_refuses>:
             given unused = 0
-            expect result == SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+            expect diagnostic.code == non_separable_acceleration
 
 emath function case_non_separable_carrier:
     # A three-component state is not the (q, p) carrier.
@@ -47,7 +45,7 @@ emath function case_non_separable_carrier:
     tests:
         example <three_component_state_refuses>:
             given unused = 0
-            expect result == SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+            expect diagnostic.code == non_separable_carrier
 
 emath function case_non_advancing_step:
     inputs:
@@ -60,7 +58,7 @@ emath function case_non_advancing_step:
     tests:
         example <zero_step_refuses>:
             given unused = 0
-            expect result == SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+            expect diagnostic.code == non_advancing_step
 
 emath function case_negative_step_non_reversible:
     # Backward steps on the DISSIPATIVE composition refuse: cooling by
@@ -76,4 +74,4 @@ emath function case_negative_step_non_reversible:
     tests:
         example <backward_damped_refuses>:
             given unused = 0
-            expect result == SimState: {t: 0 / 1, y: [0 / 1, 0 / 1]}
+            expect diagnostic.code == negative_step_non_reversible

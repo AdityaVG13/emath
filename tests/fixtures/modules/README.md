@@ -134,7 +134,7 @@ wrongly forces D and F — the attractor fixture fails AND the
 ## Integrator-contract fixtures (museum reproduction)
 
 The `integrator_contract_*` fixtures reproduce the contract-gated
-integrator-family search over `search.order_contract_demo` (the
+integrator-family search over `research.order_contract_demo` (the
 proper-name dogfooding demo): the three-stage second-order family
 `b = (alpha, 1 - 2*alpha, alpha)` on `y' = -y`, scored by certified
 one-step error intervals against a Taylor enclosure of `exp(-h)`,

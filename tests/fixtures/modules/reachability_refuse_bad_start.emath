@@ -16,4 +16,4 @@ emath function BadStartRefuses:
     tests:
         example <start_out_of_range>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == bad_start

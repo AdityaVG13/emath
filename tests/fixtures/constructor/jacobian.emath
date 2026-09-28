@@ -1,5 +1,5 @@
 # Typed transformation. This file installed no topic identity.
-use calculus.diff
+use analysis.derivative
 
 emath function fmap:
     inputs:
@@ -28,8 +28,8 @@ emath function linearization:
         inner = layer1.body
         layer2 = quote.view(inner)
         pair = layer2.body
-        jx = d_wrt(pair, quote(x))
-        jy = d_wrt(pair, quote(y))
+        jx = d_form(pair, quote(x))
+        jy = d_form(pair, quote(y))
         jx_at = quote.evaluate(quote.substitute(quote.substitute(jx, x, x), y, y))
         jy_at = quote.evaluate(quote.substitute(quote.substitute(jy, x, x), y, y))
         j00 = jx_at._0
@@ -55,8 +55,8 @@ emath function at_point:
         layer2 = quote.view(inner)
         pair = layer2.body
         vals = quote.evaluate(quote.substitute(quote.substitute(pair, x, 2), y, 3))
-        jx = d_wrt(pair, quote(x))
-        jy = d_wrt(pair, quote(y))
+        jx = d_form(pair, quote(x))
+        jy = d_form(pair, quote(y))
         jx_at = quote.evaluate(quote.substitute(quote.substitute(jx, x, 2), y, 3))
         jy_at = quote.evaluate(quote.substitute(quote.substitute(jy, x, 2), y, 3))
         u = vals._0
@@ -82,7 +82,7 @@ emath function capture_x:
         result: Rat
     definitions:
         form = quote(function w in Rat: x)
-        d = d_wrt(quote.view(form).body, quote(x))
+        d = d_form(quote.view(form).body, quote(x))
         result = quote.evaluate(d)
     tests:
         example <captured_x>:

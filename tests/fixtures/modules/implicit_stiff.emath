@@ -2,9 +2,7 @@
 # probes reproduced in exact rationals, receipt kinds kept distinct,
 # named refusal paths.
 #
-# Failure-first: authored BEFORE the modules exist (first run:
-# E-USE-ADMISSION unbound import). Refusal cases follow the
-# convention.
+# Refusal cases pin the named code with `expect diagnostic.code`.
 #
 # Environment honesty: the reference environment's 1,734-bit /
 # 27,800-bit denominator counts come from a bignum backend. The
@@ -133,7 +131,7 @@ emath function case_stiff_quadratic_budget_refuses:
     tests:
         example <budget_exhausted_refuses>:
             given unused = 0
-            expect result == 0 / 1
+            expect diagnostic.code == verification_budget_exhausted
 
 emath function fixture_receipt_kinds_distinct:
     # Rational-approximation / certified-enclosure / exact are DISTINCT
@@ -168,7 +166,7 @@ emath function case_singular_jacobian_refuses:
     tests:
         example <zero_derivative_refuses>:
             given unused = 0
-            expect result == 0 / 1
+            expect diagnostic.code == singular_jacobian
 
 emath function case_nonconvergence_refuses:
     # The classic Newton CYCLE: f = x^3 - 2x + 2 from x0 = 0 alternates
@@ -184,4 +182,4 @@ emath function case_nonconvergence_refuses:
     tests:
         example <cycle_refuses_nonconvergence>:
             given unused = 0
-            expect result == 0 / 1
+            expect diagnostic.code == nonconvergence

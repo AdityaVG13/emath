@@ -16,4 +16,4 @@ emath function EmptyDomainRefuses:
     tests:
         example <empty>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == empty_domain

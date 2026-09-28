@@ -17,4 +17,4 @@ emath function BadBudget:
     tests:
         example <refuses_by_named_code>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == bad_attempt_budget

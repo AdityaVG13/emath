@@ -19,4 +19,4 @@ emath function ZeroStepRefuses:
     tests:
         example <zero_step>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == non_positive_step

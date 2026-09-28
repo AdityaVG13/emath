@@ -1,5 +1,7 @@
 # Sibling-import seam target: no package declaration, lives next to the
 # importer. Pinned by the `use-seam-directory-relative-sibling` case.
+exports: seam_helper
+
 emath function seam_helper:
     inputs:
         x: Rat

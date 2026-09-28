@@ -1,3 +1,5 @@
+exports: twice
+
 emath function twice:
     inputs:
         x: Int

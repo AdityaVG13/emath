@@ -1,5 +1,6 @@
 //! Emission census gate (emath-nwmm6): every RUNNABLE module in
-//! `language/modules` must compile offline as an emitted crate.
+//! `language/modules` and `language/domains` must compile offline as an
+//! emitted crate.
 //!
 //! The dogfooding census, made repeatable: walk every authored module,
 //! `emath build --json` each one, and offline-compile every crate that
@@ -214,12 +215,13 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Every authored module under `language/modules`, sorted for
-/// deterministic walking and reporting.
+/// Every authored module under `language/modules` and
+/// `language/domains` (both ship), sorted for deterministic walking and
+/// reporting.
 fn census_modules() -> Vec<PathBuf> {
-    let root = repo_root().join("language/modules");
+    let root = repo_root().join("language");
     let mut modules = Vec::new();
-    let mut stack = vec![root];
+    let mut stack = vec![root.join("modules"), root.join("domains")];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -348,7 +350,7 @@ fn emission_census_every_runnable_module_compiles_offline() {
         .collect();
     assert!(
         !modules.is_empty(),
-        "census found no modules under language/modules (EMATH_CENSUS_ONLY={only:?})"
+        "census found no modules under language/modules or language/domains (EMATH_CENSUS_ONLY={only:?})"
     );
     let lanes = std::env::var("EMATH_EMIT_LANES")
         .ok()

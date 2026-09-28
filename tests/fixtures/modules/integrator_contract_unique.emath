@@ -5,7 +5,7 @@
 # Expected outcome: passes (1 authored test).
 # Run: emath test tests/fixtures/modules/integrator_contract_unique.emath
 
-use search.order_contract_demo
+use research.order_contract_demo
 use search.fitting
 
 emath function UniqueTraining:

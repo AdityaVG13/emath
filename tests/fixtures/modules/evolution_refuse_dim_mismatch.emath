@@ -22,7 +22,7 @@ emath function RateDimMismatchRefuses:
     tests:
         example <rate_dim_one_state_dim_two>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == dim_mismatch
 
 emath function VecAddMismatchRefuses:
     # Direct spaces admission: length 1 against length 2.
@@ -35,4 +35,4 @@ emath function VecAddMismatchRefuses:
     tests:
         example <add_length_one_against_two>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == dim_mismatch

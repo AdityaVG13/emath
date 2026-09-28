@@ -18,4 +18,4 @@ emath function MinStep:
     tests:
         example <refuses_by_named_code>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == min_step

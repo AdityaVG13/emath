@@ -55,7 +55,7 @@ pub enum TypeNode {
     /// `TypeNode::Int`. Values are exact i64 integers; modular reduction
     /// remains an operational concern of the builtins
     /// (`congruence`, `poly_eval_mod`); inversion is the authored
-    /// `cryptology.modular` lane (`mod_inv` via `pow_mod`).
+    /// `exact.residues` lane (`mod_inv` via `pow_mod`).
     FieldPrime {
         modulus: i64,
     },

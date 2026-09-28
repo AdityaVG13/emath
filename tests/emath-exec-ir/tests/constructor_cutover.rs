@@ -1735,86 +1735,6 @@ emath function Fib:
         );
     });
 
-    probe.case("native-simulate-gone", |p| {
-        let package = emath_ir::SemanticPackage::new();
-        let declaration = emath_ir::Declaration {
-            id: emath_ir::DeclarationId(0),
-            name: emath_core::QualifiedName::single("Heat"),
-            kind: emath_core::QualifiedName::single("function"),
-            kind_label: "function".into(),
-            inputs: Vec::new(),
-            outputs: Vec::new(),
-            state: Vec::new(),
-            algebraic: Vec::new(),
-            constructors: Vec::new(),
-            definitions: BTreeMap::new(),
-            invariants: Vec::new(),
-            goals: Vec::new(),
-            tests: Vec::new(),
-            exports: Vec::new(),
-            compile_spec: emath_ir::CompileSpec::default(),
-            about: None,
-            evidence: Vec::new(),
-            host: Vec::new(),
-            source: emath_core::Span::default(),
-        };
-        let empty = BTreeMap::new();
-        let err = emath_exec_ir::simulate_continuous(
-            &package,
-            &declaration,
-            &empty,
-            &empty,
-            0.0,
-            1.0,
-            0.1,
-            emath_exec_ir::StepMethod::Rk4,
-        )
-        .unwrap_err();
-        p.eq("sim-code", err.as_str(), emath_exec_ir::CONSTRUCTOR_SIMULATE_GONE);
-        p.eq(
-            "step-code",
-            emath_exec_ir::step_continuous_values(
-                &package,
-                &declaration,
-                &empty,
-                &empty,
-                0.1,
-                emath_exec_ir::StepMethod::Euler,
-            )
-            .unwrap_err()
-            .as_str(),
-            emath_exec_ir::CONSTRUCTOR_SIMULATE_GONE,
-        );
-        p.eq(
-            "explicit-prog",
-            emath_exec_ir::runner::explicit_step_program(&package, &declaration, true, false)
-                .unwrap_err()
-                .as_str(),
-            emath_exec_ir::CONSTRUCTOR_SIMULATE_GONE,
-        );
-        p.eq(
-            "explicit-rate",
-            emath_exec_ir::runner::explicit_rate_program(&package, &declaration)
-                .unwrap_err()
-                .as_str(),
-            emath_exec_ir::CONSTRUCTOR_SIMULATE_GONE,
-        );
-        p.demand(
-            "no-calculus-kernel",
-            emath_exec_ir::native_kernel::native_kernel(
-                "std.capability.calculus.residual-newton-solve",
-            )
-            .is_none(),
-            "calculus kernel still dispatched",
-        );
-        p.demand(
-            "no-gcd-kernel",
-            emath_exec_ir::native_kernel::native_kernel("euclidean-remainder").is_none()
-                && emath_exec_ir::native_kernel::native_kernel("checked-lcm").is_none(),
-            "recipe kernels still dispatched",
-        );
-    });
-
     probe.case("leftover-apis-gone", |p| {
         let report = emath_exec_ir::runner::run_package(&emath_ir::SemanticPackage::new());
         p.eq("sir-refused", report.summary.refused, 1);
@@ -1922,10 +1842,10 @@ emath function Fib:
         );
 
         let mat_path = emath_exec_ir::constructor_layer::resolve_module_path(
-            &["algebra".into(), "matmul".into()],
+            &["algebra".into(), "linear".into(), "matrices".into()],
             &roots,
         )
-        .expect("matmul module");
+        .expect("matrices module");
         let source = std::fs::read_to_string(&mat_path).unwrap();
         let (tree, diagnostics) = parse_str(&source);
         p.demand("matmul-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
@@ -1942,12 +1862,12 @@ emath function Fib:
             evaluate_function(
                 &tree,
                 "matmul",
-                &BTreeMap::from([("a".into(), a), ("b".into(), b)]),
+                &BTreeMap::from([("m".into(), a), ("n".into(), b)]),
             )
             .unwrap(),
             CValue::Sequence(std::sync::Arc::new(vec![
-                CValue::Sequence(std::sync::Arc::new(vec![int(19), int(22)])),
-                CValue::Sequence(std::sync::Arc::new(vec![int(43), int(50)])),
+                CValue::Sequence(std::sync::Arc::new(vec![rat(19, 1), rat(22, 1)])),
+                CValue::Sequence(std::sync::Arc::new(vec![rat(43, 1), rat(50, 1)])),
             ])),
         );
 
@@ -2448,16 +2368,16 @@ emath function apply_twice:
         p.eq("resume-closure", resumed, full);
     });
 
-    probe.case("ordinary-combinatorics-and-euler", |p| {
+    probe.case("ordinary-factorials-and-euler", |p| {
         let roots = emath_exec_ir::constructor_layer::module_roots_for(None);
         let path = emath_exec_ir::constructor_layer::resolve_module_path(
-            &["discrete".into(), "combinatorics".into()],
+            &["discrete".into(), "factorials".into()],
             &roots,
         )
-        .expect("combinatorics module");
+        .expect("factorials module");
         let source = std::fs::read_to_string(&path).unwrap();
         let (tree, diagnostics) = parse_str(&source);
-        p.demand("combinatorics-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        p.demand("factorials-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
         p.eq(
             "rising-3-3",
             evaluate_function(
@@ -2486,10 +2406,10 @@ emath function apply_twice:
         );
 
         let euler_path = emath_exec_ir::constructor_layer::resolve_module_path(
-            &["topology".into(), "euler".into()],
+            &["geometry".into(), "polyhedra".into()],
             &roots,
         )
-        .expect("euler module");
+        .expect("polyhedra module");
         let source = std::fs::read_to_string(&euler_path).unwrap();
         let (tree, diagnostics) = parse_str(&source);
         p.demand("euler-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
@@ -2836,6 +2756,198 @@ emath function WalkMatchOpen:
             Err(err) => {
                 p.fail("diamond-admits", err.to_string());
             }
+        }
+    });
+
+    probe.case("use-import-helpers-scoped", |p| {
+        // Two imported modules that declare the same helper name load
+        // together, and each module keeps calling its own copy. A bare
+        // reference from the importer that both could answer is the
+        // ambiguity refusal; an aliased selection names one copy.
+        // Historical behavior: E-NAME-022 at load, alias or not.
+        let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/constructor/scope_root.emath");
+        match evaluate_tree_at(&parse_ok("scope_root.emath"), Some(&importer_path)) {
+            Ok(report) => {
+                p.demand(
+                    "each-module-keeps-its-helper",
+                    report.tests.len() == 3 && report.tests.iter().all(|t| t.passed),
+                    format!("{:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.fail("each-module-keeps-its-helper", err.to_string());
+            }
+        }
+        let source = "use scope_left\nuse scope_right\n\nemath function Bare:\n    inputs:\n        x: Int\n    outputs:\n        result: Int\n    definitions:\n        result = twice(x)\n";
+        let (tree, diagnostics) = parse_str(source);
+        p.demand("bare-source-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        match evaluate_tree_at(&tree, Some(&importer_path)) {
+            Ok(report) => {
+                p.fail("bare-ambiguous-refuses", format!("admitted anyway: {:?}", report.tests));
+            }
+            Err(err) => {
+                p.eq("bare-ambiguous-refuses", err.code.as_str(), "E-NAME-022");
+                p.demand(
+                    "names-both-modules",
+                    err.message.contains("scope_left") && err.message.contains("scope_right"),
+                    err.message.clone(),
+                );
+            }
+        }
+    });
+
+    probe.case("use-import-exports-gate", |p| {
+        // `exports:` is the module surface. Exported names import;
+        // private ones refuse by name from every importer spelling and
+        // never clobber or clash with an importer's own declarations.
+        let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/constructor/scope_root.emath");
+        let run = |source: &str| {
+            let (tree, diagnostics) = parse_str(source);
+            assert!(!diagnostics.has_errors(), "{diagnostics:?}");
+            evaluate_tree_at(&tree, Some(&importer_path))
+        };
+        let body = |call: &str| {
+            format!(
+                "emath function Probe:\n    inputs:\n        x: Int\n    outputs:\n        result: Int\n    definitions:\n        result = {call}\n    tests:\n        example <pin>:\n            given x = 2\n            expect result == 21\n"
+            )
+        };
+        match run(&format!("use scope_private\n\n{}", body("entry(x)"))) {
+            Ok(report) => {
+                p.demand(
+                    "exported-name-runs-through-private-helper",
+                    report.tests.len() == 1 && report.tests[0].passed,
+                    format!("{:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.fail("exported-name-runs-through-private-helper", err.to_string());
+            }
+        }
+        for (label, source) in [
+            ("bare", format!("use scope_private\n\n{}", body("helper(x)"))),
+            ("selected", format!("use scope_private.{{helper}}\n\n{}", body("helper(x)"))),
+            ("qualified", format!("use scope_private\n\n{}", body("scope_private.helper(x)"))),
+        ] {
+            match run(&source) {
+                Ok(report) => {
+                    p.fail(label, format!("private name admitted: {:?}", report.tests));
+                }
+                Err(err) => {
+                    p.eq(label, err.code.as_str(), "E-NAME-025");
+                    p.demand(
+                        &format!("{label}-names-module"),
+                        err.message.contains("helper") && err.message.contains("scope_private"),
+                        err.message.clone(),
+                    );
+                }
+            }
+        }
+        let own_helper = "use scope_private\n\nemath function helper:\n    inputs:\n        x: Int\n    outputs:\n        result: Int\n    definitions:\n        result = x\n    tests:\n        example <own>:\n            given x = 2\n            expect result == 2\n\nemath function Probe:\n    inputs:\n        x: Int\n    outputs:\n        result: Int\n    definitions:\n        result = entry(x) + helper(x)\n    tests:\n        example <both>:\n            given x = 2\n            expect result == 23\n";
+        match run(own_helper) {
+            Ok(report) => {
+                p.demand(
+                    "private-name-never-clobbers-local",
+                    report.tests.len() == 2 && report.tests.iter().all(|t| t.passed),
+                    format!("{:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.fail("private-name-never-clobbers-local", err.to_string());
+            }
+        }
+        let bad = "exports: Missing\n\nemath function Probe:\n    inputs:\n        x: Int\n    outputs:\n        result: Int\n    definitions:\n        result = x\n";
+        match run(bad) {
+            Ok(_) => {
+                p.fail("undeclared-export-refuses", "admitted");
+            }
+            Err(err) => {
+                p.eq("undeclared-export-refuses", err.code.as_str(), "E-NAME-026");
+            }
+        }
+    });
+
+    probe.case("compact-function-form", |p| {
+        // `emath function f(x: T) -> R:` + one expression is the same
+        // function as the inputs/outputs/definitions spelling: callable
+        // with arguments, recursive, usable as a closure, and it keeps its
+        // compact head through the formatter.
+        let source = "emath function sq(x: Int) -> Int:\n    x * x\n\nemath function fact(n: Int) -> Int:\n    if n <= 0: 1 else: n * fact(n - 1)\n\nemath function twice(f: Int -> Int, x: Int) -> Int:\n    f(f(x))\n\nemath function Probe(n: Int) -> Int:\n    sq(n) + fact(n) + twice(sq, n)\n    tests:\n        example <pin>:\n            given n = 3\n            expect result == 96\n";
+        let (tree, diagnostics) = parse_str(source);
+        p.demand("parses", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        match evaluate_tree(&tree) {
+            Ok(report) => {
+                p.demand(
+                    "compact-functions-run",
+                    report.tests.len() == 1 && report.tests[0].passed,
+                    format!("{:?}", report.tests),
+                );
+            }
+            Err(err) => {
+                p.fail("compact-functions-run", err.to_string());
+            }
+        }
+        let formatted = emath_syntax::format(&tree, &[]);
+        p.demand(
+            "format-keeps-compact-head",
+            formatted.contains("emath function sq(x: Int) -> Int:\n    x * x\n")
+                && !formatted.contains("inputs:"),
+            formatted.clone(),
+        );
+        p.eq("format-is-stable", emath_syntax::format(&parse_str(&formatted).0, &[]), formatted.clone());
+        // The test lane admits before it runs: a Rat bound to an Int
+        // output is the E-TYPE-012 refusal, not a failed expectation.
+        let (mistyped, _) = parse_str("emath function half(x: Int) -> Rat:\n    x / 2\n\nemath function Bad(x: Int) -> Int:\n    half(x)\n    tests:\n        example <e>:\n            given x = 1\n            expect result == 0\n");
+        match evaluate_tree(&mistyped) {
+            Ok(report) => {
+                p.fail("test-lane-admits-types", format!("ran unadmitted: {:?}", report.tests));
+            }
+            Err(err) => {
+                p.eq("test-lane-admits-types", err.code.as_str(), "E-TYPE-012");
+            }
+        }
+        // `(e).numer` parses as `numer(e)`; admission types the scalar
+        // projection the runtime performs instead of calling it unbound.
+        let (projection, _) = parse_str("emath function half_down(n: Int) -> Int:\n    ((n - 1) / 2).numer\n    tests:\n        example <e>:\n            given n = 7\n            expect result == 3\n");
+        match evaluate_tree(&projection) {
+            Ok(report) => {
+                p.demand("paren-projection-admits", report.tests.iter().all(|t| t.passed), format!("{:?}", report.tests));
+            }
+            Err(err) => {
+                p.fail("paren-projection-admits", err.to_string());
+            }
+        }
+        let (_, untyped) = parse_str("emath function g(x: Int):\n    x + 1\n");
+        p.demand(
+            "expression-body-needs-return-type",
+            untyped.has_errors(),
+            format!("{untyped:?}"),
+        );
+    });
+
+    probe.case("generic-functions-admit", |p| {
+        let head = "emath function first<T>(v: sequence(T)) -> T:\n    v[0]\n\nemath function inc(x: Int) -> Int:\n    x + 1\n\nemath function apply(f: Int -> Int, x: Int) -> Int:\n    f(x)\n\n";
+        let (ok, diagnostics) = parse_str(&format!("{head}emath function Probe(n: Int) -> Int:\n    apply(function y in Int: y * 2, first([n, n + 1])) + inc(n)\n    tests:\n        example <e>:\n            given n = 4\n            expect result == 13\n"));
+        p.demand("generic-source-parsed", !diagnostics.has_errors(), format!("{diagnostics:?}"));
+        match evaluate_tree(&ok) {
+            Ok(report) => p.demand("generic-call-admits", report.tests.iter().all(|t| t.passed), format!("{:?}", report.tests)),
+            Err(err) => p.fail("generic-call-admits", err.to_string()),
+        };
+        // Each refusal is static: the untaken branches never run.
+        let refusals = [
+            ("type-parameter-binds-rat", "emath function Bad(n: Int) -> Int:\n    first([n / 2, n])\n"),
+            ("argument-must-fit-input", "emath function Bad(n: Int) -> Int:\n    if n > 100: inc(n / 2) else: n\n"),
+            ("closure-codomain-must-fit", "emath function Bad(n: Int) -> Int:\n    if n > 100: apply(function y in Int: y / 2, n) else: n\n"),
+            ("wide-function-is-not-unary", "emath function add2(a: Int, b: Int) -> Int:\n    a + b\n\nemath function Bad(n: Int) -> Int:\n    apply(add2, n)\n"),
+            ("type-parameter-is-opaque", "emath function Bad<T>(v: sequence(T)) -> T:\n    1\n"),
+        ];
+        for (label, body) in refusals {
+            let (tree, _) = parse_str(&format!("{head}{body}    tests:\n        example <e>:\n            given n = 4\n            given v = [4]\n            expect result == 2\n"));
+            match evaluate_tree(&tree) {
+                Ok(report) => p.fail(label, format!("admitted: {:?}", report.tests)),
+                Err(err) => p.demand(label, err.code.starts_with("E-TYPE"), err.to_string()),
+            };
         }
     });
 

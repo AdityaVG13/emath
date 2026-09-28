@@ -70,7 +70,7 @@ emath function OpenRefuses:
     tests:
         example <open_code_refuses>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == unbound_code
 
 emath function HygieneRefuses:
     # Quote made where x = 5, evaluated where x = 7: NO dynamic-scope
@@ -87,7 +87,7 @@ emath function HygieneRefuses:
     tests:
         example <no_dynamic_scope_leak>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == unbound_code
 
 emath function make_code:
     inputs:

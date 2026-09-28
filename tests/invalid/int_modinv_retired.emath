@@ -1,5 +1,5 @@
 # expect: E-TYPE-002 the int_modinv machine op is retired with its Rust
-# loop; inverses are cryptology.modular's authored mod_inv
+# loop; inverses are the authored mod_inv in exact.residues
 emath function retired_machine_inverse:
     inputs:
         value: Int

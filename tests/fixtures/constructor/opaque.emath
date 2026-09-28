@@ -1,5 +1,5 @@
 # Opaque transform boundary. This file installed no topic identity.
-use calculus.diff
+use analysis.derivative
 
 emath function try_diff:
     inputs:
@@ -7,7 +7,7 @@ emath function try_diff:
     outputs:
         result: Code
     definitions:
-        result = d_wrt(quote(mysterious(x)), quote(x))
+        result = d_form(quote(mysterious(x)), quote(x))
 
 emath query OpaqueTransform:
     inputs:

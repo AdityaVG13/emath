@@ -19,7 +19,7 @@
 # The cubic target is re-derived inline here on purpose: the fence
 # checks the DRIVER's data path, not a shared constant.
 
-use search.structural_spike
+use research.structural_spike
 
 emath function cubic_no_fit_fence:
     inputs:

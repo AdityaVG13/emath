@@ -7,7 +7,7 @@
 # Expected outcome: passes (2 authored tests).
 # Run: emath test tests/fixtures/modules/integrator_contract_gate.emath
 
-use search.order_contract_demo
+use research.order_contract_demo
 use search.fitting
 
 emath function GateReceipt:

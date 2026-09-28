@@ -21,4 +21,4 @@ emath function LocalMinimumRefuses:
     tests:
         example <stuck_off_optimum>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == local_minimum

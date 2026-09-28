@@ -3,10 +3,7 @@
 # irrational producers (q-th roots, 2-norms, alternating-Taylor
 # exp(-h)), and bisection refinement with an authored bit budget.
 #
-# Failure-first: authored BEFORE the module exists (first run:
-# E-USE-ADMISSION unbound import). Refusal cases follow the
-# convention: the named code in the failure line IS the expected
-# evidence.
+# Refusal cases pin the named code with `expect diagnostic.code`.
 #
 # Hand-derived pins:
 #   [1/2,3/4] + [1/4,1]   = [3/4, 7/4]
@@ -217,7 +214,7 @@ emath function case_exp_domain_zero_refuses:
     tests:
         example <zero_h_refuses_by_name>:
             given unused = 0
-            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+            expect diagnostic.code == h_out_of_range
 
 emath function case_exp_domain_above_one_refuses:
     inputs:
@@ -229,7 +226,7 @@ emath function case_exp_domain_above_one_refuses:
     tests:
         example <h_above_one_refuses_by_name>:
             given unused = 0
-            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+            expect diagnostic.code == h_out_of_range
 
 emath function case_sqrt_negative_refuses:
     inputs:
@@ -241,7 +238,7 @@ emath function case_sqrt_negative_refuses:
     tests:
         example <negative_radicand_refuses_by_name>:
             given unused = 0
-            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+            expect diagnostic.code == negative_radicand
 
 emath function case_bisect_budget_refuses:
     # Budget 4 admits the first refinement (mid 3/2, den bits 2,
@@ -257,7 +254,7 @@ emath function case_bisect_budget_refuses:
     tests:
         example <budget_exhausted_refuses_by_name>:
             given unused = 0
-            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+            expect diagnostic.code == refinement_budget_exhausted
 
 emath function case_bisect_bad_bracket_refuses:
     # lo > hi is a malformed bracket (endpoint order or sign): the
@@ -271,4 +268,4 @@ emath function case_bisect_bad_bracket_refuses:
     tests:
         example <bad_bracket_refuses_by_name>:
             given unused = 0
-            expect result == Itv: {lo: 0 / 1, hi: 0 / 1}
+            expect diagnostic.code == bad_bracket

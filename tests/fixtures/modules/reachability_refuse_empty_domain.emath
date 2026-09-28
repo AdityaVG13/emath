@@ -16,4 +16,4 @@ emath function EmptyGraphRefuses:
     tests:
         example <no_states>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == empty_domain

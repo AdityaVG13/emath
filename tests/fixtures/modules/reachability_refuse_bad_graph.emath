@@ -16,4 +16,4 @@ emath function BadGraphRefuses:
     tests:
         example <id_out_of_range>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == bad_graph

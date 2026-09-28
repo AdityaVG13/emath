@@ -96,7 +96,7 @@ pub const SEED: [DomainSeed; 12] = [
         ratings: ["FULL", "FULL", "MISSING", "SYNTAX-ONLY", "MISSING", "FULL"],
         artifacts: [
             Some("language/modules/exact/integers.emath"),
-            Some("language/modules/algebra/matmul.emath"),
+            Some("language/modules/algebra/linear/matrices.emath"),
             NONE,
             Some("language/reference/expressions-equations-state-and-events.md"),
             NONE,
@@ -135,7 +135,7 @@ pub const SEED: [DomainSeed; 12] = [
             Some("language/examples/code/autodiff.emath"),
             Some("language/reference/expressions-equations-state-and-events.md"),
             NONE,
-            Some("language/modules/calculus/diff.emath"),
+            Some("language/modules/analysis/derivative.emath"),
         ],
         packages: &[
             "core::calculus",
@@ -165,7 +165,7 @@ pub const SEED: [DomainSeed; 12] = [
         label: "finite KKT, Bellman, Lyapunov slices; constraint goals",
         ratings: ["FULL", "FULL", "SYNTAX-ONLY", "MISSING", "MISSING", "FULL"],
         artifacts: [
-            Some("language/modules/discrete/combinatorics.emath"),
+            Some("language/modules/discrete/factorials.emath"),
             Some("language/examples/functions/optimize.emath"),
             Some("language/examples/functions/optimize.emath"),
             NONE,
@@ -218,7 +218,7 @@ pub const SEED: [DomainSeed; 12] = [
             Some("language/examples/analysis/trapezoid.emath"),
             Some("language/reference/diagnostics-and-tooling-contract.md"),
             Some("language/reference/total-compilation-protocol.md"),
-            Some("language/modules/discrete/combinatorics.emath"),
+            Some("language/modules/discrete/factorials.emath"),
         ],
         packages: &[
             "core::shapes",
@@ -239,12 +239,12 @@ pub const SEED: [DomainSeed; 12] = [
             "FULL",
         ],
         artifacts: [
-            Some("language/modules/discrete/combinatorics.emath"),
-            Some("language/modules/discrete/combinatorics.emath"),
+            Some("language/modules/discrete/factorials.emath"),
+            Some("language/modules/discrete/factorials.emath"),
             Some("language/reference/goals-requests-strategies-and-resolution.md"),
             Some("language/reference/lexical-layout-and-source.md"),
             NONE,
-            Some("language/modules/discrete/combinatorics.emath"),
+            Some("language/modules/discrete/factorials.emath"),
         ],
         packages: &["core::graphs", "core::artifact", "core::host", "cs::laws"],
     },

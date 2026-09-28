@@ -219,7 +219,7 @@ assert_invalid tests/invalid/compile_junk.emath "E-SYN-101"
 assert_invalid tests/invalid/function_type.emath "E-TYPE-110"
 # int_modinv / int_sqrt_mod are gone with their Rust loops: a bare
 # machine-op call is now an unbound name (E-TYPE-002). Inverses are
-# cryptology.modular's authored mod_inv; square roots are
+# the authored mod_inv in exact.residues; square roots are
 # exact.quadratic's authored tonelli_sqrt.
 assert_invalid tests/invalid/int_modinv_retired.emath "E-TYPE-002"
 assert_invalid tests/invalid/int_sqrt_mod_retired.emath "E-TYPE-002"

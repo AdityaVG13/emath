@@ -25,4 +25,4 @@ emath function NonidentifiableRefuses:
     tests:
         example <nonidentifiable>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == non_identifiable

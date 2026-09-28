@@ -18,4 +18,4 @@ emath function StrategyRefuses:
     tests:
         example <no_strategy_for_unforced>:
             given unused = 0
-            expect result == result
+            expect diagnostic.code == not_forced

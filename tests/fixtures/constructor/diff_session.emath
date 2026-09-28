@@ -1,11 +1,11 @@
 # The metaprogramming consumer session (bead
 # emath-quote-bind-open-consumer-6f86g): the authored differentiation
-# module (language/modules/calculus/diff.emath) driven end-to-end
+# module (language/modules/analysis/derivative.emath) driven end-to-end
 # through the native quote machinery. The prediction opens a minted
 # Fragment package (quote.open - the binder half of the tree family),
 # views the opened term, rebuilds the template with MADE literals
 # carrying BOTH runtime values (the key k and the case input i), then
-# differentiates it symbolically with d_wrt (view + make + substitute
+# differentiates it symbolically with d_form (view + make + substitute
 # over the distilled subset), plugs x = 1 by substitution, and
 # evaluates. The made literals consume runtime values, so the chain
 # cannot fold at compile time.
@@ -18,7 +18,7 @@
 # the checkpoint is byte-identical cross-lane).
 # Run: emath test tests/fixtures/constructor/diff_session.emath
 
-use calculus.diff
+use analysis.derivative
 use search.archive
 use search.research
 
@@ -49,7 +49,7 @@ emath function diff_pred:
         bump_i = quote.make(Literal: {value: i})
         left = quote.make(Call: {callee: inner.callee, args: [bump_k, bump_i]})
         term = quote.make(Call: {callee: node.callee, args: [left, node.args[1]]})
-        d = d_wrt(term, quote(x))
+        d = d_form(term, quote(x))
         plugged = quote.substitute(d, x, 1)
         result = quote.evaluate(plugged)
 
