@@ -268,7 +268,7 @@ impl CompilerSession {
                             Item::Declaration(_) | Item::Notation(_) => {
                                 merged_items.push(sibling_item);
                             }
-                            Item::Package { .. } | Item::Use { .. } => {}
+                            Item::Package { .. } | Item::Use { .. } | Item::Exports { .. } => {}
                         }
                     }
                 }

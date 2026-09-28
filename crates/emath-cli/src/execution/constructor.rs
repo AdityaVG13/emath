@@ -53,7 +53,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
             Err(err) => {
                 return Some(diagnostic(
                     request.json,
-                    if err.code == "E-KIND-GONE" {
+                    if err.code.starts_with("E-") {
                         EXIT_ADMISSION
                     } else if err.code == "incompatible_checkpoint" {
                         crate::EXIT_CHECKPOINT

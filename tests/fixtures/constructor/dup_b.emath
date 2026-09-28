@@ -1,4 +1,6 @@
 # Diamond right arm: imports the same shared target as dup_a.
+exports: b_twice
+
 use dup_target
 
 emath function b_twice:

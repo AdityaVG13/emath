@@ -78,6 +78,7 @@ pub fn admit_front_end(
             }
             Item::Declaration(_) => {}
             Item::Notation(_) => {}
+            Item::Exports { .. } => {}
         }
     }
     result

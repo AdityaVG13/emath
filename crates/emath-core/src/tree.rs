@@ -23,6 +23,12 @@ pub enum Item {
     Declaration(Declaration),
     /// `notation infixl 40 "⋅" => core::math::dot [alias "*"]`
     Notation(NotationDecl),
+    /// `exports: a, b, C`: the module surface. Functions and queries a
+    /// file does not list are private to that file.
+    Exports {
+        names: Vec<String>,
+        source: Span,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -315,6 +315,39 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
         }
         features.push(row.finish());
     }
+    let roots = emath_exec_ir::constructor_layer::module_roots_for(request.source.as_deref());
+    let module_matches: Vec<_> = emath_exec_ir::module_index::module_exports(&roots)
+        .into_iter()
+        .filter(|export| export.matches(&request.search))
+        .collect();
+    let mut module_rows = Vec::new();
+    for export in module_matches.iter().skip(request.offset).take(request.limit) {
+        let mut row = emath_artifact::JsonWriter::object();
+        row.string("name", &export.name);
+        row.string("kind", &export.kind);
+        row.string("module", &export.module);
+        row.string("shelf", export.shelf);
+        row.string("signature", &export.signature);
+        row.string("summary", &export.summary);
+        row.string("file", &export.file.display().to_string());
+        row.int("line", export.line as u64);
+        if !request.json {
+            println!(
+                "use {}: {}\n  {}{}:{}",
+                export.module,
+                export.signature,
+                if export.summary.is_empty() {
+                    String::new()
+                } else {
+                    format!("{}\n  ", export.summary)
+                },
+                export.file.display(),
+                export.line
+            );
+        }
+        module_rows.push(row.finish());
+    }
+    let module_next = request.offset.saturating_add(module_rows.len());
     let mut commands = Vec::new();
     for name in [
         "api", "check", "run", "step", "inspect", "verify", "test", "build",
@@ -367,6 +400,9 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
             out.int("next_offset", next as u64);
         }
         out.objects("features", &features);
+        out.int("matching_module_exports", module_matches.len() as u64);
+        out.bool("module_exports_truncated", module_next < module_matches.len());
+        out.objects("module_exports", &module_rows);
         println!("{}", out.finish());
     } else {
         println!(
@@ -375,10 +411,19 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
             request.offset.min(matches.len()),
             next.min(matches.len())
         );
+        println!(
+            "{} matching module exports; showing {}..{}",
+            module_matches.len(),
+            request.offset.min(module_matches.len()),
+            module_next.min(module_matches.len())
+        );
         println!("write program.emath -> emath check program.emath -> emath run program.emath");
         println!("Use --json for command arguments, result contracts and the starter source.");
-        if next < matches.len() {
-            println!("More results: add --offset {next} with the same --search.");
+        if next < matches.len() || module_next < module_matches.len() {
+            println!(
+                "More results: add --offset {} with the same --search.",
+                next.max(module_next)
+            );
         }
     }
     crate::EXIT_OK

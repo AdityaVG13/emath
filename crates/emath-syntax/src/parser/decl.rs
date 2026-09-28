@@ -1,7 +1,7 @@
 use crate::token::{Keyword, TokenKind};
 use crate::tree::{
     Attribute, Declaration, DeclarationSignature, GenericParam, Item, NotationDecl, NotationFixity,
-    Suite, UseTree,
+    Place, Section, Stmt, StmtKind, Suite, TypeExpr, UseTree,
 };
 use emath_core::Span;
 
@@ -28,6 +28,12 @@ impl super::Parser {
                     if let Some(item) = self.parse_notation_item() {
                         self.tree_items.push(item);
                     }
+                }
+                TokenKind::Ident(name)
+                    if name == "exports" && matches!(self.peek_at(1), TokenKind::Colon) =>
+                {
+                    let item = self.parse_exports_item();
+                    self.tree_items.push(item);
                 }
                 // Grammar: `emath_item = { attribute }, "emath", ...`.
                 // Attributes parse only as item prefixes; anything else
@@ -106,6 +112,60 @@ impl super::Parser {
             path: segments,
             source: span,
         })
+    }
+
+    /// `exports: a, b` on one line, or an indented block of
+    /// comma-separated names under `exports:`.
+    fn parse_exports_item(&mut self) -> Item {
+        let start = self.current_span();
+        self.advance(); // `exports`
+        self.advance(); // `:`
+        let mut names = Vec::new();
+        let mut depth = 0_usize;
+        loop {
+            match self.peek().clone() {
+                TokenKind::Ident(name) => {
+                    names.push(name);
+                    self.advance();
+                }
+                TokenKind::Comma => {
+                    self.advance();
+                }
+                TokenKind::Newline
+                    if matches!(self.peek_at(1), TokenKind::Indent)
+                        || (depth > 0 && matches!(self.peek_at(1), TokenKind::Ident(_))) =>
+                {
+                    self.advance();
+                }
+                TokenKind::Indent => {
+                    depth += 1;
+                    self.advance();
+                }
+                TokenKind::Newline if depth > 0 && matches!(self.peek_at(1), TokenKind::Dedent) => {
+                    self.advance();
+                }
+                TokenKind::Dedent if depth > 0 => {
+                    depth -= 1;
+                    self.advance();
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                TokenKind::Keyword(keyword) if !matches!(keyword, Keyword::Emath) => {
+                    self.error_keyword_as_ident(keyword);
+                    self.skip_to_line_end();
+                    break;
+                }
+                _ => break,
+            }
+        }
+        if names.is_empty() {
+            self.error_here("E-SYN-110", "expected exported names after `exports:`");
+        }
+        Item::Exports {
+            names,
+            source: start.cover(self.last_span()),
+        }
     }
 
     fn parse_use_item(&mut self) -> Option<Item> {
@@ -411,7 +471,11 @@ impl super::Parser {
             self.error_here("E-SYN-111", "expected `:` after the declaration head");
             return None;
         }
-        let suite = self.parse_suite()?;
+        let suite = if signature.is_some() {
+            self.parse_compact_body()?
+        } else {
+            self.parse_suite()?
+        };
         // elaboration (admission, goal extraction, codegen) runs off
         // the `custom` compat lane keyed by `as_kind`, so every kind spelled
         // in the unified surface is canonicalized to that representation;
@@ -421,8 +485,10 @@ impl super::Parser {
         } else {
             ("custom".to_string(), item_kind)
         };
+        let mut body = suite.statements.clone();
         if let Some(signature) = &signature {
             self.refuse_head_signature(&as_kind, signature, &suite, start);
+            body = self.desugar_compact(signature, body, start);
         }
         Some(Declaration {
             name,
@@ -430,11 +496,93 @@ impl super::Parser {
             item_kind,
             as_kind,
             attributes: Vec::new(),
-            body: suite.statements,
+            body,
             signature,
             source: start.cover(self.last_span()),
             head_source: start.cover(self.last_span()),
         })
+    }
+
+    /// Compact form to the section form every later lane reads: head
+    /// args become `inputs:`, `-> T` becomes `outputs: result: T`, and a
+    /// leading expression line becomes `definitions: result = <expr>`.
+    /// `signature` stays on the declaration so the formatter can print
+    /// the compact head back.
+    fn desugar_compact(
+        &mut self,
+        signature: &DeclarationSignature,
+        body: Vec<Stmt>,
+        span: Span,
+    ) -> Vec<Stmt> {
+        let section = |name: &str, statements: Vec<Stmt>| Stmt {
+            kind: StmtKind::Section(Section {
+                name: name.to_string(),
+                generic: None,
+                args: None,
+                suite: Suite {
+                    statements,
+                    source: span,
+                },
+                source: span,
+                head_source: span,
+            }),
+            source: span,
+        };
+        let field = |name: &str, ty: &TypeExpr, source: Span| Stmt {
+            kind: StmtKind::FieldDecl {
+                visibility: None,
+                name: name.to_string(),
+                ty: ty.clone(),
+                default: None,
+            },
+            source,
+        };
+        let mut out = vec![section(
+            "inputs",
+            signature
+                .params
+                .iter()
+                .map(|param| field(&param.name, &param.ty, param.source))
+                .collect(),
+        )];
+        if let Some(ret) = &signature.ret {
+            out.push(section("outputs", vec![field("result", ret, ret.source)]));
+        }
+        let mut rest = body.into_iter().peekable();
+        if let Some(Stmt {
+            kind: StmtKind::Expr(_),
+            ..
+        }) = rest.peek()
+        {
+            let Some(Stmt {
+                kind: StmtKind::Expr(value),
+                source,
+            }) = rest.next()
+            else {
+                unreachable!("peeked an expression statement");
+            };
+            if signature.ret.is_none() {
+                self.diagnostics.error(
+                    "E-SYN-122",
+                    "a compact function body needs a `-> T` return type in the head: `emath function f(x: Int) -> Int:`",
+                    source,
+                );
+            }
+            let target = Place {
+                segments: vec!["result".to_string()],
+                indices: Vec::new(),
+                source,
+            };
+            out.push(section(
+                "definitions",
+                vec![Stmt {
+                    kind: StmtKind::Assign { target, value },
+                    source,
+                }],
+            ));
+        }
+        out.extend(rest);
+        out
     }
 
     /// Head-args are identity-equivalent to an `inputs:` section (`-> T`

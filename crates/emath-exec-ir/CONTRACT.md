@@ -394,9 +394,9 @@ through it share every path-independent callee result (runnable, no
 open ancestor met, no `CallSibling` in its inlined tree, every inlined
 callee path-independent) - identical bytes to per-root lowering,
 without re-lowering each callee tree once per root. The consumer module
-(`language/modules/calculus/diff.emath`, local-only like every
-language/ file) folds its helper rules into one self-recursive walk
-by choice, not necessity. The E-MIR interpreter refuses `CallSibling`
+(`language/modules/analysis/derivative.emath`, local-only like every
+language/ file) folds its rules into one self-recursive walk
+(`d_form`) by choice, not necessity. The E-MIR interpreter refuses `CallSibling`
 as emission-carried (`CarrierRefused`, the same fence as the quote
 ops): lowered constructor programs are emission-lane artifacts, not
 VM-run programs, and the backend's emission worklist gives every

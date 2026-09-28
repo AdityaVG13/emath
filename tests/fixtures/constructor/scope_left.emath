@@ -1,0 +1,20 @@
+# Module-scoping seam: `twice` is a helper that scope_right also
+# declares with a different body. Importing both must keep each
+# module's calls on its own helper. Pinned by `use-import-helpers-scoped`.
+exports: twice, left_entry
+
+emath function twice:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 2 * x
+
+emath function left_entry:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = twice(x) + 1

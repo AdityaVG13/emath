@@ -6,7 +6,7 @@
 
 use crate::token::Comment;
 use crate::tree::{
-    Argument, ArgumentValue, Attribute, Binder, BinderKind, CommandArgument, Declaration,
+    Argument, ArgumentValue, Attribute, Binder, BinderKind, CommandArgument, Declaration, Expr,
     GenericArg, Item, NotationDecl, NotationFixity, Param, Place, ReactionTerm,
     Section, Stmt, StmtKind, Suite, SyntaxTree, TypeExpr, TypeKind, UseTree, Visibility,
 };
@@ -83,7 +83,9 @@ pub fn format(tree: &SyntaxTree, comments: &[Comment]) -> String {
 
 fn item_span_start(item: &Item) -> usize {
     match item {
-        Item::Package { source, .. } | Item::Use { source, .. } => source.start as usize,
+        Item::Package { source, .. } | Item::Use { source, .. } | Item::Exports { source, .. } => {
+            source.start as usize
+        }
         Item::Declaration(decl) => decl.head_source.start as usize,
         Item::Notation(notation) => notation.source.start as usize,
     }
@@ -147,7 +149,41 @@ fn format_item(out: &mut String, item: &Item, level: usize) {
         }
         Item::Declaration(decl) => format_declaration(out, decl, level),
         Item::Notation(notation) => format_notation(out, notation, level),
+        Item::Exports { names, .. } => format_exports(out, names, level),
     }
+}
+
+/// One line when it fits in 88 columns, otherwise an indented block
+/// filled to the same width.
+fn format_exports(out: &mut String, names: &[String], level: usize) {
+    const WIDTH: usize = 88;
+    let joined = names.join(", ");
+    indent(out, level);
+    if level * 4 + "exports: ".len() + joined.len() <= WIDTH {
+        out.push_str("exports: ");
+        out.push_str(&joined);
+        out.push('\n');
+        return;
+    }
+    out.push_str("exports:\n");
+    let lead = (level + 1) * 4;
+    let mut line = String::new();
+    for (i, name) in names.iter().enumerate() {
+        let piece = if i + 1 < names.len() { format!("{name},") } else { name.clone() };
+        if !line.is_empty() && lead + line.len() + 1 + piece.len() > WIDTH {
+            indent(out, level + 1);
+            out.push_str(&line);
+            out.push('\n');
+            line.clear();
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(&piece);
+    }
+    indent(out, level + 1);
+    out.push_str(&line);
+    out.push('\n');
 }
 
 fn format_notation(out: &mut String, notation: &NotationDecl, level: usize) {
@@ -251,11 +287,45 @@ fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {
     // Body statements (sections, fn-like heads, and other statements) in
     // source order, separated by ONE blank line at declaration level —
     // never a trailing blank line after the last statement (SURF-0013).
-    for (index, stmt) in decl.body.iter().enumerate() {
-        if index > 0 {
+    let compact = decl.signature.is_some();
+    let mut first = true;
+    for stmt in &decl.body {
+        // A compact head owns `inputs:`/`outputs:` (the parser refuses
+        // them next to head args), and a lone `result = e` prints as `e`.
+        let (section, compact_value) = match &stmt.kind {
+            StmtKind::Section(section) => (Some(section.name.as_str()), compact_result(section)),
+            _ => (None, None),
+        };
+        if compact && matches!(section, Some("inputs" | "outputs")) {
+            continue;
+        }
+        if !first {
             out.push('\n');
         }
-        format_stmt(out, stmt, level + 1);
+        first = false;
+        match compact_value {
+            Some(value) if compact => {
+                indent(out, level + 1);
+                format_expr(out, value, Prec::Root);
+                out.push('\n');
+            }
+            _ => format_stmt(out, stmt, level + 1),
+        }
+    }
+}
+
+fn compact_result(section: &Section) -> Option<&Expr> {
+    match section.suite.statements.as_slice() {
+        [Stmt {
+            kind: StmtKind::Assign { target, value },
+            ..
+        }] if section.name == "definitions"
+            && target.indices.is_empty()
+            && target.segments == ["result"] =>
+        {
+            Some(value)
+        }
+        _ => None,
     }
 }
 

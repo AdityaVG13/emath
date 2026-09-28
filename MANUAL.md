@@ -74,7 +74,10 @@ variants from `emath object`, `A -> B`, and `Code[T]`. There is no
 ## Modules
 
 Optional algorithms live under [`language/modules/`](language/modules/README.md).
-They are not auto-imported. Example: `use fold.reduce`.
+They are not auto-imported. Example: `use fold.reduce`. Worked objects of
+study (a pendulum, SHA-256, mass-action kinetics) live under
+[`language/domains/`](language/domains/README.md) and load the same way,
+for example `use mechanics.pendulum`.
 
 ## Teaching programs
 

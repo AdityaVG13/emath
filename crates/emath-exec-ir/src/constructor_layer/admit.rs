@@ -1,4 +1,5 @@
-use super::{SyntaxTree, ConstructorError, Item, Path, BTreeSet, TypeExpr, TypeKind, Engine, Declaration, BTreeMap, StmtKind, Expr, ExprKind, BinaryOp};
+use super::{SyntaxTree, ConstructorError, Item, Path, TypeExpr, TypeKind, Engine, Declaration, BTreeMap, StmtKind, Expr, ExprKind, BinaryOp, FnDecl};
+use emath_core::tree::GenericArg;
 use super::prelude::*;
 
 /// Type-admit a constructor module with the same environment as evaluation.
@@ -17,10 +18,47 @@ pub(super) const CONSTRUCTOR_SECTIONS: &[&str] = &[
     "exports",
 ];
 
+/// E-NAME-026: one `exports:` line per file, naming only declarations
+/// the file makes, each once.
+pub(super) fn check_exports(tree: &SyntaxTree) -> Result<(), ConstructorError> {
+    let declared: std::collections::BTreeSet<&str> = tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Declaration(decl) => Some(decl.name.as_str()),
+            _ => None,
+        })
+        .collect();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut lines = 0;
+    for item in &tree.items {
+        let Item::Exports { names, .. } = item else {
+            continue;
+        };
+        lines += 1;
+        if lines > 1 {
+            return Err(fault("E-NAME-026", "a file has at most one `exports:` line"));
+        }
+        for name in names {
+            if !declared.contains(name.as_str()) {
+                return Err(fault(
+                    "E-NAME-026",
+                    format!("`exports:` lists `{name}`, but this file declares no `{name}`"),
+                ));
+            }
+            if !seen.insert(name.as_str()) {
+                return Err(fault("E-NAME-026", format!("`exports:` lists `{name}` twice")));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn admit_constructor_surface(tree: &SyntaxTree) -> Result<(), ConstructorError> {
+    check_exports(tree)?;
     for item in &tree.items {
         match item {
-            Item::Package { .. } | Item::Use { .. } => {}
+            Item::Package { .. } | Item::Use { .. } | Item::Exports { .. } => {}
             Item::Notation(_) => {
                 return Err(fault(
                     "E-KIND-GONE",
@@ -76,7 +114,6 @@ pub fn admit_tree_at(
         tree,
         &module_roots_for(source),
         source,
-        &mut BTreeSet::new(),
     )?;
     for item in &tree.items {
         let Item::Declaration(decl) = item else {
@@ -103,14 +140,20 @@ pub(super) enum CType {
     Int,
     Rat,
     Float64,
-    Sequence,
+    /// `sequence(T)`; `Unknown` element when the element is not known.
+    Sequence(Box<CType>),
     /// The mutable buffer carrier: unparameterized
     /// in this cut — element values are checked at use, statically
     /// claimed nowhere.
     Buffer,
     Tuple,
     Record,
-    Closure,
+    /// `A -> B`, curried: a multi-input function value is
+    /// `A -> (B -> C)`. `Unknown` parts when not known.
+    Closure(Box<CType>, Box<CType>),
+    /// A type parameter (`T` in `emath function map<T, U>`). Inside the
+    /// declaring function it is opaque: it conforms only to itself.
+    Var(String),
     Code,
     Receipt,
     Schema,
@@ -118,7 +161,39 @@ pub(super) enum CType {
     Unknown,
 }
 
+impl std::fmt::Display for CType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Sequence(element) => write!(f, "sequence({element})"),
+            Self::Closure(domain, codomain) => write!(f, "({domain} -> {codomain})"),
+            Self::Var(name) => f.write_str(name),
+            Self::Unknown => f.write_str("_"),
+            other => write!(f, "{other:?}"),
+        }
+    }
+}
+
 impl CType {
+    pub(super) fn seq(element: CType) -> Self {
+        Self::Sequence(Box::new(element))
+    }
+
+    pub(super) fn any_seq() -> Self {
+        Self::seq(Self::Unknown)
+    }
+
+    pub(super) fn closure(domain: CType, codomain: CType) -> Self {
+        Self::Closure(Box::new(domain), Box::new(codomain))
+    }
+
+    pub(super) fn any_closure() -> Self {
+        Self::closure(Self::Unknown, Self::Unknown)
+    }
+
+    pub(super) fn is_closure(&self) -> bool {
+        matches!(self, Self::Closure(..))
+    }
+
     pub(super) fn join(&self, other: &Self) -> Option<Self> {
         if self == other {
             return Some(self.clone());
@@ -130,53 +205,197 @@ impl CType {
                 Some(Self::Float64)
             }
             (Self::Schema, Self::Record) | (Self::Record, Self::Schema) => Some(Self::Record),
+            // Element and signature disagreements widen to Unknown rather
+            // than refuse: sequences carry heterogeneous rows (tuples,
+            // tagged records) the element type does not model.
+            (Self::Sequence(a), Self::Sequence(b)) => {
+                Some(Self::seq(a.join(b).unwrap_or(Self::Unknown)))
+            }
+            (Self::Closure(d1, r1), Self::Closure(d2, r2)) => Some(Self::closure(
+                d1.join(d2).unwrap_or(Self::Unknown),
+                r1.join(r2).unwrap_or(Self::Unknown),
+            )),
             _ => None,
         }
     }
 
     pub(super) fn conforms(&self, declared: &Self) -> bool {
-        self == declared
-            || matches!(
-                (self, declared),
-                (Self::Int, Self::Rat)
-                    | (Self::Unknown, _)
-                    | (_, Self::Unknown)
-                    | (Self::Schema, Self::Record)
-                    | (Self::Record, Self::Schema)
-            )
+        match (self, declared) {
+            (Self::Unknown, _) | (_, Self::Unknown) => true,
+            (Self::Sequence(a), Self::Sequence(b)) => a.conforms(b),
+            // A closure fits where its domain accepts the declared domain
+            // and its result fits the declared result.
+            (Self::Closure(d1, r1), Self::Closure(d2, r2)) => d2.conforms(d1) && r1.conforms(r2),
+            _ => {
+                self == declared
+                    || matches!(
+                        (self, declared),
+                        (Self::Int, Self::Rat)
+                            | (Self::Schema, Self::Record)
+                            | (Self::Record, Self::Schema)
+                    )
+            }
+        }
+    }
+
+    /// Replace bound type parameters; unbound ones become `Unknown` so a
+    /// callee's parameter never leaks into its caller.
+    pub(super) fn substitute(&self, bound: &BTreeMap<String, CType>, vars: &[String]) -> Self {
+        match self {
+            Self::Var(name) if vars.contains(name) => {
+                bound.get(name).cloned().unwrap_or(Self::Unknown)
+            }
+            Self::Sequence(element) => Self::seq(element.substitute(bound, vars)),
+            Self::Closure(domain, codomain) => {
+                Self::closure(domain.substitute(bound, vars), codomain.substitute(bound, vars))
+            }
+            other => other.clone(),
+        }
+    }
+
+    /// Match a declared parameter type (which may mention `vars`)
+    /// against an argument type, binding each parameter. A parameter
+    /// seen twice widens through `join` (`Int` then `Rat` is `Rat`); an
+    /// incompatible second sighting is a mismatch.
+    pub(super) fn unify(
+        declared: &Self,
+        got: &Self,
+        vars: &[String],
+        bound: &mut BTreeMap<String, CType>,
+    ) -> bool {
+        match (declared, got) {
+            (Self::Var(name), _) if vars.contains(name) => match bound.get(name) {
+                None => {
+                    bound.insert(name.clone(), got.clone());
+                    true
+                }
+                Some(previous) => match previous.join(got) {
+                    Some(joined) => {
+                        bound.insert(name.clone(), joined);
+                        true
+                    }
+                    None => false,
+                },
+            },
+            (_, Self::Unknown) | (Self::Unknown, _) => true,
+            (Self::Sequence(a), Self::Sequence(b)) => Self::unify(a, b, vars, bound),
+            // The domain is contravariant: bind its parameters, then the
+            // declared domain must fit the closure's domain.
+            (Self::Closure(d1, r1), Self::Closure(d2, r2)) => {
+                Self::bind_vars(d1, d2, vars, bound)
+                    && d1.substitute(bound, vars).conforms(d2)
+                    && Self::unify(r1, r2, vars, bound)
+            }
+            _ => got.conforms(declared),
+        }
+    }
+
+    /// Bind type parameters by shape only, without checking conformance.
+    fn bind_vars(
+        declared: &Self,
+        got: &Self,
+        vars: &[String],
+        bound: &mut BTreeMap<String, CType>,
+    ) -> bool {
+        match (declared, got) {
+            (Self::Var(name), _) if vars.contains(name) => {
+                Self::unify(declared, got, vars, bound)
+            }
+            (Self::Sequence(a), Self::Sequence(b)) => Self::bind_vars(a, b, vars, bound),
+            (Self::Closure(d1, r1), Self::Closure(d2, r2)) => {
+                Self::bind_vars(d1, d2, vars, bound) && Self::bind_vars(r1, r2, vars, bound)
+            }
+            _ => true,
+        }
     }
 }
 
 pub(super) fn ctype_from_type(ty: &TypeExpr) -> CType {
+    ctype_from_type_in(ty, &[])
+}
+
+/// Declared type to `CType`; names in `vars` are type parameters.
+pub(super) fn ctype_from_type_in(ty: &TypeExpr, vars: &[String]) -> CType {
     match &ty.kind {
-        TypeKind::Fn { .. } => CType::Closure,
-        TypeKind::List(_) => CType::Sequence,
+        TypeKind::Fn { domain, codomain } => CType::closure(
+            ctype_from_type_in(domain, vars),
+            ctype_from_type_in(codomain, vars),
+        ),
+        TypeKind::List(items) => CType::seq(
+            items.first().map_or(CType::Unknown, |item| ctype_from_type_in(item, vars)),
+        ),
         TypeKind::Tuple(_) => CType::Tuple,
-        TypeKind::Path { segments, .. } => match segments.last().map(String::as_str) {
-            Some("Int" | "Nat") => CType::Int,
-            Some("Bool") => CType::Bool,
-            Some("Rat") => CType::Rat,
-            Some("Str") => CType::Str,
-            Some("Float64" | "F64") => CType::Float64,
-            Some("Code") => CType::Code,
-            Some("sequence" | "Sequence") => CType::Sequence,
-            Some("buffer") => CType::Buffer,
-            _ => CType::Unknown,
-        },
+        TypeKind::Path { segments, generic_args } => {
+            let last = segments.last().map(String::as_str);
+            if segments.len() == 1 && vars.iter().any(|var| Some(var.as_str()) == last) {
+                return CType::Var(segments[0].clone());
+            }
+            match last {
+                Some("sequence" | "Sequence") => CType::seq(
+                    generic_args.first().map_or(CType::Unknown, |arg| ctype_from_generic_arg(arg, vars)),
+                ),
+                Some(name) => ctype_from_name(name),
+                None => CType::Unknown,
+            }
+        }
+        _ => CType::Unknown,
+    }
+}
+
+fn ctype_from_generic_arg(arg: &GenericArg, vars: &[String]) -> CType {
+    match arg {
+        GenericArg::Type(ty) => ctype_from_type_in(ty, vars),
+        GenericArg::Value(Expr {
+            kind: ExprKind::Path { segments, .. },
+            ..
+        }) if segments.len() == 1 => {
+            if vars.contains(&segments[0]) {
+                CType::Var(segments[0].clone())
+            } else {
+                ctype_from_name(&segments[0])
+            }
+        }
+        _ => CType::Unknown,
+    }
+}
+
+fn ctype_from_name(name: &str) -> CType {
+    match name {
+        "Int" | "Nat" => CType::Int,
+        "Bool" => CType::Bool,
+        "Rat" => CType::Rat,
+        "Str" => CType::Str,
+        "Float64" | "F64" => CType::Float64,
+        "Code" => CType::Code,
+        "buffer" => CType::Buffer,
         _ => CType::Unknown,
     }
 }
 
 pub(super) fn admit_function(engine: &Engine, decl: &Declaration) -> Result<(), ConstructorError> {
+    admit_function_body(engine, decl).map_err(|err| in_declaration(decl, err))
+}
+
+pub(super) fn admit_query(engine: &Engine, decl: &Declaration) -> Result<(), ConstructorError> {
+    admit_query_body(engine, decl).map_err(|err| in_declaration(decl, err))
+}
+
+fn in_declaration(decl: &Declaration, mut err: ConstructorError) -> ConstructorError {
+    err.message = format!("in `{}`: {}", decl.name, err.message);
+    err
+}
+
+fn admit_function_body(engine: &Engine, decl: &Declaration) -> Result<(), ConstructorError> {
     refuse_duplicate_fields(decl, "inputs")?;
     refuse_duplicate_fields(decl, "outputs")?;
+    let vars = generic_names(decl);
     let mut types = BTreeMap::new();
     for (name, ty) in section_typed_fields(decl, "inputs") {
-        types.insert(name, ctype_from_type(&ty));
+        types.insert(name, ctype_from_type_in(&ty, &vars));
     }
     let outputs: BTreeMap<String, CType> = section_typed_fields(decl, "outputs")
         .into_iter()
-        .map(|(name, ty)| (name, ctype_from_type(&ty)))
+        .map(|(name, ty)| (name, ctype_from_type_in(&ty, &vars)))
         .collect();
     for (name, expr) in constructor_defs(decl) {
         let got = engine.infer(&types, &expr)?;
@@ -185,7 +404,7 @@ pub(super) fn admit_function(engine: &Engine, decl: &Declaration) -> Result<(), 
         {
             return Err(fault(
                 "type",
-                format!("definition `{name}` does not have the declared output type"),
+                format!("definition `{name}` does not have the declared output type: declared {declared}, got {got}"),
             ));
         }
         types.insert(name, got);
@@ -203,10 +422,14 @@ pub(super) fn admit_function(engine: &Engine, decl: &Declaration) -> Result<(), 
     // function examples, carrying the fault name on a faulting call. A
     // declaration that itself binds the name keeps its own binding.
     types.entry("diagnostic".into()).or_insert(CType::Record);
-    admit_tests(engine, decl, &types)
+    admit_tests(engine, decl, &types, &vars)
 }
 
-pub(super) fn admit_query(engine: &Engine, decl: &Declaration) -> Result<(), ConstructorError> {
+pub(super) fn generic_names(decl: &Declaration) -> Vec<String> {
+    decl.generics.iter().map(|generic| generic.name.clone()).collect()
+}
+
+fn admit_query_body(engine: &Engine, decl: &Declaration) -> Result<(), ConstructorError> {
     refuse_duplicate_fields(decl, "inputs")?;
     let mut types = BTreeMap::new();
     for (name, ty) in section_typed_fields(decl, "inputs") {
@@ -218,7 +441,7 @@ pub(super) fn admit_query(engine: &Engine, decl: &Declaration) -> Result<(), Con
     }
     types.insert("receipt".into(), CType::Receipt);
     types.insert("diagnostic".into(), CType::Record);
-    admit_tests(engine, decl, &types)
+    admit_tests(engine, decl, &types, &[])
 }
 
 /// Refuse unrecognized `tests:` row forms instead of silently skipping
@@ -285,6 +508,7 @@ pub(super) fn admit_tests(
     engine: &Engine,
     decl: &Declaration,
     types: &BTreeMap<String, CType>,
+    vars: &[String],
 ) -> Result<(), ConstructorError> {
     refuse_unknown_test_rows(decl)?;
     for section in decl.sections().filter(|section| section.name == "tests") {
@@ -295,15 +519,19 @@ pub(super) fn admit_tests(
             if example.name != "example" {
                 continue;
             }
-            let local = types.clone();
+            let mut local = types.clone();
+            // Each example instantiates the type parameters afresh from
+            // its `given` values.
+            let mut bound = BTreeMap::new();
             for inner in &example.suite.statements {
                 match &inner.kind {
                     StmtKind::Given { name, value } => {
+                        // A `given` that is not an input is an example-local
+                        // binding the `expect` rows may use (`result(k)`).
                         let Some(declared) = local.get(name).cloned() else {
-                            return Err(fault(
-                                "unbound",
-                                format!("`given` name `{name}` is not an input"),
-                            ));
+                            let got = engine.infer(&local, value)?;
+                            local.insert(name.clone(), got);
+                            continue;
                         };
                         // A `Rat`-annotated input binds its exact decimal
                         // rational when the given value is a bare decimal.
@@ -313,10 +541,10 @@ pub(super) fn admit_tests(
                             value.clone()
                         };
                         let got = engine.infer(&local, &value)?;
-                        if !got.conforms(&declared) {
+                        if !CType::unify(&declared, &got, vars, &mut bound) {
                             return Err(fault(
                                 "type",
-                                format!("`given` `{name}` does not have the declared input type"),
+                                format!("`given` `{name}` does not have the declared input type: declared {declared}, got {got}"),
                             ));
                         }
                     }
@@ -324,8 +552,12 @@ pub(super) fn admit_tests(
                         // Expect rows may reference fault names nominally
                         // (Engine::expect_atoms); anything else still
                         // resolves or refuses as usual.
+                        let instantiated: BTreeMap<String, CType> = local
+                            .iter()
+                            .map(|(name, ty)| (name.clone(), ty.substitute(&bound, vars)))
+                            .collect();
                         engine.expect_atoms.set(true);
-                        let got = engine.infer(&local, expr);
+                        let got = engine.infer(&instantiated, expr);
                         engine.expect_atoms.set(false);
                         let got = got?;
                         if !got.conforms(&CType::Bool) {
@@ -381,7 +613,9 @@ impl Engine {
                     | BinaryOp::Iff => CType::Bool,
                     BinaryOp::Div => match (l, r) {
                         (CType::Float64, _) | (_, CType::Float64) => CType::Float64,
-                        (CType::Unknown, _) | (_, CType::Unknown) => CType::Unknown,
+                        (CType::Unknown | CType::Var(_), _) | (_, CType::Unknown | CType::Var(_)) => {
+                            CType::Unknown
+                        }
                         _ => CType::Rat,
                     },
                     _ => l.join(&r).unwrap_or(CType::Unknown),
@@ -402,24 +636,46 @@ impl Engine {
                     .join(&else_ty)
                     .ok_or_else(|| fault("type", "if branches must have the same type"))
             }
-            ExprKind::List(_) | ExprKind::SequenceCons { .. } | ExprKind::Range { .. } => {
-                Ok(CType::Sequence)
+            ExprKind::List(items) => {
+                let mut element = CType::Unknown;
+                for (index, item) in items.iter().enumerate() {
+                    let got = self.infer(types, item)?;
+                    element = if index == 0 {
+                        got
+                    } else {
+                        element.join(&got).unwrap_or(CType::Unknown)
+                    };
+                }
+                Ok(CType::seq(element))
             }
+            ExprKind::SequenceCons { head, tail } => {
+                let head = self.infer(types, head)?;
+                let tail = self.infer(types, tail)?;
+                Ok(match tail {
+                    CType::Sequence(rest) => CType::seq(head.join(&rest).unwrap_or(CType::Unknown)),
+                    _ => CType::any_seq(),
+                })
+            }
+            ExprKind::Range { .. } => Ok(CType::seq(CType::Int)),
             ExprKind::Tuple(_) => Ok(CType::Tuple),
             ExprKind::Record { .. } => Ok(CType::Record),
             ExprKind::Index { value, indices } => {
-                let _ = self.infer(types, value)?;
+                let carrier = self.infer(types, value)?;
                 if let Some(index) = indices.first() {
                     let _ = self.infer(types, index)?;
                 }
-                Ok(CType::Unknown)
+                Ok(match (carrier, indices.len()) {
+                    (CType::Sequence(element), 1) => *element,
+                    _ => CType::Unknown,
+                })
             }
             ExprKind::Call { function, args } => self.infer_call(types, function, args),
             ExprKind::FunctionAbs { param, domain, body } => {
                 let mut inner = types.clone();
-                inner.insert(param.clone(), ctype_from_type_expr_or_path(domain));
-                let _ = self.infer(&inner, body)?;
-                Ok(CType::Closure)
+                let domain = ctype_from_type_expr_or_path(domain);
+                inner.insert(param.clone(), domain.clone());
+                let body = self.infer(&inner, body)?;
+                Ok(CType::closure(domain, body))
             }
             ExprKind::Recur { ty, body, .. } => {
                 if !is_fn_type(ty) {
@@ -434,7 +690,7 @@ impl Engine {
                         "recur body must be a function literal or a record of function literals",
                     ));
                 }
-                Ok(CType::Closure)
+                Ok(ctype_from_type_expr_or_path(ty))
             }
             ExprKind::Quote { .. } | ExprKind::QuoteBind { .. } => Ok(CType::Code),
             ExprKind::CallableBinder {
@@ -482,7 +738,7 @@ impl Engine {
             if let Some(ty) = types.get(&segments[0]) {
                 if segments.len() == 2 {
                     return Ok(match (ty, segments[1].as_str()) {
-                        (CType::Sequence, "length") => CType::Int,
+                        (CType::Sequence(_), "length") => CType::Int,
                         (CType::Rat | CType::Int, "numer" | "denom") => CType::Int,
                         // Projection type is not reconstructed from a record tag.
                         // Unknown conforms to a declared field type; Schema does not.
@@ -501,7 +757,7 @@ CType::Unknown, _) => CType::Unknown,
             }
             if segments.len() == 2 && self.objects.contains_key(&segments[0]) {
                 return Ok(match segments[1].as_str() {
-                    "pack" | "open" => CType::Closure,
+                    "pack" | "open" => CType::any_closure(),
                     _ => CType::Unknown,
                 });
             }
@@ -512,8 +768,8 @@ CType::Unknown, _) => CType::Unknown,
         if is_schema_tag(&name) {
             return Ok(CType::Schema);
         }
-        if self.functions.contains_key(&name) {
-            return Ok(CType::Closure);
+        if let Some(decl) = self.functions.get(&name) {
+            return Ok(function_value_type(decl));
         }
         if self.objects.contains_key(&name) {
             return Ok(CType::Record);
@@ -620,14 +876,7 @@ CType::Unknown, _) => CType::Unknown,
                 return Ok(CType::Record);
             }
             if let Some(decl) = self.functions.get(&name) {
-                for arg in args {
-                    let _ = self.infer(types, arg)?;
-                }
-                return Ok(match decl.output_types.as_slice() {
-                    [ty] => ctype_from_type(ty),
-                    [] => CType::Unknown,
-                    _ => CType::Record,
-                });
+                return self.infer_named_call(types, &name, decl, args);
             }
             // Postfix `.field` on a non-path receiver is parsed as
             // `field(recv)` — indistinguishable from a call — so the
@@ -639,6 +888,11 @@ CType::Unknown, _) => CType::Unknown,
             // `engine_step/call.rs`).
             if segments.len() == 1 && args.len() == 1 && !self.is_typed_callee(types, &name) {
                 let recv = self.infer(types, &args[0])?;
+                match (&recv, name.as_str()) {
+                    (CType::Rat | CType::Int, "numer" | "denom")
+                    | (CType::Sequence(_) | CType::Buffer, "length") => return Ok(CType::Int),
+                    _ => {}
+                }
                 if matches!(
                     recv,
                     CType::Record
@@ -660,16 +914,64 @@ CType::Unknown, _) => CType::Unknown,
                 ));
             }
         }
-        let _ = self.infer(types, function)?;
+        // A closure-typed callee applies one argument per arrow.
+        let mut result = self.infer(types, function)?;
         for arg in args {
-            let _ = self.infer(types, arg)?;
+            let got = self.infer(types, arg)?;
+            result = match result {
+                CType::Closure(domain, codomain) => {
+                    if !got.conforms(&domain) {
+                        return Err(fault(
+                            "type",
+                            format!("closure argument does not fit its domain: expected {domain}, got {got}"),
+                        ));
+                    }
+                    *codomain
+                }
+                _ => CType::Unknown,
+            };
         }
-        Ok(CType::Unknown)
+        Ok(if args.is_empty() { CType::Unknown } else { result })
+    }
+
+    /// A call to a declared function: each argument must fit its input
+    /// type, binding the callee's type parameters; the result type is the
+    /// output type with those parameters substituted.
+    pub(super) fn infer_named_call(
+        &self,
+        types: &BTreeMap<String, CType>,
+        name: &str,
+        decl: &FnDecl,
+        args: &[Expr],
+    ) -> Result<CType, ConstructorError> {
+        let vars = &decl.generics;
+        let mut bound = BTreeMap::new();
+        for (index, arg) in args.iter().enumerate() {
+            let got = self.infer(types, arg)?;
+            let Some(declared) = decl.input_types.get(index) else {
+                continue;
+            };
+            let declared = ctype_from_type_in(declared, vars);
+            if !CType::unify(&declared, &got, vars, &mut bound) {
+                let input = decl.inputs.get(index).map_or("?", String::as_str);
+                return Err(fault(
+                    "type",
+                    format!(
+                        "argument `{input}` of `{name}` expects {}, got {got}",
+                        declared.substitute(&bound, vars)
+                    ),
+                ));
+            }
+        }
+        Ok(match decl.output_types.as_slice() {
+            [ty] => ctype_from_type_in(ty, vars).substitute(&bound, vars),
+            [] => CType::Unknown,
+            _ => CType::Record,
+        })
     }
 
     pub(super) fn is_typed_callee(&self, types: &BTreeMap<String, CType>, name: &str) -> bool {
-        self.functions.contains_key(name)
-            || matches!(types.get(name), Some(CType::Closure))
+        self.functions.contains_key(name) || types.get(name).is_some_and(CType::is_closure)
     }
 
     pub(super) fn infer_quote_arg(
@@ -756,14 +1058,6 @@ CType::Unknown, _) => CType::Unknown,
             Ok(())
         };
         match op {
-            "int_fact" | "int_double_fact" | "int_totient" => {
-                expect_int_args(1, self)?;
-                Ok(CType::Int)
-            }
-            "int_egcd" => {
-                expect_int_args(2, self)?;
-                Ok(CType::Sequence)
-            }
             "int_sum" | "int_prod" => {
                 if args.len() != 1 {
                     return Err(fault(
@@ -772,82 +1066,9 @@ CType::Unknown, _) => CType::Unknown,
                     ));
                 }
                 let got = self.infer(types, &args[0])?;
-                if !got.conforms(&CType::Sequence) {
+                if !got.conforms(&CType::seq(CType::Int)) {
                     return Err(fault("type", format!("`{op}` expects sequence(Int)")));
                 }
-                Ok(CType::Int)
-            }
-            "int_sum_from" | "int_prod_from" => {
-                if args.len() != 2 {
-                    return Err(fault(
-                        "arity",
-                        format!("`{op}` expects a sequence(Int) and an Int start"),
-                    ));
-                }
-                let items = self.infer(types, &args[0])?;
-                if !items.conforms(&CType::Sequence) {
-                    return Err(fault("type", format!("`{op}` expects sequence(Int)")));
-                }
-                let start = self.infer(types, &args[1])?;
-                if !start.conforms(&CType::Int) {
-                    return Err(fault("type", format!("`{op}` expects Int")));
-                }
-                Ok(CType::Int)
-            }
-            "int_hamming" => {
-                if args.len() != 2 {
-                    return Err(fault(
-                        "arity",
-                        format!("`{op}` expects two sequence(Int) arguments"),
-                    ));
-                }
-                for arg in args {
-                    let got = self.infer(types, arg)?;
-                    if !got.conforms(&CType::Sequence) {
-                        return Err(fault("type", format!("`{op}` expects sequence(Int)")));
-                    }
-                }
-                Ok(CType::Int)
-            }
-            "int_weighted_prod" => {
-                if args.len() != 4 {
-                    return Err(fault(
-                        "arity",
-                        format!("`{op}` expects sequence(Int), sequence(Int), Int, Int"),
-                    ));
-                }
-                for arg in &args[..2] {
-                    let got = self.infer(types, arg)?;
-                    if !got.conforms(&CType::Sequence) {
-                        return Err(fault("type", format!("`{op}` expects sequence(Int)")));
-                    }
-                }
-                for arg in &args[2..] {
-                    let got = self.infer(types, arg)?;
-                    if !got.conforms(&CType::Int) {
-                        return Err(fault("type", format!("`{op}` expects Int")));
-                    }
-                }
-                Ok(CType::Int)
-            }
-            "int_poly_eval" => {
-                if args.len() != 3 {
-                    return Err(fault("arity", format!("`{op}` expects three arguments")));
-                }
-                let coeffs = self.infer(types, &args[0])?;
-                if !coeffs.conforms(&CType::Sequence) {
-                    return Err(fault("type", format!("`{op}` expects sequence(Int)")));
-                }
-                for arg in &args[1..] {
-                    let got = self.infer(types, arg)?;
-                    if !got.conforms(&CType::Int) {
-                        return Err(fault("type", format!("`{op}` expects Int")));
-                    }
-                }
-                Ok(CType::Int)
-            }
-            "int_powmod" => {
-                expect_int_args(3, self)?;
                 Ok(CType::Int)
             }
             _ => {
@@ -855,6 +1076,25 @@ CType::Unknown, _) => CType::Unknown,
                 Ok(CType::Int)
             }
         }
+    }
+}
+
+/// A declared function as a value: curried over its inputs. A
+/// multi-output function returns a record.
+pub(super) fn function_value_type(decl: &FnDecl) -> CType {
+    let vars = &decl.generics;
+    let mut result = match decl.output_types.as_slice() {
+        [ty] => ctype_from_type_in(ty, vars).substitute(&BTreeMap::new(), vars),
+        [] => CType::Unknown,
+        _ => CType::Record,
+    };
+    for ty in decl.input_types.iter().rev() {
+        result = CType::closure(ctype_from_type_in(ty, vars).substitute(&BTreeMap::new(), vars), result);
+    }
+    if decl.input_types.is_empty() {
+        CType::any_closure()
+    } else {
+        result
     }
 }
 
@@ -868,7 +1108,13 @@ pub(super) fn ctype_from_type_expr_or_path(expr: &Expr) -> CType {
             Some("Code") => CType::Code,
             _ => CType::Unknown,
         },
-        ExprKind::Call { function, .. } if is_fn_ctor(function) => CType::Closure,
+        ExprKind::Call { function, .. } if is_fn_ctor(function) => CType::any_closure(),
+        ExprKind::Call { function, args } => match (&function.kind, args.as_slice()) {
+            (ExprKind::Path { segments, .. }, [element]) if segments.len() == 1 && segments[0] == "sequence" => {
+                CType::seq(ctype_from_type_expr_or_path(element))
+            }
+            _ => CType::Unknown,
+        },
         _ => CType::Unknown,
     }
 }

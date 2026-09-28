@@ -4,7 +4,14 @@ use emath_core::Span;
 
 impl super::Parser {
     pub(super) fn parse_suite(&mut self) -> Option<Suite> {
-        self.parse_suite_inner(false, false)
+        self.parse_suite_inner(false, false, false)
+    }
+
+    /// Body of a compact `emath function f(x: T) -> R:` head: a leading
+    /// line that is not a section head is one expression (so a leading
+    /// `if` is the conditional expression, not the statement form).
+    pub(super) fn parse_compact_body(&mut self) -> Option<Suite> {
+        self.parse_suite_inner(false, false, true)
     }
 
     /// `example <name>:` with no indented body is a worked example, not
@@ -18,10 +25,16 @@ impl super::Parser {
         self.parse_suite_inner(
             section_name == "example" || section_name == "inputs",
             section_name == "reactions",
+            false,
         )
     }
 
-    fn parse_suite_inner(&mut self, allow_empty: bool, reactions: bool) -> Option<Suite> {
+    fn parse_suite_inner(
+        &mut self,
+        allow_empty: bool,
+        reactions: bool,
+        compact: bool,
+    ) -> Option<Suite> {
         let start = self.current_span();
         if self.at_line_end() {
             self.finish_line();
@@ -41,8 +54,14 @@ impl super::Parser {
                     self.advance();
                     continue;
                 }
+                let section_head = matches!(self.peek(), TokenKind::Ident(_))
+                    && matches!(self.peek_at(1), TokenKind::Colon);
                 let parsed = if reactions {
                     self.parse_reaction_line_stmt()
+                } else if compact && statements.is_empty() && !section_head {
+                    let start = self.current_span();
+                    self.parse_expr()
+                        .map(|expr| self.stmt(start, StmtKind::Expr(expr)))
                 } else {
                     self.parse_statement()
                 };

@@ -1,0 +1,19 @@
+# Module-scoping seam: same helper name as scope_left, different
+# body (three times, not two). Pinned by `use-import-helpers-scoped`.
+exports: twice, right_entry
+
+emath function twice:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 3 * x
+
+emath function right_entry:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = twice(x) + 1

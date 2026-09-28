@@ -33,6 +33,20 @@ const EMPTY_INPUTS: &str = "emath function Constant:
             expect result == 6
 ";
 
+// `min` is a module method, so admission refuses it. The unbound output
+// reads as an atom under `expect`, which used to mask the fault as
+// "expect produced false".
+const MASKED_FAULT: &str = "emath function Meet:
+    inputs:
+    outputs:
+        result: Int
+    definitions:
+        result = min(2, 3)
+    tests:
+        example <meet>:
+            expect result == 2
+";
+
 fn scratch(tag: &str, text: &str) -> std::path::PathBuf {
     let path = std::env::temp_dir().join(format!("emath-row-honesty-{tag}-{}.emath", std::process::id()));
     std::fs::write(&path, text).expect("write source");
@@ -46,8 +60,11 @@ fn probe() {
     p.case("fault-row-refuses-on-test-lane", |p| {
         let src = scratch("fault-row", FAULT_ROW);
         let (text, code) = common::cli(&["test", &src.to_string_lossy()]);
+        // The test lane admits like `check`, so it refuses with the same
+        // mapped code and message.
         p.eq("exit", code, EXIT_ADMISSION as i32);
-        p.contains("named refusal", &text, "unknown_test_row");
+        p.contains("mapped admission code", &text, "E-TYPE-012");
+        p.contains("row refused by name", &text, "row in `tests:` is not a test form (section `fault`)");
     });
 
     p.case("fault-row-refuses-on-check-lane", |p| {
@@ -66,6 +83,14 @@ fn probe() {
         let (text, code) = common::cli(&["test", &src.to_string_lossy()]);
         p.eq("exit", code, EXIT_OK as i32);
         p.contains("ran the authored row", &text, "1 authored test");
+    });
+
+    p.case("undemanded-fault-reports-the-fault", |p| {
+        let src = scratch("masked-fault", MASKED_FAULT);
+        let (text, _) = common::cli(&["test", &src.to_string_lossy()]);
+        // Admission names the unimported method before any example runs.
+        p.contains("fault surfaces", &text, "`min` is an ordinary module method");
+        p.demand("not masked", !text.contains("expect produced false"), text.clone());
     });
 
     p.finish();

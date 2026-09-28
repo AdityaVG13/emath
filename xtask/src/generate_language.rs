@@ -20,6 +20,16 @@ pub fn run(export_to_target: bool) -> u8 {
     match emath_exec_ir::language_image::compile_language_directory(source_root).and_then(
         |distribution| {
             emath_exec_ir::language_image::write_language_distribution(&root, &distribution)?;
+            let shelves = [source_root.join("modules"), source_root.join("domains")];
+            let catalog = emath_exec_ir::module_index::render_catalog(
+                &emath_exec_ir::module_index::module_exports(&shelves),
+            );
+            fs::write(root.join("generated/modules.md"), catalog).map_err(|error| {
+                emath_exec_ir::language_image::LanguageImageError::Io {
+                    path: root.join("generated/modules.md"),
+                    detail: error.to_string(),
+                }
+            })?;
             println!(
                 "language image: {} capsules={} semantic={} distribution={}",
                 root.display(),

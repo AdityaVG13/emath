@@ -1,0 +1,20 @@
+# Module-surface seam: `helper` is private (not in `exports:`), so an
+# importer reaches it only through `entry`. Pinned by
+# `use-import-exports-gate`.
+exports: entry
+
+emath function helper:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 10 * x
+
+emath function entry:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = helper(x) + 1

@@ -41,7 +41,6 @@ fn evaluate_tree_with(
         tree,
         &module_roots_for(source),
         source,
-        &mut BTreeSet::new(),
     )?;
     for item in &tree.items {
         if let Item::Use { path, .. } = item {
@@ -69,9 +68,17 @@ fn evaluate_tree_with(
         let Item::Declaration(decl) = item else {
             continue;
         };
-        // The test lane does not run the admission pass, so the same
-        // row-form refusal the check lane sees applies here directly.
-        super::admit::refuse_unknown_test_rows(decl)?;
+        // The same admission `emath check` runs: a mistyped definition is
+        // a named refusal here too, never a wrong answer.
+        let admitted = match decl.as_kind.as_str() {
+            "function" => super::admit::admit_function(&engine, decl),
+            "query" => super::admit::admit_query(&engine, decl),
+            _ => super::admit::refuse_unknown_test_rows(decl),
+        };
+        admitted.map_err(|mut err| {
+            err.code = super::constructor_admit_code(&err.code).to_string();
+            err
+        })?;
         for section in decl.sections().filter(|section| section.name == "tests") {
             // every `example <label>:` block is its own case. Loose
             // givens/expects outside any example form one anonymous case.
@@ -157,8 +164,9 @@ fn evaluate_tree_with(
                             CValue::Record {
                                 type_name: receipt
                                     .diagnostic_code
-                                    .clone()
-                                    .unwrap_or_default(),
+                                    .as_deref()
+                                    .unwrap_or_default()
+                                    .into(),
                                 fields: Arc::new(BTreeMap::new()),
                             },
                         )])),
@@ -196,6 +204,7 @@ fn evaluate_tree_with(
                 let mut ok = true;
                 let mut detail = String::new();
                 let mut fault_code: Option<String> = None;
+                let mut fault_message = String::new();
                 match engine.eval_fn(
                     &decl.name,
                     fndecl.clone(),
@@ -224,7 +233,7 @@ fn evaluate_tree_with(
                     }
                     Err(err) => {
                         fault_code = Some(err.code.clone());
-                        detail = err.message;
+                        fault_message = err.message;
                     }
                 }
                 // `diagnostic` mirrors the query binding: on a fault the
@@ -242,7 +251,7 @@ fn evaluate_tree_with(
                             fields: Arc::new(BTreeMap::from([(
                                 "code".into(),
                                 CValue::Record {
-                                    type_name: fault_code.clone().unwrap_or_default(),
+                                    type_name: fault_code.as_deref().unwrap_or_default().into(),
                                     fields: Arc::new(BTreeMap::new()),
                                 },
                             )])),
@@ -267,11 +276,15 @@ fn evaluate_tree_with(
                     }
                 }
                 engine.expect_atoms.set(false);
-                if ok && fault_code.is_some() {
-                    detail = format!(
-                        "demanded fault `{}`",
-                        fault_code.as_deref().unwrap_or_default()
-                    );
+                if let Some(code) = &fault_code {
+                    // An unbound output reads as an atom under `expect`, so
+                    // an undemanded fault would otherwise surface only as
+                    // "expect produced false".
+                    detail = if ok {
+                        format!("demanded fault `{code}`")
+                    } else {
+                        format!("{code}: {fault_message}")
+                    };
                 }
                 engine.env = saved;
                 tests.push(TestObservation {

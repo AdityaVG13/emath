@@ -3,6 +3,8 @@
 # instead of the historical silent clobber (imports install after
 # locals, so the local function used to run the imported body).
 # Pinned by `use-import-name-collision-refuses`.
+exports: clobber_shared
+
 emath function clobber_shared:
     inputs:
         x: Rat

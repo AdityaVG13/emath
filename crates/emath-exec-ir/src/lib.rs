@@ -15,6 +15,7 @@ pub mod interp;
 pub mod language_image;
 pub mod language_tables;
 pub mod lazy;
+pub mod module_index;
 pub mod native_kernel;
 pub mod progress;
 pub mod optimize;
@@ -28,12 +29,7 @@ pub mod shake;
 pub mod term_compile;
 
 pub use builtin::BuiltinId;
-pub use runner::{
-    CONSTRUCTOR_SIMULATE_GONE, Continuation, DAEDisposition, DAEIndex, InitializationVerdict,
-    SimulateOptions, StepMethod, Trajectory, TrajectorySample, definition_order,
-    simulate_continuous, simulate_continuous_dispositioned, simulate_continuous_with,
-    step_continuous, step_continuous_values,
-};
+pub use runner::definition_order;
 
 use emath_core::Span;
 pub use emath_ir::CellClass;

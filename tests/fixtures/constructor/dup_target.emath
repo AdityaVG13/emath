@@ -2,6 +2,8 @@
 # transitive closure of dup_root installs this file twice under the
 # same bare name. Same-source re-install is idempotent, NOT a
 # collision. Pinned by `use-import-same-source-idempotent`.
+exports: dup_shared
+
 emath function dup_shared:
     inputs:
         x: Rat

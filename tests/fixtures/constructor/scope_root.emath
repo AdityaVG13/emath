@@ -1,0 +1,43 @@
+# Imports two modules that both declare `twice`. Each entry must run
+# its own module's helper (11 = 2*5+1, 16 = 3*5+1); the aliased
+# selection reaches scope_right's copy by a new name, which leaves bare
+# `twice` to the whole import of scope_left. Pinned by
+# `use-import-helpers-scoped`.
+use scope_left
+use scope_right.{twice as triple}
+
+emath function Both:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = left_entry(x) * 100 + right_entry(x)
+    tests:
+        example <each_module_keeps_its_helper>:
+            given x = 5
+            expect result == 1116
+
+emath function Aliased:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = triple(x)
+    tests:
+        example <alias_reaches_right>:
+            given x = 5
+            expect result == 15
+
+emath function BareFromWhole:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = twice(x)
+    tests:
+        example <aliased_away_leaves_left>:
+            given x = 5
+            expect result == 10
