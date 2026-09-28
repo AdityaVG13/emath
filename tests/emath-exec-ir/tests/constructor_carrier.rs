@@ -362,12 +362,12 @@ emath function MachineOps:
     outputs:
         result: Int
     definitions:
-        result = int_quot(n, q) * 100 + int_rem(n, q) * 10 + int_root(n, q)
+        result = int_quot(n, q) * 10 + int_rem(n, q)
     tests:
         example <ten_over_three>:
             given n = 10
             given q = 3
-            expect result == 312
+            expect result == 31
 ";
         let (tree, diagnostics) = parse_str(source);
         p.demand("1", !diagnostics.has_errors(), format!("parse: {diagnostics:?}"));
@@ -472,32 +472,7 @@ emath function Euclid:
         );
     });
 
-    probe.case("machine_gcd_and_fact", |p| {
-        let source = "\
-emath function WideGcdFact:
-    inputs:
-        unused: Int
-    outputs:
-        result: Int
-    definitions:
-        g = int_gcd(100000000000000000000, 1000000000000000)
-        result = g + int_fact(10)
-    tests:
-        example <gcd_and_ten_fact>:
-            given unused = 0
-            expect result == 1000000003628800
-";
-        let (tree, diagnostics) = parse_str(source);
-        p.demand("1", !diagnostics.has_errors(), format!("parse: {diagnostics:?}"));
-        let report = evaluate_tree(&tree).expect("gcd/fact evaluates");
-        p.demand(
-            "2",
-            report.tests.iter().all(|test| test.passed),
-            format!("gcd/fact failed: {:?}", report.tests),
-        );
-    });
-
-    probe.case("machine_pow_and_suffix_sum", |p| {
+    probe.case("machine_pow_and_sum", |p| {
         let source = "\
 emath function PowAndSuffix:
     inputs:
@@ -505,89 +480,28 @@ emath function PowAndSuffix:
     outputs:
         result: Int
     definitions:
-        result = int_pow(2, 10) + int_sum_from([1, 2, 3, 4], 2)
+        result = int_pow(2, 10) + int_sum([3, 4]) + int_prod([2, 3])
     tests:
         example <ten_and_tail>:
             given unused = 0
-            expect result == 1031
+            expect result == 1037
 ";
         let (tree, diagnostics) = parse_str(source);
         p.demand("1", !diagnostics.has_errors(), format!("parse: {diagnostics:?}"));
-        let report = evaluate_tree(&tree).expect("pow/suffix evaluates");
+        let report = evaluate_tree(&tree).expect("pow/sum evaluates");
         p.demand(
             "2",
             report.tests.iter().all(|test| test.passed),
-            format!("pow/suffix failed: {:?}", report.tests),
-        );
-    });
-
-    probe.case("machine_int_domains_and_weighted_prod", |p| {
-        let source = "\
-emath function Domain:
-    inputs:
-        unused: Int
-    outputs:
-        result: Bool
-    definitions:
-        fact_neg = int_fact(0 - 1) == 0
-        zeroth = int_root(9, 0) == 0
-        first_root = int_root(9, 1) == 9
-        ham = int_hamming([1], [1, 2]) == 1
-        inv = int_powmod(2, 0 - 1, 5) == 3
-        weighted = int_weighted_prod([2, 3], [3, 1], 0, 1) == 24
-        rising_neg = int_rising(3, 0 - 1) == 0
-        dfact_neg = int_double_fact(0 - 1) == 0
-        result = fact_neg and zeroth and first_root and ham and inv and weighted and rising_neg and dfact_neg
-    tests:
-        example <holes>:
-            given unused = 0
-            expect result == true
-";
-        let (tree, diagnostics) = parse_str(source);
-        p.demand("1", !diagnostics.has_errors(), format!("parse: {diagnostics:?}"));
-        let report = evaluate_tree(&tree).expect("domain identity evaluates");
-        p.demand(
-            "2",
-            report.tests.iter().all(|test| test.passed),
-            format!("domain identity failed: {:?}", report.tests),
-        );
-    });
-
-    probe.case("machine_binom_egcd_totient", |p| {
-        let source = "\
-emath function Neighbors:
-    inputs:
-        unused: Int
-    outputs:
-        result: Bool
-    definitions:
-        triple = int_egcd(12, 18)
-        binom = int_binom(5, 2) == 10
-        empty = int_binom(10, 0) == 1
-        past = int_binom(5, 7) == 0
-        phi = int_totient(12) == 4
-        one = int_totient(1) == 1
-        bezout = triple[0] == 6 and triple[1] * 12 + triple[2] * 18 == triple[0]
-        result = binom and empty and past and phi and one and bezout
-    tests:
-        example <neighbors>:
-            given unused = 0
-            expect result == true
-";
-        let (tree, diagnostics) = parse_str(source);
-        p.demand("1", !diagnostics.has_errors(), format!("parse: {diagnostics:?}"));
-        let report = evaluate_tree(&tree).expect("binom/egcd/totient evaluates");
-        p.demand(
-            "2",
-            report.tests.iter().all(|test| test.passed),
-            format!("binom/egcd/totient failed: {:?}", report.tests),
+            format!("pow/sum failed: {:?}", report.tests),
         );
     });
 
     probe.case("exact_integer_modules", |p| {
         for name in [
             "exact/integers.emath",
-            "discrete/combinatorics.emath",
+            "discrete/factorials.emath",
+            "exact/modular.emath",
+            "analysis/powers.emath",
         ] {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../../language/modules")

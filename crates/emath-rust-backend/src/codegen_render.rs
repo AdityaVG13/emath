@@ -21,14 +21,12 @@ use op_flow::{authored_control_expr, op_flow_exprs};
 
 mod carrier;
 mod flat;
-pub(crate) mod kernels;
 mod kinds;
 mod record_layouts;
 mod rtcalls;
 
 use carrier::{carrier_payload_types, expect_carrier, op_self_index};
 pub(crate) use flat::*;
-pub(crate) use kernels::element_tensor_expr;
 pub(crate) use kinds::*;
 pub(crate) use record_layouts::{AuthoredRecordScope, record_layout};
 pub(crate) use rtcalls::*;
@@ -37,6 +35,36 @@ pub(crate) use rtcalls::*;
 /// over the joinable kinds (union, Int, Rat, Bool): the union-lane
 /// kind rules only admit those beside a `CodeValue` operand, so the
 /// `unreachable` arm is a compile-time invariant, not a runtime path.
+/// Replace `pat` in rendered Rust only where it starts an identifier
+/// and `next` accepts the following character. Scoped declaration keys
+/// (`name__module`) contain `__`, so a plain `str::replace` of a
+/// generated-name prefix would rewrite user function names too.
+pub(crate) fn replace_ident_prefix(
+    src: &str,
+    pat: &str,
+    rep: &str,
+    next: impl Fn(Option<char>) -> bool,
+) -> String {
+    let mut out = String::with_capacity(src.len());
+    let mut rest = src;
+    let mut prev: Option<char> = None;
+    while let Some(at) = rest.find(pat) {
+        let before = rest[..at].chars().next_back().or(if at == 0 { prev } else { None });
+        let boundary = !before.is_some_and(|c| c.is_alphanumeric() || c == '_');
+        let after = rest[at + pat.len()..].chars().next();
+        out.push_str(&rest[..at]);
+        if boundary && next(after) {
+            out.push_str(rep);
+        } else {
+            out.push_str(pat);
+        }
+        prev = pat.chars().next_back();
+        rest = &rest[at + pat.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
 pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
     match kind {
         ValueKind::CodeValue => expr,
@@ -67,9 +95,18 @@ fn node_family(kind: &ValueKind) -> bool {
         | ValueKind::ExprCode
         | ValueKind::CodeValue
         | ValueKind::I64
+        | ValueKind::ExactInt
         | ValueKind::Rational
         | ValueKind::Bool => true,
         ValueKind::Vector(element) => node_family(element),
+        _ => false,
+    }
+}
+
+fn carries_exact_int(kind: &ValueKind) -> bool {
+    match kind {
+        ValueKind::ExactInt => true,
+        ValueKind::Vector(element) => carries_exact_int(element),
         _ => false,
     }
 }
@@ -95,8 +132,17 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
         // argument lists, `[made, made]`) folds into the family's
         // dynamic sequence elementwise; a nested family sequence folds
         // the same way, one map level per nesting.
+        // An exact-Int element narrows with `?`, which cannot escape a
+        // `map` closure, so that fold collects through a Result.
         ValueKind::Vector(element) if node_family(element) => {
             let folded = to_node(Expr::Raw(String::from("item")), element);
+            if carries_exact_int(element) {
+                return Expr::Raw(format!(
+                    "emath_rt::code_tree::NodeValue::Sequence(({}).into_iter().map(|item| Ok::<_, String>({})).collect::<Result<Vec<_>, String>>()?)",
+                    render_expr(&expr),
+                    render_expr(&folded)
+                ));
+            }
             Expr::Raw(format!(
                 "emath_rt::code_tree::NodeValue::Sequence(({}).into_iter().map(|item| {}).collect::<Vec<_>>())",
                 render_expr(&expr),
@@ -110,6 +156,12 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
         ValueKind::I64 => Expr::Raw(format!(
             "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Int({}))",
             render_expr(&expr)
+        )),
+        // The code-tree scalar is i64; the VM's arbitrary-precision Int
+        // narrows checked (E-INT-002), never truncated.
+        ValueKind::ExactInt => Expr::Raw(format!(
+            "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Int({}))",
+            render_expr(&kinds::coerce_to_ty(expr, ValueKind::ExactInt, &Ty::I64))
         )),
         ValueKind::Rational => Expr::Raw(format!(
             "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Rat({}))",
@@ -545,9 +597,9 @@ pub(crate) fn op_expr(
                 && matches!(right_k, ValueKind::I64 | ValueKind::ExactInt)
             {
                 return Ok(map_runtime_result(format!(
-                    "{}.quot(&{}).map_err(|err| err.to_string())",
+                    "{}.quot({}).map_err(|err| err.to_string())",
                     render_expr(&exact_int_operand(program, *left, kinds)),
-                    render_expr(&exact_int_operand(program, *right, kinds))
+                    exact_int_ref(program, *right, kinds)
                 )));
             }
             Err(BackendError::UnsupportedType(
@@ -1431,6 +1483,7 @@ pub(crate) fn op_expr(
                 kind @ (ValueKind::ExprCode
                 | ValueKind::CodeValue
                 | ValueKind::I64
+                | ValueKind::ExactInt
                 | ValueKind::Rational
                 | ValueKind::Bool) => {
                     let value = to_node(operand(program, *node), &kind);
@@ -1642,7 +1695,7 @@ fn capability_artifact_expr(
                         && artifact.semantic_hash == binding.semantic_hash
                 })
                 .ok_or_else(|| BackendError::StaleArtifactBinding(capability.to_string()))?;
-            artifact.render(args, program, kinds).ok_or_else(|| {
+            artifact.render(args, program).ok_or_else(|| {
                 BackendError::UnsupportedType(format!(
                     "kernel {} refuses argument carriers {:?}",
                     artifact.kernel_id,
@@ -1666,12 +1719,7 @@ struct KernelArtifact {
 }
 
 enum KernelArtifactKind {
-    DensePointIndex,
     CheckedAdd,
-    ForwardDifference,
-    EinsumContract,
-    RsEncode,
-    UnitInterval,
 }
 
 impl KernelArtifactKind {
@@ -1697,16 +1745,8 @@ pub(super) fn artifact_may_fault(capability: &str) -> bool {
 }
 
 impl KernelArtifact {
-    fn render(
-        &self,
-        args: &[EmirValue],
-        program: &EmirProgram,
-        kinds: &[ValueKind],
-    ) -> Option<Expr> {
+    fn render(&self, args: &[EmirValue], program: &EmirProgram) -> Option<Expr> {
         match self.kind {
-            KernelArtifactKind::DensePointIndex => {
-                op_collections::dense_point_index_expr(args, program, kinds)
-            }
             KernelArtifactKind::CheckedAdd => {
                 let [left, right] = args else {
                     return None;
@@ -1719,28 +1759,6 @@ impl KernelArtifact {
                     "({left}).checked_add({right}).ok_or_else(|| String::from(\"E-ARITH-OVERFLOW: checked integer addition overflowed\"))?"
                 )))
             }
-            KernelArtifactKind::ForwardDifference => {
-                kernels::forward_difference_expr(args, program, kinds)
-            }
-            KernelArtifactKind::EinsumContract => {
-                kernels::einsum_contract_expr(args, program, kinds)
-            }
-            KernelArtifactKind::RsEncode => kernels::rs_encode_expr(args, program, kinds),
-            KernelArtifactKind::UnitInterval => {
-                let [seed, draws, tail @ ..] = args else {
-                    return None;
-                };
-                let stream = match tail {
-                    [] => "\"\"".to_string(),
-                    [stream] => format!("&{}", render_expr(&operand(program, *stream))),
-                    _ => return None,
-                };
-                Some(map_runtime_result(format!(
-                    "emath_rt::unit_interval_stream({}, {}, {stream})",
-                    render_expr(&operand(program, *seed)),
-                    render_expr(&operand(program, *draws)),
-                )))
-            }
         }
     }
 }
@@ -1751,36 +1769,6 @@ const KERNEL_ARTIFACTS: &[KernelArtifact] = &[
         signature: "(Int,Int)->Int",
         semantic_hash: "sha256:79bdccd71ba3fc3c6419e05dae510273992460767e6fee5927baee1318a8e801",
         kind: KernelArtifactKind::CheckedAdd,
-    },
-    KernelArtifact {
-        kernel_id: "checked-dense-index",
-        signature: "(Dense<Float64>,Sequence)->Float64",
-        semantic_hash: "sha256:c278f35784be8439c9141efaa734b85ce1cb9df8b479e8bc1b8dbe27561a0c8a",
-        kind: KernelArtifactKind::DensePointIndex,
-    },
-    KernelArtifact {
-        kernel_id: "counter-stream-unit-interval",
-        signature: "(Float64,Float64,Text?)->Vector<Float64>",
-        semantic_hash: "sha256:f054beaa11ce1ee6f33f2577538b9bfb979b93368f376c9cc2347fdc5699a134",
-        kind: KernelArtifactKind::UnitInterval,
-    },
-    KernelArtifact {
-        kernel_id: "program-forward-difference",
-        signature: "(Program,Vector<Float64>,I64)->Float64",
-        semantic_hash: "sha256:2d66f6359265754f8f0db969186c15af3ad9e7c616ba0ea57e7f5480c3c1c118",
-        kind: KernelArtifactKind::ForwardDifference,
-    },
-    KernelArtifact {
-        kernel_id: "einsum-contract",
-        signature: "(Text,Sequence)->Tensor",
-        semantic_hash: "sha256:b9586ff08f5ace59f2b7794c1ad138220b395c2da50b681f983939c2c24f14f8",
-        kind: KernelArtifactKind::EinsumContract,
-    },
-    KernelArtifact {
-        kernel_id: "modular-evaluation-sequence",
-        signature: "(Vector<ExactInt>,Nat,PositiveExactInt)->Vector<ExactInt>",
-        semantic_hash: "sha256:7dea40cb0d61f2dab74ee6d9d881c6c70bb052717bfca40a9b2ebd2acff8cac8",
-        kind: KernelArtifactKind::RsEncode,
     },
 ];
 
@@ -1901,10 +1889,20 @@ fn literal_frame_expr(
     let states = (0..state.len())
         .map(|index| format!("__frame_state_{index}"))
         .collect::<Vec<_>>();
+    let arg_kinds = inputs.iter().map(|value| kind_at(kinds, *value)).collect::<Vec<_>>();
+    let declared = &instantiate_declared(&arg_kinds, declared);
+    let mut refined = InputKinds::new();
+    for (index, (name, value)) in names.iter().zip(inputs).enumerate() {
+        refined.insert(name.clone(), frame_input_kind(kind_at(kinds, *value), declared.get(index)));
+    }
+    for (name, value) in states.iter().zip(state) {
+        refined.insert(name.clone(), kind_at(kinds, *value));
+    }
+    refine_recursive_frame_kinds(body, &names, &states, &mut refined);
     let mut frame_kinds = InputKinds::new();
     let mut code = String::from("{ ");
-    for (index, (name, value)) in names.iter().zip(inputs).enumerate() {
-        let kind = frame_input_kind(kind_at(kinds, *value), declared.get(index));
+    for (name, value) in names.iter().zip(inputs) {
+        let kind = refined.get(name).cloned().unwrap_or(ValueKind::Other);
         // A closure carrier binds as a clone of the shared `Rc<dyn
         // Fn>` handle: every closure carrier (register or scope
         // binding) is an `Rc`, so crossings clone and calls
@@ -2024,8 +2022,12 @@ fn literal_frame_expr(
         // scope names its decided carrier so nested `CallSelf` sites
         // cross from what `__frame_self` actually returns.
         let _wrapper = SelfWrapperScope::enter(result_kind.clone());
-        let mut body_code = render_expr(&value_expr(body, &names, &states, &frame_kinds)?)
-            .replace("__self(", "__frame_self(");
+        let mut body_code = replace_ident_prefix(
+            &render_expr(&value_expr(body, &names, &states, &frame_kinds)?),
+            "__self(",
+            "__frame_self(",
+            |_| true,
+        );
         // A frame tail that resolves to a borrowed register (a
         // LoadInput binding) must return the owned carrier the
         // recursive fn's signature promises; `owned_value` handles

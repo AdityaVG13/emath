@@ -41,8 +41,7 @@ generic consumers.
 - Named mathematics is not admitted by a handwritten FeatureID router.
   Remaining compiler primitives intern or apply *authored* data:
   `emath capability` cells intern into the package arena; local names
-  shadow image aliases; `use physics::classical::{...}` parses the
-  authored file under `language/stdlib/laws/`; `series_from_csv` /
+  shadow image aliases; `series_from_csv` /
   `series_at` map string literals onto universal `ExprNode::Series` /
   `SeriesSample`; rank-3 stencil sugar is a spelling table that builds
   weight carriers and `Apply`s existing kernels; Option/Result and

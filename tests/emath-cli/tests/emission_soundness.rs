@@ -13,7 +13,7 @@
 //!    projection now reads the tuple part and widens to the exact
 //!    integer carrier, mirroring the VM's `CValue::Rat` parts.
 //! 3. Mixed Int/Rat arithmetic with ExactInt-backed values
-//!    (`int_binom` results) emitted `exact_ratio()` raw tuple ops
+//!    (`int_pow` results) emitted `exact_ratio()` raw tuple ops
 //!    (E0369: cannot multiply `(ExactInt, ExactInt)` by `ExactInt`).
 //!    Every operand now widens to the one `(i128, i128)` ratio
 //!    representation through a checked `to_i128` bridge.
@@ -119,25 +119,17 @@ emath function probe_rat_pow_call:
             expect result == 8 / 1
 ";
 
-const HYPER_CALL: &str = "use probability.distributions
-
-emath function probe_hyper_call:
+const MIXED_CALL: &str = "emath function probe_mixed_call:
     inputs:
-        k: Int
         n: Int
-        big_n: Int
-        big_k: Int
     outputs:
         result: Rat
     definitions:
-        result = hypergeometric_pmf(k, n, big_n, big_k)
+        result = int_pow(n, 3) * (1 / 2) + 1 / 3
     tests:
-        example <two_aces_of_two_draws>:
-            given k = 2
+        example <cube_halved_plus_third>:
             given n = 2
-            given big_n = 4
-            given big_k = 2
-            expect result == 1 / 6
+            expect result == 13 / 3
 ";
 
 #[test]
@@ -180,9 +172,9 @@ fn probe() {
     });
 
     p.case("mixed-int-rat-one-representation", |p| {
-        let src = scratch("hyper-src");
-        let out = scratch("hyper-out");
-        std::fs::write(&src, HYPER_CALL).expect("write source");
+        let src = scratch("mixed-src");
+        let out = scratch("mixed-out");
+        std::fs::write(&src, MIXED_CALL).expect("write source");
         let (text, code) = build(&src, &["--out", &out.to_string_lossy()]);
         p.eq("exit", code, EXIT_OK as i32);
         p.contains("runnable", &text, "runnable");

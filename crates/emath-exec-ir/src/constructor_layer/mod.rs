@@ -15,10 +15,7 @@ use emath_core::tree::{
     TypeKind, UnaryOp, UseTree,
 };
 
-use crate::exact_int::{
-    ExactError, ExactInt, exact_int_hamming, exact_int_poly_eval, exact_int_prod,
-    exact_int_prod_from, exact_int_sum, exact_int_sum_from, exact_int_weighted_prod,
-};
+use crate::exact_int::{ExactError, ExactInt, exact_int_prod, exact_int_sum};
 
 /// The work limit (engine steps) of one evaluation unless a caller
 /// sets its own.
@@ -58,7 +55,9 @@ pub enum CValue {
     Buffer(Arc<Mutex<Vec<CValue>>>),
     Tuple(Vec<CValue>),
     Record {
-        type_name: String,
+        /// Shared for the same reason as `fields`: every engine-step
+        /// clone of a record would otherwise reallocate its type name.
+        type_name: Arc<str>,
         /// Copy-on-write record fields (the `Sequence` precedent): the
         /// CPS machine clones argument values at every engine step, so
         /// a deep `BTreeMap` clone made every record-typed call
@@ -315,6 +314,8 @@ pub fn constructor_admit_code(code: &str) -> &'static str {
         "E-SEC-101" => "E-SEC-101",
         "E-NAME-020" => "E-NAME-020",
         "E-NAME-022" => "E-NAME-022",
+        "E-NAME-025" => "E-NAME-025",
+        "E-NAME-026" => "E-NAME-026",
         "E-PKG-050" => "E-PKG-050",
         "E-USE-ADMISSION" => "E-USE-ADMISSION",
         "E-TYPE-002" => "E-TYPE-002",
@@ -352,6 +353,8 @@ pub struct ModuleReport {
 #[derive(Clone)]
 struct FnDecl {
     inputs: Vec<String>,
+    /// Type parameter names (`T` in `emath function map<T, U>`).
+    generics: Vec<String>,
     input_types: Vec<TypeExpr>,
     outputs: Vec<String>,
     output_types: Vec<TypeExpr>,
@@ -765,6 +768,7 @@ mod prelude;
 mod query;
 mod residual;
 mod scalar;
+mod scope;
 mod scratch;
 mod setup;
 mod value;
@@ -807,6 +811,7 @@ pub fn module_callable_table(tree: &SyntaxTree) -> Vec<(String, bool, u64)> {
         let opaque = call::function_is_opaque(decl);
         let decl_fn = FnDecl {
             inputs: Vec::new(),
+            generics: Vec::new(),
             input_types: Vec::new(),
             outputs: Vec::new(),
             output_types: Vec::new(),
@@ -846,6 +851,7 @@ pub fn module_definition_table(
                 .into_iter()
                 .map(|(name, _)| name)
                 .collect(),
+            generics: Vec::new(),
             input_types: Vec::new(),
             outputs: call::section_fields(decl, "outputs"),
             output_types: Vec::new(),

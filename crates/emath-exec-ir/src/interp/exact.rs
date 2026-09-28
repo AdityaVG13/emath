@@ -98,42 +98,6 @@ pub(super) fn eval_exact_int_call(
             let args = ints(2)?;
             args[0].rem_euclid(&args[1]).map_err(fault)?
         }
-        "int_root" => {
-            let args = ints(2)?;
-            args[0].floor_root(&args[1]).map_err(fault)?
-        }
-        "int_gcd" => {
-            let args = ints(2)?;
-            emath_rt::ExactInt::gcd(&args[0], &args[1]).map_err(fault)?
-        }
-        "int_egcd" => {
-            let args = ints(2)?;
-            let (g, s, t) = emath_rt::ExactInt::egcd(&args[0], &args[1]).map_err(fault)?;
-            return Ok(Value::List(vec![
-                value_from_exact(g),
-                value_from_exact(s),
-                value_from_exact(t),
-            ]));
-        }
-        "int_binom" => {
-            let args = ints(2)?;
-            args[0].binomial(&args[1]).map_err(fault)?
-        }
-        "int_fact" => ints(1)?[0].factorial().map_err(fault)?,
-        "int_double_fact" => ints(1)?[0].double_factorial().map_err(fault)?,
-        "int_totient" => ints(1)?[0].totient().map_err(fault)?,
-        "int_rising" => {
-            let args = ints(2)?;
-            args[0].rising(&args[1]).map_err(fault)?
-        }
-        "int_falling" => {
-            let args = ints(2)?;
-            args[0].falling(&args[1]).map_err(fault)?
-        }
-        "int_powmod" => {
-            let args = ints(3)?;
-            args[0].pow_mod(&args[1], &args[2]).map_err(fault)?
-        }
         "int_pow" => {
             let args = ints(2)?;
             args[0].pow(&args[1]).map_err(fault)?
@@ -155,70 +119,6 @@ pub(super) fn eval_exact_int_call(
                 });
             }
             emath_rt::exact_int_prod(&seq(args[0])?).map_err(fault)?
-        }
-        "int_sum_from" => {
-            if args.len() != 2 {
-                return Err(EvalFault::CarrierRefused {
-                    op: "exact-int-call",
-                    detail: "int_sum_from argument count".into(),
-                });
-            }
-            emath_rt::exact_int_sum_from(
-                &seq(args[0])?,
-                &exact_int_of(register(registers, args[1])?, "exact-int-call")?,
-            )
-            .map_err(fault)?
-        }
-        "int_prod_from" => {
-            if args.len() != 2 {
-                return Err(EvalFault::CarrierRefused {
-                    op: "exact-int-call",
-                    detail: "int_prod_from argument count".into(),
-                });
-            }
-            emath_rt::exact_int_prod_from(
-                &seq(args[0])?,
-                &exact_int_of(register(registers, args[1])?, "exact-int-call")?,
-            )
-            .map_err(fault)?
-        }
-        "int_hamming" => {
-            if args.len() != 2 {
-                return Err(EvalFault::Arithmetic {
-                    op: "exact-int-call",
-                    detail: "int_hamming argument count",
-                });
-            }
-            emath_rt::exact_int_hamming(&seq(args[0])?, &seq(args[1])?).map_err(fault)?
-        }
-        "int_weighted_prod" => {
-            if args.len() != 4 {
-                return Err(EvalFault::CarrierRefused {
-                    op: "exact-int-call",
-                    detail: "int_weighted_prod argument count".into(),
-                });
-            }
-            emath_rt::exact_int_weighted_prod(
-                &seq(args[0])?,
-                &seq(args[1])?,
-                &exact_int_of(register(registers, args[2])?, "exact-int-call")?,
-                &exact_int_of(register(registers, args[3])?, "exact-int-call")?,
-            )
-            .map_err(fault)?
-        }
-        "int_poly_eval" => {
-            if args.len() != 3 {
-                return Err(EvalFault::Arithmetic {
-                    op: "exact-int-call",
-                    detail: "int_poly_eval argument count",
-                });
-            }
-            emath_rt::exact_int_poly_eval(
-                &seq(args[0])?,
-                &exact_int_of(register(registers, args[1])?, "exact-int-call")?,
-                &exact_int_of(register(registers, args[2])?, "exact-int-call")?,
-            )
-            .map_err(fault)?
         }
         other => {
             return Err(EvalFault::CarrierRefused {

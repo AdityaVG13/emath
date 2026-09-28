@@ -262,9 +262,6 @@ pub(super) fn register_rust_ty(
     match op {
         EmirOp::ConstI64(_) => Some("i64".to_string()),
         EmirOp::ConstExactInt(_) => Some("emath_rt::ExactInt".to_string()),
-        EmirOp::ExactIntCall { name, .. } if name == "int_egcd" => {
-            Some("Vec<emath_rt::ExactInt>".to_string())
-        }
         EmirOp::ExactIntCall { .. } => Some("emath_rt::ExactInt".to_string()),
         EmirOp::ConstF64(_) | EmirOp::SeriesSample { .. } => Some("f64".to_string()),
         EmirOp::ConstBool(_)
@@ -332,6 +329,20 @@ pub(super) fn exact_int_operand(
     }
 }
 
+/// An operand rendered for a `&ExactInt` slot. A borrowed ExactInt
+/// register (the non-copy load lane, a borrowed record projection)
+/// already renders as exactly one reference layer, so the `&` is added
+/// only for owned expressions; every other kind converts to an owned
+/// ExactInt first and always takes the `&`.
+pub(super) fn exact_int_ref(program: &EmirProgram, value: EmirValue, kinds: &[ValueKind]) -> String {
+    let rendered = render_expr(&exact_int_operand(program, value, kinds));
+    if kind_at(kinds, value) == ValueKind::ExactInt && borrowed_register(program, value, kinds) {
+        rendered
+    } else {
+        format!("&{rendered}")
+    }
+}
+
 pub(super) fn exact_int_call_expr(
     name: &str,
     args: &[EmirValue],
@@ -343,20 +354,10 @@ pub(super) fn exact_int_call_expr(
             .map(|arg| render_expr(&exact_int_operand(program, *arg, kinds)))
             .ok_or_else(|| BackendError::UnsupportedType(format!("{name} argument count")))
     };
-    // A `&ExactInt` method-argument slot: a borrowed register (the
-    // non-copy load lane, a borrowed record projection) already
-    // renders as exactly one reference layer, so the `&` is added
-    // only for owned operand expressions.
     let as_int_ref = |index: usize| -> Result<String, BackendError> {
-        let arg = args
-            .get(index)
-            .ok_or_else(|| BackendError::UnsupportedType(format!("{name} argument count")))?;
-        let rendered = render_expr(&exact_int_operand(program, *arg, kinds));
-        Ok(if borrowed_register(program, *arg, kinds) {
-            rendered
-        } else {
-            format!("&{rendered}")
-        })
+        args.get(index)
+            .map(|arg| exact_int_ref(program, *arg, kinds))
+            .ok_or_else(|| BackendError::UnsupportedType(format!("{name} argument count")))
     };
     let as_seq = |index: usize| -> Result<String, BackendError> {
         let arg = args
@@ -383,48 +384,6 @@ pub(super) fn exact_int_call_expr(
             as_int(0)?,
             as_int_ref(1)?
         ),
-        "int_root" => format!(
-            "{}.floor_root({}).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int_ref(1)?
-        ),
-        "int_gcd" => format!(
-            "emath_rt::ExactInt::gcd({}, {}).map_err(|err| err.to_string())",
-            as_int_ref(0)?,
-            as_int_ref(1)?
-        ),
-        "int_egcd" => format!(
-            "emath_rt::ExactInt::egcd({}, {}).map(|(g, s, t)| vec![g, s, t]).map_err(|err| err.to_string())",
-            as_int_ref(0)?,
-            as_int_ref(1)?
-        ),
-        "int_binom" => format!(
-            "{}.binomial({}).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int_ref(1)?
-        ),
-        "int_fact" => format!("{}.factorial().map_err(|err| err.to_string())", as_int(0)?),
-        "int_double_fact" => format!(
-            "{}.double_factorial().map_err(|err| err.to_string())",
-            as_int(0)?
-        ),
-        "int_totient" => format!("{}.totient().map_err(|err| err.to_string())", as_int(0)?),
-        "int_rising" => format!(
-            "{}.rising({}).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int_ref(1)?
-        ),
-        "int_falling" => format!(
-            "{}.falling({}).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int_ref(1)?
-        ),
-        "int_powmod" => format!(
-            "{}.pow_mod({}, {}).map_err(|err| err.to_string())",
-            as_int(0)?,
-            as_int_ref(1)?,
-            as_int_ref(2)?
-        ),
         "int_pow" => format!(
             "{}.pow({}).map_err(|err| err.to_string())",
             as_int(0)?,
@@ -437,34 +396,6 @@ pub(super) fn exact_int_call_expr(
         "int_prod" => format!(
             "emath_rt::exact_int_prod(&{}).map_err(|err| err.to_string())",
             as_seq(0)?
-        ),
-        "int_sum_from" => format!(
-            "emath_rt::exact_int_sum_from(&{}, {}).map_err(|err| err.to_string())",
-            as_seq(0)?,
-            as_int_ref(1)?
-        ),
-        "int_prod_from" => format!(
-            "emath_rt::exact_int_prod_from(&{}, {}).map_err(|err| err.to_string())",
-            as_seq(0)?,
-            as_int_ref(1)?
-        ),
-        "int_hamming" => format!(
-            "emath_rt::exact_int_hamming(&{}, &{}).map_err(|err| err.to_string())",
-            as_seq(0)?,
-            as_seq(1)?
-        ),
-        "int_weighted_prod" => format!(
-            "emath_rt::exact_int_weighted_prod(&{}, &{}, {}, {}).map_err(|err| err.to_string())",
-            as_seq(0)?,
-            as_seq(1)?,
-            as_int_ref(2)?,
-            as_int_ref(3)?
-        ),
-        "int_poly_eval" => format!(
-            "emath_rt::exact_int_poly_eval(&{}, {}, {}).map_err(|err| err.to_string())",
-            as_seq(0)?,
-            as_int_ref(1)?,
-            as_int_ref(2)?
         ),
         other => {
             return Err(BackendError::UnsupportedType(format!(

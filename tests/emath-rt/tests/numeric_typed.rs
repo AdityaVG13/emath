@@ -1,15 +1,4 @@
-//! Runtime numeric-body error model: typed refusals, never panics.
-//!
-//! The former panicking i64 wrappers (`factorial`, `pow_mod`,
-//! `poly_eval_mod`, `rs_encode`, `hamming_distance`) are gone; their
-//! `_checked` twins are the surface. `simpson`, `sample_limit`, and the
-//! `mod_inv`/`sqrt_mod` kernels are gone entirely — quadrature and
-//! limits are authored `.emath` (`calculus.float64_quadrature`,
-//! `numerics.limits`), inverses and modular square roots are authored
-//! lanes (`cryptology.modular`, `exact.quadratic`).
-
-use emath_rt::{factorial_checked, hamming_distance_checked};
-use emath_test_harness::{Probe, boot};
+//! Exact integer carrier ordering across the small/limb storage boundary.
 
 #[test]
 fn exact_integer_order_crosses_storage_boundaries() {
@@ -44,23 +33,4 @@ fn exact_integer_order_crosses_storage_boundaries() {
         assert_eq!(a.cmp(&b), std::cmp::Ordering::Equal);
         assert_eq!(b.cmp(&a), std::cmp::Ordering::Equal);
     }
-}
-
-#[test]
-fn probe() {
-    boot();
-    let mut p = Probe::new("numeric body refuses typed, never panics");
-    p.case("checked_surface", |p| {
-        p.demand(
-            "factorial",
-            factorial_checked(21).is_err(),
-            "factorial past 20 refuses typed",
-        );
-        p.demand(
-            "hamming",
-            hamming_distance_checked(&[1.0], &[1.0, 2.0]).is_err(),
-            "length mismatch refuses typed",
-        );
-    });
-    p.finish();
 }

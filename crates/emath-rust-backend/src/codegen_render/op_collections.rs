@@ -579,66 +579,6 @@ pub(super) fn op_collection_exprs(
     }
 }
 
-/// Preserve coordinate rank and integer admission at the dense storage boundary.
-pub(super) fn dense_point_index_expr(
-    args: &[EmirValue],
-    program: &EmirProgram,
-    kinds: &[ValueKind],
-) -> Option<Expr> {
-    let [dense, coordinates] = args else {
-        return None;
-    };
-    let (shape, data) = match kind_at(kinds, *dense) {
-        ValueKind::Vector(element) if *element == ValueKind::F64 => {
-            ("&[__dense.len()][..]", "__dense.as_slice()")
-        }
-        ValueKind::Matrix(element) if *element == ValueKind::F64 => (
-            "&[__dense.rows(), __dense.cols()][..]",
-            "__dense.as_slice()",
-        ),
-        ValueKind::Tensor => ("__dense.shape.as_slice()", "__dense.data.as_slice()"),
-        _ => return None,
-    };
-    let conversion = match kind_at(kinds, *coordinates) {
-        ValueKind::Vector(element) if *element == ValueKind::I64 => "*coordinate",
-        ValueKind::Vector(element) if *element == ValueKind::F64 => {
-            r#"{
-            if !coordinate.is_finite() || coordinate.fract() != 0.0 || *coordinate < 0.0 || *coordinate > i64::MAX as f64 {
-                return Err(format!("E-SHAPE-006: index axis {axis} must be a whole non-negative integer"));
-            }
-            *coordinate as i64
-        }"#
-        }
-        _ => return None,
-    };
-    let dense = render_expr(&operand(program, *dense));
-    let coordinates = render_expr(&operand(program, *coordinates));
-    Some(map_runtime_result(format!(
-        r#"(|| -> Result<f64, String> {{
-        let __dense = &{dense};
-        let shape: &[usize] = {shape};
-        let data: &[f64] = {data};
-        let coordinates = &{coordinates};
-        let expected = shape.iter().try_fold(1usize, |size, axis| size.checked_mul(*axis))
-            .ok_or_else(|| String::from("E-LINALG-004: dense carrier extent overflow"))?;
-        if expected != data.len() {{ return Err(String::from("E-LINALG-004: dense carrier data length does not match its shape")); }}
-        if coordinates.len() != shape.len() {{
-            return Err(format!("E-SHAPE-006: index requires {{}} subscript(s), found {{}}", shape.len(), coordinates.len()));
-        }}
-        let mut offset = 0usize;
-        for (axis, (extent, coordinate)) in shape.iter().zip(coordinates.iter()).enumerate() {{
-            let index: i64 = {conversion};
-            if index < 0 || index as usize >= *extent {{
-                return Err(format!("E-SHAPE-006: index {{index}} is outside axis {{axis}} of length {{extent}}"));
-            }}
-            offset = offset.checked_mul(*extent).and_then(|value| value.checked_add(index as usize))
-                .ok_or_else(|| String::from("E-SHAPE-006: dense index offset overflow"))?;
-        }}
-        data.get(offset).copied().ok_or_else(|| format!("E-SHAPE-006: index {{offset}} is outside the dense carrier of length {{}}", data.len()))
-    }})()"#
-    )))
-}
-
 fn layout_match_code(layout: &str, value: &str, kind: &ValueKind) -> String {
     match kind {
         ValueKind::F64 | ValueKind::I64 => {

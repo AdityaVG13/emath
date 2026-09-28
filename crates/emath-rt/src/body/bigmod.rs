@@ -1,23 +1,15 @@
-// ── Big-integer modular arithmetic (emath-t63iz stage 2) ─────────────────
+// ── Big field-element carrier (emath-t63iz stage 2) ─────────────────────
 //
 // `UBig`: an arbitrary-precision NON-NEGATIVE integer, little-endian
-// base-2^32 limbs, canonical (no high zero limbs). This is the stage-2
-// representation for the four number-theory builtins (`int_rem`,
-// `pow_mod`, `poly_eval_mod`, `rs_encode`):
-// |F| < 2^256, exactly the production regime the stage-1 i64/i128 lane
-// cannot reach. The algorithms are the stage-1 algorithms
-// (square-and-multiply, binary long division, Horner) over
-// the swapped representation — a representation change, not an
-// algorithm rewrite. The stage boundary stays explicit: admission
-// refuses values ≥ 2^256 (see `LIMIT_BITS`) — widening the bound later
-// is a constant change, not a redesign.
+// base-2^32 limbs, canonical (no high zero limbs). It is the storage
+// carrier for `BigInt` values (decimal parse/print, add, sub, mul,
+// compare, narrowing to i64). Modular algorithms over it are authored
+// `.emath`, not runtime kernels. Admission refuses values >= 2^256 (see
+// `LIMIT_BITS`).
 //
 // This file is embedded verbatim into every generated crate (`SOURCE`
-// in emath-rt's lib.rs), so generated Rust runs the SAME kernels as the
-// interpreter — parity is structural, not hoped for. Determinism:
-// every routine is integer-exact, allocation-pattern free of timing
-// variation claims (no-claim: not constant-time; these are research
-// probes, not crypto primitives).
+// in emath-rt's lib.rs), so generated Rust and the interpreter share one
+// carrier. No-claim: not constant-time.
 
 /// Stage-2 value bound: |F| < 2^256.
 pub const LIMIT_BITS: u32 = 256;
@@ -29,8 +21,7 @@ pub struct UBig {
     limbs: Vec<u32>,
 }
 
-/// Kernel-level error for big modular arithmetic (stage-2 style mirrors
-/// the `&'static str` refusals of the stage-1 kernels).
+/// Carrier-level refusal (decimal parse errors).
 pub type BigError = &'static str;
 
 impl UBig {
@@ -51,19 +42,6 @@ impl UBig {
         };
         big.canonicalize();
         big
-    }
-
-    /// From an i64 by absolute value (`i64::MIN` → 2^63).
-    pub fn from_i64_abs(value: i64) -> Self {
-        UBig::from_u64(value.unsigned_abs())
-    }
-
-    /// From canonical little-endian u32 limbs (high zeros trimmed).
-    pub fn from_limbs(mut limbs: Vec<u32>) -> Self {
-        while limbs.last() == Some(&0) {
-            limbs.pop();
-        }
-        UBig { limbs }
     }
 
     /// Canonical little-endian limbs (no high zeros; empty = zero).
@@ -140,23 +118,6 @@ impl UBig {
     /// True when the value is one.
     pub fn is_one(&self) -> bool {
         self.limbs == [1]
-    }
-
-    /// Bit `i` of the little-endian bit string.
-    fn bit(&self, i: u32) -> bool {
-        let limb = i / 32;
-        match self.limbs.get(limb as usize) {
-            Some(&value) => (value >> (i % 32)) & 1 == 1,
-            None => false,
-        }
-    }
-
-    fn set_bit(&mut self, i: u32) {
-        let limb = (i / 32) as usize;
-        while self.limbs.len() <= limb {
-            self.limbs.push(0);
-        }
-        self.limbs[limb] |= 1 << (i % 32);
     }
 
     pub fn cmp(&self, other: &Self) -> core::cmp::Ordering {
@@ -268,126 +229,6 @@ impl UBig {
         big.canonicalize();
         big
     }
-
-    /// `(a + b) mod m` for `a, b < m` — subtraction instead of a
-    /// double-width add.
-    fn add_mod(a: &UBig, b: &UBig, m: &UBig) -> UBig {
-        // a, b < m < 2^256 ⇒ a + b < 2^257: one extra limb suffices.
-        let sum = a.add(b);
-        if sum.cmp(m) != core::cmp::Ordering::Less {
-            sum.sub(m)
-        } else {
-            sum
-        }
-    }
-
-    /// `(a - b) mod m` for `a, b < m` — add m when the raw difference
-    /// would be negative (never materialized).
-    fn sub_mod(a: &UBig, b: &UBig, m: &UBig) -> UBig {
-        if a.cmp(b) != core::cmp::Ordering::Less {
-            a.sub(b)
-        } else {
-            m.sub(b).add(a)
-        }
-    }
-
-    /// `a * b mod m` via the full product then one binary reduction.
-    pub fn mul_mod(a: &UBig, b: &UBig, m: &UBig) -> UBig {
-        UBig::rem(&a.mul(b), m)
-    }
-
-    /// Binary long division: `(a / b, a mod b)`. `b == 0` is the
-    /// caller's typed refusal (mirrors int_rem's positive-modulus
-    /// contract); bit-shift subtract keeps u32 limbs exact for
-    /// 512-bit stage-2 products.
-    fn rem(a: &UBig, b: &UBig) -> UBig {
-        debug_assert!(!b.is_zero());
-        if a.cmp(b) == core::cmp::Ordering::Less {
-            return a.clone();
-        }
-        let mut remainder = UBig::zero();
-        for i in (0..a.bits()).rev() {
-            remainder = remainder.shl1();
-            if a.bit(i) {
-                remainder.set_bit(0);
-            }
-            if remainder.cmp(b) != core::cmp::Ordering::Less {
-                remainder = remainder.sub(b);
-            }
-        }
-        remainder
-    }
-
-    /// `base^exp mod m` (square-and-multiply over the big
-    /// representation; same algorithm as the stage-1 i128 kernel).
-    fn mod_pow(base: &UBig, exp: &UBig, m: &UBig) -> UBig {
-        let mut result = UBig::rem(&UBig::one(), m);
-        let b = UBig::rem(base, m);
-        for i in (0..exp.bits()).rev() {
-            result = UBig::mul_mod(&result, &result, m);
-            if exp.bit(i) {
-                result = UBig::mul_mod(&result, &b, m);
-            }
-        }
-        result
-    }
-
-    /// `(v: i64) promoted into [0, m)`: sign-correct Euclidean
-    /// placement without any i128 modulus cast (m may be ≥ 2^127).
-    pub fn from_i64_rem(value: i64, m: &UBig) -> UBig {
-        let magnitude = UBig::from_i64_abs(value);
-        let rem = UBig::rem(&magnitude, m);
-        if value >= 0 {
-            rem
-        } else if rem.is_zero() {
-            rem
-        } else {
-            m.sub(&rem)
-        }
-    }
-}
-
-/// `a rem_euclid m` over `UBig` (stage-2 int_rem kernel). `a` is a
-/// canonical non-negative big value; the i64-negative case promotes
-/// through `from_i64_rem`.
-pub fn big_int_rem_checked(a: &UBig, m: &UBig) -> Result<UBig, BigError> {
-    if m.is_zero() {
-        return Err("int_rem: modulus must be non-zero");
-    }
-    Ok(UBig::rem(a, m))
-}
-
-/// `a rem_euclid m` with a signed i64 `a` and a big modulus.
-pub fn big_int_rem_i64_checked(a: i64, m: &UBig) -> Result<UBig, BigError> {
-    if m.is_zero() {
-        return Err("int_rem: modulus must be non-zero");
-    }
-    Ok(UBig::from_i64_rem(a, m))
-}
-
-/// Full binary long division: `(a / b, a mod b)`.
-pub fn big_div_rem(a: &UBig, b: &UBig) -> (UBig, UBig) {
-    let mut quotient = UBig::zero();
-    let mut remainder = UBig::zero();
-    for i in (0..a.bits()).rev() {
-        remainder = remainder.shl1();
-        if a.bit(i) {
-            remainder.set_bit(0);
-        }
-        if remainder.cmp(b) != core::cmp::Ordering::Less {
-            remainder = remainder.sub(b);
-            quotient.set_bit(i);
-        }
-    }
-    (quotient, remainder)
-}
-
-/// `base^exp mod m` (stage-2 pow_mod kernel).
-pub fn big_pow_mod_checked(base: &UBig, exp: &UBig, m: &UBig) -> Result<UBig, BigError> {
-    if m.is_zero() {
-        return Err("pow_mod: modulus must be positive");
-    }
-    Ok(UBig::mod_pow(base, exp, m))
 }
 
 impl UBig {
@@ -405,86 +246,3 @@ impl UBig {
     }
 }
 
-/// Polynomial evaluation over GF(p) by Horner's method with big `x`/`p`
-/// (coefficients stay on the f64 surface, exact ≤ 2^53; the Horner
-/// products are the stage-2 wide step).
-pub fn big_poly_eval_mod_checked(
-    coeffs: &[f64],
-    x: &UBig,
-    p: &UBig,
-) -> Result<UBig, BigError> {
-    if p.is_zero() {
-        return Err("poly_eval_mod: modulus must be positive");
-    }
-    let mut result = UBig::zero();
-    for &c in coeffs.iter().rev() {
-        let coefficient = exact_i64_coeff(c)?;
-        result = UBig::mul_mod(&result, x, p);
-        result = add_i64_mod(&result, coefficient, p);
-    }
-    Ok(result)
-}
-
-/// Reed-Solomon codeword over the big modulus: evaluate at x = 0..n
-/// through the shared big Horner kernel.
-pub fn big_rs_encode_checked(coeffs: &[f64], n: i64, p: &UBig) -> Result<Vec<UBig>, BigError> {
-    if p.is_zero() {
-        return Err("rs_encode: modulus must be positive");
-    }
-    if n <= 0 || UBig::from_u64(n as u64).cmp(p) != core::cmp::Ordering::Less {
-        return Err("rs_encode: codeword length n must be in (0, p)");
-    }
-    let mut codeword = Vec::with_capacity(n as usize);
-    for x in 0..n {
-        codeword.push(big_poly_eval_mod_checked(coeffs, &UBig::from_u64(x as u64), p)?);
-    }
-    Ok(codeword)
-}
-
-/// `(r + c) mod m` for a signed i64 coefficient.
-fn add_i64_mod(r: &UBig, c: i64, m: &UBig) -> UBig {
-    if c >= 0 {
-        UBig::add_mod(r, &UBig::from_u64(c as u64), m)
-    } else {
-        UBig::sub_mod(r, &UBig::from_i64_abs(c), m)
-    }
-}
-
-/// `as i64` on the f64 coefficient surface: NaN→refused, Inf→refused,
-/// fractional→refused. Integer kernels refuse silent finite lies.
-fn exact_i64_coeff(value: f64) -> Result<i64, BigError> {
-    if !value.is_finite() || value.fract() != 0.0 {
-        return Err("coefficient must be a finite whole number");
-    }
-    if value < i64::MIN as f64 || value > i64::MAX as f64 {
-        return Err("coefficient exceeds i64 range");
-    }
-    Ok(value as i64)
-}
-
-// ── Codegen-facing wrappers (emath-t63iz stage 2) ────────────────────────
-//
-// Generated Rust runs only ADMITTED programs, so a refusal here is an
-// internal invariant violation: the panic posture matches the i64
-// wrappers in `numeric.rs` (interpreter refusals stay typed; the
-// generated lane never observes a refused input).
-
-/// Panicking `int_rem` for generated Rust (admission guarantees `m > 0`).
-pub fn big_int_rem(a: &UBig, m: &UBig) -> UBig {
-    big_int_rem_checked(a, m).expect("int_rem refusal leaked past admission")
-}
-
-/// Panicking `pow_mod` for generated Rust.
-pub fn big_pow_mod(base: &UBig, exp: &UBig, m: &UBig) -> UBig {
-    big_pow_mod_checked(base, exp, m).expect("pow_mod refusal leaked past admission")
-}
-
-/// Panicking `poly_eval_mod` for generated Rust.
-pub fn big_poly_eval_mod(coeffs: &[f64], x: &UBig, p: &UBig) -> UBig {
-    big_poly_eval_mod_checked(coeffs, x, p).expect("poly_eval_mod refusal leaked past admission")
-}
-
-/// Panicking `rs_encode` for generated Rust.
-pub fn big_rs_encode(coeffs: &[f64], n: i64, p: &UBig) -> Vec<UBig> {
-    big_rs_encode_checked(coeffs, n, p).expect("rs_encode refusal leaked past admission")
-}

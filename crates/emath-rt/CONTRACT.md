@@ -68,10 +68,9 @@ This shared representation primitive does not widen native Int type admission.
   / Dirichlet; `stencil_2d` refuses `Dirichlet`.
   `OneSided` linearly extrapolates a ghost cell (`u[-1] = 2u[0] − u[1]`)
   so a central first-difference is exact on linear fields at the edge.
-- Every panicking kernel (`einsum_as_*`, `stencil_2d`, `mat_mul_mat`)
-  has a `_checked` twin (`Result<_, &'static str>` or `EinsumError`);
-  the panicking form delegates to it or is refused ahead at codegen
-  time. Index/slice kernels are checked-only (`IndexError`): there is
+- Kernels are checked-only (`Result<_, &'static str>`, `EinsumError`,
+  `BigError`); generated code maps each refusal to its typed code.
+  There are no panicking twins. Index/slice kernels are checked-only (`IndexError`): there is
   no panicking `[]` wrapper. The i64 numeric wrappers
   (`factorial`/`mod_inv`/`pow_mod`/`sqrt_mod`/`poly_eval_mod`/
   `rs_encode`/`hamming_distance`) are gone; their `_checked` twins are

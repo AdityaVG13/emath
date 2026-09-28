@@ -1,4 +1,4 @@
-use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, exact_int_sum_from, exact_int_prod_from, exact_int_hamming, exact_int_weighted_prod, ExactInt, exact_int_poly_eval, Rc, BTreeMap, Arc};
+use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, Rc, BTreeMap, Arc};
 
 impl Engine {
     pub(in crate::constructor_layer) fn eval_tail(
@@ -128,18 +128,6 @@ impl Engine {
         args: &[Expr],
     ) -> Result<CValue, ConstructorError> {
         match op {
-            "int_fact" | "int_double_fact" | "int_totient" => {
-                if args.len() != 1 {
-                    return Err(fault("arity", format!("`{op}` expects one Int argument")));
-                }
-                let n = expect_int(self.eval(&args[0])?, op)?;
-                let value = match op {
-                    "int_fact" => n.factorial(),
-                    "int_double_fact" => n.double_factorial(),
-                    _ => n.totient(),
-                };
-                value.map(CValue::Int).map_err(exact_fault)
-            }
             "int_sum" | "int_prod" => {
                 if args.len() != 1 {
                     return Err(fault(
@@ -155,83 +143,6 @@ impl Engine {
                 };
                 value.map(CValue::Int).map_err(exact_fault)
             }
-            "int_sum_from" | "int_prod_from" => {
-                if args.len() != 2 {
-                    return Err(fault(
-                        "arity",
-                        format!("`{op}` expects a sequence(Int) and an Int start"),
-                    ));
-                }
-                let items = expect_ints(self.eval(&args[0])?, op)?;
-                let start = expect_int(self.eval(&args[1])?, op)?;
-                let value = if op == "int_sum_from" {
-                    exact_int_sum_from(&items, &start)
-                } else {
-                    exact_int_prod_from(&items, &start)
-                };
-                value.map(CValue::Int).map_err(exact_fault)
-            }
-            "int_hamming" => {
-                if args.len() != 2 {
-                    return Err(fault(
-                        "arity",
-                        format!("`{op}` expects two sequence(Int) arguments"),
-                    ));
-                }
-                let left = expect_ints(self.eval(&args[0])?, op)?;
-                let right = expect_ints(self.eval(&args[1])?, op)?;
-                exact_int_hamming(&left, &right)
-                    .map(CValue::Int)
-                    .map_err(exact_fault)
-            }
-            "int_weighted_prod" => {
-                if args.len() != 4 {
-                    return Err(fault(
-                        "arity",
-                        format!("`{op}` expects sequence(Int), sequence(Int), Int, Int"),
-                    ));
-                }
-                let xs = expect_ints(self.eval(&args[0])?, op)?;
-                let ws = expect_ints(self.eval(&args[1])?, op)?;
-                let start = expect_int(self.eval(&args[2])?, op)?;
-                let acc = expect_int(self.eval(&args[3])?, op)?;
-                exact_int_weighted_prod(&xs, &ws, &start, &acc)
-                    .map(CValue::Int)
-                    .map_err(exact_fault)
-            }
-            "int_egcd" => {
-                if args.len() != 2 {
-                    return Err(fault("arity", format!("`{op}` expects two Int arguments")));
-                }
-                let left = expect_int(self.eval(&args[0])?, op)?;
-                let right = expect_int(self.eval(&args[1])?, op)?;
-                let (g, s, t) = ExactInt::egcd(&left, &right).map_err(exact_fault)?;
-                Ok(CValue::Sequence(std::sync::Arc::new(vec![
-                    CValue::Int(g),
-                    CValue::Int(s),
-                    CValue::Int(t),
-                ])))
-            }
-            "int_powmod" | "int_poly_eval" => {
-                if args.len() != 3 {
-                    return Err(fault("arity", format!("`{op}` expects three arguments")));
-                }
-                if op == "int_powmod" {
-                    let base = expect_int(self.eval(&args[0])?, op)?;
-                    let exp = expect_int(self.eval(&args[1])?, op)?;
-                    let modulus = expect_int(self.eval(&args[2])?, op)?;
-                    base.pow_mod(&exp, &modulus)
-                        .map(CValue::Int)
-                        .map_err(exact_fault)
-                } else {
-                    let coeffs = expect_ints(self.eval(&args[0])?, op)?;
-                    let point = expect_int(self.eval(&args[1])?, op)?;
-                    let modulus = expect_int(self.eval(&args[2])?, op)?;
-                    exact_int_poly_eval(&coeffs, &point, &modulus)
-                        .map(CValue::Int)
-                        .map_err(exact_fault)
-                }
-            }
             _ => {
                 if args.len() != 2 {
                     return Err(fault("arity", format!("`{op}` expects two Int arguments")));
@@ -241,12 +152,7 @@ impl Engine {
                 let value = match op {
                     "int_quot" => left.quot(&right),
                     "int_rem" => left.rem_euclid(&right),
-                    "int_root" => left.floor_root(&right),
-                    "int_gcd" => ExactInt::gcd(&left, &right),
-                    "int_binom" => left.binomial(&right),
                     "int_pow" => left.pow(&right),
-                    "int_rising" => left.rising(&right),
-                    "int_falling" => left.falling(&right),
                     other => {
                         return Err(fault(
                             "unbound",
@@ -394,7 +300,7 @@ impl Engine {
             let _ = schema.kind;
         }
         Ok(CValue::Record {
-            type_name,
+            type_name: type_name.into(),
             fields: Arc::new(map),
         })
     }

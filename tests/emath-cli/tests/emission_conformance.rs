@@ -18,18 +18,18 @@
 //! `language/modules/probability/inference.emath`,
 //! `language/modules/probability/distributions.emath`,
 //! `language/modules/analysis/powers.emath`,
-//! `language/modules/cryptology/modular.emath`,
+//! `language/modules/exact/residues.emath`, `language/domains/cryptology/roundtrip.emath`,
 //! `language/modules/exact/quadratic.emath`,
 //! `language/modules/numerics/bounds.emath`,
 //! `language/modules/geometry/surfaces.emath`,
-//! `language/modules/mechanics/oscillations.emath`,
+//! `language/domains/mechanics/oscillations.emath`,
 //! `language/modules/discrete/order.emath` (the mutual-recursion
 //! cycle pins), `language/modules/discrete/matching.emath` (the
-//! mixed-kind join pins), `language/modules/search/
+//! mixed-kind join pins), `language/domains/research/
 //! structural_spike.emath` (the code-template-carrier pins),
 //! `language/modules/analysis/evolution/composition.emath` (the
 //! shared-state record + curried-closure pins), and
-//! `language/modules/mechanics/stiff.emath` (the implicit-solve +
+//! `language/modules/analysis/evolution/stiff.emath` (the implicit-solve +
 //! adaptive-walk pins), and `language/modules/algebra/linalg.emath`
 //! (the substitute-seam + sparse/dense/hessian pins), and
 //! `language/modules/analysis/evolution/events.emath` (the event-data
@@ -629,84 +629,84 @@ fn main() {
 
     // example <sqrt_nine_unclamped>
     let got = floor_root_between(9, 2, 0, 100);
-    if !matches!(&got, Ok(v) if *v == ei(3)) {
+    if got.as_ref() != Ok(&3) {
         failures += 1;
         println!("DIFF sqrt_nine_unclamped EMITTED {:?}; VM = 3", got);
     }
 
     // example <clamped_low>
     let got = floor_root_between(9, 2, 4, 100);
-    if !matches!(&got, Ok(v) if *v == ei(4)) {
+    if got.as_ref() != Ok(&4) {
         failures += 1;
         println!("DIFF clamped_low EMITTED {:?}; VM = 4", got);
     }
 
     // example <sqrt_nine>
     let got = floor_root(9, 2);
-    if !matches!(&got, Ok(v) if *v == ei(3)) {
+    if got.as_ref() != Ok(&3) {
         failures += 1;
         println!("DIFF sqrt_nine EMITTED {:?}; VM = 3", got);
     }
 
     // example <zeroth_root>: q <= 0 is not a root
     let got = floor_root(9, 0);
-    if !matches!(&got, Ok(v) if *v == ei(0)) {
+    if got.as_ref() != Ok(&0) {
         failures += 1;
         println!("DIFF zeroth_root EMITTED {:?}; VM = 0", got);
     }
 
     // example <cbrt_eight>
     let got = floor_root(8, 3);
-    if !matches!(&got, Ok(v) if *v == ei(2)) {
+    if got.as_ref() != Ok(&2) {
         failures += 1;
         println!("DIFF cbrt_eight EMITTED {:?}; VM = 2", got);
     }
 
     // example <sqrt_eight>
     let got = floor_root(8, 2);
-    if !matches!(&got, Ok(v) if *v == ei(2)) {
+    if got.as_ref() != Ok(&2) {
         failures += 1;
         println!("DIFF sqrt_eight EMITTED {:?}; VM = 2", got);
     }
 
     // example <zero>
     let got = floor_root(0, 2);
-    if !matches!(&got, Ok(v) if *v == ei(0)) {
+    if got.as_ref() != Ok(&0) {
         failures += 1;
         println!("DIFF zero EMITTED {:?}; VM = 0", got);
     }
 
     // example <first_root>
     let got = floor_root(11, 1);
-    if !matches!(&got, Ok(v) if *v == ei(11)) {
+    if got.as_ref() != Ok(&11) {
         failures += 1;
         println!("DIFF first_root EMITTED {:?}; VM = 11", got);
     }
 
     // example <next_after_sqrt_nine>
     let got = upper_root_at(9, 2, 0);
-    if !matches!(&got, Ok(v) if *v == ei(4)) {
+    if got.as_ref() != Ok(&4) {
         failures += 1;
         println!("DIFF next_after_sqrt_nine EMITTED {:?}; VM = 4", got);
     }
 
     // example <already_past>
     let got = upper_root_at(9, 2, 5);
-    if !matches!(&got, Ok(v) if *v == ei(5)) {
+    if got.as_ref() != Ok(&5) {
         failures += 1;
         println!("DIFF already_past EMITTED {:?}; VM = 5", got);
     }
 
     // example <ceil_sqrt_ten>
     let got = ceil_root(10, 2);
-    if !matches!(&got, Ok(v) if *v == ei(4)) {
+    if got.as_ref() != Ok(&4) {
         failures += 1;
         println!("DIFF ceil_sqrt_ten EMITTED {:?}; VM = 4", got);
     }
 
     // example <exact_cbrt>
     let got = ceil_root(8, 3);
-    if !matches!(&got, Ok(v) if *v == ei(2)) {
+    if got.as_ref() != Ok(&2) {
         failures += 1;
         println!("DIFF exact_cbrt EMITTED {:?}; VM = 2", got);
     }
@@ -747,7 +747,7 @@ fn main() {
 
     // example <three_twos>: 2*2*2 == 8
     let got = weighted_prod(vec![2, 2, 2], vec![1, 1, 1], 0, 1);
-    if !matches!(&got, Ok(v) if *v == ei(8)) {
+    if got.as_ref() != Ok(&8) {
         failures += 1;
         println!("DIFF three_twos EMITTED {:?}; VM = 8", got);
     }
@@ -1348,6 +1348,73 @@ fn emission_conformance_powers() {
     );
 }
 
+const INVARIANTS_DRIVER: &str = r#"
+//! Authored pins of search/invariants.emath against the emitted crate.
+//!
+//! inv_coprime is the exact-Int lane: Rat inputs scale into ExactInt,
+//! compare against zero, and divide by a signed gcd. The Code-valued
+//! inv_term_code rows stay VM-only (they pin by quote.evaluate).
+
+use invariants::emath_rt::ExactInt;
+use invariants::{inv_basis, inv_coprime};
+
+fn ints(xs: &[i64]) -> Vec<ExactInt> {
+    xs.iter().map(|&x| ExactInt::from(x)).collect()
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // example <degree_two_over_q_p>
+    let got = inv_basis(vec![1, 1], 2, 3);
+    let ok = matches!(&got, Ok(b) if b.len() == 5 && b[0] == vec![0, 1] && b[4] == vec![2, 0]);
+    if !ok {
+        failures += 1;
+        println!("DIFF degree_two_over_q_p EMITTED {:?}; VM = 5 monomials, [0,1] .. [2,0]", got);
+    }
+
+    // example <parameters_alone_are_not_monomials>
+    let got = inv_basis(vec![0, 1], 2, 3);
+    if !matches!(&got, Ok(b) if b.len() == 3) {
+        failures += 1;
+        println!("DIFF parameters_alone_are_not_monomials EMITTED {:?}; VM = 3 monomials", got);
+    }
+
+    // example <negative_lead_flips_sign>
+    let got = inv_coprime(vec![(0, 1), (-2, 3), (4, 3)]);
+    if got.as_ref() != Ok(&ints(&[0, 1, -2])) {
+        failures += 1;
+        println!("DIFF negative_lead_flips_sign EMITTED {:?}; VM = [0, 1, -2]", got);
+    }
+
+    // example <denominators_cleared>
+    let got = inv_coprime(vec![(1, 2), (1, 3)]);
+    if got.as_ref() != Ok(&ints(&[3, 2])) {
+        failures += 1;
+        println!("DIFF denominators_cleared EMITTED {:?}; VM = [3, 2]", got);
+    }
+
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all invariants pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_invariants() {
+    let diffs = run_lane(
+        "language/modules/search/invariants.emath",
+        INVARIANTS_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted invariants disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
 #[test]
 fn emission_conformance_distributions() {
     let diffs = run_lane(
@@ -1427,33 +1494,26 @@ fn emission_conformance_float64_quote() {
     );
 }
 
-const MODULAR_DRIVER: &str = r#"
-//! Authored pins of cryptology/modular.emath against the emitted crate.
+const RESIDUES_DRIVER: &str = r#"
+//! Authored pins of exact/residues.emath against the emitted crate.
 //!
 //! Transcription boundaries (labeled, from the module header):
-//! - The numeric lane (mod_pos .. affine_decrypt) emits
+//! - The numeric lane (mod_pos .. mod_pow) emits
 //!   `Result<ExactInt, String>`; pins compare via `ExactInt::from`.
 //! - Bezout rows pin the IDENTITY `a*x + b*y == g`, not just g.
-//! - The affine roundtrip rows are authored as composed calls
-//!   `decrypt(encrypt(p))`; the driver composes through the i64 ABI
-//!   seam with a `to_i64` crossing (E-INT-002 named if it ever fires).
-//! - Vigenere sequence results carry ExactRatio `(i128, i128)`
-//!   elements; integer expectations compare by cross-multiplication.
 //! - The Carmichael rows are the module's honesty pins: 561 passes
 //!   Fermat for every coprime base (a probable-prime LIE, pinned).
 
-use modular::{
-    affine_decrypt, affine_encrypt, bezout, bezout_lift, carmichael_561_pseudoprime,
-    fermat_all_pass, fermat_witness, is_fermat_prime, mod_add, mod_inv, mod_mul, mod_pos,
-    mod_pow, shares_factor, vigenere_decrypt, vigenere_encrypt, vigenere_key_at,
-    EmathRecord_Bezout,
+use residues::{
+    bezout, bezout_lift, fermat_all_pass, fermat_witness, is_fermat_prime, mod_add, mod_inv,
+    mod_mul, mod_pos, mod_pow, shares_factor, EmathRecord_Bezout,
 };
 
-fn ei(n: i64) -> modular::emath_rt::ExactInt {
-    modular::emath_rt::ExactInt::from(n)
+fn ei(n: i64) -> residues::emath_rt::ExactInt {
+    residues::emath_rt::ExactInt::from(n)
 }
 
-fn exact_ok(got: &Result<modular::emath_rt::ExactInt, String>, want: i64) -> bool {
+fn exact_ok(got: &Result<residues::emath_rt::ExactInt, String>, want: i64) -> bool {
     matches!(got, Ok(v) if *v == ei(want))
 }
 
@@ -1461,25 +1521,8 @@ fn refused<T: std::fmt::Debug>(got: &Result<T, String>, code: &str) -> bool {
     matches!(got, Err(text) if text == code)
 }
 
-fn q_eq(a: (i128, i128), b: (i128, i128)) -> bool {
-    a.0 * b.1 == b.0 * a.1
-}
-
-/// decrypt(encrypt(p)) through the i64 ABI seam (authored composition).
-fn affine_roundtrip(
-    p: i64,
-    a: i64,
-    b: i64,
-    m: i64,
-) -> Result<modular::emath_rt::ExactInt, String> {
-    affine_encrypt(p, a, b, m).and_then(|v| match v.to_i64() {
-        Some(c) => affine_decrypt(c, a, b, m),
-        None => Err(String::from("E-INT-002")),
-    })
-}
-
 /// mod_mul(a, inv, m) == 1 — the authored composed inverse check.
-fn inverse_roundtrip(a: i64, m: i64) -> Result<modular::emath_rt::ExactInt, String> {
+fn inverse_roundtrip(a: i64, m: i64) -> Result<residues::emath_rt::ExactInt, String> {
     mod_inv(a, m).and_then(|v| match v.to_i64() {
         Some(i) => mod_mul(a, i, m),
         None => Err(String::from("E-INT-002")),
@@ -1641,6 +1684,156 @@ fn main() {
         println!("DIFF refuses_negative_exponent EMITTED {:?}; VM = negative_exponent", got);
     }
 
+    // --- Fermat lane and the Carmichael honesty pins ----------------------
+    // example <three_shares_with_five_sixty_one>: gcd(3, 561) = 3 > 1
+    let got = shares_factor(3, 561);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF three_shares_with_five_sixty_one EMITTED {:?}; VM = true", got);
+    }
+
+    // example <coprime_pair>: gcd(5, 561) = 1
+    let got = shares_factor(5, 561);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF coprime_pair EMITTED {:?}; VM = false", got);
+    }
+
+    // example <two_witnesses_fifteen>: 2^14 == 4 (mod 15), witnessed
+    let got = fermat_witness(2, 15);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF two_witnesses_fifteen EMITTED {:?}; VM = true", got);
+    }
+
+    // example <no_witness_for_eleven>: 11 is prime
+    let got = fermat_witness(2, 11);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF no_witness_for_eleven EMITTED {:?}; VM = false", got);
+    }
+
+    // example <base_sharing_factor_is_not_fermat_witness>: gcd(3, 15) = 3
+    let got = fermat_witness(3, 15);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF base_sharing_factor_is_not_fermat_witness EMITTED {:?}; VM = false", got);
+    }
+
+    // example <eleven_passes>: is_fermat_prime(11, [2, 3, 5])
+    let got = is_fermat_prime(11, vec![2, 3, 5]);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF eleven_passes EMITTED {:?}; VM = true", got);
+    }
+
+    // example <fifteen_fails_on_two>: is_fermat_prime(15, [2])
+    let got = is_fermat_prime(15, vec![2]);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF fifteen_fails_on_two EMITTED {:?}; VM = false", got);
+    }
+
+    // example <two_passes_fifteen_fails>: fermat_all_pass(15, [2, 7], 0)
+    let got = fermat_all_pass(15, vec![2, 7], 0);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF two_passes_fifteen_fails EMITTED {:?}; VM = false", got);
+    }
+
+    // example <carmichael_passes_falsely>: THE honesty pin — 561 =
+    // 3*11*17 passes Fermat for every coprime base: probable-prime,
+    // NOT prime.
+    let got = is_fermat_prime(561, vec![2, 7, 13]);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF carmichael_passes_falsely EMITTED {:?}; VM = true (the Carmichael lie)", got);
+    }
+    // pinned per-base so the lie cannot hide behind the set.
+    for base in [2, 7, 13] {
+        let got = fermat_witness(base, 561);
+        if got != Ok(false) {
+            failures += 1;
+            println!("DIFF carmichael_passes_falsely EMITTED {:?}; VM = false (base {base})", got);
+        }
+    }
+
+    // example <carmichael_certified_composite_by_factor>: the SAME
+    // number is certified composite by the factor proof.
+    let got = is_fermat_prime(561, vec![3]);
+    let factor = shares_factor(3, 561);
+    if got != Ok(false) || factor != Ok(true) {
+        failures += 1;
+        println!("DIFF carmichael_certified_composite_by_factor EMITTED {:?} / {:?}; VM = false / true", got, factor);
+    }
+
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all residues pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_residues() {
+    let diffs = run_lane("language/modules/exact/residues.emath", RESIDUES_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted residues disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const ROUNDTRIP_DRIVER: &str = r#"
+//! Authored pins of the classical ciphers in
+//! domains/cryptology/roundtrip.emath against the emitted crate.
+//!
+//! Transcription boundaries (labeled, from the module header):
+//! - The affine lane emits `Result<ExactInt, String>`; pins compare
+//!   via `ExactInt::from`.
+//! - The affine roundtrip rows are authored as composed calls
+//!   `decrypt(encrypt(p))`; the driver composes through the i64 ABI
+//!   seam with a `to_i64` crossing (E-INT-002 named if it ever fires).
+//! - Vigenere sequence results carry ExactRatio `(i128, i128)`
+//!   elements; integer expectations compare by cross-multiplication.
+
+use roundtrip::{
+    affine_decrypt, affine_encrypt, vigenere_decrypt, vigenere_encrypt, vigenere_key_at,
+};
+
+fn ei(n: i64) -> roundtrip::emath_rt::ExactInt {
+    roundtrip::emath_rt::ExactInt::from(n)
+}
+
+fn exact_ok(got: &Result<roundtrip::emath_rt::ExactInt, String>, want: i64) -> bool {
+    matches!(got, Ok(v) if *v == ei(want))
+}
+
+fn refused<T: std::fmt::Debug>(got: &Result<T, String>, code: &str) -> bool {
+    matches!(got, Err(text) if text == code)
+}
+
+fn q_eq(a: (i128, i128), b: (i128, i128)) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+/// decrypt(encrypt(p)) through the i64 ABI seam (authored composition).
+fn affine_roundtrip(
+    p: i64,
+    a: i64,
+    b: i64,
+    m: i64,
+) -> Result<roundtrip::emath_rt::ExactInt, String> {
+    affine_encrypt(p, a, b, m).and_then(|v| match v.to_i64() {
+        Some(c) => affine_decrypt(c, a, b, m),
+        None => Err(String::from("E-INT-002")),
+    })
+}
+
+fn main() {
+    let mut failures = 0usize;
+
     // --- affine cipher ----------------------------------------------------
     // example <classic_three_five>: affine_encrypt(4, 3, 5, 26) == 17
     let got = affine_encrypt(4, 3, 5, 26);
@@ -1708,15 +1901,10 @@ fn main() {
     }
 
     // example <classic_shifts>: HELLO with key CAD, m 26 -> 10 5 15 14 15.
-    // Emitted sequence elements are ExactRatio; compare by value.
+    // The generic tabulate keeps the Int element carrier.
     let got = vigenere_encrypt(vec![7, 4, 11, 11, 14], vec![3, 1, 4], 26);
     match &got {
-        Ok(v) if v.len() == 5
-            && q_eq(v[0], (10, 1))
-            && q_eq(v[1], (5, 1))
-            && q_eq(v[2], (15, 1))
-            && q_eq(v[3], (14, 1))
-            && q_eq(v[4], (15, 1)) => {}
+        Ok(v) if *v == [10i64, 5, 15, 14, 15].map(roundtrip::emath_rt::ExactInt::from) => {}
         _ => {
             failures += 1;
             println!("DIFF classic_shifts EMITTED {:?}; VM = [10, 5, 15, 14, 15]", got);
@@ -1726,12 +1914,7 @@ fn main() {
     // example <roundtrip_hello>: decrypt(encrypt) recovers HELLO.
     let got = vigenere_decrypt(vec![10, 5, 15, 14, 15], vec![3, 1, 4], 26);
     match &got {
-        Ok(v) if v.len() == 5
-            && q_eq(v[0], (7, 1))
-            && q_eq(v[1], (4, 1))
-            && q_eq(v[2], (11, 1))
-            && q_eq(v[3], (11, 1))
-            && q_eq(v[4], (14, 1)) => {}
+        Ok(v) if *v == [7i64, 4, 11, 11, 14].map(roundtrip::emath_rt::ExactInt::from) => {}
         _ => {
             failures += 1;
             println!("DIFF roundtrip_hello EMITTED {:?}; VM = [7, 4, 11, 11, 14]", got);
@@ -1745,103 +1928,20 @@ fn main() {
         println!("DIFF refuses_empty_message EMITTED {:?}; VM = empty_sequence", got);
     }
 
-    // --- Fermat lane and the Carmichael honesty pins ----------------------
-    // example <three_shares_with_five_sixty_one>: gcd(3, 561) = 3 > 1
-    let got = shares_factor(3, 561);
-    if got != Ok(true) {
-        failures += 1;
-        println!("DIFF three_shares_with_five_sixty_one EMITTED {:?}; VM = true", got);
-    }
-
-    // example <coprime_pair>: gcd(5, 561) = 1
-    let got = shares_factor(5, 561);
-    if got != Ok(false) {
-        failures += 1;
-        println!("DIFF coprime_pair EMITTED {:?}; VM = false", got);
-    }
-
-    // example <two_witnesses_fifteen>: 2^14 == 4 (mod 15), witnessed
-    let got = fermat_witness(2, 15);
-    if got != Ok(true) {
-        failures += 1;
-        println!("DIFF two_witnesses_fifteen EMITTED {:?}; VM = true", got);
-    }
-
-    // example <no_witness_for_eleven>: 11 is prime
-    let got = fermat_witness(2, 11);
-    if got != Ok(false) {
-        failures += 1;
-        println!("DIFF no_witness_for_eleven EMITTED {:?}; VM = false", got);
-    }
-
-    // example <base_sharing_factor_is_not_fermat_witness>: gcd(3, 15) = 3
-    let got = fermat_witness(3, 15);
-    if got != Ok(false) {
-        failures += 1;
-        println!("DIFF base_sharing_factor_is_not_fermat_witness EMITTED {:?}; VM = false", got);
-    }
-
-    // example <eleven_passes>: is_fermat_prime(11, [2, 3, 5])
-    let got = is_fermat_prime(11, vec![2, 3, 5]);
-    if got != Ok(true) {
-        failures += 1;
-        println!("DIFF eleven_passes EMITTED {:?}; VM = true", got);
-    }
-
-    // example <fifteen_fails_on_two>: is_fermat_prime(15, [2])
-    let got = is_fermat_prime(15, vec![2]);
-    if got != Ok(false) {
-        failures += 1;
-        println!("DIFF fifteen_fails_on_two EMITTED {:?}; VM = false", got);
-    }
-
-    // example <two_passes_fifteen_fails>: fermat_all_pass(15, [2, 7], 0)
-    let got = fermat_all_pass(15, vec![2, 7], 0);
-    if got != Ok(false) {
-        failures += 1;
-        println!("DIFF two_passes_fifteen_fails EMITTED {:?}; VM = false", got);
-    }
-
-    // example <passes_fermat_falsely>: THE honesty pin — 561 = 3*11*17
-    // passes Fermat for every coprime base: probable-prime, NOT prime.
-    let got = carmichael_561_pseudoprime(0);
-    if got != Ok(true) {
-        failures += 1;
-        println!("DIFF passes_fermat_falsely EMITTED {:?}; VM = true (the Carmichael lie)", got);
-    }
-
-    // example <but_shares_factor_certifies_composite>: the SAME number
-    // is certified composite by the factor proof.
-    let got = shares_factor(3, 561);
-    if got != Ok(true) {
-        failures += 1;
-        println!("DIFF but_shares_factor_certifies_composite EMITTED {:?}; VM = true", got);
-    }
-
-    // example <each_coprime_base_alone_lies>: pinned per-base so the
-    // lie cannot hide behind the set.
-    for base in [2, 7, 13] {
-        let got = fermat_witness(base, 561);
-        if got != Ok(false) {
-            failures += 1;
-            println!("DIFF each_coprime_base_alone_lies EMITTED {:?}; VM = false (base {base})", got);
-        }
-    }
-
     if failures > 0 {
         println!("SUMMARY {failures} conformance diffs");
         std::process::exit(1);
     }
-    println!("SUMMARY all modular pins conform");
+    println!("SUMMARY all cipher pins conform");
 }
 "#;
 
 #[test]
-fn emission_conformance_modular() {
-    let diffs = run_lane("language/modules/cryptology/modular.emath", MODULAR_DRIVER);
+fn emission_conformance_ciphers() {
+    let diffs = run_lane("language/domains/cryptology/roundtrip.emath", ROUNDTRIP_DRIVER);
     assert!(
         diffs.is_empty(),
-        "emitted modular disagrees with the VM on:\n{}",
+        "emitted ciphers disagree with the VM on:\n{}",
         diffs.join("\n")
     );
 }
@@ -2343,7 +2443,7 @@ fn main() {
 #[test]
 fn emission_conformance_oscillations() {
     let diffs = run_lane(
-        "language/modules/mechanics/oscillations.emath",
+        "language/domains/mechanics/oscillations.emath",
         OSCILLATIONS_DRIVER,
     );
     assert!(
@@ -2360,7 +2460,7 @@ const ORDER_DRIVER: &str = r#"
 //! for BOTH cycle members - the named-entry seam the emission
 //! worklist settles.
 
-use order::{EmathRecord_SortedPair, sort_loop, sort_step, sort_with_permutation, unsort_at};
+use order::{EmathRecord_SortedPair, sort_loop, sort_step, sort_with_permutation, unsort};
 
 type Rat = (i128, i128);
 
@@ -2389,7 +2489,7 @@ fn main() {
 
     // the same row's unsort round-trip: unsort(result) == the input.
     if let Ok(sorted) = &got {
-        let back = unsort_at(sorted.clone(), 0);
+        let back = unsort(sorted.clone());
         if !matches!(&back, Ok(v) if *v == rats(&[[5, 2], [1, 2], [3, 2]])) {
             failures += 1;
             println!("DIFF simple_sort_unsort EMITTED {:?}; VM = [5/2, 1/2, 3/2]", back);
@@ -2834,7 +2934,7 @@ fn emission_conformance_matching() {
 }
 
 const SPIKE_DRIVER: &str = r#"
-//! Authored pins of search/structural_spike.emath against the emitted
+//! Authored pins of research/structural_spike.emath against the emitted
 //! crate.
 //!
 //! The code-template-carrier pins (emath-49o8): the module's template
@@ -2994,7 +3094,7 @@ fn main() {
 #[test]
 fn emission_conformance_structural_spike() {
     let diffs = run_lane(
-        "language/modules/search/structural_spike.emath",
+        "language/domains/research/structural_spike.emath",
         SPIKE_DRIVER,
     );
     assert!(
@@ -3324,7 +3424,7 @@ fn emission_conformance_composition() {
 }
 
 const STIFF_DRIVER: &str = r#"
-//! Authored pins of mechanics/stiff.emath against the emitted crate
+//! Authored pins of analysis/evolution/stiff.emath against the emitted crate
 //! (emath-49o8, the shared-state lane's second module).
 //!
 //! stiff composes one_step's SimState machinery with the implicit
@@ -3338,7 +3438,7 @@ const STIFF_DRIVER: &str = r#"
 //! ratios compare cross-multiplied, never by spelling.
 
 use stiff::{
-    stiff_abs, stiff_adaptive_walk, stiff_astable_ok, stiff_astable_walk, stiff_be_factor,
+    stiff_adaptive_walk, stiff_astable_ok, stiff_astable_walk, stiff_be_factor,
     stiff_be_step_solve, stiff_be_system_law, stiff_cn_factor, stiff_contrast_law,
     stiff_diag2_be_step, stiff_embedded_est, stiff_embedded_step, stiff_explicit_factor,
     stiff_symplectic_invariant_law, stiff_true_energy_drifts_law, stiff_verlet_det_law,
@@ -3391,25 +3491,6 @@ fn xq<T: std::fmt::Debug>(got: &Result<T, String>, atom: &str) -> Option<String>
 
 fn main() {
     let mut failures = 0usize;
-
-    // example <negative_flips_sign> (stiff_abs)
-    let got = stiff_abs(q(0 - 3, 4));
-    if let Some(diff) = dq(&got, q(3, 4)) {
-        failures += 1;
-        println!("DIFF negative_flips_sign EMITTED {diff}; VM = 3/4");
-    }
-    // example <positive_is_itself>
-    let got = stiff_abs(q(5, 2));
-    if let Some(diff) = dq(&got, q(5, 2)) {
-        failures += 1;
-        println!("DIFF positive_is_itself EMITTED {diff}; VM = 5/2");
-    }
-    // example <zero_arm_hits_zero> (the comparison boundary arm)
-    let got = stiff_abs(q(0, 1));
-    if let Some(diff) = dq(&got, q(0, 1)) {
-        failures += 1;
-        println!("DIFF zero_arm_hits_zero EMITTED {diff}; VM = 0/1");
-    }
 
     // example <half_step_decay> (stiff_be_factor: 1/(1 - h lam))
     let got = stiff_be_factor(q(1, 2), q(0 - 2, 1));
@@ -3635,7 +3716,7 @@ fn main() {
 
 #[test]
 fn emission_conformance_stiff() {
-    let diffs = run_lane("language/modules/mechanics/stiff.emath", STIFF_DRIVER);
+    let diffs = run_lane("language/modules/analysis/evolution/stiff.emath", STIFF_DRIVER);
     assert!(
         diffs.is_empty(),
         "emitted stiff disagrees with the VM on:\n{}",
@@ -3665,11 +3746,14 @@ const LINALG_DRIVER: &str = r#"
 //! shapes quote(...) distills) over the EMPTY module table - the
 //! pinned bodies reference no module globals.
 
+//! The vector and matrix kernels linalg builds on (spaces vec_dot /
+//! vec_axpy / zero_vec, matrices mat_vec) are pinned here too: the
+//! emitted linalg crate carries them.
+
 use linalg::{
-    dense_axpy, dense_dot, dense_matvec, grad_quote, hess_col, hess_symmetric, hess_vec,
-    hessian_rows, oscillator_modes, place_row, seq_eq, sp_dense_law, sp_matvec, sp_ok,
-    sp_row_at, sp_to_dense, square_walk, zeros_row, EmathRecord_SpEnt as Ent,
-    EmathRecord_SpMat as Sp,
+    grad_quote, hess_col, hess_symmetric, hess_vec, hessian_rows, mat_vec, oscillator_modes,
+    place_row, sp_dense_law, sp_matvec, sp_ok, sp_row_at, sp_to_dense, square_walk, vec_axpy,
+    vec_dot, zero_vec, EmathRecord_SpEnt as Ent, EmathRecord_SpMat as Sp,
 };
 
 type R = (i128, i128);
@@ -3822,11 +3906,11 @@ fn main() {
         println!("DIFF sp_ok_bad_col EMITTED {diff}; VM = false");
     }
 
-    // example <zeros_three> (zeros_row: the descending prepend)
-    let got = zeros_row(3, 2);
+    // zero_vec(3) (spaces: the zero row sp_to_dense fills)
+    let got = zero_vec(3);
     if let Some(diff) = lq(&got, &[q(0, 1), q(0, 1), q(0, 1)]) {
         failures += 1;
-        println!("DIFF zeros_three EMITTED {diff}; VM = [0, 0, 0]");
+        println!("DIFF zero_vec_three EMITTED {diff}; VM = [0, 0, 0]");
     }
 
     // example <place_two> (place_row: replace_at through the walk)
@@ -3897,46 +3981,27 @@ fn main() {
         println!("DIFF sparse_refuses_width EMITTED {diff}; VM = Err(bad_sp_index)");
     }
 
-    // example <dot_basic> (dense_dot)
-    let got = dense_dot(vec![q(1, 1), q(2, 1)], vec![q(3, 1), q(4, 1)], 0, q(0, 1));
+    // vec_dot (spaces): 1*3 + 2*4 = 11
+    let got = vec_dot(vec![q(1, 1), q(2, 1)], vec![q(3, 1), q(4, 1)]);
     if let Some(diff) = rq(&got, q(11, 1)) {
         failures += 1;
-        println!("DIFF dot_basic EMITTED {diff}; VM = 11");
+        println!("DIFF vec_dot_basic EMITTED {diff}; VM = 11");
     }
-
-    // example <dense_matvec_at_matches_the_wrapper_fixture>
-    let got = linalg::dense_matvec_at(
-        vec![vec![q(2, 1), q(1, 1)], vec![q(1, 1), q(2, 1)]],
-        vec![q(1, 1), q(1, 1)],
-        0,
-    );
-    if let Some(diff) = lq(&got, &[q(3, 1), q(3, 1)]) {
+    // vec_dot width mismatch refuses dim_mismatch
+    let got = vec_dot(vec![q(1, 1), q(2, 1)], vec![q(3, 1)]);
+    if let Some(diff) = xq(&got, "dim_mismatch") {
         failures += 1;
-        println!("DIFF dense_matvec_at_matches_the_wrapper_fixture EMITTED {diff}; VM = [3, 3]");
+        println!("DIFF vec_dot_width_refuses EMITTED {diff}; VM = Err(dim_mismatch)");
     }
 
-    // example <dense_times_vector> (dense_matvec)
-    let got = dense_matvec(
+    // example <symmetric_pair> (matrices mat_vec)
+    let got = mat_vec(
         vec![vec![q(2, 1), q(1, 1)], vec![q(1, 1), q(2, 1)]],
         vec![q(1, 1), q(1, 1)],
     );
     if let Some(diff) = lq(&got, &[q(3, 1), q(3, 1)]) {
         failures += 1;
-        println!("DIFF dense_times_vector EMITTED {diff}; VM = [3, 3]");
-    }
-
-    // example <seq_eq_reflexive>
-    let xs = vec![q(3, 1), q(5, 1)];
-    let got = seq_eq(xs.clone(), xs.clone(), 0);
-    if let Some(diff) = bq(&got, true) {
-        failures += 1;
-        println!("DIFF seq_eq_reflexive EMITTED {diff}; VM = true");
-    }
-    // example <seq_eq_one_entry_apart>
-    let got = seq_eq(xs.clone(), vec![q(3, 1), q(0 - 5, 1)], 0);
-    if let Some(diff) = bq(&got, false) {
-        failures += 1;
-        println!("DIFF seq_eq_one_entry_apart EMITTED {diff}; VM = false");
+        println!("DIFF mat_vec_symmetric_pair EMITTED {diff}; VM = [3, 3]");
     }
 
     // example <sparse_agrees_dense> (sp_dense_law: THE agreement law)
@@ -4008,16 +4073,11 @@ fn main() {
         println!("DIFF hess_col_y EMITTED {diff}; VM = [1, 4]");
     }
 
-    // example <axpy_basic> (dense_axpy)
-    let got = dense_axpy(
-        vec![q(1, 1), q(2, 1)],
-        q(3, 1),
-        vec![q(10, 1), q(20, 1)],
-        0,
-    );
+    // vec_axpy (spaces, hess_vec's accumulation): 3*[1,2] + [10,20]
+    let got = vec_axpy(q(3, 1), vec![q(1, 1), q(2, 1)], vec![q(10, 1), q(20, 1)]);
     if let Some(diff) = lq(&got, &[q(13, 1), q(26, 1)]) {
         failures += 1;
-        println!("DIFF axpy_basic EMITTED {diff}; VM = [13, 26]");
+        println!("DIFF vec_axpy_basic EMITTED {diff}; VM = [13, 26]");
     }
 
     // example <hess_vec_walk_matches_the_wrapper_fixture>
@@ -4985,41 +5045,35 @@ fn main() {
     }
 
     pin!("curried_seam_applies", predict_at(affine(), v(&[2.0, 3.0]), 1.0), |r| *r == 5.0, "5");
-    pin!("exact_interpolation_is_zero", sse_at(affine(), v(&[0.0, 1.0]), v(&[2.0, 5.0]), v(&[2.0, 3.0]), 0, 0.0), |r| *r == 0.0, "0");
-    pin!("unit_residual_squares_to_one", sse_at(affine(), v(&[0.0, 1.0]), v(&[2.0, 6.0]), v(&[2.0, 3.0]), 0, 0.0), |r| *r == 1.0, "1");
-    pin!("residuals_in_data_order", residual_list(affine(), v(&[0.0, 1.0]), v(&[2.0, 6.0]), v(&[2.0, 3.0]), 1, vec![]), |r| *r == [0.0, -1.0], "[0, -1]");
-    pin!("shifts_one_slot_keeps_order", shifted_from(v(&[1.0, 2.0, 3.0]), 1, 0.5, 2, vec![]), |r| *r == [1.0, 2.5, 3.0], "[1, 2.5, 3]");
-    pin!("affine_jacobian_is_exact", jacobian_row(affine(), 2.0, v(&[2.0, 3.0]), v(&[1.0, 1.0]), 0.000001, 1, vec![]),
+    pin!("exact_interpolation_is_zero", sum_squares(affine(), v(&[0.0, 1.0]), v(&[2.0, 5.0]), v(&[2.0, 3.0])), |r| *r == 0.0, "0");
+    pin!("unit_residual_squares_to_one", sum_squares(affine(), v(&[0.0, 1.0]), v(&[2.0, 6.0]), v(&[2.0, 3.0])), |r| *r == 1.0, "1");
+    pin!("residuals_in_data_order", residuals(affine(), v(&[0.0, 1.0]), v(&[2.0, 6.0]), v(&[2.0, 3.0])), |r| *r == [0.0, -1.0], "[0, -1]");
+    pin!("shifts_one_slot_keeps_order", shifted(v(&[1.0, 2.0, 3.0]), 1, 0.5), |r| *r == [1.0, 2.5, 3.0], "[1, 2.5, 3]");
+    pin!("affine_jacobian_is_exact", jacobian_row(affine(), 2.0, v(&[2.0, 3.0]), v(&[1.0, 1.0]), 0.000001),
         |r| within(r[0], 0.999999999, 1.000000001) && within(r[1], 1.999999999, 2.000000001), "[~1, ~2]");
-    pin!("weights_scale_the_column", jacobian_row(affine(), 1.0, v(&[2.0, 3.0]), v(&[1.0, 2.0]), 0.000001, 1, vec![]),
+    pin!("weights_scale_the_column", jacobian_row(affine(), 1.0, v(&[2.0, 3.0]), v(&[1.0, 2.0]), 0.000001),
         |r| within(r[1], 1.999999999, 2.000000001), "[_, ~2]");
-    pin!("one_row_per_data_row_ascending", jacobian_of(affine(), v(&[1.0, 2.0]), v(&[2.0, 3.0]), v(&[1.0, 1.0]), 0.000001, 1, vec![]),
+    pin!("one_row_per_data_row_ascending", jacobian(affine(), v(&[1.0, 2.0]), v(&[2.0, 3.0]), v(&[1.0, 1.0]), 0.000001),
         |r| within(r[0][1], 0.999999999, 1.000000001) && within(r[1][1], 1.999999999, 2.000000001), "rows [_, ~1], [_, ~2]");
-    pin!("finite_values_pass", finite_row(v(&[1.0, 2.0]), 1), |r| *r, "true");
-    pin!("finite_matrix_passes", finite_matrix(m(&[&[1.0, 0.0], &[0.0, 1.0]]), 1), |r| *r, "true");
+    pin!("finite_matrix_passes", finite_matrix(m(&[&[1.0, 0.0], &[0.0, 1.0]])), |r| *r, "true");
     let jac = || m(&[&[1.0, 1.0], &[1.0, 2.0]]);
-    pin!("gram_entry_sums_over_rows", normal_sum(jac(), 1, 1, 0, 0.0), |r| *r == 5.0, "5");
-    pin!("cross_entry_is_three", normal_sum(jac(), 0, 1, 0, 0.0), |r| *r == 3.0, "3");
-    pin!("damping_lands_on_the_diagonal_only", normal_row(jac(), 0.5, 0, 1, vec![]), |r| *r == [2.5, 3.0], "[2.5, 3]");
-    pin!("damped_normal_matrix", normal_of(jac(), 0.5, 1, vec![]), |r| *r == m(&[&[2.5, 3.0], &[3.0, 5.5]]), "[[2.5, 3], [3, 5.5]]");
-    pin!("gradient_sums_jacobian_times_residuals", gradient_at(jac(), v(&[0.0, 1.0]), 1, 0, 0.0), |r| *r == 2.0, "2");
-    pin!("full_gradient_vector", gradient_of(jac(), v(&[0.0, 1.0]), 1, vec![]), |r| *r == [1.0, 2.0], "[1, 2]");
+    pin!("gram_entry_sums_over_rows", gram(jac(), 1, 1), |r| *r == 5.0, "5");
+    pin!("cross_entry_is_three", gram(jac(), 0, 1), |r| *r == 3.0, "3");
+    pin!("damped_normal_matrix", normal_of(jac(), 0.5), |r| *r == m(&[&[2.5, 3.0], &[3.0, 5.5]]), "[[2.5, 3], [3, 5.5]]");
+    pin!("full_gradient_vector", gradient_of(jac(), v(&[0.0, 1.0])), |r| *r == [1.0, 2.0], "[1, 2]");
     let normal = || m(&[&[2.0, 3.0], &[3.0, 5.0]]);
-    pin!("block_form_appends_the_rhs", augment_row(normal(), v(&[9.0, 8.0]), 0, 2, vec![]), |r| *r == [2.0, 3.0, 9.0], "[2, 3, 9]");
-    pin!("every_row_augmented", augment_all(normal(), v(&[9.0, 8.0]), 1, vec![]),
+    pin!("every_row_augmented", augment(normal(), v(&[9.0, 8.0])),
         |r| r[0][2] == 9.0 && r[1][0] == 3.0 && r[1][2] == 8.0, "[[2,3,9],[3,5,8]]");
-    pin!("subtract_scaled_pivot_row", elim_row(v(&[5.0, 7.0]), v(&[1.0, 1.0]), 2.0, 1, vec![]), |r| *r == [3.0, 5.0], "[3, 5]");
     let aug = || m(&[&[2.0, 0.0], &[4.0, 4.0]]);
-    pin!("clears_the_column_below_the_pivot", elim_all(aug(), 0, 1, true, vec![]),
+    pin!("clears_the_column_below_the_pivot", elim_below(aug(), 0, true),
         |r| r[0][0] == 2.0 && r[1][0] == 0.0 && r[1][1] == 4.0, "[[2,0],[0,4]]");
-    pin!("failed_pivot_leaves_rows_untouched", elim_all(aug(), 0, 1, false, vec![]),
+    pin!("failed_pivot_leaves_rows_untouched", elim_below(aug(), 0, false),
         |r| r[1][0] == 4.0 && r[1][1] == 4.0, "[[2,0],[4,4]]");
     pin!("already_triangular_system_solves", solve_columns(m(&[&[1.0, 0.0, 3.0], &[0.0, 1.0, 4.0]]), 0),
         |r| r.ok && r.rows[0][2] == 3.0 && r.rows[1][2] == 4.0, "ok, rhs [3, 4]");
     pin!("zero_pivot_column_refuses", solve_columns(m(&[&[0.0, 0.0, 1.0]]), 0), |r| !r.ok, "ok false");
     let tri = || m(&[&[2.0, 1.0, 9.0], &[0.0, 4.0, 8.0]]);
-    pin!("tail_contribution", back_sum(tri(), v(&[2.0]), 0, 1, 2, 0.0), |r| *r == 2.0, "2");
-    pin!("upper_triangular_solve", back_from(tri(), vec![], 1, 2), |r| *r == [3.5, 2.0], "[3.5, 2]");
+    pin!("upper_triangular_solve", back_substitute(tri(), 2), |r| *r == [3.5, 2.0], "[3.5, 2]");
     pin!("two_by_two_system", solve_damped(m(&[&[3.0, 1.0], &[1.0, 2.0]]), v(&[9.0, 8.0])),
         |r| within(r.step[0], 1.999999999999, 2.000000000001) && within(r.step[1], 2.999999999999, 3.000000000001), "step ~[2, 3]");
     pin!("needs_pivoting", solve_damped(m(&[&[0.0, 1.0], &[1.0, 0.0]]), v(&[7.0, 5.0])),
@@ -5030,8 +5084,8 @@ fn main() {
     pin!("ok_step_reads_the_slot", step_or_zero(ok_step(), 0), |r| *r == 1.5, "1.5");
     pin!("index_beyond_the_step_is_zero", step_or_zero(ok_step(), 5), |r| *r == 0.0, "0");
     pin!("not_ok_step_is_zero_everywhere", step_or_zero(no_step(), 0), |r| *r == 0.0, "0");
-    pin!("subtracts_the_step", apply_step(v(&[2.0, 3.0]), LmStep { ok: true, step: v(&[0.5, 1.0]) }, 1, vec![]), |r| *r == [1.5, 2.0], "[1.5, 2]");
-    pin!("failed_solve_keeps_the_current_point", apply_step(v(&[2.0, 3.0]), no_step(), 1, vec![]), |r| *r == [2.0, 3.0], "[2, 3]");
+    pin!("subtracts_the_step", apply_step(v(&[2.0, 3.0]), LmStep { ok: true, step: v(&[0.5, 1.0]) }), |r| *r == [1.5, 2.0], "[1.5, 2]");
+    pin!("failed_solve_keeps_the_current_point", apply_step(v(&[2.0, 3.0]), no_step()), |r| *r == [2.0, 3.0], "[2, 3]");
     let line = |got: &Vec<f64>, tol: f64| within(got[0], 2.0 - tol, 2.0 + tol) && within(got[1], 3.0 - tol, 3.0 + tol);
     let ts = || v(&[0.0, 1.0]);
     let ys = || v(&[2.0, 5.0]);
@@ -5055,15 +5109,15 @@ fn main() {
     pin!("cautious_sheds_ten_times_slower_than_it_raises", cautious_policy(0),
         |r| r.down == 10.0 * r.up && r.lambda0 > 0.01, "down == 10 up, lambda0 > 0.01");
     pin!("compatibility_entry_recovers_the_line", levenberg_fit(affine(), ts(), ys(), ones(), ones()), |r| line(r, 0.000001), "~(2, 3)");
-    pin!("three_passes_charge_three_nanos", iter_penalty(3, 0.0), |r| within(*r, 0.0000000029, 0.0000000031), "~3e-9");
-    pin!("zero_passes_charge_nothing", iter_penalty(0, 0.0), |r| *r == 0.0, "0");
+    pin!("three_passes_charge_three_nanos", iter_penalty(3), |r| within(*r, 0.0000000029, 0.0000000031), "~3e-9");
+    pin!("zero_passes_charge_nothing", iter_penalty(0), |r| *r == 0.0, "0");
     pin!("non_converged_is_dominated", fit_cost(affine(), ts(), ys(), ones(), ones(), policy(0)), |r| *r == 1000000.0, "1e6");
     pin!("converged_cost_is_sse_plus_work_charge", fit_cost(affine(), ts(), ys(), ones(), ones(), marq()), |r| *r < 0.000001, "< 1e-6");
     pin!("cautious_leads_the_rack", card_at(0), |r| r.lambda0 == 0.1 && r.down == 100.0, "lambda0 0.1, down 100");
     pin!("classic_sits_in_the_middle", card_at(1), |r| r.lambda0 == 0.001, "lambda0 0.001");
     pin!("bold_closes_the_rack", card_at(2), |r| r.lambda0 == 0.000001, "lambda0 1e-6");
     pin!("beyond_the_rack_falls_to_bold", card_at(9), |r| r.lambda0 == 0.000001, "lambda0 1e-6");
-    pin!("exact_tie_breaks_to_the_first_card", tune_damping(affine(), ts(), ys(), v(&[2.0, 3.0]), ones(), 0, 0, 2000000.0),
+    pin!("exact_tie_breaks_to_the_first_card", tune_damping(affine(), ts(), ys(), v(&[2.0, 3.0]), ones()),
         |r| r.lambda0 == 0.1 && r.down == 100.0, "lambda0 0.1, down 100");
     pin!("recovers_planted_rational_decay", PlantedFit(0), |r| *r, "true");
     pin!("classic_card_constants", MarquardtCardIsClassic(0), |r| *r, "true");

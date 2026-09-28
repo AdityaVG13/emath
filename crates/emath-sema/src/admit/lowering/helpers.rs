@@ -704,22 +704,6 @@ impl super::super::Admitter {
             }
             let result_infer = result.map_or(Infer::F64, |boxed| *boxed);
             self.record("sema", "scalar index", expr.source);
-            if self.capability_by_kernel("checked-dense-index").is_some() {
-                let guards = vec![None; index_ids.len()];
-                let packed = self.push_expr(
-                    ExprNode::Set {
-                        elements: index_ids,
-                        guards,
-                    },
-                    expr.source,
-                );
-                return self.apply_kernel(
-                    "checked-dense-index",
-                    vec![target_id, packed],
-                    result_infer,
-                    expr.source,
-                );
-            }
             let id = self.push_expr(
                 ExprNode::Index {
                     value: target_id,

@@ -112,20 +112,6 @@ pub fn whole_index(raw: f64, len: usize) -> Result<usize, IndexError> {
     Ok(index)
 }
 
-/// Vector `v[i]` with the same bounds as the interpreter.
-pub fn vec_index_checked<T: Clone>(v: &[T], index: f64) -> Result<T, IndexError> {
-    let i = whole_index(index, v.len())?;
-    Ok(v[i].clone())
-}
-
-/// Nested-row matrix `m[r][c]` with per-axis bounds (ragged rows use
-/// that row's length).
-pub fn mat_index_checked(m: &[Vec<f64>], row: f64, col: f64) -> Result<f64, IndexError> {
-    let r = whole_index(row, m.len())?;
-    let c = whole_index(col, m[r].len())?;
-    Ok(m[r][c])
-}
-
 /// Row-major tensor `t[i, j, …]` with one index per axis.
 pub fn tensor_index_checked(
     shape: &[usize],
@@ -281,7 +267,11 @@ pub fn tensor_slice_as_matrix(
     data: &[f64],
     axes: &[SliceAxis],
 ) -> Result<Vec<Vec<f64>>, IndexError> {
-    tensor_slice_checked(shape, data, axes).map(einsum_matrix)
+    let (kept, data) = tensor_slice_checked(shape, data, axes)?;
+    let cols = kept.get(1).copied().unwrap_or(0);
+    Ok((0..kept.first().copied().unwrap_or(0))
+        .map(|r| data.get(r * cols..(r + 1) * cols).unwrap_or(&[]).to_vec())
+        .collect())
 }
 
 /// Rank-3+ slice result (shape + flat row-major data).

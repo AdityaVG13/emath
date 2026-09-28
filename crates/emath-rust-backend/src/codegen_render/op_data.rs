@@ -1,8 +1,8 @@
 //! Universal constants, storage, text, set, series, and record lowering.
 
 use super::{
-    BackendError, EmirOp, EmirProgram, Expr, InputKinds, ValueKind, borrowed_value,
-    element_tensor_expr, escape_ident, input_kind, kind_at, local_state, node_family, operand,
+    BackendError, EmirOp, EmirProgram, EmirValue, Expr, InputKinds, ValueKind, borrowed_value,
+    escape_ident, input_kind, kind_at, local_state, node_family, operand,
     operand_ref, owned_value, record_layout, render_expr, rt_call, to_node,
 };
 
@@ -61,7 +61,7 @@ pub(super) fn op_data_exprs(
             if carrier_elements {
                 let mut entries = Vec::new();
                 for (index, element) in elements.iter().enumerate() {
-                    let Some(converted) = element_tensor_expr(*element, program, kinds, 4) else {
+                    let Some(converted) = element_tensor_expr(*element, program, kinds) else {
                         return Err(BackendError::UnsupportedType(
                             "set of mixed carrier elements has no rendering yet".into(),
                         ));
@@ -203,5 +203,20 @@ pub(super) fn op_data_exprs(
             }
         }
         _ => unreachable!("op_data_exprs routed a non-universal data op"),
+    }
+}
+
+/// One set element converted to an `emath_rt::Tensor` expression.
+fn element_tensor_expr(value: EmirValue, program: &EmirProgram, kinds: &[ValueKind]) -> Option<String> {
+    let expr = render_expr(&operand(program, value));
+    match kind_at(kinds, value) {
+        ValueKind::Vector(_) => Some(format!(
+            "emath_rt::Tensor {{ shape: vec![({expr}).len()], data: ({expr}).clone() }}"
+        )),
+        ValueKind::Matrix(_) => Some(format!(
+            "emath_rt::Tensor {{ shape: vec![({expr}).rows(), ({expr}).cols()], data: ({expr}).as_slice().to_vec() }}"
+        )),
+        ValueKind::Tensor => Some(format!("({expr}).clone()")),
+        _ => None,
     }
 }

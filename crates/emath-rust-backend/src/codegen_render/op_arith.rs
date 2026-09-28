@@ -2,7 +2,7 @@
 
 use super::{
     BackendError, BinOp, EmirOp, EmirProgram, EmirValue, Expr, UnOp, ValueKind,
-    borrowed_register, checked_integer_result, cmp_expr, comparison, exact_int_operand,
+    checked_integer_result, cmp_expr, comparison, exact_int_operand, exact_int_ref,
     i64_or_f64_bin, kind_at, map_runtime_result, operand, operand_kind, render_expr, to_code_value,
     typed_operand, union_pair,
 };
@@ -210,7 +210,7 @@ pub(super) fn op_arith_exprs(
         // inputs): the VM's `as_rat` law - the Int operand widens
         // exactly (`n` becomes `n/1`), the result stays Rational (a
         // Rational operand locks the carrier, never a float join).
-        // ExactInt-backed operands (e.g. `int_binom` results) widen
+        // ExactInt-backed operands (e.g. `int_pow` results) widen
         // through the same checked i128 bridge so every mixed pair
         // meets on ONE representation - the ratio tuple carrier -
         // never raw tuple ops against ExactInt values.
@@ -253,17 +253,7 @@ pub(super) fn op_arith_exprs(
         {
             let left_e = render_expr(&exact_int_operand(program, left, kinds));
             let right_e = render_expr(&exact_int_operand(program, right, kinds));
-            // Method slots take `&ExactInt`; a borrowed register (the
-            // non-copy load lane) already renders as exactly one
-            // reference layer, so the `&` is added only for owned
-            // operand expressions.
-            let right_ref = if kind_at(kinds, right) == ValueKind::ExactInt
-                && borrowed_register(program, right, kinds)
-            {
-                right_e.clone()
-            } else {
-                format!("&{right_e}")
-            };
+            let right_ref = exact_int_ref(program, right, kinds);
             let value = match function {
                 "ratio_add" => map_runtime_result(format!(
                     "{left_e}.add({right_ref}).map_err(|err| err.to_string())"

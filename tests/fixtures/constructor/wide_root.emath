@@ -1,5 +1,5 @@
-# floor_root of 2^300. A language binary search on [0, n+1) native-aborts
-# (~150 VM frames). Machine int_root does not.
+# floor_root of 2^300 through the authored bisection in analysis.powers:
+# the search must stay within VM frame limits on a 91-digit input.
 use analysis.powers
 
 emath function WideRoot:
