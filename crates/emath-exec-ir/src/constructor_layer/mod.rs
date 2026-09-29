@@ -162,7 +162,7 @@ impl fmt::Display for DomainShape {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Closure {
     pub param: String,
     /// The declared domain of the binder, recorded at construction so
@@ -173,6 +173,21 @@ pub struct Closure {
     pub body: Expr,
     pub env: BTreeMap<String, CValue>,
     pub recursive: Option<String>,
+    /// The memo-key text of `body` and `domain`, encoded on first use: a
+    /// recursive closure re-applies the same `Arc` at every call, and
+    /// re-encoding its body per call dominated its memo lookups. Sound
+    /// because a closure's body and domain never change after creation.
+    pub(crate) body_key: std::sync::OnceLock<String>,
+}
+
+impl PartialEq for Closure {
+    fn eq(&self, other: &Self) -> bool {
+        self.param == other.param
+            && self.domain == other.domain
+            && self.body == other.body
+            && self.env == other.env
+            && self.recursive == other.recursive
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

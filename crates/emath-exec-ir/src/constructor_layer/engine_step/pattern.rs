@@ -113,6 +113,7 @@ impl Engine {
             body: body.clone(),
             env: self.env.captured_by(body),
             recursive: None,
+            body_key: Default::default(),
         }));
         self.apply_value(cal, &[dom, clos])
     }

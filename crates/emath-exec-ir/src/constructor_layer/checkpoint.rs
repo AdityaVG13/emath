@@ -325,11 +325,14 @@ pub(super) fn closure_memo_key(clos: &Closure, args: &[CValue]) -> Option<String
     }
     let name = clos.recursive.as_deref().unwrap_or(clos.param.as_str());
     let mut out = call_memo_key(name, args)?;
-    out.push_str(":body=");
-    encode_expr(&clos.body, &mut out);
-    // Domain remains part of identity: memoization must not bypass admission.
-    out.push_str(":domain=");
-    encode_closure_domain(&clos.domain, &mut out);
+    out.push_str(clos.body_key.get_or_init(|| {
+        let mut key = String::from(":body=");
+        encode_expr(&clos.body, &mut key);
+        // Domain remains part of identity: memoization must not bypass admission.
+        key.push_str(":domain=");
+        encode_closure_domain(&clos.domain, &mut key);
+        key
+    }));
     for (key, value) in &clos.env {
         if clos.recursive.as_deref() == Some(key.as_str()) {
             continue;
@@ -1599,6 +1602,7 @@ pub(super) fn decode_cvalue_cur(
                     } else {
                         Some(recursive)
                     },
+                    body_key: Default::default(),
                 }))
             }
             "str" => {

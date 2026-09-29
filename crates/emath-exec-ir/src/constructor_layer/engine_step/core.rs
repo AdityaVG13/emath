@@ -237,6 +237,7 @@ impl Engine {
                         body,
                         env: BTreeMap::new(),
                         recursive: None,
+                        body_key: Default::default(),
                     })));
                 }
                 if self.expect_atoms.get() && segments.len() == 1 {
@@ -354,6 +355,7 @@ impl Engine {
                     body: *body.clone(),
                     env: self.env.captured_by(body),
                     recursive: None,
+                    body_key: Default::default(),
                 })))
             }
             ExprKind::Recur { name, ty, body, .. } => {
@@ -381,6 +383,7 @@ impl Engine {
                         body: *body.clone(),
                         env: BTreeMap::new(),
                         recursive: Some(name.clone()),
+                        body_key: Default::default(),
                     };
                     env.insert(name.clone(), CValue::Closure(Arc::new(finished.clone())));
                     return Ok(CValue::Closure(Arc::new(Closure {
@@ -389,6 +392,7 @@ impl Engine {
                         body: *body.clone(),
                         env,
                         recursive: Some(name.clone()),
+                        body_key: Default::default(),
                     })));
                 }
                 Ok(CValue::Closure(Arc::new(Closure {
@@ -397,6 +401,7 @@ impl Engine {
                     body: *body.clone(),
                     env: self.env.captured_by(body),
                     recursive: Some(name.clone()),
+                    body_key: Default::default(),
                 })))
             }
             ExprKind::Quote { body } => {
