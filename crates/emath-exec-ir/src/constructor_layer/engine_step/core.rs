@@ -1,6 +1,6 @@
 use super::super::{Engine, ConstructorError, Kont, Expr, CValue, ExprKind, parse_int, parse_exact, fault, Arc, BTreeMap, DomainShape, Closure, BinaryOp, Code, ExactInt, exact_fault};
 use super::prelude::{
-    apply_unary, arrow_domain_of_expr, binary, cons_values, domain_shape_of_expr,
+    apply_unary, arrow_domain_of_expr, binary, cons_values, domain_expr_of_shape, domain_shape_of_expr,
     domain_shape_of_type, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag,
     project_field, schema_tag,
 };
@@ -190,32 +190,47 @@ impl Engine {
                 }
                 if let Some(decl) = self.functions.get(&name) {
                     // A named function in VALUE position coerces to a
-                    // closure over its inputs: applying the closure
-                    // calls the function with the argument. The param
-                    // reuses the declaration's first input name (the
-                    // call re-binds it identically); a wider function
-                    // refuses `arity` at application time — never a
-                    // silently wrong body. The previous shape (empty
-                    // param, the path itself as the body) bound no
-                    // argument and returned the closure unapplied.
+                    // curried closure over its inputs: `f(a, b)` through
+                    // the value is `(function a: function b: f(a, b))`
+                    // applied to a then b, so the full call re-binds
+                    // every input identically. Each closure demands
+                    // what its input declares — the same shape the
+                    // named lane's admit_input_type checks on every call.
+                    let shapes: Vec<DomainShape> = decl
+                        .inputs
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| {
+                            decl.input_types
+                                .get(i)
+                                .map_or(DomainShape::Unknown, domain_shape_of_type)
+                        })
+                        .collect();
                     let param = decl.inputs.first().cloned().unwrap_or_default();
-                    let body = dummy_expr(ExprKind::Call {
+                    let mut body = dummy_expr(ExprKind::Call {
                         function: Box::new(dummy_expr(ExprKind::Path {
                             segments: vec![name.clone()],
                             generics: None,
                         })),
-                        args: vec![dummy_expr(ExprKind::Path {
-                            segments: vec![param.clone()],
-                            generics: None,
-                        })],
+                        args: decl
+                            .inputs
+                            .iter()
+                            .map(|input| {
+                                dummy_expr(ExprKind::Path {
+                                    segments: vec![input.clone()],
+                                    generics: None,
+                                })
+                            })
+                            .collect(),
                     });
-                    // The coerced closure demands what the declaration's
-                    // first input declares — the same shape the named
-                    // lane's admit_input_type checks on every call.
-                    let domain = decl
-                        .input_types
-                        .first()
-                        .map_or(DomainShape::Unknown, domain_shape_of_type);
+                    for (input, shape) in decl.inputs.iter().zip(&shapes).skip(1).rev() {
+                        body = dummy_expr(ExprKind::FunctionAbs {
+                            param: input.clone(),
+                            domain: Box::new(domain_expr_of_shape(shape)),
+                            body: Box::new(body),
+                        });
+                    }
+                    let domain = shapes.first().cloned().unwrap_or(DomainShape::Unknown);
                     return Ok(CValue::Closure(Arc::new(Closure {
                         param,
                         domain,

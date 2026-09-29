@@ -261,6 +261,15 @@ pub(crate) fn machine_buffer_basename(name: &str) -> Option<&str> {
     }
 }
 
+/// Names `eval_named_call` resolves to the machine itself rather than
+/// to a declaration or binding; quoted code calling them is not open.
+pub(crate) fn is_machine_callable(name: &str) -> bool {
+    machine_int_basename(name).is_some()
+        || machine_buffer_basename(name).is_some()
+        || name == "length"
+        || name == "constructor_refuse"
+}
+
 pub(super) fn as_rat(value: CValue) -> Result<(ExactInt, ExactInt), ConstructorError> {
     match value {
         CValue::Int(n) => Ok((n, ExactInt::one())),

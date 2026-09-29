@@ -2983,8 +2983,8 @@ emath function WalkMatchOpen:
         // closure over its inputs: applying the closure calls the
         // function. Historical behavior: the bare name yielded an
         // unapplied closure value (calling it returned the closure
-        // itself). The wide two-input shape refuses `arity` at
-        // application time — never a silently wrong body.
+        // itself). A wide two-input function in value position is
+        // curried; a wrong-arity named call still refuses `arity`.
         // `all_passed` panics with the failing observation on any
         // regression.
         all_passed("named_fn_closure_arg.emath");

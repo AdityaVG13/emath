@@ -3,13 +3,15 @@
 # kept from discover.emath. Each target below has no rule within five
 # parts over the base blocks alone; with the kept functions added as
 # blocks, a four- or five-part rule appears and survives the held-out
-# terms. Catalan stays unsolved either way: its known forms need
-# division and about twelve parts.
+# terms. Catalan is out of reach of the kept unary blocks; with the
+# shipped binomial as a two-input block and exact division it is
+# binomial(n + n, n) / (n + 1), nine parts.
 #
 # Run: emath test grows.emath --work 50000000
 # Keep a second-tier find into the same library (it calls fibonacci):
 #   emath keep grows.emath --function FibonacciEven --name fibonacci_even --to lib/seq.emath --set unused=0 --work 50000000
 
+use discrete.factorials
 use lib.seq
 use search.synthesis
 
@@ -19,7 +21,7 @@ emath function kept_blocks:
     outputs:
         result: sequence(Block)
     definitions:
-        result = [Block: {code: quote(triangular(x)), apply: triangular, cap: 50}, Block: {code: quote(factorial(x)), apply: factorial, cap: 30}, Block: {code: quote(fibonacci(x)), apply: fibonacci, cap: 20}]
+        result = [Block: {code: quote(triangular(x)), apply: triangular, cap: 50}, Block: {code: quote(factorial(x)), apply: factorial, cap: 30}, Block: {code: quote(fibonacci(x)), apply: fibonacci, cap: 25}]
 
 emath function FibonacciEven:
     inputs:
@@ -27,7 +29,7 @@ emath function FibonacciEven:
     outputs:
         result: Code
     definitions:
-        result = synthesize_with([0, 1, 3, 8, 21, 55, 144, 377, 987, 2584], [6765, 17711], 5, kept_blocks(0)).program
+        result = synthesize_with([0, 1, 3, 8, 21, 55, 144, 377, 987, 2584], [6765, 17711], 5, kept_blocks(0), []).program
 
 emath function Tier2:
     inputs:
@@ -39,7 +41,7 @@ emath function Tier2:
         size: Int
         next: Int
     definitions:
-        found = synthesize_with(train, held, 5, if with_kept: kept_blocks(0) else: [])
+        found = synthesize_with(train, held, 5, if with_kept: kept_blocks(0) else: [], [])
         g = quote.evaluate(found.program)
         status = found.status
         size = found.size
@@ -81,8 +83,32 @@ emath function Tier2:
             expect status == 1
             expect size == 5
             expect next == 6084
-        example <catalan_still_unsolved>:
+        example <catalan_needs_more_than_kept_blocks>:
             given train = [1, 1, 2, 5, 14, 42, 132, 429, 1430, 4862]
             given held = [16796, 58786]
             given with_kept = true
             expect status == 0
+
+emath function Catalan:
+    # binomial(n + n, n) / (n + 1) is nine parts with the shipped
+    # binomial as a two-input block and exact division.
+    inputs:
+        train: sequence(Int)
+        held: sequence(Int)
+    outputs:
+        status: Int
+        size: Int
+        next: Int
+    definitions:
+        found = synthesize_with(train, held, 9, [], [Block2: {code: quote(binomial(x, y)), apply: binomial, cap: 60}])
+        g = quote.evaluate(found.program)
+        status = found.status
+        size = found.size
+        next = if found.status == 1: g(length(train) + length(held)) else: -1
+    tests:
+        example <catalan_from_binomial>:
+            given train = [1, 1, 2, 5, 14, 42, 132, 429, 1430, 4862]
+            given held = [16796, 58786]
+            expect status == 1
+            expect size == 9
+            expect next == 208012

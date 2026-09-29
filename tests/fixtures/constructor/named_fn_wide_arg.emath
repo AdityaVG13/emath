@@ -2,7 +2,35 @@
 # wrong arity refuses `arity` at application time, never a
 # zip-truncated binding. (Passing a two-input function where a unary
 # closure is declared is refused statically at admission; see the
-# `generic-functions-admit` cutover case.)
+# `generic-functions-admit` cutover case.) A two-input function in
+# value position is curried: applied to both arguments it computes.
+emath object Binary:
+    representation:
+        apply: Rat -> Rat -> Rat
+
+emath function wide_value_applies:
+    inputs:
+        unused: Int
+    outputs:
+        direct: Rat
+        stored: Rat
+        tail: Rat
+    definitions:
+        h = two_in
+        b = Binary: {apply: two_in}
+        g = b.apply
+        k = function x in Rat: g(x, 1 / 1)
+        direct = h(3 / 1, 4 / 1)
+        stored = g(1 / 2, 1 / 3)
+        tail = k(2 / 1) + k(5 / 1)
+    tests:
+        example <wide_value_is_curried>:
+            # tail: the two-argument call sits in a closure's tail position
+            given unused = 0
+            expect direct == 7 / 1
+            expect stored == 5 / 6
+            expect tail == 9 / 1
+
 emath function two_in:
     inputs:
         a: Rat

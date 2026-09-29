@@ -7,8 +7,10 @@
 # The run is adaptive: each target escalates its size bound until it
 # is solved or reaches the cap, so the size at which a rule appears is
 # the measured difficulty. Catalan needs a rule far larger than the
-# cap with {+, -, *} over {n, a(n-1), a(n-2), 1, 2}; it reports
-# unsolved rather than a false rule.
+# cap with {+, -, *, exact /} over {n, a(n-1), a(n-2), 1, 2} (its
+# recurrence a(n-1) * 2(2n - 1) / (n + 1) is thirteen nodes); it
+# reports unsolved rather than a false rule. With binomial as a block
+# it is nine nodes: tests/fixtures/keep/grows.emath.
 #
 # Run: emath test tests/fixtures/modules/sequence_rediscovery.emath --work 20000000
 

@@ -528,6 +528,19 @@ pub(crate) fn domain_shape_of_expr(expr: &Expr) -> DomainShape {
     }
 }
 
+/// The domain expression [`domain_shape_of_expr`] reads back as `shape`;
+/// an Unknown shape spells a tag that carries no claim.
+pub(crate) fn domain_expr_of_shape(shape: &DomainShape) -> Expr {
+    match shape {
+        DomainShape::Scalar(name) => path_expr(name),
+        DomainShape::Sequence(Some(element)) => dummy_expr(ExprKind::Call {
+            function: Box::new(path_expr("sequence")),
+            args: vec![domain_expr_of_shape(element)],
+        }),
+        _ => path_expr("_"),
+    }
+}
+
 /// Domain half of a fn-type EXPRESSION (`A -> B` desugars to
 /// `Fn(A, B)`): what a recur binder's closure demands of its argument.
 /// Record-of-functions shapes stay Unknown.

@@ -1,4 +1,4 @@
-use super::super::{Engine, CValue, ConstructorError, fault, Code, call_memo_key, Closure, closure_memo_key, MAX_CALL_DEPTH, ContinuationFrame, Environment, ScalarArg, ScalarArgs, SCALAR_ARGS, FACT_PREFIX};
+use super::super::{Engine, CValue, ConstructorError, fault, Code, call_memo_key, Closure, closure_memo_key, is_scalar, MAX_CALL_DEPTH, ContinuationFrame, Environment, ScalarArg, ScalarArgs, SCALAR_ARGS, FACT_PREFIX};
 use super::prelude::{fragment_term, substitute_path, value_to_expr};
 use crate::exact_int::ExactInt;
 
@@ -85,15 +85,14 @@ impl Engine {
         }
     }
 
-    /// Under `facts_only_memo`, fact calls are memoized (and carried),
-    /// and so are calls whose arguments are all scalars: their keys cost
-    /// a few bytes, and a fact body re-reads the same tables (`pool(0)`,
-    /// `row(i)`) on every call. Calls carrying sequences or records are
-    /// not, since their key would serialize a whole archive.
+    /// Fact calls are memoized (and carried), and so are calls whose
+    /// arguments are all scalars: their keys cost a few bytes, and they
+    /// are what naive recursion (`fibonacci(n - 1) + fibonacci(n - 2)`)
+    /// and fact bodies (`pool(0)`, `row(i)`) repeat. Calls carrying
+    /// sequences or records are not: a fold threading its state would
+    /// serialize the whole state into a fresh key at every step.
     fn memoizes(&self, name: &str, args: &[CValue]) -> bool {
-        !self.facts_only_memo
-            || name.starts_with(FACT_PREFIX)
-            || args.iter().all(|arg| matches!(arg, CValue::Int(_) | CValue::Rat { .. } | CValue::Bool(_)))
+        name.starts_with(FACT_PREFIX) || args.iter().all(is_scalar)
     }
 
     /// A body that tail-calls hands its frame to the callee, so the

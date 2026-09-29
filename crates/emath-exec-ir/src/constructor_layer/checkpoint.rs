@@ -286,6 +286,10 @@ impl Checkpoint {
     }
 }
 
+pub(super) fn is_scalar(value: &CValue) -> bool {
+    matches!(value, CValue::Int(_) | CValue::Rat { .. } | CValue::Bool(_))
+}
+
 fn is_nonmemo_leaf(value: &CValue) -> bool {
     matches!(
         value,
@@ -309,9 +313,14 @@ pub(super) fn call_memo_key(name: &str, args: &[CValue]) -> Option<String> {
 }
 
 pub(super) fn closure_memo_key(clos: &Closure, args: &[CValue]) -> Option<String> {
-    if clos.env.iter().any(|(key, value)| {
-        clos.recursive.as_deref() != Some(key.as_str()) && is_nonmemo_leaf(value)
-    }) {
+    // Same policy as named calls: only scalar arguments over a scalar
+    // environment. A fold lambda capturing its caller's sequences would
+    // otherwise re-serialize them (and its body) on every application.
+    if !args.iter().all(is_scalar)
+        || clos.env.iter().any(|(key, value)| {
+            clos.recursive.as_deref() != Some(key.as_str()) && !is_scalar(value)
+        })
+    {
         return None;
     }
     let name = clos.recursive.as_deref().unwrap_or(clos.param.as_str());

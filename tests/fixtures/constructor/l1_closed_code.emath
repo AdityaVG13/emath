@@ -56,6 +56,21 @@ emath function AlphaIdentity:
             expect same == true
             expect differs == false
 
+emath function MachineCallsAreClosed:
+    # Machine operations (int_quot, int_rem, length) are part of the
+    # machine, not free names: code that calls them is closed.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        g = quote.evaluate(quote(function n in Int: int_quot(n * 6, 4) + int_rem(n, 4) + length([n, n])))
+        result = g(10)
+    tests:
+        example <machine_calls_evaluate>:
+            given unused = 0
+            expect result == 19
+
 emath function OpenRefuses:
     # k is bound in the AMBIENT function scope, not by the code: the
     # guarded evaluator refuses unbound_code (at HEAD this leaks the

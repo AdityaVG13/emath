@@ -19,7 +19,10 @@ impl Engine {
                     .recursive
                     .clone()
                     .unwrap_or_else(|| format!("function {}", clos.param));
-                if let Some(value) = self.completed_closure(&clos, args) {
+                // A closure consumes one argument; the rest apply to its
+                // result. Memo entries are keyed on that one argument.
+                let head = &args[..1];
+                if let Some(value) = self.completed_closure(&clos, head) {
                     return if args.len() > 1 {
                         self.apply_value(value, &args[1..])
                     } else {
@@ -34,7 +37,7 @@ impl Engine {
                 self.push_frame(&frame_name);
                 let saved = self.env.clone();
                 let entry = clos.clone();
-                let outcome = self.apply_closure_chain(clos, args.to_vec(), saved.clone());
+                let outcome = self.apply_closure_chain(clos, head.to_vec(), saved.clone());
                 let exhausted = matches!(
                     &outcome,
                     Err(err) if err.code == "budget_exhausted"
@@ -45,7 +48,7 @@ impl Engine {
                     self.call_depth = self.call_depth.saturating_sub(1);
                 }
                 let result = outcome?;
-                self.remember_closure(&entry, args, result.clone());
+                self.remember_closure(&entry, head, result.clone());
                 if args.len() > 1 {
                     self.apply_value(result, &args[1..])
                 } else {
@@ -75,6 +78,14 @@ impl Engine {
         loop {
             if args.is_empty() {
                 return Ok(CValue::Closure(clos));
+            }
+            // A tail call with several arguments (`h(a, b)` in tail
+            // position) consumes the first here and applies the rest to
+            // that result; frame reuse covers single-argument chains.
+            if args.len() > 1 {
+                let rest = args.split_off(1);
+                let head = self.apply_closure_chain(clos, args, saved)?;
+                return self.apply_value(head, &rest);
             }
             if let Some(value) = self.completed_closure(&clos, &args) {
                 return Ok(value);
@@ -267,6 +278,7 @@ impl Engine {
                 !code.deps.contains_key(name)
                     && !self.functions.contains_key(name)
                     && !inputs.contains_key(name)
+                    && !super::super::is_machine_callable(name)
             })
             .collect()
     }
