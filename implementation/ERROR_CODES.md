@@ -31,8 +31,8 @@
 | `E-EV-*` | language evidence policy | claim-verb goal without `evidence:` (E-EV-140) |
 | `E-CAPSULE-*` | feature capsules | malformed field/line (001), duplicate field (003), id/class mismatch (014), semantic-hash mismatch (022), reference-term refusals (023-026) |
 | `E-CAT-*` | category kernels | non-finite carrier (001), shape (002), index (003), composition/identity/associativity laws (004-006), uncertifiable carrier (007) |
-| `E-CSV-*` | csv ingest | missing/ambiguous time or value column (001-004), ragged row (005), unclosed quote (006), no data rows (007), non-numeric cell (008), nonincreasing time (009) |
-| `E-EINSUM-*` | einsum kernel | arithmetic/subscript refusal (001), index out of range (002) |
+| `E-CSV-*` | csv ingest (retired) | missing/ambiguous time or value column (001-004), ragged row (005), unclosed quote (006), no data rows (007), non-numeric cell (008), nonincreasing time (009) |
+| `E-EINSUM-*` | einsum kernel (retired) | arithmetic/subscript refusal (001), index out of range (002) |
 | `E-EVENT-*` | event actions | malformed payload (001), non-Bool condition (002/006), `else` arm (003), bad action slot/value (004/005), unbound parameter (007), runtime refusal/fault (008/009) |
 | `E-FIT-*` | fit lane | untagged refusal fallback (000); the lane is a single E-KIND-GONE refusal — the fitting math is authored `.emath` (`numerics.levenberg`) |
 | `E-MODEL-*` | simulate model selection | named model has no `emath model` declaration (001) |
@@ -906,7 +906,7 @@ Genesis CLI (`crates/emath-cli-lab/src/genesis_cmd/`):
 
 - `E-GEN-096`: a world/portfolio id is not a single path component (path safety for generated artifact trees).
 
-Semantic admission (`crates/emath-sema/src/{admit/lowering,recognition}.rs`):
+Measurement literals (retired: the pre-cutover expression lowering that emitted these was removed; no code path emits them):
 
 - `E-MEAS-001`: a measurement literal value is not a valid number.
 - `E-MEAS-002`: an unknown distribution tag in a measurement literal (admitted tags: normal | uniform | lognormal).
@@ -989,7 +989,7 @@ Category kernels (`crates/emath-rt/src/body/control.rs`):
 - `E-CAT-007`: the carrier exceeds the certifiable bound (commutativity
   is never answered over an uncertifiable carrier).
 
-CSV ingest (`crates/emath-sema/src/admit/lowering/csv.rs`):
+CSV ingest (retired: the pre-cutover series lowering that emitted these was removed; no code path emits them):
 
 - `E-CSV-001`: the time column is missing from the CSV header.
 - `E-CSV-002`: the time column is ambiguous (several columns match).
@@ -1002,7 +1002,7 @@ CSV ingest (`crates/emath-sema/src/admit/lowering/csv.rs`):
 - `E-CSV-009`: the CSV time column is nonincreasing (times must be
   strictly increasing).
 
-Einsum kernel (`crates/emath-exec-ir/src/native_kernels/einsum.rs`):
+Einsum kernel (retired: the native einsum kernel was removed; no code path emits these):
 
 - `E-EINSUM-001`: an einsum subscript/precondition refusal from the
   checked kernel (arithmetic fault).
@@ -1046,7 +1046,7 @@ regenerated as the registry changes. The workspace test
 `crates/emath-hir/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **394 unique codes** from 516 rust files.
+Emissions: **368 unique codes** from 514 rust files.
 Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |
@@ -1077,13 +1077,6 @@ Not yet documented at generation time: **0**.
 | `E-CAPSULE-024` | crates/emath-schema/src/feature_capsule.rs | `E-CAPSULE-024`<br>`reference symbol `{symbol}` declared with conflicting arities` |
 | `E-CAPSULE-025` | crates/emath-schema/src/feature_capsule.rs | `reference term uses variable `{name}` outside `reference_params`` |
 | `E-CAPSULE-026` | crates/emath-schema/src/feature_capsule.rs | `E-CAPSULE-026` |
-| `E-CAT-001` | crates/emath-rt/src/body/control.rs |  |
-| `E-CAT-002` | crates/emath-rt/src/body/control.rs |  |
-| `E-CAT-003` | crates/emath-rt/src/body/control.rs |  |
-| `E-CAT-004` | crates/emath-rt/src/body/control.rs |  |
-| `E-CAT-005` | crates/emath-rt/src/body/control.rs |  |
-| `E-CAT-006` | crates/emath-rt/src/body/control.rs |  |
-| `E-CAT-007` | crates/emath-rt/src/body/control.rs |  |
 | `E-CELL-001` | crates/emath-ir/src/capability/model.rs | `pure`<br>`E-CELL-001` |
 | `E-CELL-002` | crates/emath-ir/src/capability/model.rs | `E-CELL-002`<br>`capability cell `{name}` declares no schema version (E-CELL-002)` |
 | `E-CELL-003` | crates/emath-ir/src/capability/model.rs | `E-CELL-003` |
@@ -1105,15 +1098,6 @@ Not yet documented at generation time: **0**.
 | `E-CODEGEN-009` | crates/emath-build/src/deps.rs | `E-CODEGEN-009` |
 | `E-CODEGEN-010` | crates/emath-build/src/script.rs | `E-CODEGEN-010` |
 | `E-CODEGEN-012` | crates/emath-build/src/builder/build.rs | `compile spec `{}/{}` outside the current subset (E-CODEGEN-012)` |
-| `E-CSV-001` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-001` |
-| `E-CSV-002` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-002` |
-| `E-CSV-003` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-003` |
-| `E-CSV-004` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-004` |
-| `E-CSV-005` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-005` |
-| `E-CSV-006` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-006` |
-| `E-CSV-007` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-007` |
-| `E-CSV-008` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-008` |
-| `E-CSV-009` | crates/emath-sema/src/admit/lowering/csv.rs | `E-CSV-009` |
 | `E-CTOR-030` | crates/emath-build/src/builder/policy.rs | `missing state assignment for `{}` (E-CTOR-030)` |
 | `E-CTOR-031` | crates/emath-build/src/builder/build.rs |  |
 | `E-CTOR-032` | crates/emath-build/src/builder/policy.rs | ``require` must be a Boolean expression (E-CTOR-032)`<br>``ensure` must be a Boolean expression (E-CTOR-032)` |
@@ -1125,16 +1109,14 @@ Not yet documented at generation time: **0**.
 | `E-CTOR-038` | crates/emath-build/src/builder/policy.rs | `delegating constructor `{name}` cannot assign state directly (E-CTOR-038)` |
 | `E-CTOR-039` | crates/emath-build/src/builder/policy.rs | `default for undeclared parameter `{target}` (E-CTOR-039)` |
 | `E-DOM-001` | crates/emath-ir/src/domains.rs | `{name} value {value} outside domain {self}` |
-| `E-DOM-002` | crates/emath-ir/src/domains.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs | `ill-formed domain interval [{low}, {high}]`<br>`E-DOM-002` |
-| `E-EINSUM-001` | crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs | `E-EINSUM-001: {detail}`<br>`{{ let __e = emath_rt::einsum_checked({spec:?}, &[{}]).map_err(|error| match error {{ emath_rt::EinsumError::A` |
-| `E-EINSUM-002` | crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs | `E-EINSUM-002: einsum index {index} is outside 0..{len}`<br>`{{ let __e = emath_rt::einsum_checked({spec:?}, &[{}]).map_err(|error| match error {{ emath_rt::EinsumError::A` |
+| `E-DOM-002` | crates/emath-ir/src/domains.rs | `ill-formed domain interval [{low}, {high}]` |
 | `E-EVAL-001` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `E-EVAL-001` |
 | `E-EVAL-002` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli/src/execution/advance.rs | `E-EVAL-002` |
 | `E-EVAL-003` | crates/emath-cli-lab/src/eval_cmd/spec.rs | `E-EVAL-003` |
 | `E-EVAL-004` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `E-EVAL-004` |
 | `E-EVAL-005` | crates/emath-build/src/probe.rs<br>crates/emath-cli-lab/src/eval_cmd/args.rs<br>crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs<br>crates/emath-cli/src/execution/advance.rs | `E-EVAL-005`<br>`duplicate `--set` binding for input `{name}`` |
 | `E-EVAL-006` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `E-EVAL-006` |
-| `E-EVAL-007` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs<br>crates/emath-sema/src/admit.rs | `meaning identity refused: {error:?}`<br>`E-EVAL-007` |
+| `E-EVAL-007` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `meaning identity refused: {error:?}`<br>`E-EVAL-007` |
 | `E-EVAL-008` | crates/emath-build/src/probe.rs<br>crates/emath-cli-lab/src/eval_cmd/args.rs | `E-EVAL-008` |
 | `E-EVID-101` | crates/emath-evidence/src/checker/artifact_check.rs<br>crates/emath-evidence/src/checker/negative.rs<br>crates/emath-evidence/src/lib.rs | `content of {path} does not hash to its declared id`<br>`E-EVID-101` |
 | `E-EVID-102` | crates/emath-artifact/src/identity.rs<br>crates/emath-evidence/src/checker/artifact_check.rs | `E-EVID-102` |
@@ -1196,7 +1178,7 @@ Not yet documented at generation time: **0**.
 | `E-HOST-002` | crates/emath-rust-backend/src/rust_ir/host.rs |  |
 | `E-HOST-003` | crates/emath-lab-core/src/error.rs<br>crates/emath-lab-core/src/manifest.rs<br>crates/emath-lab-core/src/manifest/fields.rs<br>crates/emath-lab-core/src/manifest/model.rs<br>crates/emath-lab-core/src/manifest/parse.rs<br>crates/emath-lab-core/src/stats.rs | `manifest JSON is missing field {name}`<br>`{at} must be a JSON object` |
 | `E-HOST-004` | crates/emath-lab-core/src/manifest.rs<br>crates/emath-lab-core/src/manifest/model.rs<br>crates/emath-lab-core/src/manifest/parse.rs | `E-HOST-004` |
-| `E-HOST-005` | crates/emath-lab-core/src/candidate.rs<br>crates/emath-lab-core/src/gate.rs<br>crates/emath-lab-core/src/promotion.rs<br>crates/emath-lab-core/src/selector.rs | `E-HOST-005`<br>`E-HOST-005: evidence missing for {metric}` |
+| `E-HOST-005` | crates/emath-lab-core/src/gate.rs<br>crates/emath-lab-core/src/promotion.rs<br>crates/emath-lab-core/src/selector.rs | `E-HOST-005`<br>`E-HOST-005: evidence missing for {metric}` |
 | `E-HOST-006` | crates/emath-lab-core/src/measure.rs<br>crates/emath-lab-core/src/promotion.rs<br>crates/emath-lab-core/src/stats.rs | `no raw samples for metric {}`<br>`E-HOST-006` |
 | `E-HOST-007` | crates/emath-lab-core/src/promotion.rs | `E-HOST-007`<br>`E-HOST-007: median ratio {median_ratio} below floor` |
 | `E-HOST-008` | crates/emath-lab-core/src/adversarial.rs<br>crates/emath-lab-core/src/promotion.rs<br>crates/emath-lab-core/src/stats.rs | `incomparable experiment: {} ({})`<br>`E-HOST-008` |
@@ -1209,6 +1191,8 @@ Not yet documented at generation time: **0**.
 | `E-HOST-016` | crates/emath-lab-core/src/identity.rs | `E-HOST-016` |
 | `E-IMAGE-001` | crates/emath-exec-ir/src/image.rs | `E-IMAGE-001` |
 | `E-IMAGE-002` | crates/emath-exec-ir/src/image.rs<br>crates/emath-exec-ir/src/shake.rs | `E-IMAGE-002` |
+| `E-INT-002` | crates/emath-rust-backend/src/codegen_render.rs<br>crates/emath-rust-backend/src/codegen_render/kinds.rs<br>crates/emath-rust-backend/src/codegen_render/op_collections.rs | `emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Int({}))`<br>`{{ let (__narrow_num, __narrow_den) = {}; if __narrow_den == 0 || __narrow_num % __narrow_den != 0 || !({} <= ` |
+| `E-INT-003` | crates/emath-rust-backend/src/codegen_render/rtcalls.rs | `{{ let __ratio = {ratio}; ((__ratio).1 == 1i128).then(|| emath_rt::ExactInt::from((__ratio).0)).ok_or(\"E-INT-` |
 | `E-KIND-001` | crates/emath-sema/src/admit/sections_meta.rs | `E-KIND-001` |
 | `E-KIND-002` | crates/emath-sema/src/admit/sections_meta.rs | `E-KIND-002` |
 | `E-KIND-010` | crates/emath-build/src/builder/build.rs<br>crates/emath-hir/tests/registry_complete.rs | `function declarations cannot have constructors in this subphase (E-KIND-010)`<br>`E-KIND-010` |
@@ -1230,31 +1214,25 @@ Not yet documented at generation time: **0**.
 | `E-LAW-001` | crates/emath-cli/src/cli_parse.rs<br>crates/emath-cli/src/diagnostics.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs | `positional argument 1 (expected `.emath` file or diagnostic code such as `E-LAW-001`)`<br>`emath explain <file.emath> [<symbol>] or emath explain E-LAW-001 [--json]` |
 | `E-LAZY-001` | crates/emath-exec-ir/src/lazy.rs | `E-LAZY-001`<br>`{pack}/{page}` |
 | `E-LAZY-002` | crates/emath-exec-ir/src/lazy.rs | `E-LAZY-002` |
-| `E-LINALG-004` | crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-rust-backend/src/codegen_render/op_collections.rs | `E-LINALG-004: dense carrier extent overflow`<br>`E-LINALG-004: dense carrier data length does not match its shape` |
 | `E-LOCK-001` | crates/emath-cli-lab/src/meaning_cmd.rs<br>crates/emath-cli/src/portfolio/meaning_lock/model.rs | `E-LOCK-001`<br>`error: E-LOCK-001: --cap must be an integer >= 1` |
 | `E-LOCK-002` | crates/emath-cli/src/portfolio/meaning_lock/model.rs | `.emath`<br>`E-LOCK-002` |
 | `E-LOCK-003` | crates/emath-cli/src/portfolio/meaning_lock/model.rs | `E-LOCK-003` |
 | `E-LOCK-004` | crates/emath-cli-lab/src/eval_cmd/repl.rs<br>crates/emath-cli-lab/src/genesis_cmd/compile.rs<br>crates/emath-cli/src/portfolio/meaning_lock/model.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs | `E-LOCK-004`<br>`error: E-LOCK-004: --world `{label}` disagrees with locked fingerprint {:016x}; re-open the portfolio with `em` |
 | `E-LOCK-005` | crates/emath-cli/src/portfolio/meaning_lock/model.rs | `E-LOCK-005` |
 | `E-LOCK-006` | crates/emath-cli-lab/src/meaning_cmd.rs<br>crates/emath-cli/src/portfolio/meaning_lock/model.rs | `E-LOCK-006`<br>`error: E-LOCK-006: no lock entry for {} {}` |
-| `E-MEAS-001` | crates/emath-sema/src/admit/lowering/terms.rs | `measurement literal value `{value}` is not a valid number`<br>`E-MEAS-001` |
-| `E-MEAS-002` | crates/emath-sema/src/admit/lowering/terms.rs | `unknown distribution tag `~ {other}` (normal | uniform | lognormal)` |
-| `E-MEAS-003` | crates/emath-sema/src/admit/lowering/terms.rs | `E-MEAS-003` |
 | `E-MIGR-001` | crates/emath-hir/src/migrate.rs | `E-MIGR-001` |
 | `E-MIGR-002` | crates/emath-hir/src/migrate.rs | `E-MIGR-002` |
 | `E-MIGR-003` | crates/emath-hir/src/migrate.rs | `E-MIGR-003` |
-| `E-MODEL-001` | crates/emath-cli/src/simulate_cmd.rs | `{} has no `emath model` declaration` |
 | `E-NAME-020` | crates/emath-adapter-rumoca/src/conformance.rs<br>crates/emath-adapter-rumoca/src/structural.rs<br>crates/emath-exec-ir/src/constructor_layer/call.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-hir/src/notation.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-NAME-020`<br>`duplicate variable `{}`` |
 | `E-NAME-021` | crates/emath-hir/src/notation.rs | `E-NAME-021`<br>``{}` is unary and cannot be infix` |
-| `E-NAME-022` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/constructor_layer/setup.rs<br>crates/emath-hir/src/notation.rs<br>crates/emath-sema/src/admit/sections_meta.rs<br>crates/emath-sema/src/session.rs | `E-NAME-022`<br>`duplicate declaration name `{}`` |
-| `E-NAME-023` | crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/terms.rs<br>crates/emath-sema/src/admit/sections_meta.rs | `E-NAME-023`<br>`unknown variable` |
+| `E-NAME-022` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/constructor_layer/scope.rs<br>crates/emath-exec-ir/src/constructor_layer/setup.rs<br>crates/emath-hir/src/notation.rs<br>crates/emath-sema/src/admit/sections_meta.rs<br>crates/emath-sema/src/session.rs | `E-NAME-022`<br>`duplicate declaration name `{}`` |
+| `E-NAME-023` | crates/emath-sema/src/admit/sections_meta.rs | `E-NAME-023` |
 | `E-NAME-024` | crates/emath-build/src/builder/build.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/sections_meta.rs | `derived field `{name}` is not an output (E-NAME-024)`<br>`E-NAME-024` |
+| `E-NAME-025` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/constructor_layer/scope.rs | `E-NAME-025` |
+| `E-NAME-026` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs | `E-NAME-026`<br>``exports:` lists `{name}`, but this file declares no `{name}`` |
 | `E-NUM-001` | crates/emath-ir/src/numeric.rs | `unknown numeric model `{other}` (known: strict-f64, interval-f64)` |
 | `E-NUM-002` | crates/emath-ir/src/numeric.rs | `E-NUM-002` |
 | `E-NUM-003` | crates/emath-ir/src/numeric.rs | `error-limit `{max_abs_error}` is not a finite non-negative bound`<br>`E-NUM-003` |
-| `E-ODE-001` | crates/emath-exec-ir/src/runner/simulate/types.rs |  |
-| `E-ODE-002` | crates/emath-exec-ir/src/runner/simulate/types.rs |  |
-| `E-ODE-003` | crates/emath-exec-ir/src/runner/simulate/types.rs |  |
 | `E-PACK-001` | crates/emath-exec-ir/src/install.rs | `E-PACK-001` |
 | `E-PACK-002` | crates/emath-exec-ir/src/install.rs | `E-PACK-002` |
 | `E-PACK-003` | crates/emath-exec-ir/src/install.rs | `E-PACK-003` |
@@ -1264,7 +1242,7 @@ Not yet documented at generation time: **0**.
 | `E-PKG-050` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/constructor_layer/setup.rs<br>crates/emath-sema/src/recognition.rs<br>crates/emath-sema/src/session.rs | `E-PKG-050`<br>`unresolved file import `{}`` |
 | `E-PKG-064` | crates/emath-sema/src/admit/attributes.rs | `E-PKG-064` |
 | `E-PKG-065` | crates/emath-sema/src/admit/attributes.rs | `E-PKG-065` |
-| `E-PKG-080` | crates/emath-cli-lab/src/agent_cmd.rs<br>crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs<br>crates/emath-cli-lab/src/genesis_cmd/analysis.rs<br>crates/emath-cli/src/cli_build.rs<br>crates/emath-cli/src/cli_check.rs<br>crates/emath-cli/src/execution/package.rs<br>crates/emath-cli/src/execution/run.rs<br>crates/emath-cli/src/provenance_cmd.rs<br>crates/emath-cli/src/simulate_cmd.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-cli/src/tooling_cmd/migrate.rs<br>crates/emath-cli/src/tooling_cmd/run.rs<br>crates/emath-sema/src/session.rs | `cannot read source file ({})`<br>`cannot read spec: {}` |
+| `E-PKG-080` | crates/emath-cli-lab/src/agent_cmd.rs<br>crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs<br>crates/emath-cli-lab/src/genesis_cmd/analysis.rs<br>crates/emath-cli/src/cli_build.rs<br>crates/emath-cli/src/cli_check.rs<br>crates/emath-cli/src/execution/package.rs<br>crates/emath-cli/src/execution/run.rs<br>crates/emath-cli/src/provenance_cmd.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-cli/src/tooling_cmd/migrate.rs<br>crates/emath-cli/src/tooling_cmd/run.rs<br>crates/emath-sema/src/session.rs | `cannot read source file ({})`<br>`cannot read spec: {}` |
 | `E-PKG-081` | crates/emath-cli-lab/src/eval_cmd/args.rs<br>crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs<br>crates/emath-cli/src/cli_check.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-sema/src/admit/sections_meta.rs | `source has no declarations ({})`<br>`E-PKG-081` |
 | `E-PLG-001` | crates/emath-provider-api/src/plugin_sdk.rs | `E-PLG-001` |
 | `E-PLG-002` | crates/emath-provider-api/src/plugin_sdk.rs | `E-PLG-002` |
@@ -1323,7 +1301,7 @@ Not yet documented at generation time: **0**.
 | `E-PROVIDER-002` | crates/emath-provider-api/src/adapter.rs | `E-PROVIDER-002` |
 | `E-PROVIDER-003` | crates/emath-provider-api/src/adapter.rs | `E-PROVIDER-003` |
 | `E-RAT-001` | crates/emath-rt/src/body/exact.rs | `E-RAT-001: denominator is zero`<br>`E-RAT-001: noncanonical rational` |
-| `E-RAT-002` | crates/emath-rt/src/body/exact.rs | `E-RAT-002: exact rational intermediate exceeds i128` |
+| `E-RAT-002` | crates/emath-rt/src/body/exact.rs<br>crates/emath-rust-backend/src/codegen_render/op_arith.rs | `E-RAT-002: exact rational intermediate exceeds i128`<br>`((({operand_expr}).to_i128().ok_or_else(|| String::from(\"E-RAT-002: exact rational part exceeds i128\"))?), 1` |
 | `E-REG-020` | crates/emath-registry/src/lib.rs | `unknown package `{package}`` |
 | `E-REG-021` | crates/emath-registry/src/lib.rs | `E-REG-021`<br>`pin `{name}@{version}` does not resolve: {}` |
 | `E-REG-022` | crates/emath-registry/src/lib.rs | `E-REG-022` |
@@ -1334,19 +1312,17 @@ Not yet documented at generation time: **0**.
 | `E-RES-100` | crates/emath-plan/src/planner.rs | `{}:resume:nodes>{}`<br>`E-RES-100: {} plan nodes exceed the {} node budget` |
 | `E-RES-110` | crates/emath-lab-core/src/holes/synth.rs |  |
 | `E-RES-111` | crates/emath-lab-core/src/holes/synth.rs | `satisfy` |
-| `E-RES-120` | crates/emath-build/src/package.rs | `E-RES-120: cargo exceeded the {timeout:?} wall-clock budget` |
+| `E-RES-120` | crates/emath-build/src/package.rs<br>crates/emath-tui/src/experiment/mod.rs | `E-RES-120: cargo exceeded the {timeout:?} wall-clock budget`<br>`E-RES-120` |
 | `E-SCHEMA-001` | crates/emath-schema/src/registry.rs | `1.0.0`<br>`E-SCHEMA-001` |
 | `E-SEC-101` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-SEC-101`<br>`parameters` |
 | `E-SEC-130` | crates/emath-sema/src/admit/declaration/setup.rs<br>crates/emath-syntax/src/scratch/render.rs | `inputs`<br>`E-SEC-130` |
 | `E-SEC-133` | crates/emath-cli/src/cli_dispatch.rs<br>crates/emath-rust-backend/src/generate.rs<br>crates/emath-sema/src/session/requests.rs |  |
 | `E-SHAKE-001` | crates/emath-exec-ir/src/shake.rs | `E-SHAKE-001` |
 | `E-SHAKE-002` | crates/emath-exec-ir/src/shake.rs | `E-SHAKE-002` |
-| `E-SHAPE-001` | crates/emath-exec-ir/src/interp/helpers.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-ir/src/shapes.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs | `E-SHAPE-001: std.capability.geometry.inner-product requires equal vector lengths`<br>`E-SHAPE-001` |
-| `E-SHAPE-002` | crates/emath-ir/src/shapes.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs | `E-SHAPE-002`<br>`dimension mismatch in matrix-vector multiplication: matrix columns {c_e:?} != vector length {v_e:?}` |
+| `E-SHAPE-001` | crates/emath-exec-ir/src/interp/helpers.rs<br>crates/emath-ir/src/shapes.rs | `E-SHAPE-001` |
+| `E-SHAPE-002` | crates/emath-ir/src/shapes.rs | `E-SHAPE-002` |
 | `E-SHAPE-003` | crates/emath-ir/src/shapes.rs | `E-SHAPE-003`<br>`slice end {rows_end} exceeds extent {size}` |
-| `E-SHAPE-004` | crates/emath-ir/src/shapes.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs | `E-SHAPE-004`<br>`declared extent `{name}` is not a well-formed shape` |
-| `E-SHAPE-005` | crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs | `E-SHAPE-005`<br>`tensor broadcast mismatch: {lhs} vs {rhs}` |
-| `E-SHAPE-006` | crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-rust-backend/src/codegen_render/op_collections.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs | `E-SHAPE-006: index requires {} subscript(s), found {}`<br>`E-SHAPE-006: dense index offset overflow` |
+| `E-SHAPE-004` | crates/emath-ir/src/shapes.rs | `E-SHAPE-004`<br>`declared extent `{name}` is not a well-formed shape` |
 | `E-STD-001` | crates/emath-store/src/stdlib.rs | `E-STD-001` |
 | `E-STD-002` | crates/emath-store/src/stdlib.rs | `E-STD-002` |
 | `E-STD-003` | crates/emath-store/src/stdlib.rs | `E-STD-003` |
@@ -1355,7 +1331,7 @@ Not yet documented at generation time: **0**.
 | `E-SYM-003` | crates/emath-cli/src/cli_artifacts.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-ir/src/symbolic.rs<br>crates/emath-sema/src/session.rs | `E-SYM-002`<br>`E-SYM-003` |
 | `E-SYM-004` | crates/emath-ir/src/symbolic.rs | `E-SYM-004` |
 | `E-SYN-100` | crates/emath-syntax/src/lexer/engine.rs | `E-SYN-100` |
-| `E-SYN-101` | crates/emath-exec-ir/src/install.rs<br>crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/terms.rs<br>crates/emath-sema/src/session/requests.rs<br>crates/emath-syntax/src/lexer/engine.rs<br>crates/emath-syntax/src/parser.rs<br>crates/emath-syntax/src/parser/decl.rs<br>crates/emath-syntax/src/parser/expr/braket.rs<br>crates/emath-syntax/src/parser/expr/forms.rs<br>crates/emath-syntax/src/parser/expr/infix.rs<br>crates/emath-syntax/src/parser/expr/literals.rs<br>crates/emath-syntax/src/parser/expr/postfix.rs<br>crates/emath-syntax/src/parser/expr/primary.rs<br>crates/emath-syntax/src/parser/expr/units.rs<br>crates/emath-syntax/src/parser/stmt.rs<br>crates/emath-syntax/src/parser/stmt_binders.rs<br>crates/emath-syntax/src/parser/stmt_idents.rs<br>crates/emath-syntax/src/parser/stmt_idents/default.rs<br>crates/emath-syntax/src/parser/stmt_idents/series.rs<br>crates/emath-syntax/src/parser/stmt_suite.rs<br>crates/emath-syntax/src/parser/types.rs | `E-SYN-101`<br>`unexpected character `{}`` |
+| `E-SYN-101` | crates/emath-exec-ir/src/install.rs<br>crates/emath-sema/src/session/requests.rs<br>crates/emath-syntax/src/lexer/engine.rs<br>crates/emath-syntax/src/parser.rs<br>crates/emath-syntax/src/parser/decl.rs<br>crates/emath-syntax/src/parser/expr/braket.rs<br>crates/emath-syntax/src/parser/expr/forms.rs<br>crates/emath-syntax/src/parser/expr/infix.rs<br>crates/emath-syntax/src/parser/expr/literals.rs<br>crates/emath-syntax/src/parser/expr/postfix.rs<br>crates/emath-syntax/src/parser/expr/primary.rs<br>crates/emath-syntax/src/parser/expr/units.rs<br>crates/emath-syntax/src/parser/stmt.rs<br>crates/emath-syntax/src/parser/stmt_binders.rs<br>crates/emath-syntax/src/parser/stmt_idents.rs<br>crates/emath-syntax/src/parser/stmt_idents/default.rs<br>crates/emath-syntax/src/parser/stmt_idents/series.rs<br>crates/emath-syntax/src/parser/stmt_suite.rs<br>crates/emath-syntax/src/parser/types.rs | `E-SYN-101`<br>`unexpected character `{}`` |
 | `E-SYN-102` | crates/emath-syntax/src/parser/expr/literals.rs<br>crates/emath-syntax/src/parser/expr/postfix.rs<br>crates/emath-syntax/src/parser/expr/primary.rs<br>crates/emath-syntax/src/parser/expr/units.rs<br>crates/emath-syntax/src/parser/stmt_binders.rs<br>crates/emath-syntax/src/parser/stmt_idents/default.rs<br>crates/emath-syntax/src/parser/stmt_idents/look.rs<br>crates/emath-syntax/src/parser/types.rs | `E-SYN-102` |
 | `E-SYN-103` | crates/emath-hir/src/open.rs<br>crates/emath-sema/src/admit/declaration/setup.rs<br>crates/emath-syntax/src/parser/stmt_idents/series.rs | `E-SYN-103` |
 | `E-SYN-105` | crates/emath-syntax/src/lexer/engine.rs | `E-SYN-105` |
@@ -1414,11 +1390,10 @@ Not yet documented at generation time: **0**.
 | `E-TLT-016` | crates/emath-cli-lab/src/provider_cmd.rs | `error: E-TLT-016: unknown provider `{id}`` |
 | `E-TRANS-006` | crates/emath-ir/src/package.rs |  |
 | `E-TYPE-001` | crates/emath-sema/src/admit/declaration/setup.rs | ``{name}` needs an explicit constructor type, not an inferred default` |
-| `E-TYPE-002` | crates/emath-cli/src/catalog.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-core/src/diagnostic.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/lowering/series.rs | `diagnostic-code lookup (`emath explain E-TYPE-002`). File/plan explanation refuses: there is no goals planner`<br>`emath explain E-TYPE-002` |
-| `E-TYPE-003` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs | `E-TYPE-003`<br>`transformation_rule_unavailable` |
-| `E-TYPE-010` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/lowering.rs | `type`<br>`E-TYPE-010` |
-| `E-TYPE-011` | crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/terms.rs | `E-TYPE-011`<br>`non-finite constant `{text}` refused under strict-f64 policy` |
-| `E-TYPE-012` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/interp/eval_calls.rs<br>crates/emath-exec-ir/src/native_kernel.rs<br>crates/emath-exec-ir/src/native_kernels/calculus.rs<br>crates/emath-exec-ir/src/native_kernels/checked.rs<br>crates/emath-exec-ir/src/native_kernels/einsum.rs<br>crates/emath-exec-ir/src/native_kernels/linear.rs<br>crates/emath-exec-ir/src/native_kernels/probability.rs<br>crates/emath-exec-ir/src/native_kernels/program_solve.rs<br>crates/emath-rt/src/body/numeric.rs<br>crates/emath-rust-backend/src/codegen_render/kernels.rs<br>crates/emath-sema/src/admit/expr_helpers.rs<br>crates/emath-sema/src/admit/infer.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/lowering/call.rs<br>crates/emath-sema/src/admit/lowering/call/carriers.rs<br>crates/emath-sema/src/admit/lowering/csv.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/goals.rs<br>crates/emath-sema/src/admit/lowering/helpers.rs<br>crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/terms.rs | `E-TYPE-012: checked-add arguments must be Int`<br>`E-TYPE-012: euclidean-gcd arguments must be Int` |
+| `E-TYPE-002` | crates/emath-cli/src/catalog.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-core/src/diagnostic.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs | `diagnostic-code lookup (`emath explain E-TYPE-002`). File/plan explanation refuses: there is no goals planner`<br>`emath explain E-TYPE-002` |
+| `E-TYPE-003` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs | `E-TYPE-003`<br>`stale_dependency` |
+| `E-TYPE-010` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs | `type`<br>`E-TYPE-010` |
+| `E-TYPE-012` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/interp/eval_calls.rs<br>crates/emath-exec-ir/src/native_kernel.rs<br>crates/emath-exec-ir/src/native_kernels/checked.rs<br>crates/emath-rt/src/body/numeric.rs | `E-TYPE-012: checked-add arguments must be Int`<br>`E-TYPE-012: value does not match the checked kernel carrier` |
 | `E-TYPE-101` | crates/emath-adapter-rumoca/src/conformance.rs<br>crates/emath-adapter-rumoca/src/structural.rs | `E-TYPE-101` |
 | `E-TYPE-102` | crates/emath-adapter-rumoca/src/structural.rs | `E-TYPE-102` |
 | `E-TYPE-103` | crates/emath-adapter-rumoca/src/structural.rs | `E-TYPE-103` |
@@ -1431,11 +1406,11 @@ Not yet documented at generation time: **0**.
 | `E-TYPE-313` | crates/emath-ir/src/type_system.rs | `E-TYPE-313` |
 | `E-TYPE-314` | crates/emath-ir/src/type_system.rs | `E-TYPE-314` |
 | `E-UNIT-100` | crates/emath-adapter-rumoca/src/structural.rs<br>crates/emath-ir/src/units.rs | `unknown variable `{name}` in dimensional analysis` |
-| `E-UNIT-101` | crates/emath-adapter-rumoca/src/structural.rs<br>crates/emath-ir/src/units.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/infer.rs<br>crates/emath-sema/src/admit/lowering.rs<br>crates/emath-sema/src/admit/lowering/exprs.rs<br>crates/emath-sema/src/admit/lowering/terms.rs | `dimension mismatch in sum: {left} vs {right}`<br>`event `{}` condition: {}` |
-| `E-UNIT-102` | crates/emath-ir/src/units.rs<br>crates/emath-sema/src/admit/infer.rs<br>crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/terms.rs | `E-UNIT-102` |
+| `E-UNIT-101` | crates/emath-adapter-rumoca/src/structural.rs<br>crates/emath-ir/src/units.rs | `dimension mismatch in sum: {left} vs {right}`<br>`event `{}` condition: {}` |
+| `E-UNIT-102` | crates/emath-ir/src/units.rs | `E-UNIT-102` |
 | `E-UNIT-103` | crates/emath-adapter-rumoca/src/structural.rs | `event `{}` condition: {}`<br>`event `{}` condition is not dimensionless` |
-| `E-UNIT-104` | crates/emath-cli/src/tooling_cmd/fmt.rs<br>crates/emath-core/src/units.rs<br>crates/emath-ir/src/units.rs<br>crates/emath-sema/src/admit/lowering.rs | `E-UNIT-104`<br>`unknown unit `{name}`` |
-| `E-UNIT-105` | crates/emath-ir/src/units.rs<br>crates/emath-sema/src/admit/lowering/series.rs<br>crates/emath-sema/src/admit/lowering/terms.rs | ``Per<{inner}>` is invalid: affine units have no inverse`<br>`E-UNIT-105` |
+| `E-UNIT-104` | crates/emath-cli/src/tooling_cmd/fmt.rs<br>crates/emath-core/src/units.rs<br>crates/emath-ir/src/units.rs | `E-UNIT-104`<br>`unknown unit `{name}`` |
+| `E-UNIT-105` | crates/emath-ir/src/units.rs | ``Per<{inner}>` is invalid: affine units have no inverse`<br>`E-UNIT-105` |
 | `E-WORLD-001` | crates/emath-genesis/src/world_result.rs | `E-WORLD-001` |
 | `E-WORLD-002` | crates/emath-genesis/src/world_result.rs | `E-WORLD-002`<br>`result carries no producer method label (E-WORLD-002)` |
 | `E-WORLD-003` | crates/emath-genesis/src/world_decl.rs | `E-WORLD-003` |

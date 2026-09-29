@@ -1,21 +1,13 @@
 //! The admission pass: syntax → typed neutral SIR with stable
 //! diagnostics and a source-to-SIR trace.
 
-use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
 use emath_core::{Diagnostics, Span};
-use emath_ir::{ExprId, ExprNode, TypeId, TypeNode};
-use std::collections::{BTreeMap, BTreeSet};
+use emath_ir::{ExprNode, TypeId, TypeNode};
+use std::collections::BTreeSet;
 
 mod declaration;
 use declaration::admit_constructor_declaration;
 mod attributes;
-pub(crate) mod expr_helpers;
-use expr_helpers::parse_float_constant;
-mod infer;
-use infer::Infer;
-mod equations;
-mod lowering;
-mod sections;
 mod sections_meta;
 pub use sections_meta::{check_tree, check_tree_at};
 
@@ -122,37 +114,9 @@ pub struct CheckResult {
 struct Admitter {
     diagnostics: Diagnostics,
     trace: Vec<TraceEntry>,
-    params: BTreeMap<String, Infer>,
-    inputs: BTreeMap<String, Infer>,
-    states: BTreeMap<String, Infer>,
-    definitions: BTreeMap<String, (ExprId, Infer)>,
-    /// Synthetic inputs `__rate_<state>` that replace `der(state)` inside
-    /// residual expressions; inferred like the state field they derive.
-    rate_placeholders: BTreeMap<String, Infer>,
     exprs: Vec<(ExprNode, Span)>,
     types: Vec<TypeNode>,
     host_types: BTreeSet<String>,
-    /// Finite binder locals (`sum i in 0..n`). Looked up before inputs.
-    index_locals: BTreeMap<String, i64>,
-    /// When true, claim expressions (limit, series, asymp) are admitted
-    /// as Bool(true) instead of erroring. Set during require/invariant
-    /// lowering; false during definitions lowering.
-    in_claim_context: bool,
-    /// Declared capability cells visible to this declaration. The
-    /// constructor lane admits no cells (always empty), but the goal
-    /// surface still consults it and refuses with the pinned
-    /// "not executable in the loaded Language Image" diagnostics.
-    capability_cells: Vec<CapabilityCallBinding>,
-}
-
-/// A capability cell consult entry. The constructor lane admits no cells,
-/// so only the consult keys are ever read; the shape fields exist for the
-/// consult sites' pinned refusal paths.
-#[derive(Clone)]
-pub(super) struct CapabilityCallBinding {
-    pub(super) key: String,
-    pub(super) capability: u32,
-    pub(super) kernel: Option<String>,
 }
 
 impl Admitter {
@@ -160,17 +124,9 @@ impl Admitter {
         Self {
             diagnostics: Diagnostics::new(),
             trace: Vec::new(),
-            params: BTreeMap::new(),
-            inputs: BTreeMap::new(),
-            states: BTreeMap::new(),
-            definitions: BTreeMap::new(),
-            rate_placeholders: BTreeMap::new(),
             exprs: Vec::new(),
             types: Vec::new(),
             host_types: BTreeSet::new(),
-            index_locals: BTreeMap::new(),
-            in_claim_context: false,
-            capability_cells: Vec::new(),
         }
     }
 
@@ -179,79 +135,7 @@ impl Admitter {
         TypeId(u32::try_from(self.types.len() - 1).unwrap_or(u32::MAX))
     }
 
-    fn push_expr(&mut self, node: ExprNode, span: Span) -> ExprId {
-        self.exprs.push((node, span));
-        ExprId(u32::try_from(self.exprs.len() - 1).unwrap_or(u32::MAX))
-    }
-
-    fn record(&mut self, phase: &str, detail: impl Into<String>, span: Span) {
-        self.trace.push(TraceEntry {
-            phase: phase.to_string(),
-            detail: detail.into(),
-            span: Some(span),
-        });
-    }
-
     fn error(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
         self.diagnostics.error(code, message, span);
-        if code == "E-UNIT-101" {
-            self.diagnostics.attach_pedagogy(emath_core::Pedagogy {
-                understood: "the operands have different quantity kinds (Duration vs Information)"
-                    .into(),
-                unknown: "how those kinds could be added".into(),
-                why: "addition is only admitted when dimensions match".into(),
-                smallest_repair: "convert one operand to the other's unit, or do not add them"
-                    .into(),
-                alternatives: vec![
-                    "convert Duration to a common scale".into(),
-                    "keep the quantities in separate fields".into(),
-                ],
-                example: Some("1 s + 1 s is admitted; 1 s + 1 MiB is E-UNIT-101".into()),
-                deeper_concept: Some("quantity kinds are not numbers".into()),
-                authority_consequence: Some("a unit refusal does not grant numeric meaning".into()),
-                library_link: Some("language/reference/types-units-shapes-and-domains.md".into()),
-            });
-        }
-    }
-
-    fn note(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
-        self.diagnostics.note(code, message, span);
-    }
-
-    fn warning(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
-        self.diagnostics.warning(code, message, span);
-    }
-
-    fn lookup(&self, name: &str) -> Option<Infer> {
-        if let Some(value) = self.index_locals.get(name) {
-            return Some(if *value < 0 { Infer::Int } else { Infer::Nat });
-        }
-        if let Some(infer) = self.rate_placeholders.get(name) {
-            return Some(infer.clone());
-        }
-        if let Some(infer) = self.params.get(name) {
-            return Some(infer.clone());
-        }
-        if let Some(infer) = self.inputs.get(name) {
-            return Some(infer.clone());
-        }
-        if let Some(stripped) = name.strip_prefix("state.") {
-            return self.states.get(stripped).cloned();
-        }
-        if let Some((_, infer)) = self.definitions.get(name) {
-            return Some(infer.clone());
-        }
-        self.states.get(name).cloned()
-    }
-}
-
-pub(super) fn expr_number(expr: &Expr) -> Option<f64> {
-    match &expr.kind {
-        ExprKind::Int(text) | ExprKind::Float(text) => parse_float_constant(text),
-        ExprKind::Unary {
-            op: SynUnOp::Neg,
-            value,
-        } => expr_number(value).map(|value| -value),
-        _ => None,
     }
 }
