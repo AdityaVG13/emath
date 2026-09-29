@@ -222,6 +222,14 @@ pub(super) fn rebuild_expr(value: &CValue) -> Result<Expr, String> {
                         .collect::<Result<Vec<_>, _>>()?;
                     Ok(dummy_expr(ExprKind::Tuple(exprs)))
                 }
+                "Cons" => {
+                    let head = rebuild_expr(fields.get("head").ok_or("Cons missing head")?)?;
+                    let tail = rebuild_expr(fields.get("tail").ok_or("Cons missing tail")?)?;
+                    Ok(dummy_expr(ExprKind::SequenceCons {
+                        head: Box::new(head),
+                        tail: Box::new(tail),
+                    }))
+                }
                 "Fragment" => fields
                     .get("term")
                     .ok_or_else(|| String::from("Fragment missing term"))

@@ -341,6 +341,7 @@ pub(super) fn is_schema_tag(name: &str) -> bool {
             | "Call"
             | "Closure"
             | "Sequence"
+            | "Cons"
             | "Opaque"
             | "Available"
             | "Add"
@@ -751,8 +752,10 @@ pub(super) fn view_of(
                 ]),
             )
         }
+        // Its own kind: a walker reading `elements` off every `Sequence`
+        // would fault on a spread list, which has head and tail instead.
         ExprKind::SequenceCons { head, tail } => view_record(
-            "Sequence",
+            "Cons",
             BTreeMap::from([
                 ("head".into(), code_of(*head.clone())),
                 ("tail".into(), code_of(*tail.clone())),
