@@ -211,10 +211,10 @@ Session (`crates/emath-sema/src/session.rs`):
   `emath_syntax::install_source_parser` once per process (CLI and LSP
   do this at startup). The refusal is typed; never a silent empty parse.
 
-Codegen (`crates/emath-build/src/builder/build.rs`):
+Codegen (retired with the programmatic model builder; no code path emits it):
 
 - `E-CODEGEN-012`: builder `compile:` spec outside the current
-  rust/library subset; the model is refused, never adapted.
+  rust/library subset; retired and is not emitted.
 
 Generated-crate profiles (`crates/emath-rust-ir/src/profiles.rs`,
 checked on the build path via `CrateProfile::Library`):
@@ -492,8 +492,8 @@ Observations (`crates/emath-sema/src/admit/declaration.rs`,
   or catalog lookup.
 - `E-UNIT-105`: ill-formed unit constructor (`Per<>` arity, affine
   inverse).
-- `E-CTOR-030`: missing state assignment in a constructor (also emitted
-  by the builder for generated-code invariants).
+- `E-CTOR-030`: missing state assignment in a constructor; retired with
+  the programmatic model builder and is not emitted.
 
 Types (`crates/emath-ir/src/type_system.rs`):
 
@@ -569,7 +569,11 @@ Units/shapes/domains (`crates/emath-ir`, `crates/emath-adapter-rumoca`):
 Unknown numeric profile names are `E-NUM-001`. The old `E-CODEGEN-053`
 spelling is retired and is not emitted.
 
-### Constructors (`crates/emath-builder`, `crates/emath-sema/src/admit.rs`)
+### Constructors (retired)
+
+The `constructors:` section and the `policy` kind left the language at the
+constructor cutover; the programmatic model builder that last carried these
+checks was removed. `E-CTOR-031`..`E-CTOR-039` are retired and are not emitted.
 
 - `E-CTOR-031`: policy declarations require a `constructors:` section
   with a public `new`.
@@ -1041,7 +1045,7 @@ regenerated as the registry changes. The workspace test
 `crates/emath-hir/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **368 unique codes** from 514 rust files.
+Emissions: **357 unique codes** from 510 rust files.
 Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |
@@ -1092,17 +1096,6 @@ Not yet documented at generation time: **0**.
 | `E-CODEGEN-008` | crates/emath-build/src/script.rs | `locked build script cannot satisfy: {error}`<br>`E-CODEGEN-008` |
 | `E-CODEGEN-009` | crates/emath-build/src/deps.rs | `E-CODEGEN-009` |
 | `E-CODEGEN-010` | crates/emath-build/src/script.rs | `E-CODEGEN-010` |
-| `E-CODEGEN-012` | crates/emath-build/src/builder/build.rs | `compile spec `{}/{}` outside the current subset (E-CODEGEN-012)` |
-| `E-CTOR-030` | crates/emath-build/src/builder/policy.rs | `missing state assignment for `{}` (E-CTOR-030)` |
-| `E-CTOR-031` | crates/emath-build/src/builder/build.rs |  |
-| `E-CTOR-032` | crates/emath-build/src/builder/policy.rs | ``require` must be a Boolean expression (E-CTOR-032)`<br>``ensure` must be a Boolean expression (E-CTOR-032)` |
-| `E-CTOR-033` | crates/emath-build/src/builder/policy.rs | `a default value cannot read `state.{target}` (E-CTOR-033)`<br>``{target}` is not a state field (E-CTOR-033)` |
-| `E-CTOR-034` | crates/emath-build/src/builder/build.rs<br>crates/emath-build/src/builder/policy.rs | `multiple constructors named `new` (E-CTOR-034)`<br>`duplicate constructor parameter `{param}` (E-CTOR-034)` |
-| `E-CTOR-035` | crates/emath-build/src/builder/policy.rs | `duplicate assignment for state field `{target}` (E-CTOR-035)` |
-| `E-CTOR-036` | crates/emath-build/src/builder/build.rs | `the primary constructor must be named `new` (E-CTOR-036)` |
-| `E-CTOR-037` | crates/emath-build/src/builder/policy.rs | `constructor `{name}` delegates to unknown `{target}` (E-CTOR-037)` |
-| `E-CTOR-038` | crates/emath-build/src/builder/policy.rs | `delegating constructor `{name}` cannot assign state directly (E-CTOR-038)` |
-| `E-CTOR-039` | crates/emath-build/src/builder/policy.rs | `default for undeclared parameter `{target}` (E-CTOR-039)` |
 | `E-DOM-001` | crates/emath-ir/src/domains.rs | `{name} value {value} outside domain {self}` |
 | `E-DOM-002` | crates/emath-ir/src/domains.rs | `ill-formed domain interval [{low}, {high}]` |
 | `E-EVAL-001` | crates/emath-cli-lab/src/eval_cmd/spec.rs<br>crates/emath-cli-lab/src/eval_cmd/sweep.rs | `E-EVAL-001` |
@@ -1222,7 +1215,7 @@ Not yet documented at generation time: **0**.
 | `E-NAME-021` | crates/emath-hir/src/notation.rs | `E-NAME-021`<br>``{}` is unary and cannot be infix` |
 | `E-NAME-022` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/constructor_layer/scope.rs<br>crates/emath-exec-ir/src/constructor_layer/setup.rs<br>crates/emath-hir/src/notation.rs<br>crates/emath-sema/src/admit/sections_meta.rs<br>crates/emath-sema/src/session.rs | `E-NAME-022`<br>`duplicate declaration name `{}`` |
 | `E-NAME-023` | crates/emath-sema/src/admit/sections_meta.rs | `E-NAME-023` |
-| `E-NAME-024` | crates/emath-build/src/builder/build.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/sections_meta.rs | `derived field `{name}` is not an output (E-NAME-024)`<br>`E-NAME-024` |
+| `E-NAME-024` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/sections_meta.rs | `E-NAME-024` |
 | `E-NAME-025` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/constructor_layer/scope.rs | `E-NAME-025` |
 | `E-NAME-026` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs | `E-NAME-026`<br>``exports:` lists `{name}`, but this file declares no `{name}`` |
 | `E-NUM-001` | crates/emath-ir/src/numeric.rs | `unknown numeric model `{other}` (known: strict-f64, interval-f64)` |
@@ -1309,7 +1302,7 @@ Not yet documented at generation time: **0**.
 | `E-RES-111` | crates/emath-lab-core/src/holes/synth.rs | `satisfy` |
 | `E-RES-120` | crates/emath-build/src/package.rs<br>crates/emath-tui/src/experiment/mod.rs | `E-RES-120: cargo exceeded the {timeout:?} wall-clock budget`<br>`E-RES-120` |
 | `E-SCHEMA-001` | crates/emath-schema/src/registry.rs | `1.0.0`<br>`E-SCHEMA-001` |
-| `E-SEC-101` | crates/emath-build/src/builder/build.rs<br>crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-hir/tests/registry_complete.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | ``constructors:` is not a constructor section on a function declaration (E-SEC-101)`<br>`E-SEC-101` |
+| `E-SEC-101` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-hir/tests/registry_complete.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-SEC-101`<br>`parameters` |
 | `E-SEC-130` | crates/emath-sema/src/admit/declaration/setup.rs<br>crates/emath-syntax/src/scratch/render.rs | `inputs`<br>`E-SEC-130` |
 | `E-SEC-133` | crates/emath-cli/src/cli_dispatch.rs<br>crates/emath-rust-backend/src/generate.rs<br>crates/emath-sema/src/session/requests.rs |  |
 | `E-SHAKE-001` | crates/emath-exec-ir/src/shake.rs | `E-SHAKE-001` |

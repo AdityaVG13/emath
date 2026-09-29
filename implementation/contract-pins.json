@@ -5,6 +5,10 @@
   "bumps": [
     {
       "date": "2026-09-28",
+      "note": "programmatic model builder removed from emath-build (build() refused E-KIND-GONE unconditionally; no caller); E-CODEGEN-012 and E-CTOR-030..039 retired (no emitter remains); annex re-spliced (357 emitted codes)"
+    },
+    {
+      "date": "2026-09-28",
       "note": "E-KIND-010 retired: wrong-kind sections refuse as E-SEC-101 since the constructor cutover; the builder's constructors-on-function refusal now cites E-SEC-101; registry story rewritten as retired; annex re-spliced"
     },
     {
@@ -189,7 +193,7 @@
     "gauntlet pass 10 coordination: CalmPine's category authored-reference migration (uncommitted in tree) removed native_kernels/category.rs from the E-TYPE-012 emitter list; annex re-spliced to the current emission set (449 emitted, 0 newly covered). No new codes."
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "80233dbee2f928e2f7db8fed273c4d6d741a4b72e32e051caffe77b46b6b7296",
+    "implementation/ERROR_CODES.md": "dab20bcf57a3cd95fdb92f39bb5d5ababcb86bc2ca070e52a1ded3c450496c42",
     "implementation/CLI_REFERENCE.md": "c67574c4d241606bc4d3c75c932ea849e25708296352e186d288b03df67d6949",
     "implementation/CRATE_MAP.md": "117a66fd21a1dd3aa2bb85f55bef9c45c92fedaa86ab0823326486ead048b1b5",
     "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"
