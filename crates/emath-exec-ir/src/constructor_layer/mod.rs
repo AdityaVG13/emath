@@ -792,7 +792,7 @@ pub use admit::*;
 pub use carry::{evaluate_function_carrying, fact_identity, prepare_module, CarriedEvaluation, PreparedModule, FACT_PREFIX};
 pub use checkpoint::*;
 pub use eval::*;
-pub use keep::{kept_definition, named_programs, place_definition, Placed};
+pub use keep::{kept_definition, named_programs, needed_uses, place_definition, Placed};
 pub use query::*;
 pub use residual::*;
 pub use scalar::*;

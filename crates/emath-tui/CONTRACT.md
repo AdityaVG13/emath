@@ -278,7 +278,9 @@ adds no loop policy and the viewer computes no mathematics.
   the seed, every committed batch, and every `level_next`, each
   reported name not yet journaled is kept into
   `<run>/world/lib/kept.emath` (exec-ir `place_definition`, replacing
-  an earlier definition of the name) and journaled once as `kept
+  an earlier definition of the name, with the `use` lines
+  `needed_uses` finds in the level source; a library that would not
+  load faults before it is written) and journaled once as `kept
   {batch, name, content, file}`. Resume rebuilds the kept set from the
   kept journal, so a replayed batch rewrites the same library text.
   A keep fault ends the run `fault`.

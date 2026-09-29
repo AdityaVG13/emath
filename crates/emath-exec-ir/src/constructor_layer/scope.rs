@@ -456,8 +456,18 @@ impl ImportGraph {
 
     /// E-NAME-022: a local declaration may not share a name with a
     /// declaration the file imports directly (whole module, or named in
-    /// a selection). Helpers the file does not select stay scoped.
+    /// a selection). Helpers the file does not select stay scoped. The
+    /// rule holds for every loaded module, not only the root: an
+    /// imported module that redefines a name it imports would otherwise
+    /// be scoped so its own bodies call the wrong one.
     pub(super) fn refuse_local_clobber(&self, tree: &SyntaxTree) -> Result<(), ConstructorError> {
+        self.refuse_clobber_in(tree, &self.root_uses, "this file")?;
+        self.modules.iter().try_for_each(|module| {
+            self.refuse_clobber_in(&module.tree, &module.uses, &module.file.display().to_string())
+        })
+    }
+
+    fn refuse_clobber_in(&self, tree: &SyntaxTree, uses: &[ModUse], at: &str) -> Result<(), ConstructorError> {
         let locals: BTreeSet<&str> = tree
             .items
             .iter()
@@ -466,7 +476,7 @@ impl ImportGraph {
                 _ => None,
             })
             .collect();
-        for u in &self.root_uses {
+        for u in uses {
             let module = self.module(&u.file);
             let visible: Vec<&str> = match &u.tree {
                 UseTree::Named(names) if !names.is_empty() => names
@@ -484,7 +494,7 @@ impl ImportGraph {
                 return Err(fault(
                     "E-NAME-022",
                     format!(
-                        "import of `{}` installs `{name}`, but a local declaration `{name}` already exists: \
+                        "import of `{}` installs `{name}`, but a local declaration `{name}` already exists in {at}: \
                          an import may not replace a local name — rename one or import under an alias",
                         module.file.display()
                     ),

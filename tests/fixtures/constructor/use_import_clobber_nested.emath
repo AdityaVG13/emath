@@ -1,0 +1,13 @@
+# The collision one import deep: this file is clean, but the module it
+# imports (use_import_clobber) redefines a name it imports itself. Must
+# refuse E-NAME-022 naming that module, never scope the two copies so
+# the inner module's bodies call the wrong one.
+use use_import_clobber
+
+emath function calls_through:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = clobber_shared(x)

@@ -6,8 +6,14 @@
 //! definition takes `x: A`, returns `result: B`, and every free `f` in
 //! the body becomes a call to the definition's own name.
 
+use std::collections::BTreeSet;
+use std::path::Path;
+
 use super::expr::{path_expr, substitute_path};
+use super::identity::mentioned_names;
+use super::setup::{module_roots_for, package_of, resolve_import, resolve_module_path};
 use super::{CValue, ConstructorError, ExprKind};
+use emath_core::tree::Item;
 use emath_syntax::formatter::{format_expr, Prec};
 
 fn shape(message: impl Into<String>) -> ConstructorError {
@@ -67,31 +73,146 @@ fn with_export(text: &str, name: &str) -> Option<String> {
     found.then(|| lines.join("\n") + "\n")
 }
 
+fn keep_use(message: impl Into<String>) -> ConstructorError {
+    ConstructorError {
+        code: "E-KEEP-USE".into(),
+        message: message.into(),
+    }
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    let canonical = |p: &Path| {
+        p.canonicalize().ok().or_else(|| {
+            let parent = p.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+            Some(parent.canonicalize().ok()?.join(p.file_name()?))
+        })
+    };
+    canonical(a).is_some_and(|a| Some(a) == canonical(b))
+}
+
+/// The `use` lines the library at `library` needs for `program`: each
+/// `use` of the `source` file whose module exports a name the program
+/// calls, spelled as the library must write it (a shipped module keeps
+/// its path; a local file is spelled relative to the library's
+/// directory). The library itself is never imported; a local module
+/// outside the library's directory refuses `E-KEEP-USE`.
+pub fn needed_uses(program: &CValue, source: &Path, library: &Path) -> Result<Vec<String>, ConstructorError> {
+    let CValue::Code(code) = program else {
+        return Err(shape("the kept value is not Code"));
+    };
+    let mut mentioned = BTreeSet::new();
+    mentioned_names(&code.expr, &mut mentioned);
+    let read = |file: &Path| {
+        let text = std::fs::read_to_string(file)
+            .map_err(|err| keep_use(format!("cannot read {}: {err}", file.display())))?;
+        Ok::<_, ConstructorError>(emath_syntax::parse_str(&text).0)
+    };
+    let tree = read(source)?;
+    let roots = module_roots_for(Some(source));
+    let library_dir = library.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let mut uses = Vec::new();
+    for item in &tree.items {
+        let Item::Use { path, .. } = item else { continue };
+        let file = resolve_import(path, &roots, Some(source), package_of(&tree))?;
+        if same_file(&file, library) {
+            continue;
+        }
+        let module = read(&file)?;
+        let exports: Vec<&String> = module
+            .items
+            .iter()
+            .flat_map(|item| match item {
+                Item::Exports { names, .. } => names.iter().collect(),
+                _ => Vec::new(),
+            })
+            .collect();
+        if !exports.iter().any(|name| mentioned.contains(name.as_str())) {
+            continue;
+        }
+        let spelled = if resolve_module_path(path, &roots).is_ok() {
+            path.join(".")
+        } else {
+            let (Ok(file), Ok(dir)) = (file.canonicalize(), library_dir.canonicalize()) else {
+                return Err(keep_use(format!("cannot locate `{}` for the library", path.join("."))));
+            };
+            let rel = file.strip_prefix(&dir).map_err(|_| {
+                keep_use(format!(
+                    "`use {}` resolves to {}, which the library at {} cannot import: keep the library beside or above it",
+                    path.join("."),
+                    file.display(),
+                    library.display()
+                ))
+            })?;
+            rel.with_extension("").iter().map(|part| part.to_string_lossy()).collect::<Vec<_>>().join(".")
+        };
+        if !uses.contains(&spelled) {
+            uses.push(spelled);
+        }
+    }
+    Ok(uses)
+}
+
+/// `text` with a `use` line for each of `uses` it lacks, after its last
+/// `use` line (or after the `exports:` entry).
+fn with_uses(text: &str, uses: &[String]) -> String {
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    for module in uses {
+        let line = format!("use {module}");
+        if lines.iter().any(|l| l.trim_end() == line) {
+            continue;
+        }
+        let at = match lines.iter().rposition(|l| l.starts_with("use ")) {
+            Some(last) => last + 1,
+            None => {
+                let Some(exports) = lines.iter().position(|l| l.starts_with("exports:")) else {
+                    continue;
+                };
+                let mut end = exports + 1;
+                while end < lines.len() && lines[end].starts_with(char::is_whitespace) && !lines[end].trim().is_empty() {
+                    end += 1;
+                }
+                lines.insert(end, String::new());
+                end + 1
+            }
+        };
+        lines.insert(at, line);
+    }
+    lines.join("\n") + "\n"
+}
+
 /// Keep `program` under `name` in a kept library's text (`None`: no
-/// library yet). Returns what happened and the content id of the
-/// definition (its text without the summary line). The summary line
-/// reads `Kept from {origin}; content {id}.`; the same content again
-/// is `Unchanged`; different content under a kept name refuses
-/// `E-KEEP-EXISTS` unless `overwrite`; a text with no `exports:` line
-/// refuses `E-KEEP-LIBRARY`.
+/// library yet), adding the `use` lines it needs (`needed_uses`).
+/// Returns what happened and the content id of the definition (its
+/// text without the summary line). The summary line reads `Kept from
+/// {origin}; content {id}.`; the same content again (with every use
+/// present) is `Unchanged`; different content under a kept name
+/// refuses `E-KEEP-EXISTS` unless `overwrite`; a text with no
+/// `exports:` line refuses `E-KEEP-LIBRARY`.
 pub fn place_definition(
     library: Option<&str>,
     name: &str,
     program: &CValue,
     origin: &str,
     overwrite: bool,
+    uses: &[String],
 ) -> Result<(Placed, String), ConstructorError> {
     let content = emath_core::content_id_of_str(&kept_definition(program, name, "")?).0;
     let definition = kept_definition(program, name, &format!("Kept from {origin}; content {content}."))?;
     let Some(text) = library else {
         let fresh = format!("# Kept definitions, written by `emath keep`.\nexports: {name}\n\n{definition}");
-        return Ok((Placed::Kept(fresh), content));
+        return Ok((Placed::Kept(with_uses(&fresh, uses)), content));
     };
+    let used = with_uses(text, uses);
+    let text = used.as_str();
     let lines: Vec<&str> = text.lines().collect();
     let updated = match definition_lines(&lines, name) {
         Some((start, end)) => {
             if lines[start..end].join("\n").contains(&format!("content {content}.")) {
-                return Ok((Placed::Unchanged, content));
+                let original = library.unwrap_or_default();
+                if used.trim_end() == original.trim_end() {
+                    return Ok((Placed::Unchanged, content));
+                }
+                return Ok((Placed::Kept(used.clone()), content));
             }
             if !overwrite {
                 return Err(ConstructorError {

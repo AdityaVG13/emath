@@ -72,6 +72,37 @@ fn keep_cmd() {
     let golden = std::fs::read_to_string(fixtures.join("lib/seq.emath")).expect("golden");
     probe.demand("library-matches-golden", written == golden, written.clone());
 
+    // A kept rule that calls a shipped module's export carries its `use`
+    // into the library, so a later program can import the library alone.
+    let (text, code) = emath(
+        &dir,
+        &["keep", "grows.emath", "--function", "CatalanRule", "--name", "catalan", "--to", "lib/cat.emath", "--set", "unused=0", "--work", "50000000"],
+    );
+    let cat = std::fs::read_to_string(dir.join("lib/cat.emath")).unwrap_or_default();
+    probe.demand(
+        "keep-carries-use",
+        code == EXIT_OK as i32 && cat.lines().any(|l| l == "use discrete.factorials") && !cat.contains("use search.synthesis"),
+        format!("exit {code}\n{text}\n{cat}"),
+    );
+    std::fs::write(
+        dir.join("cat_uses.emath"),
+        "use lib.cat\n\nemath function catalan_12:\n    inputs:\n        unused: Int\n    outputs:\n        result: Int\n    definitions:\n        result = catalan(12)\n    tests:\n        example <twelfth>:\n            given unused = 0\n            expect result == 208012\n",
+    )
+    .expect("write cat_uses");
+    let (text, code) = emath(&dir, &["test", "cat_uses.emath"]);
+    probe.demand("kept-library-admits", code == EXIT_OK as i32, format!("exit {code}\n{text}"));
+    // Kept under a name its own `use` exports, the library would not
+    // load: refused before anything is written.
+    let (text, code) = emath(
+        &dir,
+        &["keep", "grows.emath", "--function", "CatalanRule", "--name", "binomial", "--to", "lib/clash.emath", "--set", "unused=0", "--work", "50000000"],
+    );
+    probe.demand(
+        "clash-refuses-unwritten",
+        code == EXIT_REFUSED as i32 && text.contains("E-NAME-022") && !dir.join("lib/clash.emath").exists(),
+        format!("exit {code}\n{text}"),
+    );
+
     let (text, code) = keep(&dir, "Factorial", "factorial", &[]);
     probe.demand("same-content-unchanged", code == EXIT_OK as i32 && text.contains("unchanged factorial"), format!("exit {code}\n{text}"));
 

@@ -2733,6 +2733,21 @@ emath function WalkMatchOpen:
                 p.eq("collision-refuses", err.code.as_str(), "E-NAME-022");
             }
         }
+        let nested_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/constructor/use_import_clobber_nested.emath");
+        let tree = parse_ok("use_import_clobber_nested.emath");
+        match evaluate_tree_at(&tree, Some(&nested_path)) {
+            Ok(report) => {
+                p.fail("nested-collision-refuses", format!("admitted anyway: {:?}", report.tests));
+            }
+            Err(err) => {
+                p.demand(
+                    "nested-collision-refuses",
+                    err.code == "E-NAME-022" && err.message.contains("use_import_clobber.emath"),
+                    format!("{}: {}", err.code, err.message),
+                );
+            }
+        }
     });
 
     probe.case("use-import-same-source-idempotent", |p| {

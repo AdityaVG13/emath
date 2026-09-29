@@ -526,6 +526,11 @@ impl LoopHost {
         &self.identity
     }
 
+    /// The module file this host opened.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     /// The module file this host runs (the path `open` was given).
     #[must_use]
     pub fn module_path(&self) -> &Path {

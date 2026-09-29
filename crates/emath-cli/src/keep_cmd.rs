@@ -17,8 +17,8 @@ use std::path::PathBuf;
 
 use emath_core::content_id_of_str;
 use emath_exec_ir::constructor_layer::{
-    evaluate_function_budgeted_at, named_programs, parse_constructor_scalar, place_definition, Placed,
-    DEFAULT_WORK,
+    evaluate_function_budgeted_at, named_programs, needed_uses, parse_constructor_scalar, place_definition,
+    prepare_module, Placed, DEFAULT_WORK,
 };
 
 use crate::{CliExit, EXIT_FAULT, EXIT_IO, EXIT_OK, EXIT_REFUSED};
@@ -134,7 +134,11 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
     let mut reports = Vec::new();
     let mut changed = false;
     for (name, program) in &entries {
-        match place_definition(library.as_deref(), name, program, &origin, request.overwrite) {
+        let uses = match needed_uses(program, &request.path, &request.to) {
+            Ok(uses) => uses,
+            Err(err) => return refuse(&err.code, err.message, EXIT_REFUSED),
+        };
+        match place_definition(library.as_deref(), name, program, &origin, request.overwrite, &uses) {
             Ok((Placed::Unchanged, content)) => {
                 reports.push(format!("unchanged {name} in {} (content {content})", request.to.display()));
             }
@@ -156,10 +160,17 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
             return EXIT_OK;
         }
     };
-    let (_, library_diagnostics) = emath_syntax::parse_str(&library);
+    let (library_tree, library_diagnostics) = emath_syntax::parse_str(&library);
     if library_diagnostics.has_errors() {
         crate::print_diagnostics(&library_diagnostics);
         return refuse("E-KEEP-SHAPE", "the kept library would not parse; nothing was written", EXIT_REFUSED);
+    }
+    if let Err(err) = prepare_module(&library_tree, Some(&request.to)) {
+        return refuse(
+            &err.code,
+            format!("{}: the kept library would not load: {}; nothing was written", request.to.display(), err.message),
+            EXIT_REFUSED,
+        );
     }
     if let Some(dir) = request.to.parent().filter(|d| !d.as_os_str().is_empty()) {
         if let Err(err) = fs::create_dir_all(dir) {

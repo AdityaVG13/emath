@@ -29,7 +29,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use emath_core::tree::{Item, SyntaxTree};
-use emath_exec_ir::constructor_layer::{evaluate_tree_budgeted_at, named_programs, place_definition, CValue, Placed};
+use emath_exec_ir::constructor_layer::{evaluate_tree_budgeted_at, named_programs, needed_uses, place_definition, prepare_module, CValue, Placed,
+};
 use emath_exec_ir::exact_int::ExactInt;
 use emath_syntax::parse_str;
 
@@ -205,7 +206,8 @@ impl KeepSeam {
         let mut kept = Vec::with_capacity(fresh.len());
         let mut changed = false;
         for (name, program) in fresh {
-            let (placed, content) = place_definition(text.as_deref(), &name, &program, origin, true)?;
+            let uses = needed_uses(&program, host.path(), library)?;
+            let (placed, content) = place_definition(text.as_deref(), &name, &program, origin, true, &uses)?;
             if let Placed::Kept(updated) = placed {
                 text = Some(updated);
                 changed = true;
@@ -213,6 +215,8 @@ impl KeepSeam {
             kept.push((name, content));
         }
         if let (true, Some(text)) = (changed, &text) {
+            emath_syntax::install_source_parser();
+            prepare_module(&parse_str(text).0, Some(library))?;
             if let Some(parent) = library.parent() {
                 fs::create_dir_all(parent).map_err(|err| io_fault("dream_io", parent, &err))?;
             }

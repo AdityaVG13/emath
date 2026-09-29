@@ -89,6 +89,15 @@ emath function Tier2:
             given with_kept = true
             expect status == 0
 
+emath function CatalanRule:
+    # Kept, the rule calls binomial: the library gains `use discrete.factorials`.
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = synthesize_with([1, 1, 2, 5, 14, 42, 132, 429, 1430, 4862], [16796, 58786], 9, [], [Block2: {code: quote(binomial(x, y)), apply: binomial, cap: 60}]).program
+
 emath function Catalan:
     # binomial(n + n, n) / (n + 1) is nine parts with the shipped
     # binomial as a two-input block and exact division.
