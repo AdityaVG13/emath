@@ -1,0 +1,22 @@
+# A user steps a growth model y' = y with RK4 in exact rationals: one step of
+# size h reproduces the degree-4 Taylor polynomial of e^h.
+
+use numerics.rk4
+
+emath function GrowthStep:
+    inputs:
+        h: Rat
+    outputs:
+        y1: Rat
+        taylor4: Rat
+    definitions:
+        y1 = rk4_step(1 / 1, 0 / 1, h, function t in Rat: function y in Rat: y)
+        taylor4 = 1 + h + h * h / 2 + h * h * h / 6 + h * h * h * h / 24
+    tests:
+        example <tenth_step>:
+            given h = 1 / 10
+            expect y1 == taylor4
+            expect y1 == 265241 / 240000
+        example <half_step>:
+            given h = 1 / 2
+            expect y1 == 211 / 128

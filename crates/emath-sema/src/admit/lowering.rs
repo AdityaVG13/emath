@@ -18,9 +18,9 @@ mod helpers;
 mod series;
 mod terms;
 
-use super::equations::{path_segments, unwrap_derivative, state_variable_name};
+use super::equations::state_variable_name;
 use super::expr_helpers::{broadcast_tensor_shapes, parse_quantity_magnitude, parse_float_constant, expr_form_name, measured_digits_uncertainty};
-use super::infer::{Infer, combine_numeric, NumericCombine, comparable_numeric, is_numeric_element};
+use super::infer::{Infer, combine_numeric, NumericCombine, comparable_numeric};
 use super::sections::{integer_range, restore_index_local};
 use super::Admitter;
 use super::{E_UNKNOWN_VARIABLE, E_UNSUPPORTED_TYPE};

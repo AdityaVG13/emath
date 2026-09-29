@@ -261,7 +261,6 @@ impl super::super::Admitter {
         } else {
             body_id
         };
-        let program_inputs = self.inputs.keys().cloned().collect::<Vec<_>>();
         restore_index_local(&mut self.index_locals, &binder.name, prev_index);
         restore_input(&mut self.inputs, &binder.name, prev);
         let is_bool_fold = matches!(kind, BinderKind::ForAll | BinderKind::Exists);
@@ -283,63 +282,12 @@ impl super::super::Admitter {
             return None;
         }
         if matches!(kind, BinderKind::Integral) {
-            let Some(slot) = Self::slot_index_in(&program_inputs, &binder.name) else {
-                self.error(
-                    E_UNSUPPORTED_TYPE,
-                    format!("integral variable `{}` is not a program input", binder.name),
-                    expr.source,
-                );
-                return None;
-            };
-            let zero = self.push_expr(
-                ExprNode::Literal(Literal::FloatBits(0.0_f64.to_bits())),
+            self.error(
+                E_UNSUPPORTED_TYPE,
+                "`integral` is not a constructor form; `use calculus.quadrature` for certified panel sums",
                 expr.source,
             );
-            let start_id = self.push_expr(
-                ExprNode::Binary {
-                    operation: emath_ir::BinaryOp::StrictFloatAdd,
-                    left: start_id,
-                    right: zero,
-                },
-                expr.source,
-            );
-            let end_id = self.push_expr(
-                ExprNode::Binary {
-                    operation: emath_ir::BinaryOp::StrictFloatAdd,
-                    left: end_id,
-                    right: zero,
-                },
-                expr.source,
-            );
-            let extra = vec![
-                start_id,
-                end_id,
-                self.push_expr(
-                    ExprNode::Literal(Literal::Integer(
-                        super::goals::DEFAULT_INTEGRAL_STEPS.to_string(),
-                    )),
-                    expr.source,
-                ),
-                self.push_expr(
-                    ExprNode::Literal(Literal::Integer(slot.to_string())),
-                    expr.source,
-                ),
-            ];
-            let Some((id, infer)) = self.apply_program_capability(
-                super::goals::CAPABILITY_SIMPSON,
-                body_id,
-                program_inputs,
-                extra,
-                expr.source,
-            ) else {
-                return None;
-            };
-            self.record(
-                "sema",
-                format!("integral `{}` -> program-carrier Simpson", binder.name),
-                expr.source,
-            );
-            return Some((id, infer));
+            return None;
         }
         let binder_id = self.push_expr(
             ExprNode::Binder {

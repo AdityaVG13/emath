@@ -89,8 +89,8 @@ fn evaluate_tree_with(
                 .filter(|(_, ty)| ctype_from_type(ty) == CType::Rat)
                 .map(|(name, _)| name)
                 .collect();
-            let mut cases: Vec<(String, BTreeMap<String, CValue>, Vec<Expr>)> = Vec::new();
-            let mut loose_givens = BTreeMap::new();
+            let mut cases: Vec<(String, Vec<(String, Expr)>, Vec<Expr>)> = Vec::new();
+            let mut loose_givens = Vec::new();
             let mut loose_expects: Vec<Expr> = Vec::new();
             let mut has_loose = false;
             for stmt in &section.suite.statements {
@@ -100,13 +100,12 @@ fn evaluate_tree_with(
                         if let Some(generic) = &example.generic {
                             label = generic.clone();
                         }
-                        let mut givens = BTreeMap::new();
+                        let mut givens = Vec::new();
                         let mut expects = Vec::new();
                         for inner in &example.suite.statements {
                             match &inner.kind {
                                 StmtKind::Given { name, value } => {
-                                    let value = bind_exact_given(name, value, &rat_inputs);
-                                    givens.insert(name.clone(), engine.eval(&value)?);
+                                    givens.push((name.clone(), bind_exact_given(name, value, &rat_inputs)));
                                 }
                                 StmtKind::Expect(expr) => expects.push(expr.clone()),
                                 StmtKind::Assign { target, value }
@@ -119,8 +118,7 @@ fn evaluate_tree_with(
                     }
                     StmtKind::Given { name, value } => {
                         has_loose = true;
-                        let value = bind_exact_given(name, value, &rat_inputs);
-                        loose_givens.insert(name.clone(), engine.eval(&value)?);
+                        loose_givens.push((name.clone(), bind_exact_given(name, value, &rat_inputs)));
                     }
                     StmtKind::Expect(expr) => {
                         has_loose = true;
@@ -132,7 +130,31 @@ fn evaluate_tree_with(
             if has_loose {
                 cases.push((decl.name.clone(), loose_givens, loose_expects));
             }
-            for (label, givens, expects) in cases {
+            for (label, given_exprs, expects) in cases {
+                // Each example gets the whole work limit, and a fault in its
+                // givens or query run fails that example alone. A budget
+                // fault keeps its frames and depth for resume; the test lane
+                // never resumes, so a later example must not inherit them.
+                engine.work = 0;
+                engine.call_depth = 0;
+                engine.frames.clear();
+                let mut givens = BTreeMap::new();
+                let mut given_fault = None;
+                for (name, expr) in &given_exprs {
+                    match engine.eval(expr) {
+                        Ok(value) => {
+                            givens.insert(name.clone(), value);
+                        }
+                        Err(err) => {
+                            given_fault = Some(format!("given `{name}`: {}: {}", err.code, err.message));
+                            break;
+                        }
+                    }
+                }
+                if let Some(detail) = given_fault {
+                    tests.push(TestObservation { label, passed: false, detail, receipt: None });
+                    continue;
+                }
                 if decl.as_kind == "query" {
                 // The query's `receipt`/`diagnostic` bindings and evaluated
                 // givens/defs are THIS case's world: restore the env after
@@ -140,7 +162,19 @@ fn evaluate_tree_with(
                 // examples (a leaked `diagnostic` would mask their fault
                 // records — same discipline as the function lane below).
                 let saved = engine.env.clone();
-                let receipt = engine.run_query(&decl.name, &givens)?;
+                let receipt = match engine.run_query(&decl.name, &givens) {
+                    Ok(receipt) => receipt,
+                    Err(err) => {
+                        engine.env = saved;
+                        tests.push(TestObservation {
+                            label,
+                            passed: false,
+                            detail: format!("{}: {}", err.code, err.message),
+                            receipt: None,
+                        });
+                        continue;
+                    }
+                };
                 for (name, value) in &givens {
                     engine.env.insert(name.clone(), value.clone());
                 }
@@ -221,13 +255,41 @@ fn evaluate_tree_with(
                         .collect::<Vec<_>>(),
                 ) {
                     Ok(value) => {
-                        if let Some(output) = &fndecl.output {
-                            engine.env.insert(output.clone(), value.clone());
+                        // Outputs come off the returned value (a multi-output
+                        // result is the record of its outputs). Only the
+                        // intermediate definitions an expect reads, and the
+                        // ones those read, are evaluated again.
+                        // `result` names the whole value unless an output
+                        // is itself called `result`.
+                        engine.env.insert("result".into(), value.clone());
+                        if fndecl.outputs.len() > 1 {
+                            if let CValue::Record { fields, .. } = &value {
+                                for (name, field) in fields.iter() {
+                                    engine.env.insert(name.clone(), field.clone());
+                                }
+                            }
+                        } else if let Some(output) = &fndecl.output {
+                            engine.env.insert(output.clone(), value);
                         }
-                        engine.env.insert("result".into(), value);
-                        for (name, expr) in &fndecl.defs {
-                            if let Ok(def) = engine.eval(expr) {
-                                engine.env.insert(name.clone(), def);
+                        let mut read = BTreeSet::new();
+                        for expect in &expects {
+                            super::identity::free_path_names(expect, &mut Vec::new(), &mut read);
+                        }
+                        let mut rebind = vec![false; fndecl.defs.len()];
+                        for (index, (name, expr)) in fndecl.defs.iter().enumerate().rev() {
+                            let mentioned = read
+                                .iter()
+                                .any(|path| path.split('.').next() == Some(name.as_str()));
+                            if mentioned && !fndecl.outputs.contains(name) {
+                                rebind[index] = true;
+                                super::identity::free_path_names(expr, &mut Vec::new(), &mut read);
+                            }
+                        }
+                        for ((name, expr), wanted) in fndecl.defs.iter().zip(rebind) {
+                            if wanted {
+                                if let Ok(def) = engine.eval(expr) {
+                                    engine.env.insert(name.clone(), def);
+                                }
                             }
                         }
                     }

@@ -1,0 +1,31 @@
+# A user measures a square pyramid from its corner points: the hull census
+# satisfies Euler's formula and the exact volume is base * height / 3.
+
+use geometry.spatial_3d
+use geometry.polyhedra
+
+emath function PyramidVolume:
+    inputs:
+        pts: sequence(Vec3)
+    outputs:
+        faces: Int
+        euler_ok: Bool
+        volume: Rat
+    definitions:
+        h = convex_hull(pts)
+        faces = h.nf
+        euler_ok = census_ok(h)
+        volume = hull_volume(h)
+    tests:
+        example <unit_base_height_three>:
+            given pts = [Vec3: {x: 0 / 1, y: 0 / 1, z: 0 / 1}, Vec3: {x: 1 / 1, y: 0 / 1, z: 0 / 1}, Vec3: {x: 1 / 1, y: 1 / 1, z: 0 / 1}, Vec3: {x: 0 / 1, y: 1 / 1, z: 0 / 1}, Vec3: {x: 1 / 2, y: 1 / 2, z: 3 / 1}]
+            expect faces == 5
+            expect euler_ok == true
+            expect volume == 1 / 1
+        example <flat_points_have_no_volume>:
+            given pts = [Vec3: {x: 0 / 1, y: 0 / 1, z: 0 / 1}, Vec3: {x: 1 / 1, y: 0 / 1, z: 0 / 1}, Vec3: {x: 1 / 1, y: 1 / 1, z: 0 / 1}, Vec3: {x: 0 / 1, y: 1 / 1, z: 0 / 1}]
+            expect euler_ok == false
+            expect volume == 0 / 1
+        example <no_points_refuse>:
+            given pts = []
+            expect diagnostic.code == empty_point_set

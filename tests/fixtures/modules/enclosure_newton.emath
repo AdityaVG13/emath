@@ -18,7 +18,6 @@
 # computed and reported but deliberately not pinned. The named refusal
 # itself is pinned twice: as data (refused == 1 on a = 64) and as the
 # named constructor refusal (representation_budget).
-# Run: emath test tests/fixtures/modules/enclosure_newton.emath --work 20000000
 
 emath object Enc:
     representation:

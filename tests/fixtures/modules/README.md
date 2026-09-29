@@ -429,8 +429,9 @@ follow-up; macOS-local exposure, rch/Linux 8 MiB marginal).
 These fixtures re-execute the research-loop reference calculations as
 ordinary authored `.emath` programs (no module imports — plain
 language over the scalar ABI), pinning the reference values exactly.
-Budget lanes: the four heavy files run under `emath test ...
---work 20000000`; everything else fits the shared 1M default.
+Budget lanes: `explicit_state_continuation` and
+`enclosure_dyadic_newton` run under `emath test ... --work 20000000`;
+everything else fits the 1M per-example default.
 Fifty-one authored tests across eleven files.
 
 - `replay_countermodel.emath` (3/3) — the training/future split

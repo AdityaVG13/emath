@@ -1,0 +1,30 @@
+# A user plans production with a linear program: two products, two machine
+# budgets, maximize profit. The dual certifies the optimum (zero gap).
+
+use optimization.linear
+
+emath function FactoryPlan:
+    inputs:
+        lp: Lp
+    outputs:
+        kind: Int
+        x: sequence(Rat)
+        profit: Rat
+        gap: Rat
+    definitions:
+        r = lp_solve(lp, 100)
+        kind = r.kind
+        x = r.x
+        profit = r.value
+        gap = r.gap
+    tests:
+        example <two_products_two_machines>:
+            # max 3x + 5y  s.t.  x + 2y <= 8,  3x + 2y <= 12
+            given lp = Lp: {A: [[1 / 1, 2 / 1], [3 / 1, 2 / 1]], b: [8 / 1, 12 / 1], c: [3 / 1, 5 / 1]}
+            expect kind == 0
+            expect x == [2 / 1, 3 / 1]
+            expect profit == 21 / 1
+            expect gap == 0 / 1
+        example <no_budget_means_unbounded>:
+            given lp = Lp: {A: [[1 / 1, 0 - 1 / 1]], b: [1 / 1], c: [0 / 1, 1 / 1]}
+            expect kind == 1

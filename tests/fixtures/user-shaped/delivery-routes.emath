@@ -1,0 +1,25 @@
+# A user plans delivery routes on their own road graph: Dijkstra and
+# Bellman-Ford must agree on non-negative weights, and a refund edge
+# (negative weight) is handled only by Bellman-Ford.
+
+use discrete.graphs
+use discrete.paths
+
+emath function DeliveryRoutes:
+    inputs:
+        g: WeightedGraph
+    outputs:
+        fast: sequence(Rat)
+        general: sequence(Rat)
+        agree: Bool
+    definitions:
+        d = dijkstra(g, 0)
+        b = bellman_ford(g, 0)
+        fast = d.dist
+        general = b.dist
+        agree = d.dist == b.dist and d.optimal and b.optimal
+    tests:
+        example <depot_to_four_stops>:
+            given g = WeightedGraph: {vertices: 5, edges: [Edge: {from: 0, to: 1, weight: 7 / 1}, Edge: {from: 0, to: 2, weight: 2 / 1}, Edge: {from: 2, to: 1, weight: 3 / 1}, Edge: {from: 1, to: 3, weight: 1 / 1}, Edge: {from: 2, to: 4, weight: 9 / 1}, Edge: {from: 3, to: 4, weight: 2 / 1}]}
+            expect fast == [0 / 1, 5 / 1, 2 / 1, 6 / 1, 8 / 1]
+            expect agree == true

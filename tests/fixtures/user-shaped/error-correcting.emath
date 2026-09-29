@@ -1,0 +1,25 @@
+# A user encodes two messages with a Reed-Solomon code over GF(7) and checks
+# the codewords sit at least the promised distance apart.
+
+use coding.reedsolomon
+use exact.modular
+
+emath function ErrorCorrecting:
+    inputs:
+        f: sequence(Int)
+        g: sequence(Int)
+    outputs:
+        cw: sequence(Int)
+        dist: Int
+        promised: Int
+    definitions:
+        cw = rs_encode(f, 6, 7)
+        dist = hamming_distance(rs_encode(f, 6, 7), rs_encode(g, 6, 7))
+        promised = rs_params(6, length(f)).d
+    tests:
+        example <two_messages_are_far_apart>:
+            given f = [1, 2]
+            given g = [1, 3]
+            expect length(cw) == 6
+            expect dist >= promised
+            expect promised == 5

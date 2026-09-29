@@ -1,0 +1,25 @@
+# A user answers card and coin questions exactly: binomial tails and a
+# hypergeometric draw, with the distribution sanity check.
+
+use probability.distributions
+
+emath function DiceOdds:
+    inputs:
+        n: Int
+    outputs:
+        at_most_two_heads: Rat
+        two_aces_in_five: Rat
+        fair_die_ok: Bool
+        loaded_die_ok: Bool
+    definitions:
+        at_most_two_heads = binomial_cdf(2, n, 1 / 2)
+        two_aces_in_five = hypergeometric_pmf(2, 5, 52, 4)
+        fair_die_ok = dist_ok([1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6])
+        loaded_die_ok = dist_ok([1 / 2, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6])
+    tests:
+        example <four_coins>:
+            given n = 4
+            expect at_most_two_heads == 11 / 16
+            expect two_aces_in_five == 2162 / 54145
+            expect fair_die_ok == true
+            expect loaded_die_ok == false

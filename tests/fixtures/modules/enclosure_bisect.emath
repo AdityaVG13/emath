@@ -7,7 +7,6 @@
 # bisection step. Reference totals: 512 successes, 0 refusals, 9,511
 # steps, 28,533 units; sqrt(2) in 16 steps (48 units) at
 # [92681/65536, 46341/32768] with width exactly 1/65536.
-# Run: emath test tests/fixtures/modules/enclosure_bisect.emath --work 20000000
 
 emath object Enc:
     representation:

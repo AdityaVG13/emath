@@ -1,6 +1,6 @@
 //! Builder data model: expressions, goals, compile/test models.
 
-use super::{ModelBuilder, Span};
+use super::Span;
 
 /// Synthetic span for programmatically-built nodes (no source file).
 pub(super) const OWNER: Span = Span {

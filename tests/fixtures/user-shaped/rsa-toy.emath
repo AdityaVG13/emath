@@ -1,0 +1,43 @@
+# A user builds textbook RSA from exact integer tools: the private exponent
+# comes from egcd, and decrypting the ciphertext must return the message.
+
+use exact.integers
+use exact.modular
+
+emath function RsaToy:
+    inputs:
+        p: Int
+        q: Int
+        e: Int
+        m: Int
+    outputs:
+        n: Int
+        phi: Int
+        d: Int
+        c: Int
+        back: Int
+    definitions:
+        n = p * q
+        phi = (p - 1) * (q - 1)
+        t = egcd(e, phi)
+        d = int_rem(t.s + phi, phi)
+        c = pow_mod(m, e, n)
+        back = pow_mod(c, d, n)
+    tests:
+        example <textbook_61_53>:
+            given p = 61
+            given q = 53
+            given e = 17
+            given m = 65
+            expect n == 3233
+            expect phi == 3120
+            expect d == 2753
+            expect c == 2790
+            expect back == 65
+        example <small_primes_round_trip>:
+            given p = 11
+            given q = 13
+            given e = 7
+            given m = 42
+            expect d == 103
+            expect back == 42

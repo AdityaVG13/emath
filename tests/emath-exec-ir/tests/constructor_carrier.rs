@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use emath_exec_ir::constructor_emir::{cvalue_to_emir, lower_constructor_function, values_equal};
 use emath_exec_ir::constructor_layer::{
     admit_tree, evaluate_code_at, evaluate_function, evaluate_function_at,
-    evaluate_function_budgeted_at, evaluate_tree, evaluate_tree_at, parse_constructor_scalar, CValue,
+    evaluate_function_budgeted_at, evaluate_tree, evaluate_tree_at, evaluate_tree_budgeted_at,
+    parse_constructor_scalar, CValue,
 };
 use emath_exec_ir::exact_int::ExactInt;
 use emath_exec_ir::interp::{evaluate, Value};
@@ -241,6 +242,66 @@ emath function drive:
             "2",
             unbounded.as_ref().map(|v| v.to_string()).as_deref() == Ok("100"),
             format!("default-budget evaluation: {unbounded:?}"),
+        );
+    });
+
+    probe.case("test_lane_budget_is_per_example", |p| {
+        // Each example runs under the full work limit: three examples
+        // that each fit must all pass, and an example whose given alone
+        // exhausts the budget fails by itself without sinking the file.
+        let source = "\
+emath function spin:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 0: 0 else: spin(n - 1) + 1
+    tests:
+        example <a>:
+            given n = 100
+            expect result == 100
+        example <heavy_body>:
+            given n = 5000
+            expect result == 5000
+        example <b>:
+            given n = 100
+            expect result == 100
+        example <heavy_given>:
+            given n = spin(5000)
+            expect result == 5000
+        example <c>:
+            given n = 100
+            expect result == 100
+";
+        let (tree, diagnostics) = parse_str(source);
+        assert!(!diagnostics.has_errors(), "budget source parse errors");
+        let report = evaluate_tree_budgeted_at(&tree, None, 2000);
+        let Ok(report) = report else {
+            p.demand("1", false, format!("one heavy given sank the file: {report:?}"));
+            return;
+        };
+        let outcome: Vec<(String, bool)> = report
+            .tests
+            .iter()
+            .map(|t| (t.label.clone(), t.passed))
+            .collect();
+        p.demand(
+            "2",
+            outcome
+                == vec![
+                    ("a".to_string(), true),
+                    ("heavy_body".to_string(), false),
+                    ("b".to_string(), true),
+                    ("heavy_given".to_string(), false),
+                    ("c".to_string(), true),
+                ],
+            format!("per-example outcomes: {outcome:?}"),
+        );
+        p.demand(
+            "3",
+            report.tests[1].detail.contains("budget") && report.tests[3].detail.contains("budget"),
+            format!("heavy details: {} / {}", report.tests[1].detail, report.tests[3].detail),
         );
     });
 

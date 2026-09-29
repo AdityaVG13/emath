@@ -503,8 +503,8 @@ pub enum EvalFault {
         /// Exclusive upper bound of the indexed axis.
         len: usize,
     },
-    /// Op violated an arithmetic precondition (zero/odd Simpson steps,
-    /// index-offset overflow, etc.). Distinct from IEEE `/0` on f64 ops,
+    /// Op violated an arithmetic precondition (index-offset
+    /// overflow, etc.). Distinct from IEEE `/0` on f64 ops,
     /// which remains Inf/NaN to match generated Rust.
     Arithmetic {
         /// EMIR op name.

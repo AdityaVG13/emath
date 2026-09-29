@@ -1,0 +1,24 @@
+# A user answers number questions: the 100th prime, the largest prime factor
+# of a composite, and Euler's totient via exact integer tools.
+
+use discrete.primes
+use exact.integers
+
+emath function PrimeHunt:
+    inputs:
+        n: Int
+    outputs:
+        largest: Int
+        hundredth: Int
+        phi: Int
+    definitions:
+        largest = largest_prime_factor(n)
+        hundredth = nth_prime(100)
+        phi = totient(n)
+    tests:
+        example <thirteen_one_ninety_five>:
+            # 13195 = 5 * 7 * 13 * 29
+            given n = 13195
+            expect largest == 29
+            expect hundredth == 541
+            expect phi == 8064

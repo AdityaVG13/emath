@@ -1,0 +1,25 @@
+# A user integrates a cubic exactly with Simpson's rule and brackets a
+# monotone integrand whose integral they cannot write in closed form here.
+
+use calculus.quadrature
+use analysis.intervals
+
+emath function AreaUnderCurve:
+    inputs:
+        n: Int
+    outputs:
+        cubic: Rat
+        recip_bracket_holds: Bool
+    definitions:
+        cubic = simpson_sum(function x in Rat: x * x * x - 2 * x + 1, 0 / 1, 2 / 1, n)
+        br = darboux_bracket(function x in Rat: 1 / (1 + x * x), 0 / 1, 1 / 1, n)
+        recip_bracket_holds = itv_contains(br.result, 785398 / 1000000)
+    tests:
+        example <simpson_is_exact_on_cubics>:
+            # integral of x^3 - 2x + 1 over [0, 2] = 4 - 4 + 2 = 2
+            given n = 4
+            expect cubic == 2 / 1
+            expect recip_bracket_holds == true
+        example <coarse_grid_still_exact>:
+            given n = 2
+            expect cubic == 2 / 1

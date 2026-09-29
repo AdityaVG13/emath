@@ -2,7 +2,7 @@
 
 use super::{
     BTreeSet, BinaryOp, BuilderError, BuilderModel, CmpOp, ConstructorModel, ExprNode, Expression,
-    Field, Literal, ModelBuilder, QualifiedName, SemanticPackage, Span, TypeId, TypeKind, TypeNode,
+    Field, Literal, QualifiedName, SemanticPackage, Span, TypeId, TypeKind, TypeNode,
     UnaryOp, Visibility,
 };
 

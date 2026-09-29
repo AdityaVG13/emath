@@ -3,7 +3,7 @@
 
 use emath_core::tree::{Expr, ExprKind, UnaryOp as SynUnOp};
 use emath_core::{Diagnostics, Span};
-use emath_ir::{BinaryOp, ExprId, ExprNode, Literal, TypeId, TypeNode};
+use emath_ir::{ExprId, ExprNode, TypeId, TypeNode};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod declaration;
@@ -126,8 +126,6 @@ struct Admitter {
     inputs: BTreeMap<String, Infer>,
     states: BTreeMap<String, Infer>,
     definitions: BTreeMap<String, (ExprId, Infer)>,
-    /// Constraint expression IDs from `constraints:` section, for penalty method.
-    constraints: Vec<ExprId>,
     /// Synthetic inputs `__rate_<state>` that replace `der(state)` inside
     /// residual expressions; inferred like the state field they derive.
     rate_placeholders: BTreeMap<String, Infer>,
@@ -145,11 +143,6 @@ struct Admitter {
     /// surface still consults it and refuses with the pinned
     /// "not executable in the loaded Language Image" diagnostics.
     capability_cells: Vec<CapabilityCallBinding>,
-    /// Binder names shadowing same-named definitions during the
-    /// current `inline_defs` walk. A reference inside a binder body to
-    /// a name that a binder rebinds must stay a `Variable` (it reads
-    /// the binder local at runtime), never the shadowed definition.
-    inline_shadows: Vec<String>,
 }
 
 /// A capability cell consult entry. The constructor lane admits no cells,
@@ -171,7 +164,6 @@ impl Admitter {
             inputs: BTreeMap::new(),
             states: BTreeMap::new(),
             definitions: BTreeMap::new(),
-            constraints: Vec::new(),
             rate_placeholders: BTreeMap::new(),
             exprs: Vec::new(),
             types: Vec::new(),
@@ -179,7 +171,6 @@ impl Admitter {
             index_locals: BTreeMap::new(),
             in_claim_context: false,
             capability_cells: Vec::new(),
-            inline_shadows: Vec::new(),
         }
     }
 
@@ -251,286 +242,6 @@ impl Admitter {
             return Some(infer.clone());
         }
         self.states.get(name).cloned()
-    }
-
-    /// Recursively inline definition references so downstream consumers
-    /// (e.g. forward-mode autodiff) see the actual computation.
-    fn inline_defs(&mut self, expr_id: ExprId) -> ExprId {
-        let Some((node, span)) = self.exprs.get(expr_id.0 as usize).cloned() else {
-            return expr_id;
-        };
-        match node {
-            ExprNode::Variable(name) => {
-                // A binder-local of the same name shadows the definition:
-                // the reference reads the binder local at runtime.
-                if !self.inline_shadows.iter().any(|shadow| shadow == &name.0) {
-                    if let Some((def_id, _)) = self.definitions.get(&name.0) {
-                        return self.inline_defs(*def_id);
-                    }
-                }
-                expr_id
-            }
-            ExprNode::Literal(_) => expr_id,
-            ExprNode::Unary { operation, value } => {
-                let value = self.inline_defs(value);
-                self.push_expr(ExprNode::Unary { operation, value }, span)
-            }
-            ExprNode::Binary {
-                operation,
-                left,
-                right,
-            } => {
-                let left = self.inline_defs(left);
-                let right = self.inline_defs(right);
-                self.push_expr(
-                    ExprNode::Binary {
-                        operation,
-                        left,
-                        right,
-                    },
-                    span,
-                )
-            }
-            ExprNode::Call {
-                function,
-                arguments,
-            } => {
-                let arguments: Vec<_> =
-                    arguments.into_iter().map(|a| self.inline_defs(a)).collect();
-                self.push_expr(
-                    ExprNode::Call {
-                        function,
-                        arguments,
-                    },
-                    span,
-                )
-            }
-            ExprNode::If {
-                condition,
-                then_value,
-                else_value,
-            } => {
-                let condition = self.inline_defs(condition);
-                let then_value = self.inline_defs(then_value);
-                let else_value = self.inline_defs(else_value);
-                self.push_expr(
-                    ExprNode::If {
-                        condition,
-                        then_value,
-                        else_value,
-                    },
-                    span,
-                )
-            }
-            ExprNode::Index { value, indices } => {
-                let value = self.inline_defs(value);
-                let indices: Vec<_> = indices.into_iter().map(|i| self.inline_defs(i)).collect();
-                self.push_expr(ExprNode::Index { value, indices }, span)
-            }
-            ExprNode::Vector(els) => {
-                let els: Vec<_> = els.into_iter().map(|e| self.inline_defs(e)).collect();
-                self.push_expr(ExprNode::Vector(els), span)
-            }
-            ExprNode::Matrix(rows) => {
-                let rows: Vec<Vec<_>> = rows
-                    .into_iter()
-                    .map(|row| row.into_iter().map(|e| self.inline_defs(e)).collect())
-                    .collect();
-                self.push_expr(ExprNode::Matrix(rows), span)
-            }
-            ExprNode::Tensor { shape, elements } => {
-                let elements: Vec<_> = elements.into_iter().map(|e| self.inline_defs(e)).collect();
-                self.push_expr(ExprNode::Tensor { shape, elements }, span)
-            }
-            ExprNode::Program { body, inputs } => {
-                let body = self.inline_defs(body);
-                self.push_expr(ExprNode::Program { body, inputs }, span)
-            }
-            // Capability applications carry the renamed sibling
-            // parameters in their ARGUMENTS: integer `+` on a spliced
-            // callee body lowers to an Apply of the machine add
-            // capability, and without this arm the Apply's argument
-            // vectors kept the raw `param#owner` Variables — the runner
-            // then refused them as unknown inputs (E-EVAL-007). Fold the
-            // arguments like any other node (emath-sibling-apply).
-            ExprNode::Apply {
-                capability,
-                arguments,
-            } => {
-                let arguments: Vec<_> =
-                    arguments.into_iter().map(|a| self.inline_defs(a)).collect();
-                self.push_expr(ExprNode::Apply { capability, arguments }, span)
-            }
-            // Slice, Record — keep as-is (rare in derivative bodies).
-            // Binder DOMAINS must be inlined like any other expression:
-            // a variable-range binder in a callee body (`product k in
-            // 1..=n`) carries the renamed parameter (`n#f`) in its domain
-            // vector, and only this pass resolves it to the caller's
-            // argument. The BODY and its nested expressions are walked
-            // too (emath-87ls0): a sibling callee's renamed parameter
-            // (`y#f`) referenced inside a fold guard otherwise survives
-            // into the spliced tree and the runner refuses it as an
-            // unknown input. Binder names shadow same-named definitions
-            // for the body walk, so a binder variable is never captured
-            // by the substitution.
-            ExprNode::Binder {
-                kind,
-                mut variables,
-                body,
-            } => {
-                for variable in &mut variables {
-                    variable.domain = self.inline_defs(variable.domain);
-                }
-                let shadowed = variables
-                    .iter()
-                    .map(|variable| variable.name.clone())
-                    .collect::<Vec<_>>();
-                self.inline_shadows.extend(shadowed.iter().cloned());
-                let body = self.inline_defs(body);
-                self.inline_shadows
-                    .truncate(self.inline_shadows.len() - shadowed.len());
-                self.push_expr(
-                    ExprNode::Binder {
-                        kind,
-                        variables,
-                        body,
-                    },
-                    span,
-                )
-            }
-            _ => expr_id,
-        }
-    }
-
-    /// Add penalty terms for each constraint to the optimization body:
-    /// `max(0, b - a)^2` / `max(0, a - b)^2` / `(a - b)^2` for >= / <= / ==.
-    fn add_constraint_penalties(&mut self, body: ExprId, span: Span) -> ExprId {
-        if self.constraints.is_empty() {
-            return body;
-        }
-        // Quadratic exterior penalty. The optimizer is Newton on ∇L = 0,
-        // so a large weight is stable (no GD learning-rate restriction).
-        // For min x²+y² s.t. x+y≥1 the equilibrium is x=y=w/(1+2w);
-        // w=1000 sits at ≈0.49975 (constraint gap ≈5e-4).
-        const PENALTY_WEIGHT: f64 = 1000.0;
-        let weight_id = self.push_expr(
-            ExprNode::Literal(Literal::FloatBits(PENALTY_WEIGHT.to_bits())),
-            span,
-        );
-        let mut result = body;
-        for &constraint_id in &self.constraints.clone() {
-            let Some(penalty) = self.constraint_penalty(constraint_id, span) else {
-                continue;
-            };
-            let weighted = self.push_expr(
-                ExprNode::Binary {
-                    operation: BinaryOp::StrictFloatMul,
-                    left: weight_id,
-                    right: penalty,
-                },
-                span,
-            );
-            result = self.push_expr(
-                ExprNode::Binary {
-                    operation: BinaryOp::StrictFloatAdd,
-                    left: result,
-                    right: weighted,
-                },
-                span,
-            );
-        }
-        if result != body {
-            self.record(
-                "sema",
-                format!(
-                    "added {} constraint penalty term(s) to optimization body",
-                    self.constraints.len()
-                ),
-                span,
-            );
-        }
-        result
-    }
-
-    /// Build a penalty expression for a single constraint.
-    /// Returns None for non-comparison constraints (e.g. `NotEqual`).
-    fn constraint_penalty(&mut self, constraint_id: ExprId, span: Span) -> Option<ExprId> {
-        let (node, _) = self.exprs.get(constraint_id.0 as usize)?.clone();
-        let ExprNode::Binary {
-            operation,
-            left,
-            right,
-        } = node
-        else {
-            return None;
-        };
-        let zero = self.push_expr(
-            ExprNode::Literal(Literal::FloatBits(0.0f64.to_bits())),
-            span,
-        );
-        let two = self.push_expr(
-            ExprNode::Literal(Literal::FloatBits(2.0f64.to_bits())),
-            span,
-        );
-        // violation = amount by which constraint is violated (>= 0 when violated)
-        let violation = match operation {
-            BinaryOp::GreaterEqual | BinaryOp::Greater => {
-                // a >= b violated when a < b → violation = b - a
-                self.push_expr(
-                    ExprNode::Binary {
-                        operation: BinaryOp::StrictFloatSub,
-                        left: right,
-                        right: left,
-                    },
-                    span,
-                )
-            }
-            BinaryOp::LessEqual | BinaryOp::Less => {
-                // a <= b violated when a > b → violation = a - b
-                self.push_expr(
-                    ExprNode::Binary {
-                        operation: BinaryOp::StrictFloatSub,
-                        left,
-                        right,
-                    },
-                    span,
-                )
-            }
-            BinaryOp::Equal => {
-                // a == b → violation = a - b (squared, so sign doesn't matter)
-                self.push_expr(
-                    ExprNode::Binary {
-                        operation: BinaryOp::StrictFloatSub,
-                        left,
-                        right,
-                    },
-                    span,
-                )
-            }
-            _ => return None,
-        };
-        // For inequalities: clamp violation at 0 with max(0, violation)
-        let clamped = if matches!(operation, BinaryOp::Equal) {
-            violation
-        } else {
-            self.push_expr(
-                ExprNode::Binary {
-                    operation: BinaryOp::Max,
-                    left: zero,
-                    right: violation,
-                },
-                span,
-            )
-        };
-        // penalty = clamped^2
-        Some(self.push_expr(
-            ExprNode::Binary {
-                operation: BinaryOp::StrictFloatPow,
-                left: clamped,
-                right: two,
-            },
-            span,
-        ))
     }
 }
 
