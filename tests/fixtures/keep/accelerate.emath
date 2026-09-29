@@ -1,0 +1,57 @@
+# The loop speeds up a program by inventing closed forms for its slow
+# parts. slow(n) adds three sums, each O(n). search.accelerate takes
+# each call inside the body as a function of n, computes its first
+# twelve values, and searches closed forms for them, round after round:
+#
+#   sum of 0..n-1          n * (n - 1) / 2, found from scratch
+#   sum of cubes           T(n) * T(n), with T the closed form above
+#                          (Nicomachus: the cubes sum to a square)
+#   sum of min(i, 11)      looks like T(n) on every value it was shown,
+#                          and fails at n = 20: refuted, never used
+#
+# The sums of sums are spots too: cubes plus 3 T(n) gets its own law,
+# and the whole body, which holds the min(i, 11) sum, is refuted at
+# the same far points.
+#
+# Each surviving closed form is a law, a rewrite from the call to the
+# closed form, and the rewrite climb applies the laws where they lower
+# the work on the checks. The min(i, 11) sum stays linear, so the whole
+# program can get at most about three times cheaper; the check asks
+# for two.
+#
+# Run: emath test accelerate.emath --work 60000000
+
+use search.accelerate
+use search.optimize
+use fold.reduce
+
+emath function Accelerates:
+    inputs:
+        unused: Int
+    outputs:
+        triangular: Bool
+        nicomachus: Bool
+        refuted: Bool
+        faster: Bool
+    definitions:
+        slow = quote(function n in Int: sum(tabulate(function i in Int: i * i * i, n)) + 3 * sum(tabulate(function i in Int: i, n)) + sum(tabulate(function i in Int: if i < 11: i else: 11, n)))
+        run = accelerate(slow, [30, 60], 7, [20, 33, 50], 10000000)
+        at = function l in Law: function k in Int: quote.evaluate(l.closed)(k)
+        held = filter(function l in Law: length(l.fails) == 0, run.laws)
+        broken = filter(function l in Law: length(l.fails) > 0, run.laws)
+        tri = filter(function l in Law: at(l)(100) == 4950, held)
+        cubes = filter(function l in Law: at(l)(10) == 2025, held)
+        triangular = length(tri) == 1 and tri[0].size == 7 and tri[0].tested == 3
+        nicomachus = length(cubes) == 1 and cubes[0].size == 5 and cubes[0].work_after * 10 < cubes[0].work_before
+        mimic = filter(function l in Law: at(l)(12) == 66, broken)
+        refuted = length(mimic) == 1 and mimic[0].fails == [20, 33, 50]
+        slow_at = function k in Int: quote.evaluate(slow)(k)
+        fast_at = function k in Int: quote.evaluate(run.program)(k)
+        faster = run.work_after * 2 < run.work_before and fast_at(200) == slow_at(200)
+    tests:
+        example <invents_its_speedup>:
+            given unused = 0
+            expect triangular == true
+            expect nicomachus == true
+            expect refuted == true
+            expect faster == true
