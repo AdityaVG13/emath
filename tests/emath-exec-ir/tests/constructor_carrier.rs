@@ -99,7 +99,7 @@ fn run_cases() {
         let path = fixture("memo_record_bodies.emath");
         let tree = parse_file(&path);
         let report = evaluate_tree(&tree).expect("memo record bodies evaluate");
-        p.demand("1", report.tests.len() == 2, "memo bodies expected two authored tests");
+        p.demand("1", report.tests.len() == 3, "memo bodies expected three authored tests");
         p.demand(
             "2",
             report.tests.iter().all(|test| test.passed),

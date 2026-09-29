@@ -23,6 +23,36 @@ fn is_identifier(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// The (name, program) pairs of a value that names its own programs: a
+/// sequence of records each with a `name` field holding a quoted
+/// identifier (`quote(triangular)`) and a `program` field holding Code.
+/// Other fields are ignored; the order is kept.
+pub fn named_programs(value: &CValue) -> Result<Vec<(String, CValue)>, ConstructorError> {
+    let CValue::Sequence(items) = value else {
+        return Err(shape("without a name, the kept value must be a sequence of {name, program} records"));
+    };
+    items
+        .iter()
+        .map(|item| {
+            let CValue::Record { fields, .. } = item else {
+                return Err(shape("each kept item must be a record with `name` and `program`"));
+            };
+            let name = match fields.get("name") {
+                Some(CValue::Code(code)) => match &code.expr.kind {
+                    ExprKind::Path { segments, .. } if segments.len() == 1 => segments[0].clone(),
+                    _ => return Err(shape("a kept `name` must be a quoted identifier such as quote(triangular)")),
+                },
+                _ => return Err(shape("a kept item has no quoted `name`")),
+            };
+            let program = fields
+                .get("program")
+                .cloned()
+                .ok_or_else(|| shape(format!("the kept item `{name}` has no `program`")))?;
+            Ok((name, program))
+        })
+        .collect()
+}
+
 /// The source text of `emath function {name}` for a kept program.
 /// `note` becomes the definition's summary comment.
 pub fn kept_definition(value: &CValue, name: &str, note: &str) -> Result<String, ConstructorError> {

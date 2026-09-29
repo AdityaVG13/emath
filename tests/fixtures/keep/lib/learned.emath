@@ -1,0 +1,38 @@
+# Kept definitions, written by `emath keep`.
+exports: triangular, fibonacci, sum_of_cubes, fibonacci_even
+
+emath function triangular:
+    # Kept from learn.emath Curriculum(unused=0); content fnv1a64:8cca22ca48eed255.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 0 else: (n + triangular(n - 1))
+
+emath function fibonacci:
+    # Kept from learn.emath Curriculum(unused=0); content fnv1a64:0cc5cbb4e1d1f8d3.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 0 else: (if n < 2: 1 else: (fibonacci(n - 1) + fibonacci(n - 2)))
+
+emath function sum_of_cubes:
+    # Kept from learn.emath Curriculum(unused=0); content fnv1a64:473b04e0ed21028b.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = triangular(n) * triangular(n)
+
+emath function fibonacci_even:
+    # Kept from learn.emath Curriculum(unused=0); content fnv1a64:d472b15f86acec16.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fibonacci(n + n)

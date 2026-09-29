@@ -554,6 +554,19 @@ impl Environment {
         first.and_then(|binding| self.get(&binding.name))
     }
 
+    /// The bindings a closure over `body` keeps: only the names the
+    /// body mentions. Capturing the whole scope made every closure
+    /// carry its maker's sequences and records, which disqualified it
+    /// from memoization (and cost a full copy per closure).
+    fn captured_by(&self, body: &Expr) -> BTreeMap<String, CValue> {
+        let mut names = BTreeSet::new();
+        identity::mentioned_names(body, &mut names);
+        names
+            .into_iter()
+            .filter_map(|name| self.get(&name).cloned().map(|value| (name, value)))
+            .collect()
+    }
+
     fn into_map(self) -> BTreeMap<String, CValue> {
         let mut map = BTreeMap::new();
         for binding in self.bindings() {
@@ -779,7 +792,7 @@ pub use admit::*;
 pub use carry::{evaluate_function_carrying, fact_identity, prepare_module, CarriedEvaluation, PreparedModule, FACT_PREFIX};
 pub use checkpoint::*;
 pub use eval::*;
-pub use keep::kept_definition;
+pub use keep::{kept_definition, named_programs};
 pub use query::*;
 pub use residual::*;
 pub use scalar::*;

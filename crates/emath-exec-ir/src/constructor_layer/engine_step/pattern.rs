@@ -111,7 +111,7 @@ impl Engine {
             param: param.to_string(),
             domain: domain_shape_of_expr(domain),
             body: body.clone(),
-            env: self.env.clone().into_map(),
+            env: self.env.captured_by(body),
             recursive: None,
         }));
         self.apply_value(cal, &[dom, clos])

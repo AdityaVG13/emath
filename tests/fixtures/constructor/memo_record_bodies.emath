@@ -2,7 +2,8 @@
 # bodies. Two curried closures whose bodies differ only inside record
 # literals apply at identical arguments; the second must see its own
 # body, not the first's memoized result. Regression for the `(opaque)`
-# body encoding that once collapsed record-bearing bodies.
+# body encoding that once collapsed record-bearing bodies. A recursive
+# closure also memoizes beside non-scalar values it never reads.
 
 emath object MemoState:
     representation:
@@ -38,3 +39,20 @@ emath function MemoId:
             given f = function t in Rat: function s in MemoState: MemoState: {t: t, y: [s.y[0]]}
             given x = 1 / 1
             expect result == 1 / 1
+
+emath function MemoRecurBesideSequence:
+    # A recursive closure memoizes its own calls even when the scope it
+    # was made in holds a sequence it never reads. Unmemoized, fib(40)
+    # is hundreds of millions of calls, far past the default work.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        xs = [1, 2, 3]
+        fib = recur f in Int -> Int: function k in Int: if k < 2: k else: f(k - 1) + f(k - 2)
+        result = fib(n) + length(xs) - 3
+    tests:
+        example <fib_forty>:
+            given n = 40
+            expect result == 102334155

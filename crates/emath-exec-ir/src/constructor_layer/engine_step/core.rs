@@ -352,7 +352,7 @@ impl Engine {
                     // arguments against it).
                     domain: domain_shape_of_expr(domain),
                     body: *body.clone(),
-                    env: self.env.clone().into_map(),
+                    env: self.env.captured_by(body),
                     recursive: None,
                 })))
             }
@@ -374,7 +374,7 @@ impl Engine {
                 // Unknown for the record-of-functions shape.
                 let recur_domain = arrow_domain_of_expr(ty);
                 if let ExprKind::FunctionAbs { param, body, .. } = &body.kind {
-                    let mut env = self.env.clone().into_map();
+                    let mut env = self.env.captured_by(body);
                     let finished = Closure {
                         param: param.clone(),
                         domain: recur_domain.clone(),
@@ -395,7 +395,7 @@ impl Engine {
                     param: String::new(),
                     domain: recur_domain,
                     body: *body.clone(),
-                    env: self.env.clone().into_map(),
+                    env: self.env.captured_by(body),
                     recursive: Some(name.clone()),
                 })))
             }

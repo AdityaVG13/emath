@@ -1,0 +1,47 @@
+# The loop with no one in it: search.synthesis.learn explains each
+# target from the base blocks and the rules it has already learned,
+# round after round, until a round learns nothing new. Sums of cubes
+# and Fibonacci at even positions have no rule within five parts over
+# the base blocks; round 2 learns them from triangular and fibonacci,
+# learned in round 1. Catalan stays unexplained at five parts.
+#
+# Run: emath test learn.emath --work 50000000
+# Keep everything learned (no --name: each record keeps under its own name):
+#   emath keep learn.emath --function Curriculum --to lib/learned.emath --set unused=0 --work 50000000
+
+use search.synthesis
+
+emath function targets:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Target)
+    definitions:
+        result = [Target: {name: quote(sum_of_cubes), train: [0, 1, 9, 36, 100, 225, 441, 784, 1296, 2025], held: [3025, 4356], cap: 50}, Target: {name: quote(fibonacci_even), train: [0, 1, 3, 8, 21, 55, 144, 377, 987, 2584], held: [6765, 17711], cap: 12}, Target: {name: quote(triangular), train: [0, 1, 3, 6, 10, 15, 21, 28, 36, 45], held: [55, 66, 78, 91], cap: 50}, Target: {name: quote(fibonacci), train: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34], held: [55, 89, 144, 233], cap: 25}, Target: {name: quote(catalan), train: [1, 1, 2, 5, 14, 42, 132, 429, 1430, 4862], held: [16796, 58786], cap: 20}]
+
+emath function Curriculum:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Learned)
+    definitions:
+        result = learn(targets(unused), 5, [], [])
+
+emath function Learns:
+    inputs:
+        unused: Int
+    outputs:
+        count: Int
+        rounds: sequence(Int)
+        next: sequence(Int)
+    definitions:
+        found = learn(targets(unused), 5, [], [])
+        count = length(found)
+        rounds = map(function l in Learned: l.round, found)
+        next = map(function l in Learned: quote.evaluate(l.closed)(12), found)
+    tests:
+        example <compounds_learned_from_earlier_rounds>:
+            given unused = 0
+            expect count == 4
+            expect rounds == [1, 1, 2, 2]
+            expect next == [78, 144, 6084, 46368]

@@ -425,6 +425,93 @@ pub(super) fn free_path_names(expr: &Expr, binders: &mut Vec<String>, out: &mut 
     }
 }
 
+/// Every environment name evaluating `expr` could read: the first
+/// segment of each path anywhere in it, binder domains included.
+/// Binders are not subtracted, so the set only over-approximates; a
+/// closure that captures just these names reads exactly what it read
+/// when it captured the whole scope.
+pub(super) fn mentioned_names(expr: &Expr, out: &mut BTreeSet<String>) {
+    let mut walk = |e: &Expr| mentioned_names(e, out);
+    match &expr.kind {
+        ExprKind::Int(_)
+        | ExprKind::Float(_)
+        | ExprKind::Rational { .. }
+        | ExprKind::Str(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Measured { .. } => {}
+        ExprKind::Path { segments, .. } => {
+            if let Some(first) = segments.first() {
+                out.insert(first.clone());
+            }
+        }
+        ExprKind::Quantity { value, .. }
+        | ExprKind::Unary { value, .. }
+        | ExprKind::WithSeriesPolicy { value, .. }
+        | ExprKind::UnitQuery { expr: value, .. }
+        | ExprKind::Quote { body: value } => walk(value),
+        ExprKind::Call { function, args } => {
+            walk(function);
+            args.iter().for_each(&mut walk);
+        }
+        ExprKind::Index { value, indices } => {
+            walk(value);
+            indices.iter().for_each(&mut walk);
+        }
+        ExprKind::Slice { start, end } | ExprKind::Range { start, end, .. } => {
+            start.iter().chain(end).for_each(|e| walk(e));
+        }
+        ExprKind::Binary { left, right, .. } | ExprKind::SequenceCons { head: left, tail: right } => {
+            walk(left);
+            walk(right);
+        }
+        ExprKind::Approx { left, right, tolerance } => {
+            walk(left);
+            walk(right);
+            if let Some(tolerance) = tolerance {
+                tolerance.rtol.iter().chain(&tolerance.atol).for_each(&mut walk);
+            }
+        }
+        ExprKind::If { condition, then_value, else_value } => {
+            walk(condition);
+            walk(then_value);
+            walk(else_value);
+        }
+        ExprKind::List(items) | ExprKind::Tuple(items) | ExprKind::Set(items) => items.iter().for_each(&mut walk),
+        ExprKind::Table { rows, .. } => rows.iter().flatten().for_each(&mut walk),
+        ExprKind::SetComprehension { element, domain, guard, .. } => {
+            walk(element);
+            walk(domain);
+            guard.iter().for_each(|e| walk(e));
+        }
+        ExprKind::Record { fields, .. } => fields.iter().for_each(|(_, e)| walk(e)),
+        ExprKind::Conditioned { value, condition } => {
+            walk(value);
+            walk(condition);
+        }
+        ExprKind::Cases { subject, arms, else_arm } => {
+            subject.iter().for_each(|e| walk(e));
+            arms.iter().for_each(|(c, v)| {
+                walk(c);
+                walk(v);
+            });
+            walk(else_arm);
+        }
+        ExprKind::FunctionAbs { domain, body, .. } | ExprKind::QuoteBind { domain, body, .. } => {
+            walk(domain);
+            walk(body);
+        }
+        ExprKind::Recur { ty, body, .. } => {
+            walk(ty);
+            walk(body);
+        }
+        ExprKind::CallableBinder { callee, domain, body, .. } => {
+            walk(callee);
+            walk(domain);
+            walk(body);
+        }
+    }
+}
+
 /// Identity stamp of a function declaration: the FNV-1a digest over the
 /// canonical bytes of its definition bodies. Alpha-equivalent
 /// redefinitions keep the same stamp (they are the same dependency).

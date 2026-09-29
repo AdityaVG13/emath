@@ -179,7 +179,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         }
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
         "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--detach] | dream watch|resume|fork|export <run> | dream list",
-        "keep" => "keep <file.emath> --function F --name NAME --to <library.emath> [--set name=value] [--work N] [--overwrite]",
+        "keep" => "keep <file.emath> --function F [--name NAME] --to <library.emath> [--set name=value] [--work N] [--overwrite]",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
