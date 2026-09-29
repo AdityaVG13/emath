@@ -22,6 +22,7 @@
 # Run: emath test accelerate.emath --work 60000000
 
 use search.accelerate
+use analysis.series
 use search.optimize
 use fold.reduce
 
@@ -53,5 +54,35 @@ emath function Accelerates:
             given unused = 0
             expect triangular == true
             expect nicomachus == true
+            expect refuted == true
+            expect faster == true
+
+# The shipped pi bracket (analysis.series, Machin) brackets each atan
+# series by two partial sums, S(k) and S(k + 1), each computed from the
+# first term. accelerate_steps finds the pair, conjectures that the
+# next partial sum is the last one plus one of the sum's own inner
+# functions (at the next index, or at the same one), tests both at
+# t = 1/3 and 2/7 for m = 5 and 12, keeps the one that holds, and
+# rewrites S(k + 1) into S(k) plus one term: about 1.6x less work
+# (10094 -> 6230 over k = 10, 20), the same bracket at k = 40.
+emath function AcceleratesSeries:
+    inputs:
+        unused: Int
+    outputs:
+        step: Bool
+        refuted: Bool
+        faster: Bool
+    definitions:
+        pi = quote.body(quote(pi_bracket)).fragment
+        run = accelerate_steps(pi, [10, 20], [[quote(1 / 3)], [quote(2 / 7)]], [5, 12], 100000000)
+        held = filter(function r in Recurrence: length(r.fails) == 0, run.steps)
+        broken = filter(function r in Recurrence: length(r.fails) > 0, run.steps)
+        step = length(held) == 1 and held[0].offset == 1 and held[0].tested == 4 and quote.evaluate(quote.make(Call: {callee: held[0].step, args: [quote(1 / 3), quote(1)]})) == 0 - 1 / 81
+        refuted = length(broken) == 1 and broken[0].offset == 0 and broken[0].fails == [5, 12]
+        faster = run.work_after * 4 < run.work_before * 3 and quote.evaluate(run.program)(40) == pi_bracket(40)
+    tests:
+        example <invents_the_next_partial_sum>:
+            given unused = 0
+            expect step == true
             expect refuted == true
             expect faster == true
