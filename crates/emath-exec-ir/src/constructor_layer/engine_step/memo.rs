@@ -1,4 +1,4 @@
-use super::super::{Engine, CValue, ConstructorError, fault, Code, call_memo_key, Closure, closure_memo_key, is_scalar, MAX_CALL_DEPTH, ContinuationFrame, Environment, ScalarArg, ScalarArgs, SCALAR_ARGS, FACT_PREFIX};
+use super::super::{Engine, CValue, ConstructorError, fault, cint, Code, call_memo_key, Closure, closure_memo_key, is_scalar, MAX_CALL_DEPTH, ContinuationFrame, Environment, ScalarArg, ScalarArgs, SCALAR_ARGS, FACT_PREFIX};
 use super::prelude::{fragment_term, substitute_path, value_to_expr};
 use crate::exact_int::ExactInt;
 
@@ -155,6 +155,64 @@ impl Engine {
                 self.memo.insert(key, value);
             }
         }
+    }
+
+    /// `quote.cost(f, x, limit)`: apply `f` to `x` with at most `limit`
+    /// engine steps and report `Cost {done, work, value}` (`value` only
+    /// when done; a fault, including the limit, gives `done: false` and
+    /// the fault code as `fault`). The application starts from an empty memo and its
+    /// memo entries are dropped afterwards, so a measurement does not
+    /// depend on what ran before it: the same `f` and `x` always report
+    /// the same work. When the run's own budget runs out first, the
+    /// partial measurement is unwound and `budget_exhausted` propagates;
+    /// a resume re-evaluates the enclosing expression, so the
+    /// measurement restarts rather than continuing half way.
+    pub(in crate::constructor_layer) fn measure_cost(
+        &mut self,
+        callee: CValue,
+        input: CValue,
+        limit: u64,
+    ) -> Result<CValue, ConstructorError> {
+        let outer_limit = self.work_limit;
+        let start = self.work;
+        let memo = std::mem::take(&mut self.memo);
+        let scalar_memo = std::mem::take(&mut self.scalar_memo);
+        let memo_added = self.memo_added.len();
+        let frames = self.frames.len();
+        let kont = self.frames.last().map_or(0, |frame| frame.kont.len());
+        let depth = self.call_depth;
+        let env = self.env.clone();
+        self.work_limit = outer_limit.min(start.saturating_add(limit));
+        let outcome = self.apply_value(callee, &[input]);
+        let work = self.work - start;
+        let outer_exhausted = self.work > outer_limit;
+        self.work_limit = outer_limit;
+        self.memo = memo;
+        self.scalar_memo = scalar_memo;
+        self.memo_added.truncate(memo_added);
+        self.frames.truncate(frames);
+        if let Some(frame) = self.frames.last_mut() {
+            frame.kont.truncate(kont);
+        }
+        self.call_depth = depth;
+        self.env = env;
+        let mut fields = std::collections::BTreeMap::new();
+        match outcome {
+            Ok(value) => {
+                fields.insert("done".into(), CValue::Bool(true));
+                fields.insert("work".into(), cint(work as i64));
+                fields.insert("value".into(), value);
+            }
+            Err(err) if err.code == "budget_exhausted" && outer_exhausted => return Err(err),
+            // A candidate that faults is a measured failure, not a run
+            // failure: a search over variants must survive a bad one.
+            Err(err) => {
+                fields.insert("done".into(), CValue::Bool(false));
+                fields.insert("work".into(), cint(work.min(limit) as i64));
+                fields.insert("fault".into(), CValue::Str(err.code));
+            }
+        }
+        Ok(CValue::Record { type_name: "Cost".into(), fields: std::sync::Arc::new(fields) })
     }
 
     /// One honesty site for the call-depth bound: names the reached

@@ -180,6 +180,26 @@ impl Engine {
                 let replacement = self.eval(&args[2])?;
                 self.quote_substitute(fragment, &reference, replacement)
             }
+            "quote.cost" => {
+                if args.len() != 3 {
+                    return Err(fault("arity", "quote.cost expects a function, an argument, and a work limit"));
+                }
+                let callee = match self.eval(&args[0])? {
+                    CValue::Code(code) => self.eval_code(CValue::Code(code))?,
+                    other => other,
+                };
+                let input = self.eval(&args[1])?;
+                let limit = match self.eval(&args[2])? {
+                    CValue::Int(crate::exact_int::ExactInt::Small(n)) if n >= 0 => n as u64,
+                    other => {
+                        return Err(fault(
+                            "type",
+                            format!("quote.cost expects a non-negative machine-size Int work limit, found {other}"),
+                        ));
+                    }
+                };
+                self.measure_cost(callee, input, limit)
+            }
             "quote.join" => {
                 if args.len() != 2 {
                     return Err(fault("arity", "quote.join expects two quoted identifiers"));

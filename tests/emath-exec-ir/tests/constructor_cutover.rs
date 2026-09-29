@@ -297,6 +297,10 @@ fn fixtures_and_seams() {
         );
     });
 
+    probe.case("quote-cost-measures-from-an-empty-memo", |_| {
+        all_passed("quote_cost.emath");
+    });
+
     probe.case("conjecture-two-witnesses-refute-uniqueness", |p| {
         all_passed("conjecture.emath");
         let tree = parse_ok("conjecture.emath");

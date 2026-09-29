@@ -1,0 +1,59 @@
+# quote.cost(f, x, limit): the work of one application, measured from
+# an empty memo so earlier calls never make it look cheap. Two sums of
+# 1..n agree in value and differ in work; a tight limit stops a run
+# (done false); a faulting candidate is a measured failure, not a run
+# failure.
+
+emath function slow_sum:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n == 0: 0 else: n + slow_sum(n - 1)
+
+emath function fast_sum:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_quot(n * (n + 1), 2)
+
+emath function fib:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 2: n else: fib(n - 1) + fib(n - 2)
+
+emath function Costs:
+    inputs:
+        n: Int
+    outputs:
+        same: Bool
+        cheaper: Bool
+        stopped: Bool
+        repeatable: Bool
+        contained: Bool
+    definitions:
+        slow = quote.cost(slow_sum, n, 100000)
+        fast = quote.cost(fast_sum, n, 100000)
+        same = slow.done and fast.done and slow.value == fast.value
+        cheaper = fast.work < slow.work
+        stopped = not quote.cost(slow_sum, n, 5).done
+        warm = fib(18)
+        first = quote.cost(fib, 18, 1000000)
+        second = quote.cost(fib, 18, 1000000)
+        repeatable = warm == first.value and first.work == second.work and first.work > 50
+        broken = quote.cost(function k in Int: k / (k - k), n, 1000)
+        contained = not broken.done and broken.work <= 1000
+    tests:
+        example <measures>:
+            given n = 40
+            expect same == true
+            expect cheaper == true
+            expect stopped == true
+            expect repeatable == true
+            expect contained == true
