@@ -68,6 +68,23 @@ emath function W:
         m = n + 1
         result = m * 4
 
+emath object Pair:
+    representation:
+        lo: Int
+        hi: Int
+
+emath function R:
+    # The field witness: its rest reads fields of a definition, which
+    # the fragment renders as dotted paths under the definition's
+    # binder (`p.lo`); they are bound, not open names.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        p = Pair: {lo: n, hi: n + 1}
+        result = p.lo * p.hi
+
 emath function body_pin:
     # The record pins: kinds by tag, the opaque signature by tag, the
     # unbound signature by difference (the `unbound` tag is not an
@@ -84,6 +101,8 @@ emath function body_pin:
         fragment_computes: Bool
         unary_fragment_applies: Bool
         staged_fragment_applies: Bool
+        field_fragment_applies: Bool
+        field_reads_rename: Bool
     definitions:
         z = quote.body(quote(Z))
         o = quote.body(quote(O))
@@ -95,6 +114,8 @@ emath function body_pin:
         fragment_computes = quote.evaluate(quote.make(z.fragment)) == 8 / 1
         unary_fragment_applies = quote.evaluate(quote.make(quote.body(quote(U)).fragment))(3 / 1) == 16 / 1
         staged_fragment_applies = quote.evaluate(quote.make(quote.body(quote(W)).fragment))(3) == 16
+        field_fragment_applies = quote.evaluate(quote.make(quote.body(quote(R)).fragment))(3) == 12
+        field_reads_rename = quote.identity(quote(function a in Pair: a.lo)) == quote.identity(quote(function b in Pair: b.lo)) and quote.identity(quote(function a in Pair: a.lo)) != quote.identity(quote(function a in Pair: a.hi))
     tests:
         example <transparent_body_is_available>:
             given unused = 0
@@ -117,6 +138,8 @@ emath function body_pin:
         example <staged_body_binds_its_definitions>:
             given unused = 0
             expect staged_fragment_applies == true
+            expect field_fragment_applies == true
+            expect field_reads_rename == true
 
 # --- The session surface (the export seam) ---
 #

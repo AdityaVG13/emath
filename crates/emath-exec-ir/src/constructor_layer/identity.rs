@@ -39,10 +39,15 @@ pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: 
             out.push(u8::from(*value));
         }
         ExprKind::Path { segments, .. } => {
-            if segments.len() == 1 && binders.iter().any(|b| b == &segments[0]) {
+            if binders.iter().any(|b| b == &segments[0]) {
                 let depth = binders.iter().rposition(|b| b == &segments[0]).unwrap_or(0);
                 out.push(b'#');
                 out.extend_from_slice(&(depth as u16).to_le_bytes());
+                // Field reads of a bound name (`a.lo`) keep their fields.
+                for segment in &segments[1..] {
+                    out.push(b'.');
+                    out.extend_from_slice(segment.as_bytes());
+                }
             } else {
                 out.push(b'P');
                 for segment in segments {
@@ -257,17 +262,20 @@ pub(super) fn code_identity(expr: &Expr) -> u64 {
 
 /// Free path names of a code body: single-segment paths not bound by an
 /// internal binder, plus every multi-segment path (module-qualified
-/// callables). Binder sites: function/quote/callable binders, `recur`
-/// names, and set-comprehension variables.
+/// callables) whose head is not such a binder. A bound head makes the
+/// path a field read of that binder (`a.lo` under `function a`: how
+/// `quote.body` renders field access on a definition), so it is bound.
+/// Binder sites: function/quote/callable binders, `recur` names, and
+/// set-comprehension variables.
 pub(super) fn free_path_names(expr: &Expr, binders: &mut Vec<String>, out: &mut BTreeSet<String>) {
     match &expr.kind {
         ExprKind::Path { segments, .. } => {
-            if segments.len() == 1 {
-                if !binders.iter().any(|b| b == &segments[0]) {
+            if !binders.iter().any(|b| b == &segments[0]) {
+                if segments.len() == 1 {
                     out.insert(segments[0].clone());
+                } else {
+                    out.insert(segments.join("."));
                 }
-            } else {
-                out.insert(segments.join("."));
             }
         }
         // Binder domains are TYPE expressions (`in Rat`, `in Int`): a
