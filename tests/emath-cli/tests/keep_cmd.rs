@@ -1,7 +1,8 @@
 //! `emath keep` end-to-end: rediscover sequences with the authored
-//! synthesizer, keep the programs into a user library, and reuse the
-//! library from a second file. The written library must match the
-//! golden `tests/fixtures/keep/seq.golden.emath`; re-keeping identical
+//! synthesizer, keep the programs into a user library, reuse the
+//! library from a second file, and keep a second-tier find that the
+//! search built from a kept function (`fibonacci(n + n)`). The written
+//! library must match the golden `tests/fixtures/keep/lib/seq.emath`; re-keeping identical
 //! content is a no-op; different content under a kept name refuses
 //! unless `--overwrite`, and an overwrite really replaces the
 //! definition (the reuse file's tests then fail).
@@ -31,9 +32,13 @@ fn emath(dir: &Path, args: &[&str]) -> (String, i32) {
 }
 
 fn keep(dir: &Path, function: &str, name: &str, extra: &[&str]) -> (String, i32) {
+    keep_from(dir, "discover.emath", function, name, extra)
+}
+
+fn keep_from(dir: &Path, file: &str, function: &str, name: &str, extra: &[&str]) -> (String, i32) {
     let mut args = vec![
-        "keep", "discover.emath", "--function", function, "--name", name, "--to", "lib/seq.emath",
-        "--set", "unused=0", "--work", "20000000",
+        "keep", file, "--function", function, "--name", name, "--to", "lib/seq.emath",
+        "--set", "unused=0", "--work", "50000000",
     ];
     args.extend_from_slice(extra);
     emath(dir, &args)
@@ -45,7 +50,7 @@ fn keep_cmd() {
     let dir = std::env::temp_dir().join(format!("emath_keep_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let fixtures = workspace().join("tests/fixtures/keep");
-    for file in ["discover.emath", "uses.emath"] {
+    for file in ["discover.emath", "uses.emath", "grows.emath"] {
         std::fs::copy(fixtures.join(file), dir.join(file)).expect("copy fixture");
     }
     let library = dir.join("lib/seq.emath");
@@ -54,12 +59,14 @@ fn keep_cmd() {
         let (text, code) = keep(&dir, function, name, &[]);
         probe.demand(&format!("keep-{name}"), code == EXIT_OK as i32 && text.contains(&format!("kept {name}")), format!("exit {code}\n{text}"));
     }
-    let written = std::fs::read_to_string(&library).unwrap_or_default();
-    let golden = std::fs::read_to_string(fixtures.join("seq.golden.emath")).expect("golden");
-    probe.demand("library-matches-golden", written == golden, written.clone());
-
     let (text, code) = emath(&dir, &["test", "uses.emath"]);
     probe.demand("reuse-passes", code == EXIT_OK as i32 && text.contains("2 authored tests passed"), format!("exit {code}\n{text}"));
+
+    let (text, code) = keep_from(&dir, "grows.emath", "FibonacciEven", "fibonacci_even", &[]);
+    probe.demand("keep-built-from-kept", code == EXIT_OK as i32 && text.contains("kept fibonacci_even"), format!("exit {code}\n{text}"));
+    let written = std::fs::read_to_string(&library).unwrap_or_default();
+    let golden = std::fs::read_to_string(fixtures.join("lib/seq.emath")).expect("golden");
+    probe.demand("library-matches-golden", written == golden, written.clone());
 
     let (text, code) = keep(&dir, "Factorial", "factorial", &[]);
     probe.demand("same-content-unchanged", code == EXIT_OK as i32 && text.contains("unchanged factorial"), format!("exit {code}\n{text}"));

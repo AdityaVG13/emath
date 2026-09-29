@@ -1,5 +1,5 @@
 # Kept definitions, written by `emath keep`.
-exports: triangular, factorial, fibonacci
+exports: triangular, factorial, fibonacci, fibonacci_even
 
 emath function triangular:
     # Kept from discover.emath Triangular(unused=0); content fnv1a64:8cca22ca48eed255.
@@ -27,3 +27,12 @@ emath function fibonacci:
         result: Int
     definitions:
         result = if n < 1: 0 else: (if n < 2: 1 else: (fibonacci(n - 1) + fibonacci(n - 2)))
+
+emath function fibonacci_even:
+    # Kept from grows.emath FibonacciEven(unused=0); content fnv1a64:d472b15f86acec16.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fibonacci(n + n)
