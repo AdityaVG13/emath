@@ -17,6 +17,7 @@ pub const COMMANDS: &[&str] = &[
     "run",
     "loop",
     "dream",
+    "keep",
     "experiment",
     "step",
     "test",
@@ -178,6 +179,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         }
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
         "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--detach] | dream watch|resume|fork|export <run> | dream list",
+        "keep" => "keep <file.emath> --function F --name NAME --to <library.emath> [--set name=value] [--work N] [--overwrite]",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
@@ -288,6 +290,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         }
         "dream" => {
             "launch a research run as a background driver writing `.emath/runs/<name>/` and watch it live in a terminal dashboard; `watch`, `resume`, `fork`, `list`, `export` operate on runs; detaching never stops the run"
+        }
+        "keep" => {
+            "evaluate a function that returns a closed quoted program and write it into a library file as an ordinary `emath function` with its source and content id; different existing text refuses without `--overwrite`"
         }
         "experiment" => {
             "build and measure an explicit baseline and candidate on one workload, then return an authored evaluator's decision; resumable with `--state`"
@@ -784,6 +789,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "-h",
         ],
         "loop" => &["--target", "--budget", "--script", "--help", "-h"],
+        "keep" => &["--function", "--name", "--to", "--set", "--work", "--overwrite", "--help", "-h"],
         "dream" => &[
             "--target",
             "--run",

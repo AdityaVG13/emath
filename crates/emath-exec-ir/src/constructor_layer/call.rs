@@ -165,10 +165,11 @@ pub(super) fn rebuild_expr(value: &CValue) -> Result<Expr, String> {
                         Some(CValue::Record { type_name, .. }) => type_name.to_string(),
                         _ => return Err("Closure missing param".into()),
                     };
+                    let domain = rebuild_expr(fields.get("domain").ok_or("Closure missing domain")?)?;
                     let body = rebuild_expr(fields.get("body").ok_or("Closure missing body")?)?;
                     Ok(dummy_expr(ExprKind::FunctionAbs {
                         param,
-                        domain: Box::new(path_expr("Rat")),
+                        domain: Box::new(domain),
                         body: Box::new(body),
                     }))
                 }

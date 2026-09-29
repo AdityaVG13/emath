@@ -934,8 +934,8 @@ fn probe() {
     // Applied evaluate (`f = quote.evaluate(code)` then `f(a)`): each
     // argument meets its binder's recorded domain before it binds, by
     // the VM's scalar admission - `Rat` widens an Int exactly, `Int`
-    // refuses a ratio by name (never a silent answer). A made closure
-    // carries the `Rat` domain, as the VM's make rebuilds it.
+    // refuses a ratio by name (never a silent answer). A viewed and
+    // made closure keeps its domain, as the VM's view/make do.
     p.case("applied-domain-admission", |p| {
         let successor = |domain: &str| {
             open_expr(
@@ -976,7 +976,11 @@ fn probe() {
             .make(&ModuleTable::EMPTY)
             .expect("the viewed closure rebuilds");
         let got = apply(made, CodeValue::Rat((1, 2)));
-        p.demand("made-closure-is-rat", equals(&got, CodeValue::Rat((3, 2))), &format!("{got:?}"));
+        p.demand(
+            "made-closure-keeps-its-domain",
+            matches!(&got, Err(e) if e == "type: closure domain `Int` does not admit the argument `1/2`"),
+            &format!("{got:?}"),
+        );
     });
 
     // Module calls in the tree evaluator: a call to a module function

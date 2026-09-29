@@ -1,0 +1,34 @@
+# Reuse half of the keep round trip: a later program imports the kept
+# library like any other module and builds on it. `choose` is written
+# over the kept factorial; the kept triangular numbers agree with
+# choose(n + 1, 2).
+#
+# Run after the keeps in discover.emath: emath test uses.emath
+
+use lib.seq
+
+emath function choose:
+    inputs:
+        n: Int
+        k: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = factorial(n) / (factorial(k) * factorial(n - k))
+    tests:
+        example <five_choose_two>:
+            given n = 5
+            given k = 2
+            expect result == 10
+
+emath function triangular_is_choose:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = triangular(n) == choose(n + 1, 2)
+    tests:
+        example <at_twenty>:
+            given n = 20
+            expect result == true

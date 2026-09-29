@@ -552,11 +552,12 @@ pub(super) fn view_of(
                 ),
             ]),
         ),
-        ExprKind::FunctionAbs { param, body, .. } | ExprKind::QuoteBind { param, body, .. } => {
+        ExprKind::FunctionAbs { param, domain, body } | ExprKind::QuoteBind { param, domain, body } => {
             view_record(
                 "Closure",
                 BTreeMap::from([
                     ("param".into(), schema_tag(param)),
+                    ("domain".into(), code_of(*domain.clone())),
                     ("body".into(), code_of(*body.clone())),
                     ("scope".into(), pack(*body.clone(), Some(param))),
                 ]),

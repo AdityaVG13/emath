@@ -1,6 +1,6 @@
 //! CLI entry (`run`), argument parsing, and the command grammar.
 
-use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, PlannerRequest, BuildRequest, execution, loop_cmd, dream_cmd, experiment_cmd, compiled_search, language_cmd, parse_check_request, parse_file_json_request, parse_planner_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
+use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, PlannerRequest, BuildRequest, execution, loop_cmd, dream_cmd, keep_cmd, experiment_cmd, compiled_search, language_cmd, parse_check_request, parse_file_json_request, parse_planner_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
 
 /// Entry used by main; keeps the CLI testable.
 pub fn run(args: &[String]) -> CliExit {
@@ -106,6 +106,7 @@ pub(super) enum Command {
     Run(execution::RunRequest),
     Loop(loop_cmd::LoopRequest),
     Dream(dream_cmd::DreamRequest),
+    Keep(keep_cmd::KeepRequest),
     Experiment(experiment_cmd::ExperimentRequest),
     Search(compiled_search::SearchRequest),
     Step(execution::RunRequest),
@@ -402,6 +403,8 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                 .with_usage(format!("emath {}", dream_cmd::USAGE)),
             )
         }),
+        "keep" => require_single_file("keep", keep_cmd::USAGE, rest, keep_cmd::KeepRequest::parse)
+            .map(Command::Keep),
         "experiment" => require_single_file(
             "experiment",
             experiment_cmd::USAGE,

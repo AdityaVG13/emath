@@ -193,7 +193,7 @@ pub enum CodeTree {
     },
     /// A function literal (the VM's `FunctionAbs`): the binder's
     /// parameter name, its recorded domain, and the body tree. The view
-    /// does not expose the domain (the VM's view does not); an applied
+    /// exposes the domain as Code and make rebuilds it; an applied
     /// evaluate checks each argument against it.
     Closure {
         param: String,
@@ -786,14 +786,15 @@ pub fn view_tree(tree: &CodeTree, module: &ModuleTable) -> NodeValue {
                 ],
             )
         }),
-        CodeTree::Closure { param, body, .. } => with_mint(|mint| {
+        CodeTree::Closure { param, domain, body } => with_mint(|mint| {
             // The VM's `FunctionAbs` view: the binder's parameter as a
-            // name tag, the body as Code, and the minted scope package
-            // carrying the binder.
+            // name tag, its domain and body as Code, and the minted
+            // scope package carrying the binder.
             view_record(
                 "Closure",
                 vec![
                     ("param", node_tag(param)),
+                    ("domain", code_of(CodeTree::Path(vec![domain.to_string()]))),
                     ("body", code_of((**body).clone())),
                     ("scope", fragment_package(mint, body, Some(param))),
                 ],
@@ -1065,15 +1066,24 @@ pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
                             .ok_or_else(|| String::from("Closure param is not a name tag"))?,
                         None => return Err(String::from("Closure missing param")),
                     };
+                    let domain = match fields.get("domain") {
+                        Some(NodeValue::Code(code)) => match &code.tree {
+                            CodeTree::Path(segments) if segments.len() == 1 => match segments[0].as_str() {
+                                "unknown" => TreeDomain::Unknown,
+                                name if name.starts_with("sequence(") => TreeDomain::Sequence(name.to_string()),
+                                name => TreeDomain::Scalar(name.to_string()),
+                            },
+                            _ => return Err(String::from("Closure domain is not a domain name")),
+                        },
+                        _ => return Err(String::from("Closure missing domain")),
+                    };
                     let body = match fields.get("body") {
                         Some(NodeValue::Code(code)) => code.tree.clone(),
                         _ => return Err(String::from("Closure body is not code")),
                     };
-                    // The VM's make rebuilds a Closure node over the
-                    // `Rat` domain (the view carries no domain).
                     Ok(CodeTree::Closure {
                         param,
-                        domain: TreeDomain::Scalar(String::from("Rat")),
+                        domain,
                         body: Box::new(body),
                     })
                 }

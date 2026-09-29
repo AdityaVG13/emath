@@ -1,0 +1,32 @@
+# Discovery half of the keep round trip: each function rediscovers a
+# sequence from its first terms with search.synthesis and returns the
+# kept program. `emath keep` writes the program into a library file.
+#
+# Run (from this directory):
+#   emath keep discover.emath --function Triangular --name triangular --to lib/seq.emath --work 20000000
+
+use search.synthesis
+
+emath function Triangular:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = synthesize([0, 1, 3, 6, 10, 15, 21, 28, 36, 45], [55, 66, 78, 91], 5).program
+
+emath function Factorial:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = synthesize([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], [3628800, 39916800], 5).program
+
+emath function Fibonacci:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = synthesize([0, 1, 1, 2, 3, 5, 8, 13, 21, 34], [55, 89, 144, 233], 5).program

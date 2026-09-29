@@ -1,0 +1,29 @@
+# Kept definitions, written by `emath keep`.
+exports: triangular, factorial, fibonacci
+
+emath function triangular:
+    # Kept from discover.emath Triangular(unused=0); content fnv1a64:8cca22ca48eed255.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 0 else: (n + triangular(n - 1))
+
+emath function factorial:
+    # Kept from discover.emath Factorial(unused=0); content fnv1a64:0f26e318c997975f.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 1 else: (n * factorial(n - 1))
+
+emath function fibonacci:
+    # Kept from discover.emath Fibonacci(unused=0); content fnv1a64:0cc5cbb4e1d1f8d3.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 0 else: (if n < 2: 1 else: (fibonacci(n - 1) + fibonacci(n - 2)))
