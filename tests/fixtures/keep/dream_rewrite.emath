@@ -1,0 +1,62 @@
+# Rewrite blend: every rewritten program must agree with blend on the
+# checks; the dream keeps the one with the least work. Factoring a
+# repeated factor pays twice (two climb steps); swapping the operands
+# of + never lowers the work, so the climb passes it by.
+#
+# Run: emath dream dream_rewrite.emath --target StepRewrite
+
+use rewrite_prog
+use search.optimize
+use fold.reduce
+
+emath function rules:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Rewrite)
+    definitions:
+        factor = Rewrite: {pattern: quote(a * b + a * c), replacement: quote(a * (b + c))}
+        absorb = Rewrite: {pattern: quote(a * b + a), replacement: quote(a * (b + 1))}
+        swap = Rewrite: {pattern: quote(a + b), replacement: quote(b + a)}
+        result = [swap, factor, absorb]
+
+emath function checks:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [3, 10, 25]
+
+emath function score:
+    inputs:
+        c: Code
+    outputs:
+        result: Int
+    definitions:
+        result = total_work(quote.evaluate(c), checks(0), map(blend, checks(0)), 10000000)
+
+emath function SeedRewrite:
+    inputs:
+        unused: Int
+    outputs:
+        result: Rewriting
+    definitions:
+        result = rewrite_seed(quote.body(quote(blend)).fragment, score)
+
+emath function StepRewrite:
+    inputs:
+        state: Rewriting
+        budget: Int
+    outputs:
+        result: Rewriting
+    definitions:
+        result = rewrite_step(state, rules(0), score)
+
+emath function dream_keep:
+    inputs:
+        state: Rewriting
+    outputs:
+        result: sequence(Tuned)
+    definitions:
+        result = rewritten(state, quote(blend_fast), quote(recur f in Int -> Int: program))

@@ -4,6 +4,16 @@
 # (done false); a faulting candidate is a measured failure, not a run
 # failure.
 
+use fold.reduce
+
+emath function spread:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = sum(tabulate(function i in Int: i * n, n))
+
 emath function slow_sum:
     inputs:
         n: Int
@@ -27,6 +37,16 @@ emath function fib:
         result: Int
     definitions:
         result = if n < 2: n else: fib(n - 1) + fib(n - 2)
+
+emath function RepeatWork:
+    # The same call twice in one application: its work does not depend
+    # on which host evaluates the measurement.
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.cost(function n in Int: spread(n) + spread(n), 25, 100000).work
 
 emath function Costs:
     inputs:

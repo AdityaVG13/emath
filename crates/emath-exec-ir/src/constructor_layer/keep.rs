@@ -126,6 +126,24 @@ pub fn needed_uses(program: &CValue, source: &Path, library: &Path) -> Result<Ve
                 _ => Vec::new(),
             })
             .collect();
+        // Private and clashing names reach a program as `{name}__{label}`
+        // (scope.rs `key`), with label the module path joined by `_` and
+        // maybe a `_N` suffix. No library can spell them.
+        let label = path.join("_");
+        for key in &mentioned {
+            let Some((name, tag)) = key.rsplit_once("__") else { continue };
+            let labelled = tag == label
+                || tag.strip_prefix(label.as_str()).and_then(|rest| rest.strip_prefix('_')).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+            let declared = module.items.iter().any(|item| matches!(item, Item::Declaration(decl) if decl.name == name));
+            if labelled && declared {
+                let module_name = path.join(".");
+                return Err(keep_use(if exports.iter().any(|e| e.as_str() == name) {
+                    format!("the program calls `{name}`, which more than one imported module exports; a kept program must name exactly one")
+                } else {
+                    format!("the program calls `{name}`, which is private to `{module_name}`; export it from `{module_name}` to keep this program")
+                }));
+            }
+        }
         if !exports.iter().any(|name| mentioned.contains(name.as_str())) {
             continue;
         }

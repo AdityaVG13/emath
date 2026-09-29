@@ -1,0 +1,19 @@
+# A user program that computes the same sum three times. The engine
+# caches a repeated call only when its arguments are scalars, so these
+# sums, written inline, are each paid for. A user file: the rewrite
+# dream in dream_rewrite.emath imports it.
+exports: blend
+
+use fold.reduce
+
+emath function blend:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = sum(tabulate(function i in Int: i * n, n)) * 3 + sum(tabulate(function i in Int: i * n, n)) * 4 + sum(tabulate(function i in Int: i * n, n))
+    tests:
+        example <at_four>:
+            given n = 4
+            expect result == 192

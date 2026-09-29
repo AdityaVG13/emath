@@ -306,6 +306,35 @@ fn dream_journal() {
             "stop + resume wrote a different library",
         );
     });
+    // Rewriting a user's program: rules are quoted pattern pairs, the
+    // climb keeps each cheaper rewrite that still agrees with the
+    // checks, and a rule that never lowers the work (swapping the
+    // operands of +) is passed by.
+    probe.case("rewrite-keeps-best", |p| {
+        let mut config = RunConfig::new(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/keep/dream_rewrite.emath"),
+        );
+        config.target = Some("StepRewrite".into());
+        config.work = 50_000_000;
+        config.checkpoint_every = 1;
+        let (run, _) = run_whole(&root, "rewrite", config);
+        p.eq("outcome", end_outcome(&run), "domain_exhausted".to_string());
+        let kept: Vec<u64> = read_events(&run.journal())
+            .expect("parse")
+            .iter()
+            .filter(|e| e.t == "kept")
+            .map(|e| e.batch().unwrap_or(0))
+            .collect();
+        p.eq("kept-each-improvement", kept, vec![1, 2]);
+        let library = std::fs::read_to_string(run.world().join("kept.emath")).unwrap_or_default();
+        p.demand(
+            "library-holds-factored",
+            library.lines().any(|l| l == "use fold.reduce")
+                && library.contains("result = sum(tabulate(function i in Int: i * n, n)) * (3 + 4 + 1)")
+                && library.contains("Saving(work_after=853, work_before=2511)"),
+            library.clone(),
+        );
+    });
     probe.case("a13-live-lock-refuses", |p| {
         // Liveness is the OS lock a driver holds on driver.lock, not the
         // pid written in it.

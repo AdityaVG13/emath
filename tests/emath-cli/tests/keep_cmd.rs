@@ -103,6 +103,29 @@ fn keep_cmd() {
         format!("exit {code}\n{text}"),
     );
 
+    // A body unfolded from another module (quote.body) can call that
+    // module's private helper, which no library can import: refused by
+    // name before anything is written.
+    std::fs::write(
+        dir.join("hidden.emath"),
+        "exports: twice\n\nemath function half:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = n\n\nemath function twice:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = half(n) + half(n)\n",
+    )
+    .expect("write hidden");
+    std::fs::write(
+        dir.join("unfold.emath"),
+        "use hidden\n\nemath function Unfolded:\n    inputs:\n        unused: Int\n    outputs:\n        result: Code\n    definitions:\n        result = quote.substitute(quote(recur f in Int -> Int: program), \"program\", quote.body(quote(twice)).fragment)\n",
+    )
+    .expect("write unfold");
+    let (text, code) = emath(
+        &dir,
+        &["keep", "unfold.emath", "--function", "Unfolded", "--name", "twice_copy", "--to", "lib/hidden_copy.emath", "--set", "unused=0"],
+    );
+    probe.demand(
+        "private-helper-refuses-unwritten",
+        code == EXIT_REFUSED as i32 && text.contains("E-KEEP-USE") && text.contains("`half`") && !dir.join("lib/hidden_copy.emath").exists(),
+        format!("exit {code}\n{text}"),
+    );
+
     let (text, code) = keep(&dir, "Factorial", "factorial", &[]);
     probe.demand("same-content-unchanged", code == EXIT_OK as i32 && text.contains("unchanged factorial"), format!("exit {code}\n{text}"));
 

@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 use emath_exec_ir::constructor_emir::{cvalue_to_emir, lower_constructor_function, values_equal};
 use emath_exec_ir::constructor_layer::{
-    evaluate_function, evaluate_function_budgeted, evaluate_query, evaluate_tree,
-    evaluate_tree_at, CValue,
+    evaluate_function, evaluate_function_budgeted, evaluate_function_carrying, evaluate_query,
+    evaluate_tree, evaluate_tree_at, prepare_module, CValue,
 };
 use emath_exec_ir::interp::{evaluate, Value};
 use emath_exec_ir::language_image::{compile_language_directory, write_language_distribution};
@@ -297,8 +297,20 @@ fn fixtures_and_seams() {
         );
     });
 
-    probe.case("quote-cost-measures-from-an-empty-memo", |_| {
+    probe.case("quote-cost-measures-from-an-empty-memo", |p| {
         all_passed("quote_cost.emath");
+        // A dream host evaluates with the carrying evaluator, `emath
+        // test` without it: the work of one application is the same
+        // under both.
+        let tree = parse_ok("quote_cost.emath");
+        let unused = BTreeMap::from([("unused".into(), int(0))]);
+        let plain = evaluate_function(&tree, "RepeatWork", &unused).unwrap();
+        let module = prepare_module(&tree, None).unwrap();
+        let carried = evaluate_function_carrying(&module, "RepeatWork", &unused, &mut BTreeMap::new(), 10_000_000)
+            .unwrap()
+            .value
+            .unwrap();
+        p.eq("work-independent-of-host", carried, plain);
     });
 
     probe.case("conjecture-two-witnesses-refute-uniqueness", |p| {

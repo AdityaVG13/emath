@@ -182,10 +182,15 @@ impl Engine {
         let kont = self.frames.last().map_or(0, |frame| frame.kont.len());
         let depth = self.call_depth;
         let env = self.env.clone();
+        // The memo policy changes the work (a repeated pure call is free
+        // under one and paid under the other), so every host measures
+        // under the carrying host's policy.
+        let facts_only = std::mem::replace(&mut self.facts_only_memo, true);
         self.work_limit = outer_limit.min(start.saturating_add(limit));
         let outcome = self.apply_value(callee, &[input]);
         let work = self.work - start;
         let outer_exhausted = self.work > outer_limit;
+        self.facts_only_memo = facts_only;
         self.work_limit = outer_limit;
         self.memo = memo;
         self.scalar_memo = scalar_memo;
