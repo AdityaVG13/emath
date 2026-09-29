@@ -36,15 +36,15 @@ emath function Accelerates:
         faster: Bool
     definitions:
         slow = quote(function n in Int: sum(tabulate(function i in Int: i * i * i, n)) + 3 * sum(tabulate(function i in Int: i, n)) + sum(tabulate(function i in Int: if i < 11: i else: 11, n)))
-        run = accelerate(slow, [30, 60], 7, [20, 33, 50], 10000000)
-        at = function l in Law: function k in Int: quote.evaluate(l.closed)(k)
-        held = filter(function l in Law: length(l.fails) == 0, run.laws)
-        broken = filter(function l in Law: length(l.fails) > 0, run.laws)
-        tri = filter(function l in Law: at(l)(100) == 4950, held)
-        cubes = filter(function l in Law: at(l)(10) == 2025, held)
+        run = accelerate(slow, [30, 60], Settings: {max_size: 7, far: [20, 33, 50], inputs: [], limit: 10000000})
+        at = function f in ClosedForm: function k in Int: quote.evaluate(f.program)(k)
+        held = filter(function f in ClosedForm: length(f.fails) == 0, run.forms)
+        broken = filter(function f in ClosedForm: length(f.fails) > 0, run.forms)
+        tri = filter(function f in ClosedForm: at(f)(100) == 4950, held)
+        cubes = filter(function f in ClosedForm: at(f)(10) == 2025, held)
         triangular = length(tri) == 1 and tri[0].size == 7 and tri[0].tested == 3
         nicomachus = length(cubes) == 1 and cubes[0].size == 5 and cubes[0].work_after * 10 < cubes[0].work_before
-        mimic = filter(function l in Law: at(l)(12) == 66, broken)
+        mimic = filter(function f in ClosedForm: at(f)(12) == 66, broken)
         refuted = length(mimic) == 1 and mimic[0].fails == [20, 33, 50]
         slow_at = function k in Int: quote.evaluate(slow)(k)
         fast_at = function k in Int: quote.evaluate(run.program)(k)
@@ -59,7 +59,7 @@ emath function Accelerates:
 
 # The shipped pi bracket (analysis.series, Machin) brackets each atan
 # series by two partial sums, S(k) and S(k + 1), each computed from the
-# first term. accelerate_steps finds the pair, conjectures that the
+# first term. accelerate finds the pair, conjectures that the
 # next partial sum is the last one plus one of the sum's own inner
 # functions (at the next index, or at the same one), tests both at
 # t = 1/3 and 2/7 for m = 5 and 12, keeps the one that holds, and
@@ -74,9 +74,9 @@ emath function AcceleratesSeries:
         faster: Bool
     definitions:
         pi = quote.body(quote(pi_bracket)).fragment
-        run = accelerate_steps(pi, [10, 20], [[quote(1 / 3)], [quote(2 / 7)]], [5, 12], 100000000)
-        held = filter(function r in Recurrence: length(r.fails) == 0, run.steps)
-        broken = filter(function r in Recurrence: length(r.fails) > 0, run.steps)
+        run = accelerate(pi, [10, 20], Settings: {max_size: 7, far: [5, 12], inputs: [[quote(1 / 3)], [quote(2 / 7)]], limit: 100000000})
+        held = filter(function r in StepLaw: length(r.fails) == 0, run.steps)
+        broken = filter(function r in StepLaw: length(r.fails) > 0, run.steps)
         step = length(held) == 1 and held[0].offset == 1 and held[0].tested == 4 and quote.evaluate(quote.make(Call: {callee: held[0].step, args: [quote(1 / 3), quote(1)]})) == 0 - 1 / 81
         refuted = length(broken) == 1 and broken[0].offset == 0 and broken[0].fails == [5, 12]
         faster = run.work_after * 4 < run.work_before * 3 and quote.evaluate(run.program)(40) == pi_bracket(40)
