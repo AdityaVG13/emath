@@ -10,12 +10,21 @@
 # identity instead of a new target. Round 3 explains most of the rest
 # over the rules rounds 1 and 2 learned.
 #
+# Each identity also comes back as code over the rule it started from,
+# a conjectured law: evens(squares(a)) = squares(evens(a)) holds for
+# every sequence, and rewriting a program with it squares half as many
+# terms. partial_sums(differences(a)) = differences(partial_sums(a))
+# was seen on two sequences that start at 0 and is false otherwise; the
+# rewrite it suggests is cheaper, but the checks start at 5 and refuse
+# it.
+#
 # Run: emath test explore.emath --work 32000000
 # Keep everything learned:
 #   emath keep explore.emath --function Explored --to lib/explored.emath --set unused=0 --work 50000000
 
 use search.synthesis
 use fold.reduce
+use search.optimize
 
 emath function partial_sums:
     inputs:
@@ -55,7 +64,7 @@ emath function how:
     outputs:
         result: Proposing
     definitions:
-        result = Proposing: {transforms: [Transform: {name: quote(partial_sum), apply: partial_sums}, Transform: {name: quote(difference), apply: differences}, Transform: {name: quote(bisect), apply: evens}, Transform: {name: quote(square), apply: squares}], train: 10, held: 4}
+        result = Proposing: {transforms: [Transform: {name: quote(partial_sum), code: quote(partial_sums(x)), apply: partial_sums}, Transform: {name: quote(difference), code: quote(differences(x)), apply: differences}, Transform: {name: quote(bisect), code: quote(evens(x)), apply: evens}, Transform: {name: quote(square), code: quote(squares(x)), apply: squares}], train: 10, held: 4}
 
 emath function seeds:
     inputs:
@@ -80,6 +89,9 @@ emath function Explores:
         round_two: sequence(Int)
         round_three: Int
         commute: Bool
+        law: Bool
+        faster: Bool
+        guarded: Bool
     definitions:
         found = explore(seeds(unused), how(unused), 5, [], [], 3)
         second = filter(function l in Learned: l.round == 2, found.lesson.learned)
@@ -87,9 +99,27 @@ emath function Explores:
         round_three = length(filter(function l in Learned: l.round == 3, found.lesson.learned))
         same = function a in Code: function b in Code: quote.view(a).name == quote.view(b).name
         commute = any(function i in Identity: same(i.left)(quote(bisect_square_triangular)) and same(i.right)(quote(square_bisect_triangular)), found.identities)
+        laws = filter(function i in Identity: i.general, found.identities)
+        pick = filter(function i in Identity: same(i.left)(quote(bisect_square_triangular)), laws)
+        at = function c in Code: quote.evaluate(quote.substitute(c, "a", [0, 1, 2, 3, 4]))
+        law = length(pick) == 1 and at(pick[0].left_code) == [0, 4, 16] and at(pick[0].right_code) == [0, 4, 16]
+        rules = concat(map(function i in Identity: Rewrite: {pattern: i.left_code, replacement: i.right_code}, laws), map(function i in Identity: Rewrite: {pattern: i.right_code, replacement: i.left_code}, laws))
+        program = quote(function v in sequence(Int): evens(squares(v)))
+        checks = [range(0, 20), range(5, 40)]
+        score = function c in Code: total_work(quote.evaluate(c), checks, map(quote.evaluate(program), checks), 1000000)
+        stepped = rewrite_step(rewrite_seed(program, score), rules, score)
+        faster = stepped.best_work > 0 and stepped.best_work < stepped.start_work and quote.evaluate(stepped.best)(range(0, 9)) == [0, 4, 16, 36, 64]
+        shifted = quote(function v in sequence(Int): differences(partial_sums(v)))
+        wants = map(quote.evaluate(shifted), checks)
+        strict = function c in Code: total_work(quote.evaluate(c), checks, wants, 1000000)
+        tried = rewrite_step(rewrite_seed(shifted, strict), rules, strict)
+        guarded = length(rewrites(rules, shifted)) > 0 and tried.verdict == 2 and tried.best_work == tried.start_work
     tests:
         example <proposes_and_explains>:
             given unused = 0
             expect round_two == [364, 13, 300, 6084, 376, 89, 46368, 20736]
             expect round_three > 20
             expect commute == true
+            expect law == true
+            expect faster == true
+            expect guarded == true
