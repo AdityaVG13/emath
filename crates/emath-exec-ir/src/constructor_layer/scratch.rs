@@ -22,10 +22,16 @@
 //! rationals stay non-canonical; the scratch is storage, not a
 //! normalizer.
 //!
-//! No-claim boundaries: closures, code, receipts, and buffers refuse
+//! Quoted code is cargo (a loop that learns programs keeps them in its
+//! state): it is stored as the continuation checkpoint's expression
+//! encoding and restored without capture-time dependency stamps, so a
+//! restored program resolves its callables against the current table
+//! like a `quote.make` product (no `stale_dependency` claim).
+//!
+//! No-claim boundaries: closures, receipts, and buffers refuse
 //! (`scratch_unserializable`) - closures are re-instantiated by the
 //! host from authored declarations, buffers are mutable state, and
-//! code/receipts are engine artifacts, none of them checkpoint cargo.
+//! receipts are engine artifacts, none of them checkpoint cargo.
 //! Ledger projections are machine-scale (`i128`); a loop whose keys or
 //! scores exceed that scale cannot keep a scratch ledger.
 
@@ -165,15 +171,19 @@ fn render_value(value: &CValue, out: &mut String) -> Result<(), ConstructorError
         }
         CValue::Unit => out.push_str("{\"unit\": true}"),
         CValue::Absent => out.push_str("{\"absent\": true}"),
-        CValue::Closure(_) | CValue::Code(_) | CValue::Receipt(_) | CValue::Buffer(_) => {
+        CValue::Code(code) => {
+            let mut encoded = String::new();
+            super::checkpoint::encode_expr(&code.expr, &mut encoded);
+            out.push_str(&format!("{{\"code\": {}}}", json_quote(&encoded)));
+        }
+        CValue::Closure(_) | CValue::Receipt(_) | CValue::Buffer(_) => {
             return Err(fault(
                 "scratch_unserializable",
                 format!(
                     "{kind} is not checkpoint cargo: closures are re-instantiated by the host \
-                     from authored declarations; code, receipts, and buffers are engine artifacts",
+                     from authored declarations; receipts and buffers are engine artifacts",
                     kind = match value {
                         CValue::Closure(_) => "a closure",
-                        CValue::Code(_) => "code",
                         CValue::Receipt(_) => "a receipt",
                         _ => "a buffer",
                     }
@@ -354,6 +364,16 @@ fn parse_value(json: &JsonValue) -> Result<CValue, ConstructorError> {
                     ));
                 };
                 return Ok(CValue::Str(text.clone()));
+            }
+            if let Ok(payload) = tagged(json, "code") {
+                let JsonValue::Str(text) = payload else {
+                    return Err(fault(
+                        "scratch_value",
+                        format!("`code` payload must be a string, found {payload:?}"),
+                    ));
+                };
+                let expr = super::checkpoint::decode_expr_cur(&mut super::checkpoint::Cursor::new(text))?;
+                return Ok(CValue::Code(Box::new(super::Code { expr, deps: BTreeMap::new() })));
             }
             if let Ok(tuple) = tagged(json, "tuple") {
                 let JsonValue::Arr(items) = tuple else {

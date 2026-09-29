@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use emath_exec_ir::constructor_layer::CValue;
 
-use super::chain::{self, ChainSeam};
+use super::chain::{self, ChainSeam, KeepSeam};
 use super::inbox;
 use super::journal::{
     diff_archive, io_fault, project_record, read_events, JournalEvent, JournalWriter, Obj, JOURNAL_SCHEMA,
@@ -30,7 +30,7 @@ use super::rundir::{
     append_line, read_acks, read_requests, write_atomic, Ended, Request, RunConfig, RunDir, RunInfo,
 };
 use super::{declares_emission_seam, DreamConfig, DreamRun};
-use crate::host::{value_sequence, verdict_name, FactDraw, HostFault, LoopHost};
+use crate::host::{state_archive, verdict_name, FactDraw, HostFault, LoopHost, LoopSession};
 
 /// The headless driver over one run directory.
 pub struct Driver {
@@ -57,6 +57,21 @@ pub struct Driver {
     level_path: PathBuf,
     emits: bool,
     chain: Option<ChainSeam>,
+    keep: Option<KeepSeam>,
+    /// Names journaled as kept (the run library holds each of them).
+    kept: BTreeSet<String>,
+}
+
+/// The incumbent as a journal value (`null` for a plain loop state).
+fn incumbent_json(session: &LoopSession) -> Result<String, HostFault> {
+    match session.incumbent_record()? {
+        Some(record) => project_record(&record),
+        None => Ok("null".into()),
+    }
+}
+
+fn archive_json(session: &LoopSession) -> Result<Vec<String>, HostFault> {
+    state_archive(session.state())?.iter().map(project_record).collect()
 }
 
 fn config_obj(config: &RunConfig) -> Obj {
@@ -100,6 +115,7 @@ impl Driver {
         let cfg = Self::dream_config(&dir, &info, emits);
         let run = DreamRun::open(&module, Some(&info.target), &cfg)?;
         let chain = chain::resolve(run.host())?;
+        let keep = chain::resolve_keep(run.host())?;
         let ledger = dir.carry_ledger(run.host())?;
         let mut journal = JournalWriter::append(&dir.journal(), 0)?;
         let identity = run.host().identity().clone();
@@ -115,16 +131,13 @@ impl Driver {
                 .bool("emission", run.emits()),
         )?;
         let session = run.session();
-        let archive = value_sequence(session.state(), "archive")?
-            .iter()
-            .map(project_record)
-            .collect::<Result<Vec<_>, _>>()?;
-        let incumbent = project_record(&session.incumbent_record()?)?;
+        let archive = archive_json(session)?;
+        let incumbent = incumbent_json(session)?;
         journal.emit(
             "seed",
             Obj::new()
                 .int("batch", 0)
-                .int("used", session.state_int("used")?)
+                .int("used", session.used()?)
                 .int("watermark", run.watermark())
                 .raw("incumbent", incumbent)
                 .array("archive", &archive)
@@ -134,7 +147,7 @@ impl Driver {
         info.ended = None;
         dir.write_info(&info)?;
         let acked = read_acks(&dir).into_iter().map(|ack| ack.id).collect();
-        Ok(Self {
+        let mut driver = Self {
             dir,
             info,
             run,
@@ -154,7 +167,34 @@ impl Driver {
             level_path: module,
             emits,
             chain,
-        })
+            keep,
+            kept: BTreeSet::new(),
+        };
+        driver.keep_new(0)?;
+        Ok(driver)
+    }
+
+    /// Keep what the loop learned that the run has not kept yet into
+    /// the run library, one `kept` event per name.
+    fn keep_new(&mut self, batch: u64) -> Result<(), HostFault> {
+        let Some(seam) = &self.keep else {
+            return Ok(());
+        };
+        let library = self.dir.dir.join(chain::KEPT_LIBRARY);
+        let origin = format!("dream level {} batch {batch}", self.level);
+        let kept = seam.keep(self.run.host(), self.run.session().state(), &library, &self.kept, &origin)?;
+        for (name, content) in kept {
+            self.journal.emit(
+                "kept",
+                Obj::new()
+                    .int("batch", batch)
+                    .str("name", &name)
+                    .str("content", &content)
+                    .str("file", chain::KEPT_LIBRARY),
+            )?;
+            self.kept.insert(name);
+        }
+        Ok(())
     }
 
     fn resume(dir: RunDir, mut info: RunInfo, events: Vec<JournalEvent>) -> Result<Self, HostFault> {
@@ -203,6 +243,9 @@ impl Driver {
             _ => DreamRun::open(&level_path, Some(&info.target), &cfg)?,
         };
         let chain = chain::resolve(run.host())?;
+        let keep = chain::resolve_keep(run.host())?;
+        let kept_names: BTreeSet<String> =
+            kept.iter().filter(|e| e.t == "kept").filter_map(|e| e.str("name").map(str::to_string)).collect();
         let ledger = dir.carry_ledger(run.host())?;
         let (evidence, taken) = inbox::replay(&kept)?;
         let sources = kept.iter().filter(|e| e.t == "evidence").count() as i128;
@@ -248,6 +291,8 @@ impl Driver {
             level_path,
             emits,
             chain,
+            keep,
+            kept: kept_names,
         })
     }
 
@@ -298,18 +343,16 @@ impl Driver {
         let mut run = DreamRun::open(&path, Some(&self.info.target), &cfg)?;
         run.host_mut().set_evidence(self.evidence.clone());
         self.chain = chain::resolve(run.host())?;
+        self.keep = chain::resolve_keep(run.host())?;
         self.ledger = self.dir.carry_ledger(run.host())?;
         self.run = run;
         self.level = level;
         self.base = batch;
         self.level_path = path;
         let session = self.run.session();
-        let archive = value_sequence(session.state(), "archive")?
-            .iter()
-            .map(project_record)
-            .collect::<Result<Vec<_>, _>>()?;
-        let incumbent = project_record(&session.incumbent_record()?)?;
-        let used = session.state_int("used")?;
+        let archive = archive_json(session)?;
+        let incumbent = incumbent_json(session)?;
+        let used = session.used()?;
         let case_ids = session.case_ids()?;
         self.journal.emit(
             "level_next",
@@ -324,6 +367,7 @@ impl Driver {
                 .array("archive", &archive)
                 .ints("case_ids", &case_ids),
         )?;
+        self.keep_new(batch)?;
         Ok(true)
     }
 
@@ -482,9 +526,9 @@ impl Driver {
             return self.end("batch_cap", None, message);
         }
         self.take_inbox()?;
-        let prev_archive = value_sequence(self.run.session().state(), "archive")?;
+        let prev_archive = state_archive(self.run.session().state())?;
         let prev_cases = self.run.session().case_ids()?;
-        let prev_used = self.run.session().state_int("used")?;
+        let prev_used = self.run.session().used()?;
         let watermark = self.run.watermark();
         self.pull_facts()?;
         let began = Instant::now();
@@ -500,7 +544,7 @@ impl Driver {
         let entry = &outcome.entry;
         let batch = self.base + entry.batch;
         let session = self.run.session();
-        let next_archive = value_sequence(session.state(), "archive")?;
+        let next_archive = state_archive(session.state())?;
         let diff = diff_archive(&prev_archive, &next_archive)?;
         if !diff.is_empty() {
             self.journal.emit(
@@ -513,7 +557,7 @@ impl Driver {
         if !grown.is_empty() {
             self.journal.emit("cases", Obj::new().int("batch", batch).ints("added", &grown))?;
         }
-        let incumbent = project_record(&session.incumbent_record()?)?;
+        let incumbent = incumbent_json(session)?;
         let seq = self.journal.emit(
             "batch",
             Obj::new()
@@ -531,6 +575,9 @@ impl Driver {
                 .ints("case_ids", &entry.case_ids)
                 .int("archive_len", entry.archive_len),
         )?;
+        if let Err(fault) = self.keep_new(batch) {
+            return self.end_fault(&fault);
+        }
         let facts = self.flush_facts(batch)?;
         let mut metrics = Obj::new()
             .int("batch", batch)
@@ -570,7 +617,7 @@ impl Driver {
             let Some(level) = finished.level else {
                 return self.end_fault(&HostFault::fault("dream_close", "the level closed without a level record"));
             };
-            let incumbent = project_record(&self.run.session().incumbent_record()?)?;
+            let incumbent = incumbent_json(self.run.session())?;
             self.journal.emit(
                 "level",
                 Obj::new()

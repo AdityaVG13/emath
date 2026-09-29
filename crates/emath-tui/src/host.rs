@@ -11,6 +11,11 @@
 //! (the state's own batch counter equals the committed revision), and
 //! the named lift diagnostic when a module has no surface to drive.
 //!
+//! State contract: every state carries Int `batch` and `verdict`. The
+//! research fields are optional: `used` (0 when absent), `archive` with
+//! `incumbent` (a plain loop state projects no incumbent or records),
+//! and `case_set` (no frozen cases; `grow_case` refuses).
+//!
 //! Error model: `HostFault` carries a stable `code`. Engine and scratch
 //! faults pass through with their own codes (`ConstructorError.code`,
 //! e.g. `scratch_identity`, `scratch_ledger`); host-owned refusals use
@@ -691,6 +696,69 @@ pub fn value_sequence(value: &CValue, name: &str) -> Result<Vec<CValue>, HostFau
     }
 }
 
+fn has_field(value: &CValue, name: &str) -> bool {
+    matches!(value, CValue::Record { fields, .. } if fields.contains_key(name))
+}
+
+/// The state's archive; empty for a plain loop state (no `archive`
+/// field). A present archive must be a sequence.
+pub fn state_archive(state: &CValue) -> Result<Vec<CValue>, HostFault> {
+    if has_field(state, "archive") {
+        value_sequence(state, "archive")
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+/// The state's `used` meter; 0 for a loop that does not meter.
+fn state_used(state: &CValue) -> Result<i128, HostFault> {
+    if has_field(state, "used") {
+        field_i128(state, "used")
+    } else {
+        Ok(0)
+    }
+}
+
+/// The state's frozen case ordinals; empty without a `case_set`.
+fn state_case_ids(state: &CValue) -> Result<Vec<i128>, HostFault> {
+    let Some(case_set) = record_fields(state)?.get("case_set") else {
+        return Ok(Vec::new());
+    };
+    value_sequence(case_set, "ids")?
+        .iter()
+        .map(|id| match id {
+            CValue::Int(n) => n.to_i128().ok_or_else(|| {
+                HostFault::fault("loop_state_contract", "a case id exceeds the i128 host projection")
+            }),
+            other => Err(HostFault::fault(
+                "loop_state_contract",
+                format!("a case id is not an Int: {other:?}"),
+            )),
+        })
+        .collect()
+}
+
+/// The incumbent's archive record; `None` for a plain loop state.
+fn state_incumbent(state: &CValue) -> Result<Option<CValue>, HostFault> {
+    if !has_field(state, "archive") {
+        return Ok(None);
+    }
+    let incumbent = field_i128(state, "incumbent")?;
+    let archive = value_sequence(state, "archive")?;
+    let ordinal = usize::try_from(incumbent).map_err(|_| {
+        HostFault::fault(
+            "loop_state_contract",
+            format!("incumbent ordinal {incumbent} is not a valid archive index"),
+        )
+    })?;
+    archive.get(ordinal).cloned().map(Some).ok_or_else(|| {
+        HostFault::fault(
+            "loop_state_contract",
+            format!("incumbent ordinal {ordinal} is outside the archive"),
+        )
+    })
+}
+
 // ---- session -----------------------------------------------------------
 
 /// One loop session: the current state and the immutable batch ledger.
@@ -719,45 +787,10 @@ impl LoopSession {
         self.ledger.len() as u64
     }
 
-    /// The session's frozen case ordinals (the host curriculum seam).
+    /// The session's frozen case ordinals (the host curriculum seam);
+    /// empty when the state has no `case_set`.
     pub fn case_ids(&self) -> Result<Vec<i128>, HostFault> {
-        let fields = match &self.state {
-            CValue::Record { fields, .. } => fields,
-            other => {
-                return Err(HostFault::fault(
-                    "loop_state_contract",
-                    format!("expected a record state, found {other:?}"),
-                ))
-            }
-        };
-        let ids = match fields.get("case_set") {
-            Some(CValue::Record { fields, .. }) => match fields.get("ids") {
-                Some(CValue::Sequence(items)) => items,
-                other => {
-                    return Err(HostFault::fault(
-                        "loop_state_contract",
-                        format!("`case_set.ids` is not a Sequence: {other:?}"),
-                    ))
-                }
-            },
-            other => {
-                return Err(HostFault::fault(
-                    "loop_state_contract",
-                    format!("`case_set` is not a record: {other:?}"),
-                ))
-            }
-        };
-        ids.iter()
-            .map(|id| match id {
-                CValue::Int(n) => n
-                    .to_i128()
-                    .ok_or_else(|| HostFault::fault("loop_state_contract", "case id overflows")),
-                other => Err(HostFault::fault(
-                    "loop_state_contract",
-                    format!("case id is not an Int: {other:?}"),
-                )),
-            })
-            .collect()
+        state_case_ids(&self.state)
     }
 
     /// Read an Int field of the current state.
@@ -765,22 +798,15 @@ impl LoopSession {
         value_int(&self.state, name)
     }
 
-    /// The incumbent's archive record (cloned).
-    pub fn incumbent_record(&self) -> Result<CValue, HostFault> {
-        let incumbent = field_i128(&self.state, "incumbent")?;
-        let archive = value_sequence(&self.state, "archive")?;
-        let ordinal = usize::try_from(incumbent).map_err(|_| {
-            HostFault::fault(
-                "loop_state_contract",
-                format!("incumbent ordinal {incumbent} is not a valid archive index"),
-            )
-        })?;
-        archive.get(ordinal).cloned().ok_or_else(|| {
-            HostFault::fault(
-                "loop_state_contract",
-                format!("incumbent ordinal {ordinal} is outside the archive"),
-            )
-        })
+    /// The state's `used` meter (0 when the loop does not meter).
+    pub fn used(&self) -> Result<i128, HostFault> {
+        state_used(&self.state)
+    }
+
+    /// The incumbent's archive record (cloned); `None` for a plain
+    /// loop state with no archive.
+    pub fn incumbent_record(&self) -> Result<Option<CValue>, HostFault> {
+        state_incumbent(&self.state)
     }
 
     /// Run one batch through the host's Step function, project the
@@ -960,10 +986,11 @@ pub fn value_rational(value: &CValue, name: &str) -> Result<(i128, i128), HostFa
 
 /// Project one committed batch from the previous and next states:
 /// host observation, never loop interpretation. Archive ordinals are
-/// append-only, so acceptance flips diff by ordinal.
+/// append-only, so acceptance flips diff by ordinal. A plain loop state
+/// (no archive) projects only its batch, verdict, and `used`.
 fn project_batch(previous: &CValue, next: &CValue) -> Result<BatchLedgerEntry, HostFault> {
-    let previous_archive = value_sequence(previous, "archive")?;
-    let next_archive = value_sequence(next, "archive")?;
+    let previous_archive = state_archive(previous)?;
+    let next_archive = state_archive(next)?;
     if next_archive.len() < previous_archive.len() {
         return Err(HostFault::fault(
             "loop_state_contract",
@@ -986,50 +1013,17 @@ fn project_batch(previous: &CValue, next: &CValue) -> Result<BatchLedgerEntry, H
             quarantined.push(key);
         }
     }
-    let incumbent = field_i128(next, "incumbent")?;
-    let incumbent_ordinal = usize::try_from(incumbent).map_err(|_| {
-        HostFault::fault(
-            "loop_state_contract",
-            format!("incumbent ordinal {incumbent} is not a valid archive index"),
-        )
-    })?;
-    let incumbent_record = next_archive.get(incumbent_ordinal).ok_or_else(|| {
-        HostFault::fault(
-            "loop_state_contract",
-            format!("incumbent ordinal {incumbent_ordinal} is outside the archive"),
-        )
-    })?;
-    let case_set = match record_fields(next)?.get("case_set") {
-        Some(case_set) => value_sequence(case_set, "ids")?,
-        None => {
-            return Err(HostFault::fault(
-                "loop_state_contract",
-                "the state has no `case_set` field",
-            ))
-        }
+    let (incumbent_key, (score_num, score_den)) = match state_incumbent(next)? {
+        Some(record) => (value_int(&record, "key")?, value_rational(&record, "score")?),
+        None => (0, (0, 1)),
     };
-    let case_ids = case_set
-        .iter()
-        .map(|id| match id {
-            CValue::Int(n) => n.to_i128().ok_or_else(|| {
-                HostFault::fault(
-                    "loop_state_contract",
-                    "a case id exceeds the i128 host projection",
-                )
-            }),
-            other => Err(HostFault::fault(
-                "loop_state_contract",
-                format!("a case id is not an Int: {other:?}"),
-            )),
-        })
-        .collect::<Result<Vec<i128>, HostFault>>()?;
+    let case_ids = state_case_ids(next)?;
     let verdict = field_i128(next, "verdict")?;
-    let (score_num, score_den) = value_rational(incumbent_record, "score")?;
     Ok(BatchLedgerEntry {
         batch: field_i128(next, "batch")? as u64,
         verdict,
-        used: field_i128(next, "used")?,
-        incumbent_key: value_int(incumbent_record, "key")?,
+        used: state_used(next)?,
+        incumbent_key,
         incumbent_score_num: score_num,
         incumbent_score_den: score_den,
         archive_len: next_archive.len() as u64,

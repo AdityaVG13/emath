@@ -29,11 +29,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use emath_core::tree::{Item, SyntaxTree};
-use emath_exec_ir::constructor_layer::{evaluate_tree_budgeted_at, CValue};
+use emath_exec_ir::constructor_layer::{evaluate_tree_budgeted_at, named_programs, place_definition, CValue, Placed};
 use emath_exec_ir::exact_int::ExactInt;
 use emath_syntax::parse_str;
 
 use super::journal::io_fault;
+use super::rundir::write_atomic;
 use crate::host::{section_fields, HostFault, LoopHost};
 
 pub const CARRY: &str = "dream_carry";
@@ -142,6 +143,82 @@ impl ChainSeam {
         let mut text = out.join("\n");
         text.push('\n');
         Ok(text)
+    }
+}
+
+pub const KEEP: &str = "dream_keep";
+
+/// The run's own kept library, relative to the run directory.
+pub const KEPT_LIBRARY: &str = "world/lib/kept.emath";
+
+/// The keep seam: `emath function dream_keep` (one input of the state
+/// type, one output) returns a sequence of `{name, program}` records
+/// (the shape `emath keep` takes without `--name`). After the seed and
+/// after every committed batch the driver keeps each name it has not
+/// kept yet into [`KEPT_LIBRARY`], replacing an earlier definition of
+/// the name (a replayed batch after a resume rewrites the same text).
+pub struct KeepSeam {
+    input: String,
+}
+
+/// The keep seam, `None` when the module declares no `dream_keep`.
+pub fn resolve_keep(host: &LoopHost) -> Result<Option<KeepSeam>, HostFault> {
+    let Some(keep) = function(host.tree(), KEEP) else {
+        return Ok(None);
+    };
+    let inputs = section_fields(keep, "inputs");
+    let outputs = section_fields(keep, "outputs");
+    let state = &host.surface().state_type;
+    if inputs.len() != 1 || inputs[0].1.as_deref() != Some(state.as_str()) || outputs.len() != 1 {
+        return Err(HostFault::fault(
+            "dream_keep_surface",
+            format!("dream_keep must take one `{state}` input and return a sequence of {{name, program}} records"),
+        ));
+    }
+    Ok(Some(KeepSeam { input: inputs[0].0.clone() }))
+}
+
+impl KeepSeam {
+    /// Keep every program `dream_keep(state)` names that `known` lacks
+    /// into `library`; returns the new `(name, content id)` pairs in
+    /// the order the loop reported them.
+    pub fn keep(
+        &self,
+        host: &LoopHost,
+        state: &CValue,
+        library: &Path,
+        known: &std::collections::BTreeSet<String>,
+        origin: &str,
+    ) -> Result<Vec<(String, String)>, HostFault> {
+        let input = BTreeMap::from([(self.input.clone(), state.clone())]);
+        let value = host.evaluate(KEEP, &input)?;
+        let fresh: Vec<(String, CValue)> =
+            named_programs(&value)?.into_iter().filter(|(name, _)| !known.contains(name)).collect();
+        if fresh.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut text = match fs::read_to_string(library) {
+            Ok(text) => Some(text),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+            Err(err) => return Err(io_fault("dream_io", library, &err)),
+        };
+        let mut kept = Vec::with_capacity(fresh.len());
+        let mut changed = false;
+        for (name, program) in fresh {
+            let (placed, content) = place_definition(text.as_deref(), &name, &program, origin, true)?;
+            if let Placed::Kept(updated) = placed {
+                text = Some(updated);
+                changed = true;
+            }
+            kept.push((name, content));
+        }
+        if let (true, Some(text)) = (changed, &text) {
+            if let Some(parent) = library.parent() {
+                fs::create_dir_all(parent).map_err(|err| io_fault("dream_io", parent, &err))?;
+            }
+            write_atomic(library, text)?;
+        }
+        Ok(kept)
     }
 }
 

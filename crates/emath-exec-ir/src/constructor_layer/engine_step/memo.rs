@@ -114,12 +114,20 @@ impl Engine {
         scalar_args(args)
     }
 
+    /// Under `facts_only_memo` only recursive closures are memoized:
+    /// naive recursion (`recur f ...: f(n - 1) + f(n - 2)`) is
+    /// exponential without it, while a plain lambda applied across an
+    /// archive would pay a body-encoding key per application.
+    fn memoizes_closure(&self, clos: &Closure) -> bool {
+        !self.facts_only_memo || clos.recursive.is_some()
+    }
+
     pub(in crate::constructor_layer) fn completed_closure(
         &self,
         clos: &Closure,
         args: &[CValue],
     ) -> Option<CValue> {
-        if self.memo.is_empty() || self.facts_only_memo {
+        if self.memo.is_empty() || !self.memoizes_closure(clos) {
             return None;
         }
         let key = closure_memo_key(clos, args)?;
@@ -132,11 +140,20 @@ impl Engine {
         args: &[CValue],
         value: CValue,
     ) {
-        if self.facts_only_memo {
+        if !self.memoizes_closure(clos) {
             return;
         }
         if let Some(key) = closure_memo_key(clos, args) {
-            self.memo.insert(key, value);
+            if self.facts_only_memo {
+                // Lent-in carried store: the key is split back out (and
+                // dropped, not being a fact) when the evaluation ends.
+                if !self.memo.contains_key(&key) {
+                    self.memo_added.push(key.clone());
+                    self.memo.insert(key, value);
+                }
+            } else {
+                self.memo.insert(key, value);
+            }
         }
     }
 

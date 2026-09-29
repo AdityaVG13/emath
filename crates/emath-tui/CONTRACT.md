@@ -32,9 +32,13 @@ refuses `loop_surface` / `loop_target` / `loop_ambiguous` with the
 named lift diagnostic (the exact pattern to author, pointing at
 `tests/fixtures/constructor/research_step_valley.emath`).
 
-The state type `T` is expected to carry the loop state contract fields
-(`archive`, `incumbent`, `case_set`, `batch`, `used`, `verdict`,
-`mode`); deviations refuse `loop_state_contract` naming the field.
+The state type `T` must carry Int `batch` and `verdict`. The research
+fields are optional: `used` (read as 0 when absent), `archive` with
+`incumbent` (a plain loop state projects incumbent key 0, score 0/1,
+no records; the journal's `incumbent` is `null`), and `case_set` (no
+frozen cases; `grow_case` refuses). A present field of the wrong shape
+refuses `loop_state_contract` naming the field. The REPL and level
+emission need the research fields.
 
 ## Unchanged native exports
 
@@ -268,6 +272,16 @@ adds no loop policy and the viewer computes no mathematics.
   from the last kept `level_next`: a checkpoint after the level began
   is restored under that level's file; at the level's first boundary
   the level restarts from its Seed.
+- **Keep seam** (`dream::chain::KeepSeam`): `dream_keep` (`(T) ->
+  sequence of {name, program}` records, the shape `emath keep` takes
+  without `--name`; other shapes refuse `dream_keep_surface`). After
+  the seed, every committed batch, and every `level_next`, each
+  reported name not yet journaled is kept into
+  `<run>/world/lib/kept.emath` (exec-ir `place_definition`, replacing
+  an earlier definition of the name) and journaled once as `kept
+  {batch, name, content, file}`. Resume rebuilds the kept set from the
+  kept journal, so a replayed batch rewrites the same library text.
+  A keep fault ends the run `fault`.
 - **Inbox** (`dream::inbox`): `<run>/inbox/*.jsonl`, one observation
   per line, `{"subject": int, "case": int, "value": number | "n/d"}`.
   Values are exact (a decimal is its exact rational; exponents and

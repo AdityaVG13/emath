@@ -38,7 +38,7 @@ use std::io::{BufRead, Write};
 use super::host::{
     value_bool, value_int, value_rational, verdict_name, HostFault, LoopHost, LoopSession,
 };
-use emath_exec_ir::constructor_layer::BatchLedgerEntry;
+use emath_exec_ir::constructor_layer::{BatchLedgerEntry, CValue};
 
 /// The hard cap for `run` without a count: a non-terminating loop must
 /// refuse by name, not hang the session.
@@ -80,12 +80,19 @@ fn error_line(out: &mut dyn Write, fault: &HostFault) -> Result<(), HostFault> {
     write_line(out, &format!("error {}: {}", fault.code, fault.message))
 }
 
+/// The REPL shows research sessions; a plain loop state has no incumbent to show.
+fn research_incumbent(session: &LoopSession) -> Result<CValue, HostFault> {
+    session.incumbent_record()?.ok_or_else(|| {
+        HostFault::fault("loop_state_contract", "the state has no `archive`: the REPL shows research loop states")
+    })
+}
+
 fn seed_line(out: &mut dyn Write, session: &LoopSession) -> Result<(), HostFault> {
     let batch = session.state_int("batch")?;
     let verdict = session.state_int("verdict")?;
     let used = session.state_int("used")?;
     let mode = session.state_int("mode")?;
-    let incumbent = session.incumbent_record()?;
+    let incumbent = research_incumbent(session)?;
     let key = value_int(&incumbent, "key")?;
     let (num, den) = value_rational(&incumbent, "score")?;
     write_line(
@@ -132,7 +139,7 @@ fn show_lines(out: &mut dyn Write, session: &LoopSession) -> Result<(), HostFaul
             i128_list(&cases),
         ),
     )?;
-    let incumbent = session.incumbent_record()?;
+    let incumbent = research_incumbent(session)?;
     let key = value_int(&incumbent, "key")?;
     let (value_num, value_den) = value_rational(&incumbent, "value")?;
     let (score_num, score_den) = value_rational(&incumbent, "score")?;

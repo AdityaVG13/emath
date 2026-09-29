@@ -198,6 +198,63 @@ fn dream_journal() {
             "the driver removes its lock on exit",
         );
     });
+    // A loop state with no archive drives, and `dream_keep` grows the
+    // run's own library as rules are learned; stop + resume keeps the
+    // journal and the library identical to the uninterrupted run.
+    probe.case("learn-keeps", |p| {
+        let learn = || {
+            let mut config = RunConfig::new(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/keep/dream_learn.emath"),
+            );
+            config.target = Some("StepLearn".into());
+            config.work = 50_000_000;
+            config.checkpoint_every = 1;
+            config
+        };
+        let (run, whole) = run_whole(&root, "learn", learn());
+        p.eq("outcome", end_outcome(&run), "domain_exhausted".to_string());
+        let kept: Vec<(u64, String)> = read_events(&run.journal())
+            .expect("parse")
+            .iter()
+            .filter(|e| e.t == "kept")
+            .map(|e| (e.batch().unwrap_or(0), e.str("name").unwrap_or_default().to_string()))
+            .collect();
+        p.eq(
+            "kept-as-learned",
+            kept,
+            vec![
+                (1, "triangular".to_string()),
+                (1, "fibonacci".to_string()),
+                (2, "sum_of_cubes".to_string()),
+                (2, "fibonacci_even".to_string()),
+            ],
+        );
+        // The same definitions `emath keep` writes from the one-shot learn.
+        let code = |text: &str| -> Vec<String> {
+            text.lines().filter(|l| !l.trim_start().starts_with('#')).map(str::to_string).collect()
+        };
+        let library = std::fs::read_to_string(run.world().join("lib/kept.emath")).unwrap_or_default();
+        let golden = std::fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/keep/lib/learned.emath"),
+        )
+        .expect("golden");
+        p.eq("library-matches-keep", code(&library), code(&golden));
+
+        let stopped = create(&root, "learn-stopped", learn());
+        let mut driver = Driver::open(&stopped.dir).expect("open");
+        driver.run_batch().expect("b1");
+        send_request(&stopped, "stop", None).expect("request stop");
+        driver.poll_control().expect("apply stop");
+        drop(driver);
+        let mut resumed = Driver::open(&stopped.dir).expect("resume");
+        finish(&mut resumed);
+        p.demand("resume-journal", journal_of(&stopped) == whole, "stop + resume diverged");
+        p.demand(
+            "resume-library",
+            std::fs::read_to_string(stopped.world().join("lib/kept.emath")).unwrap_or_default() == library,
+            "stop + resume wrote a different library",
+        );
+    });
     probe.case("a13-live-lock-refuses", |p| {
         // Liveness is the OS lock a driver holds on driver.lock, not the
         // pid written in it.

@@ -138,7 +138,7 @@ fn host_sessions() {
         );
         p.eq("revision-after-three", session.revision(), 3);
 
-        let incumbent = session.incumbent_record().expect("incumbent record");
+        let incumbent = session.incumbent_record().expect("incumbent record").expect("a research state has an incumbent");
         p.eq("winner-key", value_int(&incumbent, "key").expect("key"), 7);
         p.eq("winner-score", value_rat(&incumbent, "score").expect("score"), (6, 1));
         let keys = archive_keys(session.state());
@@ -186,7 +186,7 @@ fn host_sessions() {
                 && verdict_name(f2.verdict) == "goal_attained",
             format!("{f2:?}"),
         );
-        let incumbent = fit.incumbent_record().expect("fitting incumbent");
+        let incumbent = fit.incumbent_record().expect("fitting incumbent").expect("a research state has an incumbent");
         p.eq("fitting-winner-value", value_rat(&incumbent, "value").expect("value"), (1, 2));
         let archive = value_sequence(fit.state(), "archive").expect("fitting archive");
         p.eq("fitting-chain-len", archive.len() as i128, 3);

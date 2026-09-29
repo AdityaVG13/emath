@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use emath_core::content_id_of_str;
 use emath_exec_ir::constructor_layer::{
-    evaluate_function_budgeted_at, kept_definition, named_programs, parse_constructor_scalar, CValue,
+    evaluate_function_budgeted_at, named_programs, parse_constructor_scalar, place_definition, Placed,
     DEFAULT_WORK,
 };
 
@@ -86,42 +86,6 @@ fn refuse(code: &str, message: impl std::fmt::Display, exit: CliExit) -> CliExit
     exit
 }
 
-/// The line range `[start, end)` of `emath function {name}` in `text`:
-/// from its head to the next top-level declaration, trailing blank
-/// lines excluded.
-fn definition_lines(lines: &[&str], name: &str) -> Option<(usize, usize)> {
-    let head = format!("emath function {name}:");
-    let start = lines.iter().position(|line| line.trim_end() == head)?;
-    let mut end = lines[start + 1..]
-        .iter()
-        .position(|line| line.starts_with("emath "))
-        .map_or(lines.len(), |k| start + 1 + k);
-    while end > start + 1 && lines[end - 1].trim().is_empty() {
-        end -= 1;
-    }
-    Some((start, end))
-}
-
-fn with_export(text: &str, name: &str) -> Option<String> {
-    let mut found = false;
-    let lines: Vec<String> = text
-        .lines()
-        .map(|line| match line.strip_prefix("exports:") {
-            Some(rest) if !found => {
-                found = true;
-                let names: Vec<&str> = rest.split(',').map(str::trim).filter(|n| !n.is_empty()).collect();
-                if names.contains(&name) {
-                    line.to_string()
-                } else {
-                    format!("exports: {}", names.into_iter().chain([name]).collect::<Vec<_>>().join(", "))
-                }
-            }
-            _ => line.to_string(),
-        })
-        .collect();
-    found.then(|| lines.join("\n") + "\n")
-}
-
 pub(crate) fn run(request: KeepRequest) -> CliExit {
     let source = match fs::read_to_string(&request.path) {
         Ok(text) => text,
@@ -170,16 +134,19 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
     let mut reports = Vec::new();
     let mut changed = false;
     for (name, program) in &entries {
-        match place(library.as_deref(), name, program, &origin, &request) {
-            Ok(Placed::Unchanged(content)) => {
+        match place_definition(library.as_deref(), name, program, &origin, request.overwrite) {
+            Ok((Placed::Unchanged, content)) => {
                 reports.push(format!("unchanged {name} in {} (content {content})", request.to.display()));
             }
-            Ok(Placed::Kept(text, content)) => {
+            Ok((Placed::Kept(text), content)) => {
                 library = Some(text);
                 changed = true;
                 reports.push(format!("kept {name} in {} (content {content})", request.to.display()));
             }
-            Err(exit) => return exit,
+            Err(err) => {
+                let hint = if err.code == "E-KEEP-EXISTS" { "; pass --overwrite to replace it" } else { "" };
+                return refuse(&err.code, format!("{}: {}{hint}", request.to.display(), err.message), EXIT_REFUSED);
+            }
         }
     }
     let library = match library {
@@ -204,58 +171,4 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
     }
     reports.iter().for_each(|line| println!("{line}"));
     EXIT_OK
-}
-
-enum Placed {
-    Unchanged(String),
-    Kept(String, String),
-}
-
-/// The library text with `name` holding `program`, or unchanged when it
-/// already holds the same content.
-fn place(library: Option<&str>, name: &str, program: &CValue, origin: &str, request: &KeepRequest) -> Result<Placed, CliExit> {
-    let unsigned = kept_definition(program, name, "").map_err(|err| refuse(&err.code, err.message, EXIT_REFUSED))?;
-    let content = content_id_of_str(&unsigned).0;
-    let note = format!("Kept from {origin}; content {content}.");
-    let definition =
-        kept_definition(program, name, &note).map_err(|err| refuse(&err.code, err.message, EXIT_REFUSED))?;
-    let Some(text) = library else {
-        return Ok(Placed::Kept(
-            format!("# Kept definitions, written by `emath keep`.\nexports: {name}\n\n{definition}"),
-            content,
-        ));
-    };
-    let lines: Vec<&str> = text.lines().collect();
-    let text = match definition_lines(&lines, name) {
-        Some((start, end)) => {
-            if lines[start..end].join("\n").contains(&format!("content {content}.")) {
-                return Ok(Placed::Unchanged(content));
-            }
-            if !request.overwrite {
-                return Err(refuse(
-                    "E-KEEP-EXISTS",
-                    format!(
-                        "{} already defines `{name}` with different content; pass --overwrite to replace it",
-                        request.to.display()
-                    ),
-                    EXIT_REFUSED,
-                ));
-            }
-            let mut out: Vec<&str> = lines[..start].to_vec();
-            out.extend(definition.lines());
-            out.extend(&lines[end..]);
-            out.join("\n") + "\n"
-        }
-        None => match with_export(text, name) {
-            Some(updated) => format!("{}\n\n{definition}", updated.trim_end_matches('\n')),
-            None => {
-                return Err(refuse(
-                    "E-KEEP-LIBRARY",
-                    format!("{} has no `exports:` line; it is not a kept library", request.to.display()),
-                    EXIT_REFUSED,
-                ))
-            }
-        },
-    };
-    Ok(Placed::Kept(text, content))
 }

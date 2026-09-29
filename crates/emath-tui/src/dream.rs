@@ -557,7 +557,12 @@ fn emit_level(
     resumes: u64,
     session: &LoopSession,
 ) -> Result<(PathBuf, bool), HostFault> {
-    let incumbent = session.incumbent_record()?;
+    let incumbent = session.incumbent_record()?.ok_or_else(|| {
+        HostFault::fault(
+            "dream_emission_surface",
+            "level emission pins the incumbent's predictions: the state needs an `archive`",
+        )
+    })?;
     let incumbent_key = crate::host::value_int(&incumbent, "key")?;
     let score = value_rational(&incumbent, "score")?;
     let case_ids = session.case_ids()?;
@@ -916,10 +921,11 @@ impl DreamRun {
             });
         };
         let batches = self.batches();
-        let used = self.session.state_int("used")?;
-        let incumbent = self.session.incumbent_record()?;
-        let incumbent_key = crate::host::value_int(&incumbent, "key")?;
-        let score = value_rational(&incumbent, "score")?;
+        let used = self.session.used()?;
+        let (incumbent_key, score) = match self.session.incumbent_record()? {
+            Some(incumbent) => (crate::host::value_int(&incumbent, "key")?, value_rational(&incumbent, "score")?),
+            None => (0, (0, 1)),
+        };
         let case_ids = self.session.case_ids()?;
 
         let (path, certificate) = match (&self.config.out_dir, &self.seam) {
