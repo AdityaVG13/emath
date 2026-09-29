@@ -18,6 +18,11 @@
 # rewrite it suggests is cheaper, but the checks start at 5 and refuse
 # it.
 #
+# The loop also tests each general law itself: both sides run on every
+# sequence it knows (targets, learned rules, proposals). The false law
+# fails on differences of triangular numbers and others; the two
+# commuting laws hold on every sequence tried.
+#
 # Run: emath test explore.emath --work 32000000
 # Keep everything learned:
 #   emath keep explore.emath --function Explored --to lib/explored.emath --set unused=0 --work 50000000
@@ -92,6 +97,7 @@ emath function Explores:
         law: Bool
         faster: Bool
         guarded: Bool
+        refuted: Bool
     definitions:
         found = explore(seeds(unused), how(unused), 5, [], [], 3)
         second = filter(function l in Learned: l.round == 2, found.lesson.learned)
@@ -114,6 +120,9 @@ emath function Explores:
         strict = function c in Code: total_work(quote.evaluate(c), checks, wants, 1000000)
         tried = rewrite_step(rewrite_seed(shifted, strict), rules, strict)
         guarded = length(rewrites(rules, shifted)) > 0 and tried.verdict == 2 and tried.best_work == tried.start_work
+        false_law = filter(function i in Identity: same(i.left)(quote(partial_sum_difference_triangular)), laws)
+        survivors = filter(function i in Identity: length(i.fails) == 0, laws)
+        refuted = length(pick[0].fails) == 0 and pick[0].tested > 10 and length(false_law) == 1 and length(false_law[0].fails) > 0 and all(function i in Identity: same(i.left)(quote(bisect_square_triangular)) or same(i.left)(quote(bisect_square_fibonacci)), survivors)
     tests:
         example <proposes_and_explains>:
             given unused = 0
@@ -123,3 +132,4 @@ emath function Explores:
             expect law == true
             expect faster == true
             expect guarded == true
+            expect refuted == true
