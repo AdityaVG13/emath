@@ -1,5 +1,27 @@
 use super::super::{Engine, Expr, CValue, ConstructorError, ExprKind, Rc, Kont, fault, machine_int_basename, machine_buffer_basename, cint, Code, FnDecl, MAX_CALL_DEPTH, EvalTail};
-use super::prelude::{admit_input_type, code_identity, is_refused_recipe, project_field, rebuild_expr};
+use super::prelude::{admit_input_type, code_identity, is_refused_recipe, path_expr, project_field, rebuild_expr};
+
+/// The identifier a `quote.join` operand spells: a quoted single
+/// identifier (`quote(triangular)`) or a viewed reference's name tag
+/// (`quote.view(c).name`).
+fn quoted_identifier(value: &CValue) -> Result<String, ConstructorError> {
+    let name = match value {
+        CValue::Code(code) => match &code.expr.kind {
+            ExprKind::Path { segments, .. } if segments.len() == 1 => segments[0].clone(),
+            _ => String::new(),
+        },
+        CValue::Record { type_name, fields } if fields.is_empty() => type_name.to_string(),
+        _ => String::new(),
+    };
+    let mut chars = name.chars();
+    let identifier = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if identifier {
+        Ok(name)
+    } else {
+        Err(fault("type", format!("quote.join expects quoted identifiers, found {value}")))
+    }
+}
 
 impl Engine {
     pub(in crate::constructor_layer) fn eval_call(&mut self, function: &Expr, args: &[Expr]) -> Result<CValue, ConstructorError> {
@@ -157,6 +179,17 @@ impl Engine {
                 };
                 let replacement = self.eval(&args[2])?;
                 self.quote_substitute(fragment, &reference, replacement)
+            }
+            "quote.join" => {
+                if args.len() != 2 {
+                    return Err(fault("arity", "quote.join expects two quoted identifiers"));
+                }
+                let left = self.eval(&args[0])?;
+                let right = self.eval(&args[1])?;
+                let name = format!("{}_{}", quoted_identifier(&left)?, quoted_identifier(&right)?);
+                let expr = path_expr(&name);
+                let deps = self.dependency_snapshot(&expr);
+                Ok(CValue::Code(Box::new(Code { expr, deps })))
             }
             "quote.bind" => {
                 if args.is_empty() {

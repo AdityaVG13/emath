@@ -54,7 +54,7 @@ fn keep_cmd() {
     let dir = std::env::temp_dir().join(format!("emath_keep_{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let fixtures = workspace().join("tests/fixtures/keep");
-    for file in ["discover.emath", "uses.emath", "grows.emath", "learn.emath"] {
+    for file in ["discover.emath", "uses.emath", "grows.emath", "learn.emath", "explore.emath"] {
         std::fs::copy(fixtures.join(file), dir.join(file)).expect("copy fixture");
     }
     let library = dir.join("lib/seq.emath");
@@ -110,6 +110,16 @@ fn keep_cmd() {
         code == EXIT_OK as i32 && names.iter().all(|n| text.contains(&format!("unchanged {n} "))),
         format!("exit {code}\n{text}"),
     );
+
+    // Self-proposed targets keep under their joined names (transform_rule).
+    let (text, code) = emath(
+        &dir,
+        &["keep", "explore.emath", "--function", "Explored", "--to", "lib/explored.emath", "--set", "unused=0", "--work", "50000000"],
+    );
+    probe.demand("keep-explored", code == EXIT_OK as i32, format!("exit {code}\n{text}"));
+    let written = std::fs::read_to_string(dir.join("lib/explored.emath")).unwrap_or_default();
+    let golden = std::fs::read_to_string(fixtures.join("lib/explored.emath")).expect("explored golden");
+    probe.demand("explored-matches-golden", written == golden, written.clone());
 
     let _ = std::fs::remove_dir_all(&dir);
     probe.finish();

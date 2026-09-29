@@ -1,0 +1,92 @@
+# Kept definitions, written by `emath keep`.
+exports: triangular, fibonacci, partial_sum_triangular, difference_triangular, bisect_triangular, square_triangular, partial_sum_fibonacci, difference_fibonacci, bisect_fibonacci, square_fibonacci
+
+emath function triangular:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:8cca22ca48eed255.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 0 else: (n + triangular(n - 1))
+
+emath function fibonacci:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:0cc5cbb4e1d1f8d3.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 0 else: (if n < 2: 1 else: (fibonacci(n - 1) + fibonacci(n - 2)))
+
+emath function partial_sum_triangular:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:f40fec4b7a80b155.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 0 else: (partial_sum_triangular(n - 1) + triangular(n))
+
+emath function difference_triangular:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:1dc0d3c0ae13ca02.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n + 1
+
+emath function bisect_triangular:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:2a326f1d9eb4db86.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = triangular(n + n)
+
+emath function square_triangular:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:5fe67286821abf0c.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = triangular(n) * triangular(n)
+
+emath function partial_sum_fibonacci:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:692fdf6f72ec6b0e.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 0 else: (partial_sum_fibonacci(n - 1) + fibonacci(n))
+
+emath function difference_fibonacci:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:6856bd25f88b91fd.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 1: 1 else: (if n < 2: 0 else: (difference_fibonacci(n - 1) + difference_fibonacci(n - 2)))
+
+emath function bisect_fibonacci:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:8f0b18118357db9e.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fibonacci(n + n)
+
+emath function square_fibonacci:
+    # Kept from explore.emath Explored(unused=0); content fnv1a64:c858379d770d1b1d.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fibonacci(n) * fibonacci(n)

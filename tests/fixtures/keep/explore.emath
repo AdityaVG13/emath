@@ -1,0 +1,92 @@
+# The loop sets its own targets: search.synthesis.explore starts from
+# triangular numbers and Fibonacci, and after each round applies four
+# sequence transforms (partial sums, differences, even positions,
+# squares) to every rule that round learned. Round 2 explains all
+# eight proposals: tetrahedral numbers as partial sums of triangular
+# numbers, n + 1 as their differences, F(n + 2) - 1 as partial sums of
+# Fibonacci, and so on. The proposals round 3 would make from those
+# show that taking even positions and squaring commute: the two
+# constructions agree on every term, so the second is reported as an
+# identity instead of a new target.
+#
+# Run: emath test explore.emath --work 50000000
+# Keep everything learned:
+#   emath keep explore.emath --function Explored --to lib/explored.emath --set unused=0 --work 50000000
+
+use search.synthesis
+use fold.reduce
+
+emath function partial_sums:
+    inputs:
+        v: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = tabulate(function i in Int: sum(take(v, i + 1)), length(v))
+
+emath function differences:
+    inputs:
+        v: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = tabulate(function i in Int: v[i + 1] - v[i], length(v) - 1)
+
+emath function evens:
+    inputs:
+        v: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = tabulate(function i in Int: v[i + i], int_quot(length(v) + 1, 2))
+
+emath function squares:
+    inputs:
+        v: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = map(function x in Int: x * x, v)
+
+emath function how:
+    inputs:
+        unused: Int
+    outputs:
+        result: Proposing
+    definitions:
+        result = Proposing: {transforms: [Transform: {name: quote(partial_sum), apply: partial_sums}, Transform: {name: quote(difference), apply: differences}, Transform: {name: quote(bisect), apply: evens}, Transform: {name: quote(square), apply: squares}], train: 10, held: 4}
+
+emath function seeds:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Target)
+    definitions:
+        result = [Target: {name: quote(triangular), train: [0, 1, 3, 6, 10, 15, 21, 28, 36, 45], held: [55, 66, 78, 91], cap: 50}, Target: {name: quote(fibonacci), train: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34], held: [55, 89, 144, 233], cap: 30}]
+
+emath function Explored:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Learned)
+    definitions:
+        result = explore(seeds(unused), how(unused), 5, [], [], 2).lesson.learned
+
+emath function Explores:
+    inputs:
+        unused: Int
+    outputs:
+        round_two: sequence(Int)
+        commute: Bool
+    definitions:
+        found = explore(seeds(unused), how(unused), 5, [], [], 2)
+        second = filter(function l in Learned: l.round == 2, found.lesson.learned)
+        round_two = map(function l in Learned: quote.evaluate(l.closed)(12), second)
+        next = propose(found.lesson, how(unused), 2)
+        same = function a in Code: function b in Code: quote.view(a).name == quote.view(b).name
+        commute = any(function i in Identity: same(i.left)(quote(bisect_square_triangular)) and same(i.right)(quote(square_bisect_triangular)), next.identities)
+    tests:
+        example <proposes_and_explains>:
+            given unused = 0
+            expect round_two == [364, 13, 300, 6084, 376, 89, 46368, 20736]
+            expect commute == true
