@@ -4,12 +4,13 @@
 # squares) to every rule that round learned. Round 2 explains all
 # eight proposals: tetrahedral numbers as partial sums of triangular
 # numbers, n + 1 as their differences, F(n + 2) - 1 as partial sums of
-# Fibonacci, and so on. The proposals round 3 would make from those
-# show that taking even positions and squaring commute: the two
+# Fibonacci, and so on. The proposals round 3 makes from those show
+# that taking even positions and squaring commute: the two
 # constructions agree on every term, so the second is reported as an
-# identity instead of a new target.
+# identity instead of a new target. Round 3 explains most of the rest
+# over the rules rounds 1 and 2 learned.
 #
-# Run: emath test explore.emath --work 50000000
+# Run: emath test explore.emath --work 60000000
 # Keep everything learned:
 #   emath keep explore.emath --function Explored --to lib/explored.emath --set unused=0 --work 50000000
 
@@ -77,16 +78,18 @@ emath function Explores:
         unused: Int
     outputs:
         round_two: sequence(Int)
+        round_three: Int
         commute: Bool
     definitions:
-        found = explore(seeds(unused), how(unused), 5, [], [], 2)
+        found = explore(seeds(unused), how(unused), 5, [], [], 3)
         second = filter(function l in Learned: l.round == 2, found.lesson.learned)
         round_two = map(function l in Learned: quote.evaluate(l.closed)(12), second)
-        next = propose(found.lesson, how(unused), 2)
+        round_three = length(filter(function l in Learned: l.round == 3, found.lesson.learned))
         same = function a in Code: function b in Code: quote.view(a).name == quote.view(b).name
-        commute = any(function i in Identity: same(i.left)(quote(bisect_square_triangular)) and same(i.right)(quote(square_bisect_triangular)), next.identities)
+        commute = any(function i in Identity: same(i.left)(quote(bisect_square_triangular)) and same(i.right)(quote(square_bisect_triangular)), found.identities)
     tests:
         example <proposes_and_explains>:
             given unused = 0
             expect round_two == [364, 13, 300, 6084, 376, 89, 46368, 20736]
+            expect round_three > 20
             expect commute == true
