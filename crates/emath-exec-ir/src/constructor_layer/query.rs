@@ -33,6 +33,7 @@ pub fn evaluate_code_at(
     source: Option<&Path>,
 ) -> Result<CValue, ConstructorError> {
     let mut engine = engine_from_tree_at(tree, source)?;
+    engine.facts_only_memo = true;
     engine.eval_closed_code(code, inputs, order)
 }
 

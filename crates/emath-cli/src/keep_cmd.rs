@@ -15,9 +15,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-use emath_core::content_id_of_str;
 use emath_exec_ir::constructor_layer::{
-    evaluate_function_budgeted_at, named_programs, needed_uses, parse_constructor_scalar, place_definition,
+    evaluate_function_carrying, named_programs, needed_uses, parse_constructor_scalar, place_definition,
     prepare_module, NamedProgram, Placed, DEFAULT_WORK,
 };
 
@@ -101,18 +100,14 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
         .iter()
         .map(|(k, v)| (k.clone(), parse_constructor_scalar(v)))
         .collect();
-    let value = match evaluate_function_budgeted_at(
-        &tree,
-        &request.function,
-        &inputs,
-        request.work,
-        None,
-        &content_id_of_str(&source).0,
-        Some(&request.path),
-        &source,
-    ) {
+    // Keep never resumes a suspended run, so it evaluates the way the
+    // dream host does: no continuation snapshots, no all-calls memo.
+    let evaluated = prepare_module(&tree, Some(&request.path)).and_then(|module| {
+        evaluate_function_carrying(&module, &request.function, &inputs, &mut BTreeMap::new(), request.work)
+    });
+    let value = match evaluated.and_then(|run| run.value) {
         Ok(value) => value,
-        Err((err, _)) => return refuse(&err.code, err.message, EXIT_FAULT),
+        Err(err) => return refuse(&err.code, err.message, EXIT_FAULT),
     };
     let entries = match &request.name {
         Some(name) => vec![NamedProgram { name: name.clone(), program: value, note: None }],

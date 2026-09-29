@@ -20,6 +20,16 @@ original frame. Expression order, short-circuiting, arithmetic, work charges,
 checkpoint encoding, and resume order remain unchanged. These optimizations
 reduce allocation work; they do not impose an OS CPU or memory quota.
 
+Two evaluation modes. A resumable run (`evaluate_function_budgeted*`, the
+budgeted `emath run` lane that writes a checkpoint) snapshots continuations and memoizes every call so a
+suspension can replay. Every entry that returns no checkpoint runs
+non-suspending (`facts_only_memo`): the test lane (`evaluate_tree*`),
+`evaluate_function_at`, `evaluate_code_at`, the carrying host, and
+`emath keep`. It skips snapshots and memoizes only fact calls and
+all-scalar calls. Values are identical; work counts differ (a repeated
+non-scalar call is free under the all-calls memo), which is why
+`quote.cost` measures under the non-suspending policy on every host.
+
 ## Purpose and layer
 
 `emath-exec-ir` is the stable executable machine between admitted semantic terms and execution providers. It owns universal literals, registers, construction/storage/indexing, control, capability application, provider continuations, semantic images, and artifact loading. It does not own mathematical feature identity or meaning.

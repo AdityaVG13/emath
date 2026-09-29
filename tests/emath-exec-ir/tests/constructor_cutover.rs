@@ -299,12 +299,14 @@ fn fixtures_and_seams() {
 
     probe.case("quote-cost-measures-from-an-empty-memo", |p| {
         all_passed("quote_cost.emath");
-        // A dream host evaluates with the carrying evaluator, `emath
-        // test` without it: the work of one application is the same
-        // under both.
+        // A dream host evaluates with the carrying evaluator, a
+        // resumable budgeted run with the all-calls memo: the work of
+        // one application is the same under both.
         let tree = parse_ok("quote_cost.emath");
         let unused = BTreeMap::from([("unused".into(), int(0))]);
-        let plain = evaluate_function(&tree, "RepeatWork", &unused).unwrap();
+        let plain = evaluate_function_budgeted(&tree, "RepeatWork", &unused, 10_000_000, None, "quote_cost")
+            .map_err(|(err, _)| err)
+            .unwrap();
         let module = prepare_module(&tree, None).unwrap();
         let carried = evaluate_function_carrying(&module, "RepeatWork", &unused, &mut BTreeMap::new(), 10_000_000)
             .unwrap()
