@@ -214,7 +214,7 @@ impl ModelBuilder for BuilderModel {
         }
         if !is_policy && !self.constructors.is_empty() {
             return Err(BuilderError(
-                "function declarations cannot have constructors in this subphase (E-KIND-010)"
+                "`constructors:` is not a constructor section on a function declaration (E-SEC-101)"
                     .into(),
             ));
         }

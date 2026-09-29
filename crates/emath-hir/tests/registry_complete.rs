@@ -140,15 +140,11 @@ fn every_emitted_code_is_documented() {
     );
 }
 
-/// One code, one predicate: `E-KIND-010` is the sema
-/// section×declaration-kind conformance refusal (state/constructors/
-/// equations/algebraic only on the kinds that carry them) and nothing
-/// else. The emission lives in the admit submodules since the
-/// `admit.rs` restructuring (
-/// fixed this gate to follow the move; `implementation/ERROR_CODES.md`
-/// already lists the submodule files).
+/// `E-KIND-010` is retired: wrong-kind sections refuse as `E-SEC-101`
+/// since the constructor cutover. A retired code is never re-minted with
+/// a new meaning, so no crate source may carry it again.
 #[test]
-fn ekind010_is_single_predicate() {
+fn ekind010_stays_retired() {
     let root = repo_root();
     let mut emitting = BTreeSet::new();
     for entry in fs::read_dir(root.join("crates")).expect("read crates dir") {
@@ -158,43 +154,20 @@ fn ekind010_is_single_predicate() {
             let mut paths = Vec::new();
             rust_files_under(&root, &entry, &mut files, &mut paths);
             for (rel, path) in files.iter().zip(paths.iter()) {
-                if fs::read_to_string(path)
-                    .expect("read rust file")
-                    .contains("E-KIND-010")
+                if rel != "crates/emath-hir/tests/registry_complete.rs"
+                    && fs::read_to_string(path)
+                        .expect("read rust file")
+                        .contains("E-KIND-010")
                 {
                     emitting.insert(rel.clone());
                 }
             }
         }
     }
-    // Files that may mention the literal. Emissions (code fields) live
-    // in the admit submodules (declaration.rs, equations.rs — the same
-    // kind×section admission predicate, not a repurposing); builder
-    // embeds the predicate in a message; the remaining two files are
-    // this gate and the (historical) open.rs test module.
-    let allowed = BTreeSet::from([
-        "crates/emath-sema/src/admit/declaration.rs".to_string(),
-        "crates/emath-sema/src/admit/equations.rs".to_string(),
-        "crates/emath-sema/src/admit.rs".to_string(),
-        "crates/emath-build/src/builder.rs".to_string(),
-        "crates/emath-hir/src/open.rs".to_string(),
-        "crates/emath-hir/tests/registry_complete.rs".to_string(),
-    ]);
     assert!(
-        emitting.is_subset(&allowed),
-        "new E-KIND-010 emission sites are a repurposing; mint a sibling code instead. \
-         Unexpected: {}",
-        emitting
-            .difference(&allowed)
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    assert!(
-        emitting.contains("crates/emath-sema/src/admit/declaration.rs")
-            && emitting.contains("crates/emath-sema/src/admit/equations.rs"),
-        "E-KIND-010 must still be emitted by sema admission (the admit \
-         submodule predicate sites)"
+        emitting.is_empty(),
+        "E-KIND-010 is retired; mint a new code instead of reusing it. Found in: {}",
+        emitting.into_iter().collect::<Vec<_>>().join(", ")
     );
 }
 

@@ -423,16 +423,11 @@ Evidence (`crates/emath-evidence/src`, `crates/emath-checker/src`):
 Kinds (`crates/emath-schema/src/load.rs`, `crates/emath-sema/src/admit.rs`,
 `crates/emath-hir/src/open.rs`):
 
-- `E-KIND-010`: function declarations cannot have state or constructors in
-  the current subset (semantic admission in `admit.rs`; the builder embeds the same
-  predicate verbatim). One predicate, one code; the HIR manifest schema
-  violations use their own codes (`E-KIND-011`, `E-KIND-016`).
-  Coaching refusals: when the mismatch has a canonical repair, the message
-  names the right kind: `state:`/`equations:`/`algebraic:` on a non-model
-  points at `emath model` (or `emath policy` for a stateful object),
-  `constructors:` on a non-policy points at `emath policy`. The code and
-  predicate are stable; only the message coaches (see the decision tree in
-  `language/reference/declarations-sections-and-attributes.md`).
+- `E-KIND-010`: retired and is not emitted. It refused `state:` /
+  `constructors:` on the wrong declaration kind; since the constructor
+  cutover any section outside the constructor set refuses as `E-SEC-101`,
+  and the `model` / `policy` kinds it coached toward are gone. Not to be
+  re-minted with a new meaning (`registry_complete::ekind010_stays_retired`).
 - `E-KIND-011`: kind schema is missing a
   `RepeatPolicy::ExactlyOne` section (`SectionManifest::check` and
   semantic admission in `admit.rs`). `inputs:` and `outputs:` are
@@ -1195,7 +1190,7 @@ Not yet documented at generation time: **0**.
 | `E-INT-003` | crates/emath-rust-backend/src/codegen_render/rtcalls.rs | `{{ let __ratio = {ratio}; ((__ratio).1 == 1i128).then(|| emath_rt::ExactInt::from((__ratio).0)).ok_or(\"E-INT-` |
 | `E-KIND-001` | crates/emath-sema/src/admit/sections_meta.rs | `E-KIND-001` |
 | `E-KIND-002` | crates/emath-sema/src/admit/sections_meta.rs | `E-KIND-002` |
-| `E-KIND-010` | crates/emath-build/src/builder/build.rs<br>crates/emath-hir/tests/registry_complete.rs | `function declarations cannot have constructors in this subphase (E-KIND-010)`<br>`E-KIND-010` |
+| `E-KIND-010` | crates/emath-hir/tests/registry_complete.rs | `E-KIND-010`<br>`E-KIND-010 is retired; mint a new code instead of reusing it. Found in: {}` |
 | `E-KIND-011` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-hir/src/open.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-KIND-011`<br>`kind `{}` requires section `{name}`` |
 | `E-KIND-012` | crates/emath-schema/src/lang.rs | `E-KIND-012`<br>`unknown repeat policy `{other}`` |
 | `E-KIND-013` | crates/emath-schema/src/lang.rs | `duplicate section spec `{name}`` |
@@ -1314,7 +1309,7 @@ Not yet documented at generation time: **0**.
 | `E-RES-111` | crates/emath-lab-core/src/holes/synth.rs | `satisfy` |
 | `E-RES-120` | crates/emath-build/src/package.rs<br>crates/emath-tui/src/experiment/mod.rs | `E-RES-120: cargo exceeded the {timeout:?} wall-clock budget`<br>`E-RES-120` |
 | `E-SCHEMA-001` | crates/emath-schema/src/registry.rs | `1.0.0`<br>`E-SCHEMA-001` |
-| `E-SEC-101` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-SEC-101`<br>`parameters` |
+| `E-SEC-101` | crates/emath-build/src/builder/build.rs<br>crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-hir/tests/registry_complete.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | ``constructors:` is not a constructor section on a function declaration (E-SEC-101)`<br>`E-SEC-101` |
 | `E-SEC-130` | crates/emath-sema/src/admit/declaration/setup.rs<br>crates/emath-syntax/src/scratch/render.rs | `inputs`<br>`E-SEC-130` |
 | `E-SEC-133` | crates/emath-cli/src/cli_dispatch.rs<br>crates/emath-rust-backend/src/generate.rs<br>crates/emath-sema/src/session/requests.rs |  |
 | `E-SHAKE-001` | crates/emath-exec-ir/src/shake.rs | `E-SHAKE-001` |

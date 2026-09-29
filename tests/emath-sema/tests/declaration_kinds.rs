@@ -60,5 +60,18 @@ fn declaration_kinds() {
         )
         .must_refuse(p, &["E-SEC-101"]);
     });
+    p.case("wrong-section-reported-once", |p| {
+        let result = Source::from_str(
+            "wrong-section-reported-once",
+            "emath function F:\n    inputs:\n        x: Int\n    outputs:\n        y: Int\n    state:\n        s: Int\n    definitions:\n        y = x\n",
+        )
+        .check();
+        let count = result
+            .diagnostics
+            .errors()
+            .filter(|diagnostic| diagnostic.code == "E-SEC-101")
+            .count();
+        p.eq("one E-SEC-101 per defect", count, 1);
+    });
     p.finish();
 }

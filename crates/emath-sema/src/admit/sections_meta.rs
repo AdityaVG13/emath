@@ -187,13 +187,12 @@ fn check_constructor_user_file(
     }
     if let Err(err) = emath_exec_ir::constructor_layer::admit_tree_at(tree, source) {
         let code = emath_exec_ir::constructor_layer::constructor_admit_code(&err.code);
-        // The per-declaration loop above already reported kind refusals
-        // with real spans; this constructor pass is first-error-only. Append
-        // its finding only when the loop did not record the same refusal —
-        // one report per defect, never a duplicate emission.
-        let already_reported = diagnostics
-            .errors()
-            .any(|d| d.code == code && d.message == err.message);
+        // The per-declaration loop above already reported kind, section, and
+        // field-type refusals with real spans, and this constructor pass is
+        // first-error-only, so a same-code finding here is the same defect
+        // in different wording. Matching on the code alone keeps one report
+        // per defect.
+        let already_reported = diagnostics.errors().any(|d| d.code == code);
         if !already_reported {
             diagnostics.error(code, err.message, tree.source);
         }
