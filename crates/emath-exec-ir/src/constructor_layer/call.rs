@@ -23,7 +23,24 @@ pub(super) fn scalar_op_name(op: BinaryOp) -> Option<&'static str> {
     }
 }
 
+/// A function's definitions as one expression: the output
+/// expressions inline, every other definition (and any output a later
+/// definition reads) bound in declaration order by applying a
+/// function literal, `(function m in _: rest)(expr)`, and each input
+/// wrapped in a binder with its declared domain.
 pub(super) fn function_body_expr(decl: &FnDecl) -> Expr {
+    let is_output = |name: &str| {
+        decl.outputs.iter().any(|out| out == name) || decl.output.as_deref() == Some(name)
+    };
+    let mut read_later = BTreeSet::new();
+    for (_, expr) in &decl.defs {
+        super::identity::free_path_names(expr, &mut Vec::new(), &mut read_later);
+    }
+    let is_read = |name: &str| {
+        read_later.iter().any(|free| {
+            free == name || free.strip_prefix(name).is_some_and(|rest| rest.starts_with('.'))
+        })
+    };
     let mut body = if decl.outputs.len() > 1 {
         let items = decl
             .outputs
@@ -48,10 +65,31 @@ pub(super) fn function_body_expr(decl: &FnDecl) -> Expr {
             .or_else(|| decl.defs.last().map(|(_, expr)| expr.clone()))
             .unwrap_or_else(|| dummy_expr(ExprKind::Tuple(Vec::new())))
     };
-    for param in decl.inputs.iter().rev() {
+    let inlined_last = decl.outputs.len() <= 1 && decl.output.is_none();
+    for (index, (name, expr)) in decl.defs.iter().enumerate().rev() {
+        if inlined_last && index + 1 == decl.defs.len() {
+            continue;
+        }
+        if is_output(name) && !is_read(name) {
+            continue;
+        }
+        body = dummy_expr(ExprKind::Call {
+            function: Box::new(dummy_expr(ExprKind::FunctionAbs {
+                param: name.clone(),
+                domain: Box::new(path_expr("_")),
+                body: Box::new(body),
+            })),
+            args: vec![expr.clone()],
+        });
+    }
+    for (index, param) in decl.inputs.iter().enumerate().rev() {
+        let domain = decl
+            .input_types
+            .get(index)
+            .map_or_else(|| path_expr("Rat"), |ty| domain_expr_of_shape(&domain_shape_of_type(ty)));
         body = dummy_expr(ExprKind::FunctionAbs {
             param: param.clone(),
-            domain: Box::new(path_expr("Rat")),
+            domain: Box::new(domain),
             body: Box::new(body),
         });
     }

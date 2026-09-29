@@ -296,8 +296,11 @@ refusal. The E-MIR interpreter refuses it by the same
 `module_definition_table(tree)` is the layer's second public table
 (besides `module_callable_table`): every function declaration with
 its opacity and - for a transparent callee - the distilled body tree
-exactly as the VM's `function_body_expr` shapes it (each input wraps
-the body in a function literal, so only binder-free bodies distill).
+exactly as the VM's `function_body_expr` shapes it: each input wraps
+the body in a function literal with its declared domain, and every
+non-output definition (plus any output a definition reads) is bound
+in declaration order as `(function m in _: rest)(expr)`, so a
+multi-definition body evaluates to the same value as a call.
 Opaque rows carry no body (never exposed); a transparent body
 outside the distilled subset carries `None` and the runtime unfold
 refuses by name - the compile-time table cannot invent a body the

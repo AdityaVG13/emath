@@ -843,8 +843,8 @@ pub fn module_callable_table(tree: &SyntaxTree) -> Vec<(String, bool, u64)> {
 /// `quote.body` lane, bead emath-quote-body-defs-trto7): every
 /// function declaration with its opacity and - for a transparent
 /// callee - the distilled body tree exactly as the VM's
-/// `function_body_expr` shapes it (inputs wrap the body in function
-/// literals, so only binder-free bodies distill). A transparent row
+/// `function_body_expr` shapes it (inputs and intermediate
+/// definitions become function-literal binders). A transparent row
 /// outside the distilled subset carries `None`: the compile-time
 /// table cannot invent a body the artifact cannot run, and the
 /// runtime unfold refuses by name instead (the no-claim boundary).
@@ -861,13 +861,11 @@ pub fn module_definition_table(
             continue;
         }
         let opaque = call::function_is_opaque(decl);
+        let (inputs, input_types) = call::section_typed_fields(decl, "inputs").into_iter().unzip();
         let decl_fn = FnDecl {
-            inputs: call::section_typed_fields(decl, "inputs")
-                .into_iter()
-                .map(|(name, _)| name)
-                .collect(),
+            inputs,
             generics: Vec::new(),
-            input_types: Vec::new(),
+            input_types,
             outputs: call::section_fields(decl, "outputs"),
             output_types: Vec::new(),
             output: call::section_fields(decl, "outputs").into_iter().next(),
