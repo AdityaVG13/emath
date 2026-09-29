@@ -1,6 +1,6 @@
 //! Command dispatch and per-subcommand argument parsers.
 
-use super::{Command, Path, PlannerRequest, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, plan, planner_cmd, build, tooling_cmd, execution, loop_cmd, dream_cmd, experiment_cmd, compiled_search, language_cmd, EXIT_USAGE, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError, Write};
+use super::{Command, Path, PlannerRequest, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, plan, planner_cmd, build, tooling_cmd, execution, loop_cmd, dream_cmd, experiment_cmd, compiled_search, language_cmd, EXIT_USAGE, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError};
 
 fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>)> {
     match command {
@@ -629,14 +629,4 @@ pub fn usage(message: &str) -> CliExit {
     .with_command(command)
     .with_usage(format!("emath {message}"));
     err.emit(false)
-}
-
-/// JSON pretty-helper used by tests.
-#[allow(dead_code)]
-pub(crate) fn write_json(out: &mut impl Write, fields: &[(&str, String)]) -> std::io::Result<()> {
-    let mut object = emath_artifact::JsonWriter::object();
-    for (name, value) in fields {
-        object.string(name, value);
-    }
-    write!(out, "{}", object.finish())
 }

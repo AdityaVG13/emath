@@ -3,25 +3,6 @@
 use super::{Expr, TokenKind, ExprKind, Keyword, Span, BinaryOp, UnaryOp};
 
 impl super::super::Parser {
-    /// Parse the body of a `limit x -> T[+|-]: body` expression; the
-    /// target parses at multiplicative level so `+`/`-` before `:` is a
-    /// direction suffix (complex targets need parens).
-    #[allow(dead_code)]
-    pub(super) fn parse_limit_body(
-        &mut self,
-        start: emath_core::Span,
-        var: String,
-        is_sample: bool,
-        depth: usize,
-    ) -> Option<Expr> {
-        let _ = (start, var, is_sample, depth);
-        self.error_here(
-            "E-SYN-101",
-            "`limit` / `sample_limit` are ordinary imported functions, not constructor forms",
-        );
-        None
-    }
-
     /// Parse a `cases [subject]: | c1 => e1 | else => eN` body; arms use
     /// `|`/`=>` and a mandatory `else` arm enforces totality.
     pub(super) fn parse_cases_body(

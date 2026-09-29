@@ -57,12 +57,6 @@ pub fn web_cmd(parsed: ServeArgs) -> CliExit {
     }
 }
 
-/// Backwards-compatible alias for [`web_cmd`].
-#[allow(dead_code)]
-pub fn serve_cmd(args: ServeArgs) -> CliExit {
-    web_cmd(args)
-}
-
 pub struct ServeArgs {
     pub port: u16,
     pub no_open: bool,

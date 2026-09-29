@@ -44,58 +44,6 @@ pub const LAB_COMMANDS: &[&str] = &[
     "robot-docs",
 ];
 
-/// Historical catalog order. Not the live constructor surface.
-#[allow(dead_code)]
-pub const COMMANDS: &[&str] = &[
-    "check",
-    "plan",
-    "planner",
-    "build",
-    "parse",
-    "expand",
-    "solve",
-    "exactness",
-    "freeze",
-    "why",
-    "assumptions",
-    "signature",
-    "genesis",
-    "eval",
-    "sweep",
-    "simulate",
-    "fit",
-    "repl",
-    "compile",
-    "world",
-    "portfolio",
-    "meaning",
-    "import",
-    "artifact",
-    "architecture",
-    "coverage",
-    "web",
-    "serve",
-    "new",
-    "fmt",
-    "migrate",
-    "explain",
-    "run",
-    "test",
-    "bench",
-    "verify",
-    "inspect",
-    "diff",
-    "doctor",
-    "vendor",
-    "provider",
-    "fork",
-    "agent",
-    "help",
-    "version",
-    "capabilities",
-    "robot-docs",
-];
-
 #[must_use]
 pub fn is_lab_command(name: &str) -> bool {
     LAB_COMMANDS.contains(&name)

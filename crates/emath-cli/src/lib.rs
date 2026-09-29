@@ -57,7 +57,6 @@ use emath_plan::{
 };
 use emath_provider_api::{ProviderRegistry, RegistryConfig};
 use emath_sema::CompilerSession;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Host process exit code mapping (the constitution):

@@ -18,8 +18,7 @@ pub use desugar::prepare_source;
 
 use emath_artifact::{JsonValue, JsonWriter, parse_json_document};
 use emath_core::{Diagnostics, FileId, Severity, limits::Limits};
-use emath_exec_ir::interp::{Value, format_f64};
-use emath_exec_ir::runner::{DeclarationRun, RunReport, TestRun};
+use emath_exec_ir::interp::Value;
 use emath_genesis::{Disposition, ResultBundle, WorldResult};
 use emath_ir::Mig;
 use emath_sema::session::CompilerSession;

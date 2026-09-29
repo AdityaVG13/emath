@@ -43,37 +43,7 @@ pub(super) enum ReferenceOperator {
     Or,
     Not,
     IsFinite,
-    #[allow(dead_code)]
-    Unary(crate::BuiltinId),
-    #[allow(dead_code)]
-    Binary(crate::BuiltinId),
-    #[allow(dead_code)]
-    ToInt,
-    #[allow(dead_code)]
-    IntegerQuotient,
     SameBits,
-    #[allow(dead_code)]
-    MatrixRows,
-    #[allow(dead_code)]
-    MatrixCols,
-    #[allow(dead_code)]
-    MatrixAt,
-    #[allow(dead_code)]
-    MatrixPack,
-    #[allow(dead_code)]
-    TensorShape,
-    #[allow(dead_code)]
-    TensorPack,
-    #[allow(dead_code)]
-    DenseIndex,
-    #[allow(dead_code)]
-    Infinity,
-    #[allow(dead_code)]
-    Exp2,
-    #[allow(dead_code)]
-    PowF,
-    #[allow(dead_code)]
-    PowI,
     TextTrim,
     TextLength,
     IndexText,
@@ -133,19 +103,7 @@ impl ReferenceOperator {
             Self::Or => EmirOp::Or(operands[0], operands[1]),
             Self::Not => EmirOp::Not(operands[0]),
             Self::IsFinite => EmirOp::IsFinite(operands[0]),
-            Self::Unary(builtin) => EmirOp::UnaryBuiltin(builtin, operands[0]),
-            Self::Binary(builtin) => EmirOp::BinaryBuiltin(builtin, operands[0], operands[1]),
-            Self::ToInt => EmirOp::ToInt(operands[0]),
-            Self::IntegerQuotient => EmirOp::IntegerQuotient(operands[0], operands[1]),
             Self::SameBits => EmirOp::SameBits(operands[0], operands[1]),
-            Self::MatrixRows => EmirOp::MatrixRows(operands[0]),
-            Self::MatrixCols => EmirOp::MatrixCols(operands[0]),
-            Self::MatrixAt => EmirOp::MatrixIndex { matrix: operands[0], row: operands[1], col: operands[2] },
-            Self::MatrixPack => EmirOp::MatrixPack { rows: operands[0], cols: operands[1], data: operands[2] },
-            Self::Infinity => EmirOp::ConstF64(f64::INFINITY.to_bits()),
-            Self::Exp2 => EmirOp::F64Exp2(operands[0]),
-            Self::PowF => EmirOp::F64Pow(operands[0], operands[1]),
-            Self::PowI => EmirOp::F64PowI(operands[0], operands[1]),
             Self::TextTrim => EmirOp::TextTrim(operands[0]),
             Self::TextLength => EmirOp::TextLength(operands[0]),
             Self::IndexText => EmirOp::IndexText(operands[0]),
@@ -153,9 +111,6 @@ impl ReferenceOperator {
             Self::FormatScientific => EmirOp::FormatScientific(operands[0], operands[1]),
             Self::ParseF64 => EmirOp::ParseF64(operands[0]),
             Self::SortTotal => EmirOp::F64SortTotal(operands[0]),
-            Self::TensorShape => EmirOp::TensorShape(operands[0]),
-            Self::TensorPack => EmirOp::TensorPack { shape: operands[0], data: operands[1] },
-            Self::DenseIndex => EmirOp::DenseIndex { dense: operands[0], index: operands[1] },
         }
     }
 }

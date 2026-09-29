@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use emath_core::{CanonicalField, FeatureId, OperationalHash, content_id_of_str};
-use emath_ir::{ExprNode, Literal};
 
 use crate::CompilerSession;
 
@@ -224,87 +223,5 @@ fn evaluate_constructor(tree: &emath_core::tree::SyntaxTree) -> Option<String> {
         }
         Ok(other) => Some(format!("value:{other}:constructor")),
         Err(err) => Some(format!("diagnosis:{}", err.code)),
-    }
-}
-
-#[allow(dead_code)]
-fn leftover_infer_features(package: &emath_ir::SemanticPackage) -> Vec<FeatureId> {
-    let mut features = Vec::new();
-    for declaration in &package.declarations {
-        if let Ok(id) = FeatureId::from_str("std.kind.function") {
-            features.push(id);
-        }
-        for expression in declaration.definitions.values() {
-            leftover_collect_expr(package, *expression, &mut features);
-        }
-    }
-    features
-}
-
-#[allow(dead_code)]
-fn leftover_collect_expr(
-    package: &emath_ir::SemanticPackage,
-    id: emath_ir::ExprId,
-    features: &mut Vec<FeatureId>,
-) {
-    let Some(expression) = package.exprs.get(id.index()) else {
-        return;
-    };
-    match expression {
-        ExprNode::Literal(Literal::Integer(_)) => {
-            features.push(FeatureId::from_str("std.type.int").unwrap());
-        }
-        ExprNode::Binary {
-            operation: emath_ir::BinaryOp::ExactAdd | emath_ir::BinaryOp::StrictFloatAdd,
-            left,
-            right,
-        } => {
-            features.push(FeatureId::from_str("std.capability.math.add").unwrap());
-            leftover_collect_expr(package, *left, features);
-            leftover_collect_expr(package, *right, features);
-        }
-        _ => {}
-    }
-}
-
-#[allow(dead_code)]
-enum TinyExact {
-    Value(i64),
-    Overflow,
-}
-
-#[allow(dead_code)]
-fn leftover_evaluate_tiny_exact(package: &emath_ir::SemanticPackage) -> Option<String> {
-    for declaration in &package.declarations {
-        if let Some(expression) = declaration.definitions.values().next() {
-            match leftover_eval_int(package, *expression)? {
-                TinyExact::Value(value) => return Some(format!("value:{value}:exact-int")),
-                TinyExact::Overflow => return Some("diagnosis:E-INT-OVERFLOW".to_string()),
-            }
-        }
-    }
-    None
-}
-
-#[allow(dead_code)]
-fn leftover_eval_int(package: &emath_ir::SemanticPackage, id: emath_ir::ExprId) -> Option<TinyExact> {
-    match package.exprs.get(id.index())? {
-        ExprNode::Literal(Literal::Integer(value)) => Some(TinyExact::Value(value.parse().ok()?)),
-        ExprNode::Binary {
-            operation: emath_ir::BinaryOp::ExactAdd | emath_ir::BinaryOp::StrictFloatAdd,
-            left,
-            right,
-        } => match (leftover_eval_int(package, *left)?, leftover_eval_int(package, *right)?) {
-            (TinyExact::Overflow, _) | (_, TinyExact::Overflow) => Some(TinyExact::Overflow),
-            (TinyExact::Value(left), TinyExact::Value(right)) => Some(
-                left.checked_add(right)
-                    .map_or(TinyExact::Overflow, TinyExact::Value),
-            ),
-        },
-        ExprNode::Literal(Literal::FloatBits(bits)) => {
-            let value = f64::from_bits(*bits);
-            (value.fract() == 0.0).then_some(TinyExact::Value(value as i64))
-        }
-        _ => None,
     }
 }
