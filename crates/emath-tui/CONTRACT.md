@@ -273,16 +273,20 @@ adds no loop policy and the viewer computes no mathematics.
   is restored under that level's file; at the level's first boundary
   the level restarts from its Seed.
 - **Keep seam** (`dream::chain::KeepSeam`): `dream_keep` (`(T) ->
-  sequence of {name, program}` records, the shape `emath keep` takes
-  without `--name`; other shapes refuse `dream_keep_surface`). After
-  the seed, every committed batch, and every `level_next`, each
-  reported name not yet journaled is kept into
-  `<run>/world/lib/kept.emath` (exec-ir `place_definition`, replacing
-  an earlier definition of the name, with the `use` lines
-  `needed_uses` finds in the level source; a library that would not
-  load faults before it is written) and journaled once as `kept
-  {batch, name, content, file}`. Resume rebuilds the kept set from the
-  kept journal, so a replayed batch rewrites the same library text.
+  sequence of {name, program, note?}` records, the shape `emath keep`
+  takes without `--name`; other shapes refuse `dream_keep_surface`).
+  After the seed, every committed batch, and every `level_next`, each
+  reported item whose name is new, or whose content id differs from
+  the one last journaled under the name, is kept into
+  `<run>/world/kept.emath` (beside the level sources, so it can `use`
+  their local modules) (exec-ir `place_definition`, replacing an
+  earlier definition of the name, with the `use` lines `needed_uses`
+  finds in the level source and the item's `note` in the summary line;
+  a library that would not load faults before it is written) and
+  journaled as `kept {batch, name, content, file}`. A loop that
+  improves a program under one name thus keeps its best. Resume
+  rebuilds the name -> content map from the kept journal, so a
+  replayed batch rewrites the same library text.
   A keep fault ends the run `fault`.
 - **Inbox** (`dream::inbox`): `<run>/inbox/*.jsonl`, one observation
   per line, `{"subject": int, "case": int, "value": number | "n/d"}`.

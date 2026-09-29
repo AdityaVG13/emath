@@ -1,0 +1,53 @@
+# Tune count_primes: every knob setting must agree with count_primes on
+# the checks; the dream keeps the setting with the least work.
+#
+# The dream copies tune_prog.emath into its world, and the kept
+# library (world/kept.emath) imports it: the kept function is
+# count_primes_with at the best knob setting.
+#
+# Run: emath dream dream_tune.emath --target StepTune
+
+use tune_prog
+use search.optimize
+use fold.reduce
+
+emath function checks:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [30, 60, 100]
+
+emath function score:
+    inputs:
+        g: sequence(Int)
+    outputs:
+        result: Int
+    definitions:
+        result = total_work(function n in Int: count_primes_with(g, n), checks(0), map(count_primes, checks(0)), 10000000)
+
+emath function SeedTune:
+    inputs:
+        unused: Int
+    outputs:
+        result: Tuning
+    definitions:
+        result = tune_seed([3, 2], score)
+
+emath function StepTune:
+    inputs:
+        state: Tuning
+        budget: Int
+    outputs:
+        result: Tuning
+    definitions:
+        result = tune_step(state, score)
+
+emath function dream_keep:
+    inputs:
+        state: Tuning
+    outputs:
+        result: sequence(Tuned)
+    definitions:
+        result = tuned(state, quote(count_primes_fast), quote(recur f in Int -> Int: function n in Int: count_primes_with(knobs, n)))

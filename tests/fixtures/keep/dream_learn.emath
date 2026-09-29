@@ -1,7 +1,7 @@
 # The learn loop as a dream: each batch is one search.synthesis
 # learn_round over the curriculum, and `dream_keep` hands the driver
 # every rule learned so far. The driver keeps each new rule into the
-# run's own library, world/lib/kept.emath, as it is learned. Round 1
+# run's own library, world/kept.emath, as it is learned. Round 1
 # learns triangular and fibonacci; round 2 learns sums of cubes and
 # Fibonacci at even positions from them; round 3 learns nothing, so
 # the loop reports its domain exhausted (Catalan stays unexplained).

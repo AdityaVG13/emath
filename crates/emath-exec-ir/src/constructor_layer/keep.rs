@@ -238,11 +238,21 @@ pub fn place_definition(
     Ok((Placed::Kept(updated), content))
 }
 
-/// The (name, program) pairs of a value that names its own programs: a
-/// sequence of records each with a `name` field holding a quoted
-/// identifier (`quote(triangular)`) and a `program` field holding Code.
-/// Other fields are ignored; the order is kept.
-pub fn named_programs(value: &CValue) -> Result<Vec<(String, CValue)>, ConstructorError> {
+/// One kept item: its name, its program, and an optional note the
+/// library's summary line carries (the item's `note` field, rendered as
+/// text: a `Str` as written, any other value as it prints).
+#[derive(Clone, Debug)]
+pub struct NamedProgram {
+    pub name: String,
+    pub program: CValue,
+    pub note: Option<String>,
+}
+
+/// The kept items of a value that names its own programs: a sequence of
+/// records each with a `name` field holding a quoted identifier
+/// (`quote(triangular)`), a `program` field holding Code, and an
+/// optional `note`. Other fields are ignored; the order is kept.
+pub fn named_programs(value: &CValue) -> Result<Vec<NamedProgram>, ConstructorError> {
     let CValue::Sequence(items) = value else {
         return Err(shape("without a name, the kept value must be a sequence of {name, program} records"));
     };
@@ -263,7 +273,11 @@ pub fn named_programs(value: &CValue) -> Result<Vec<(String, CValue)>, Construct
                 .get("program")
                 .cloned()
                 .ok_or_else(|| shape(format!("the kept item `{name}` has no `program`")))?;
-            Ok((name, program))
+            let note = fields.get("note").map(|note| match note {
+                CValue::Str(text) => text.clone(),
+                other => other.to_string(),
+            });
+            Ok(NamedProgram { name, program, note })
         })
         .collect()
 }

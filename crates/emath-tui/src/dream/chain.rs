@@ -29,7 +29,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use emath_core::tree::{Item, SyntaxTree};
-use emath_exec_ir::constructor_layer::{evaluate_tree_budgeted_at, named_programs, needed_uses, place_definition, prepare_module, CValue, Placed,
+use emath_exec_ir::constructor_layer::{evaluate_tree_budgeted_at, named_programs, kept_definition, needed_uses, place_definition, prepare_module, CValue, NamedProgram, Placed,
 };
 use emath_exec_ir::exact_int::ExactInt;
 use emath_syntax::parse_str;
@@ -149,15 +149,19 @@ impl ChainSeam {
 
 pub const KEEP: &str = "dream_keep";
 
-/// The run's own kept library, relative to the run directory.
-pub const KEPT_LIBRARY: &str = "world/lib/kept.emath";
+/// The run's own kept library, relative to the run directory. It sits
+/// beside the level sources so it can `use` the modules they import
+/// (a `use` path never reaches a parent directory).
+pub const KEPT_LIBRARY: &str = "world/kept.emath";
 
 /// The keep seam: `emath function dream_keep` (one input of the state
 /// type, one output) returns a sequence of `{name, program}` records
 /// (the shape `emath keep` takes without `--name`). After the seed and
-/// after every committed batch the driver keeps each name it has not
-/// kept yet into [`KEPT_LIBRARY`], replacing an earlier definition of
-/// the name (a replayed batch after a resume rewrites the same text).
+/// after every committed batch the driver keeps each item whose name
+/// is new, or whose content differs from what was last kept under the
+/// name, into [`KEPT_LIBRARY`], replacing an earlier definition of the
+/// name (a replayed batch after a resume rewrites the same text). A
+/// loop that improves a program under one name thus keeps its best.
 pub struct KeepSeam {
     input: String,
 }
@@ -180,21 +184,22 @@ pub fn resolve_keep(host: &LoopHost) -> Result<Option<KeepSeam>, HostFault> {
 }
 
 impl KeepSeam {
-    /// Keep every program `dream_keep(state)` names that `known` lacks
-    /// into `library`; returns the new `(name, content id)` pairs in
-    /// the order the loop reported them.
+    /// Keep every program `dream_keep(state)` names whose content
+    /// `known` (name -> content id last kept) lacks into `library`;
+    /// returns the new `(name, content id)` pairs in the order the loop
+    /// reported them.
     pub fn keep(
         &self,
         host: &LoopHost,
         state: &CValue,
         library: &Path,
-        known: &std::collections::BTreeSet<String>,
+        known: &BTreeMap<String, String>,
         origin: &str,
     ) -> Result<Vec<(String, String)>, HostFault> {
         let input = BTreeMap::from([(self.input.clone(), state.clone())]);
         let value = host.evaluate(KEEP, &input)?;
-        let fresh: Vec<(String, CValue)> =
-            named_programs(&value)?.into_iter().filter(|(name, _)| !known.contains(name)).collect();
+        let fresh: Vec<NamedProgram> =
+            named_programs(&value)?.into_iter().filter(|item| !is_kept(item, known)).collect();
         if fresh.is_empty() {
             return Ok(Vec::new());
         }
@@ -205,9 +210,13 @@ impl KeepSeam {
         };
         let mut kept = Vec::with_capacity(fresh.len());
         let mut changed = false;
-        for (name, program) in fresh {
+        for NamedProgram { name, program, note } in fresh {
+            let origin = match note {
+                Some(note) => format!("{origin}; {note}"),
+                None => origin.to_string(),
+            };
             let uses = needed_uses(&program, host.path(), library)?;
-            let (placed, content) = place_definition(text.as_deref(), &name, &program, origin, true, &uses)?;
+            let (placed, content) = place_definition(text.as_deref(), &name, &program, &origin, true, &uses)?;
             if let Placed::Kept(updated) = placed {
                 text = Some(updated);
                 changed = true;
@@ -224,6 +233,14 @@ impl KeepSeam {
         }
         Ok(kept)
     }
+}
+
+fn is_kept(item: &NamedProgram, known: &BTreeMap<String, String>) -> bool {
+    let Some(content) = known.get(&item.name) else {
+        return false;
+    };
+    kept_definition(&item.program, &item.name, "")
+        .is_ok_and(|text| &emath_core::content_id_of_str(&text).0 == content)
 }
 
 /// A value as an authored literal, or why it has none.

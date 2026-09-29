@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use emath_core::content_id_of_str;
 use emath_exec_ir::constructor_layer::{
     evaluate_function_budgeted_at, named_programs, needed_uses, parse_constructor_scalar, place_definition,
-    prepare_module, Placed, DEFAULT_WORK,
+    prepare_module, NamedProgram, Placed, DEFAULT_WORK,
 };
 
 use crate::{CliExit, EXIT_FAULT, EXIT_IO, EXIT_OK, EXIT_REFUSED};
@@ -115,7 +115,7 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
         Err((err, _)) => return refuse(&err.code, err.message, EXIT_FAULT),
     };
     let entries = match &request.name {
-        Some(name) => vec![(name.clone(), value)],
+        Some(name) => vec![NamedProgram { name: name.clone(), program: value, note: None }],
         None => match named_programs(&value) {
             Ok(entries) => entries,
             Err(err) => return refuse(&err.code, err.message, EXIT_REFUSED),
@@ -133,7 +133,11 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
     // leaves the library untouched.
     let mut reports = Vec::new();
     let mut changed = false;
-    for (name, program) in &entries {
+    for NamedProgram { name, program, note } in &entries {
+        let origin = match note {
+            Some(note) => format!("{origin}; {note}"),
+            None => origin.clone(),
+        };
         let uses = match needed_uses(program, &request.path, &request.to) {
             Ok(uses) => uses,
             Err(err) => return refuse(&err.code, err.message, EXIT_REFUSED),

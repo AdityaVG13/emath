@@ -233,7 +233,7 @@ fn dream_journal() {
         let code = |text: &str| -> Vec<String> {
             text.lines().filter(|l| !l.trim_start().starts_with('#')).map(str::to_string).collect()
         };
-        let library = std::fs::read_to_string(run.world().join("lib/kept.emath")).unwrap_or_default();
+        let library = std::fs::read_to_string(run.world().join("kept.emath")).unwrap_or_default();
         let golden = std::fs::read_to_string(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/keep/lib/learned.emath"),
         )
@@ -251,7 +251,58 @@ fn dream_journal() {
         p.demand("resume-journal", journal_of(&stopped) == whole, "stop + resume diverged");
         p.demand(
             "resume-library",
-            std::fs::read_to_string(stopped.world().join("lib/kept.emath")).unwrap_or_default() == library,
+            std::fs::read_to_string(stopped.world().join("kept.emath")).unwrap_or_default() == library,
+            "stop + resume wrote a different library",
+        );
+    });
+    // Optimizing a user's program in user space: the knob climb scores
+    // settings by quote.cost work, keeps its best under one name (kept
+    // again when it improves), and the kept library imports the user's
+    // module it calls.
+    probe.case("tune-keeps-best", |p| {
+        let tune = || {
+            let mut config = RunConfig::new(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/keep/dream_tune.emath"),
+            );
+            config.target = Some("StepTune".into());
+            config.work = 50_000_000;
+            config.checkpoint_every = 1;
+            config
+        };
+        let (run, whole) = run_whole(&root, "tune", tune());
+        p.eq("outcome", end_outcome(&run), "domain_exhausted".to_string());
+        let kept: Vec<(u64, String)> = read_events(&run.journal())
+            .expect("parse")
+            .iter()
+            .filter(|e| e.t == "kept")
+            .map(|e| (e.batch().unwrap_or(0), e.str("name").unwrap_or_default().to_string()))
+            .collect();
+        p.eq(
+            "kept-each-improvement",
+            kept,
+            vec![(1, "count_primes_fast".to_string()), (2, "count_primes_fast".to_string())],
+        );
+        let library = std::fs::read_to_string(run.world().join("kept.emath")).unwrap_or_default();
+        p.demand(
+            "library-holds-best",
+            library.lines().any(|l| l == "use tune_prog")
+                && library.contains("result = count_primes_with([2, 1], n)")
+                && library.contains("Saving(work_after=36874, work_before=187862)"),
+            library.clone(),
+        );
+
+        let stopped = create(&root, "tune-stopped", tune());
+        let mut driver = Driver::open(&stopped.dir).expect("open");
+        driver.run_batch().expect("b1");
+        send_request(&stopped, "stop", None).expect("request stop");
+        driver.poll_control().expect("apply stop");
+        drop(driver);
+        let mut resumed = Driver::open(&stopped.dir).expect("resume");
+        finish(&mut resumed);
+        p.demand("resume-journal", journal_of(&stopped) == whole, "stop + resume diverged");
+        p.demand(
+            "resume-library",
+            std::fs::read_to_string(stopped.world().join("kept.emath")).unwrap_or_default() == library,
             "stop + resume wrote a different library",
         );
     });

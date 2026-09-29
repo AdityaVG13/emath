@@ -58,8 +58,9 @@ pub struct Driver {
     emits: bool,
     chain: Option<ChainSeam>,
     keep: Option<KeepSeam>,
-    /// Names journaled as kept (the run library holds each of them).
-    kept: BTreeSet<String>,
+    /// Each name journaled as kept, with the content id last kept under
+    /// it (the run library holds that definition).
+    kept: BTreeMap<String, String>,
 }
 
 /// The incumbent as a journal value (`null` for a plain loop state).
@@ -168,14 +169,15 @@ impl Driver {
             emits,
             chain,
             keep,
-            kept: BTreeSet::new(),
+            kept: BTreeMap::new(),
         };
         driver.keep_new(0)?;
         Ok(driver)
     }
 
-    /// Keep what the loop learned that the run has not kept yet into
-    /// the run library, one `kept` event per name.
+    /// Keep what the loop reports that the run library does not hold
+    /// yet (a new name, or new content under a kept name) into the run
+    /// library, one `kept` event each.
     fn keep_new(&mut self, batch: u64) -> Result<(), HostFault> {
         let Some(seam) = &self.keep else {
             return Ok(());
@@ -192,7 +194,7 @@ impl Driver {
                     .str("content", &content)
                     .str("file", chain::KEPT_LIBRARY),
             )?;
-            self.kept.insert(name);
+            self.kept.insert(name, content);
         }
         Ok(())
     }
@@ -244,8 +246,11 @@ impl Driver {
         };
         let chain = chain::resolve(run.host())?;
         let keep = chain::resolve_keep(run.host())?;
-        let kept_names: BTreeSet<String> =
-            kept.iter().filter(|e| e.t == "kept").filter_map(|e| e.str("name").map(str::to_string)).collect();
+        let kept_names: BTreeMap<String, String> = kept
+            .iter()
+            .filter(|e| e.t == "kept")
+            .filter_map(|e| Some((e.str("name")?.to_string(), e.str("content")?.to_string())))
+            .collect();
         let ledger = dir.carry_ledger(run.host())?;
         let (evidence, taken) = inbox::replay(&kept)?;
         let sources = kept.iter().filter(|e| e.t == "evidence").count() as i128;

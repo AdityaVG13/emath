@@ -1,0 +1,50 @@
+# A user program: count the primes up to n by trial division. The
+# knobs pick how far divisors go (0: n - 1, 1: n / 2, 2: the integer
+# square root) and whether to try odd divisors only (1). All-zero knobs
+# is the plain version, count_primes. A user file: the tuning dream in
+# dream_tune.emath imports it.
+exports: count_primes, count_primes_with
+
+use fold.reduce
+
+emath function root:
+    inputs:
+        n: Int
+        r: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if r * r <= n: r else: root(n, int_quot(r + int_quot(n, r), 2))
+
+emath function is_prime_with:
+    inputs:
+        knobs: sequence(Int)
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        top = if knobs[0] == 0: n - 1 else: if knobs[0] == 1: int_quot(n, 2) else: root(n, n)
+        clear = function d in Int: int_rem(n, d) != 0
+        odds = if top >= 3: int_quot(top - 3, 2) + 1 else: 0
+        result = n >= 2 and (if knobs[1] == 1: n == 2 or (int_rem(n, 2) != 0 and all(clear, tabulate(function k in Int: 2 * k + 3, odds))) else: all(clear, range(2, top - 1)))
+
+emath function count_primes_with:
+    inputs:
+        knobs: sequence(Int)
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = length(filter(function k in Int: is_prime_with(knobs, k), range(2, n - 1)))
+
+emath function count_primes:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = count_primes_with([0, 0], n)
+    tests:
+        example <to_hundred>:
+            given n = 100
+            expect result == 25
