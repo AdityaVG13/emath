@@ -28,9 +28,17 @@ all pairs around signed and storage boundaries and equivalent Big/Small forms.
 ## Wide integer division
 
 Single-u32-limb divisors use high-to-low word division. Remainder < divisor
-ensures that joining it with the next u32 limb fits in u64. Signed/Euclidean
-wrappers, zero handling, normalization, and multi-limb fallback are unchanged.
-This shared representation primitive does not widen native Int type admission.
+ensures that joining it with the next u32 limb fits in u64. Multi-limb divisors
+use Knuth's Algorithm D (TAOCP 4.3.1): normalize the divisor's top bit, estimate
+each quotient limb from the top two remainder limbs, correct it (at most two
+too large), multiply-subtract, add back on the rare negative. Cost is
+O(quotient limbs x divisor limbs) with no per-step allocation; the earlier
+bit-at-a-time loop cost a vector per quotient bit and dominated exact-rational
+work (every Rat normalizes through `gcd`). Signed/Euclidean wrappers, zero
+handling, and normalization are unchanged. Conformance:
+`tests/emath-rt/tests/numeric_typed.rs` checks `n = q d + r`, `|r| < |d|`,
+sign of `r`, including an add-back vector. This shared representation
+primitive does not widen native Int type admission.
 
 ## Public types and semantics
 

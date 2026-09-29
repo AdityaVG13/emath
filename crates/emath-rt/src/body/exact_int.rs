@@ -567,40 +567,11 @@ fn mul_small_add(limbs: &mut Vec<u32>, scale: u64, add: u64) {
     }
 }
 
-fn bit(limbs: &[u32], index: usize) -> bool {
-    let limb = index / 32;
-    let offset = index % 32;
-    limbs
-        .get(limb)
-        .is_some_and(|value| (value >> offset) & 1 == 1)
-}
-
-fn set_bit(limbs: &mut Vec<u32>, index: usize) {
-    let limb = index / 32;
-    let offset = index % 32;
-    if limbs.len() <= limb {
-        limbs.resize(limb + 1, 0);
-    }
-    limbs[limb] |= 1 << offset;
-}
-
 fn limb_bits(limbs: &[u32]) -> usize {
     let Some(last) = limbs.last() else {
         return 0;
     };
     (limbs.len() - 1) * 32 + (32 - last.leading_zeros() as usize)
-}
-
-fn shl1(limbs: &mut Vec<u32>) {
-    let mut carry = 0u32;
-    for limb in limbs.iter_mut() {
-        let next = *limb >> 31;
-        *limb = (*limb << 1) | carry;
-        carry = next;
-    }
-    if carry != 0 {
-        limbs.push(carry);
-    }
 }
 
 fn div_rem_limbs(num: &[u32], den: &[u32]) -> (Vec<u32>, Vec<u32>) {
@@ -627,17 +598,58 @@ fn div_rem_limbs(num: &[u32], den: &[u32]) -> (Vec<u32>, Vec<u32>) {
         };
         return (quot, rem);
     }
-    let mut rem = Vec::new();
-    let mut quot = vec![0u32; num.len()];
-    for i in (0..limb_bits(num)).rev() {
-        shl1(&mut rem);
-        if bit(num, i) {
-            set_bit(&mut rem, 0);
+    // Knuth, TAOCP vol. 2, 4.3.1, Algorithm D (as in Hacker's Delight
+    // divmnu): normalize so the divisor's top bit is set; then each
+    // estimated quotient limb is at most two too large, and one
+    // multiply-subtract per limb (plus a rare add-back) settles it.
+    let shift = den[den.len() - 1].leading_zeros();
+    let v = shl_bits(den, shift, den.len());
+    let mut u = shl_bits(num, shift, num.len() + 1);
+    let n = v.len();
+    let m = num.len() - n;
+    let base = 1u64 << 32;
+    let top = u64::from(v[n - 1]);
+    let next = u64::from(v[n - 2]);
+    let mut quot = vec![0u32; m + 1];
+    for j in (0..=m).rev() {
+        let joined = (u64::from(u[j + n]) << 32) | u64::from(u[j + n - 1]);
+        let mut qhat = joined / top;
+        let mut rhat = joined % top;
+        while qhat >= base || qhat * next > ((rhat << 32) | u64::from(u[j + n - 2])) {
+            qhat -= 1;
+            rhat += top;
+            if rhat >= base {
+                break;
+            }
         }
-        if cmp_limbs(&rem, den) != Ordering::Less {
-            rem = sub_limbs(&rem, den);
-            set_bit(&mut quot, i);
+        let mut borrow = 0i64;
+        for i in 0..n {
+            let product = qhat * u64::from(v[i]);
+            let t = i64::from(u[i + j]) - borrow - (product & 0xFFFF_FFFF) as i64;
+            u[i + j] = t as u32;
+            borrow = (product >> 32) as i64 - (t >> 32);
         }
+        let t = i64::from(u[j + n]) - borrow;
+        u[j + n] = t as u32;
+        if t < 0 {
+            qhat -= 1;
+            let mut carry = 0u64;
+            for i in 0..n {
+                let sum = u64::from(u[i + j]) + u64::from(v[i]) + carry;
+                u[i + j] = sum as u32;
+                carry = sum >> 32;
+            }
+            u[j + n] = u[j + n].wrapping_add(carry as u32);
+        }
+        quot[j] = qhat as u32;
+    }
+    let mut rem = vec![0u32; n];
+    for i in 0..n {
+        rem[i] = if shift == 0 {
+            u[i]
+        } else {
+            (u[i] >> shift) | (u[i + 1] << (32 - shift))
+        };
     }
     while quot.last() == Some(&0) {
         quot.pop();
@@ -646,6 +658,23 @@ fn div_rem_limbs(num: &[u32], den: &[u32]) -> (Vec<u32>, Vec<u32>) {
         rem.pop();
     }
     (quot, rem)
+}
+
+fn shl_bits(limbs: &[u32], shift: u32, len: usize) -> Vec<u32> {
+    let mut out = vec![0u32; len];
+    let mut carry = 0u32;
+    for (i, &limb) in limbs.iter().enumerate() {
+        out[i] = if shift == 0 {
+            limb
+        } else {
+            (limb << shift) | carry
+        };
+        carry = if shift == 0 { 0 } else { limb >> (32 - shift) };
+    }
+    if len > limbs.len() {
+        out[limbs.len()] = carry;
+    }
+    out
 }
 
 fn signed_add(a: (bool, Vec<u32>), b: (bool, Vec<u32>)) -> Result<ExactInt, ExactError> {
