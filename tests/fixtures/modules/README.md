@@ -26,6 +26,7 @@ Failure-first and expected-refusal fixtures for the optional
     emath test tests/fixtures/modules/adaptive_refine_ballistic.emath
     emath test tests/fixtures/modules/adaptive_cash_karp_equivalence.emath
     emath test tests/fixtures/modules/adaptive_budget_stops_incomplete.emath
+    emath test tests/fixtures/modules/sequence_rediscovery.emath --work 20000000
 
 Mixed fixtures (positive cases pass; the refusal cases fail with the
 NAMED refusal codes — nonzero exit is the intended signature, same
