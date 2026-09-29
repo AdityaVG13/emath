@@ -10,7 +10,7 @@
 # identity instead of a new target. Round 3 explains most of the rest
 # over the rules rounds 1 and 2 learned.
 #
-# Run: emath test explore.emath --work 60000000
+# Run: emath test explore.emath --work 32000000
 # Keep everything learned:
 #   emath keep explore.emath --function Explored --to lib/explored.emath --set unused=0 --work 50000000
 

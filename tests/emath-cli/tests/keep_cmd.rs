@@ -167,8 +167,9 @@ fn keep_cmd() {
 
     // Three rounds of self-proposed targets fit a modest budget: every
     // search in a round sees the same blocks, so the block set does not
-    // grow target by target.
-    let (text, code) = emath(&dir, &["test", "explore.emath", "--work", "60000000"]);
+    // grow target by target, and keeping a rule rebuilds one row of the
+    // store instead of every bucket.
+    let (text, code) = emath(&dir, &["test", "explore.emath", "--work", "32000000"]);
     probe.demand("explore-three-rounds", code == EXIT_OK as i32, format!("exit {code}\n{text}"));
 
     // Self-proposed targets keep under their joined names (transform_rule).
