@@ -139,6 +139,9 @@ emath function body_pin:
             given unused = 0
             expect quote.view(quote.join(quote(formula), 3)).name == quote.view(quote(formula_3)).name
             expect quote.view(quote.join(quote(pi), quote.join(quote(formula), 12))).name == quote.view(quote(pi_formula_12)).name
+        example <substitute_reaches_indexing_and_lists>:
+            given unused = 0
+            expect quote.evaluate(quote.substitute(quote([m, 1][m - 7] + [m, ..[m]][1] + length(range(0, m))), "m", 7)) == 21
         example <unary_body_wraps_its_input>:
             given unused = 0
             expect unary_fragment_applies == true

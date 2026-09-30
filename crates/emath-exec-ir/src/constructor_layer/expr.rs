@@ -165,6 +165,51 @@ pub(super) fn substitute_path(expr: &Expr, name: &str, replacement: &Expr, mint:
                 .map(|item| substitute_path(item, name, replacement, mint))
                 .collect(),
         ),
+        ExprKind::Set(items) => ExprKind::Set(
+            items
+                .iter()
+                .map(|item| substitute_path(item, name, replacement, mint))
+                .collect(),
+        ),
+        ExprKind::Index { value, indices } => ExprKind::Index {
+            value: Box::new(substitute_path(value, name, replacement, mint)),
+            indices: indices
+                .iter()
+                .map(|index| substitute_path(index, name, replacement, mint))
+                .collect(),
+        },
+        ExprKind::Slice { start, end } => ExprKind::Slice {
+            start: start
+                .as_ref()
+                .map(|start| Box::new(substitute_path(start, name, replacement, mint))),
+            end: end
+                .as_ref()
+                .map(|end| Box::new(substitute_path(end, name, replacement, mint))),
+        },
+        ExprKind::Range {
+            start,
+            end,
+            inclusive,
+        } => ExprKind::Range {
+            start: start
+                .as_ref()
+                .map(|start| Box::new(substitute_path(start, name, replacement, mint))),
+            end: end
+                .as_ref()
+                .map(|end| Box::new(substitute_path(end, name, replacement, mint))),
+            inclusive: *inclusive,
+        },
+        ExprKind::SequenceCons { head, tail } => ExprKind::SequenceCons {
+            head: Box::new(substitute_path(head, name, replacement, mint)),
+            tail: Box::new(substitute_path(tail, name, replacement, mint)),
+        },
+        ExprKind::Record { type_path, fields } => ExprKind::Record {
+            type_path: type_path.clone(),
+            fields: fields
+                .iter()
+                .map(|(field, value)| (field.clone(), substitute_path(value, name, replacement, mint)))
+                .collect(),
+        },
         other => other.clone(),
     };
     Expr {
