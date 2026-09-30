@@ -18,11 +18,18 @@
 #   zeta(2):   5 / zeta(2) = 3 + 1^4 / (25 + 2^4 / (69 + ...))
 #              a(n) = 11 n^2 + 11 n + 3, b(n) = n^4
 #
+# Catalan's fraction converges only at ratio 1/2, where the last
+# difference between convergents underestimates the distance to G:
+#
+#   Catalan:   1 / (2G) = 1 - 2 / (7 - 32 / (19 - ...))
+#              a(n) = 3 n^2 + 3 n + 1, b(n) = -2 n^4
+#
 # The zeta(3) bracket comes from the series
 # zeta(3) = 5/2 sum (-1)^(k+1) / (k^3 C(2k, k)), whose partial sums
 # alternate around it; zeta(2) = pi^2 / 6 from the pi bracket.
 
 use analysis.series
+use analysis.intervals
 use search.formulas
 use fold.reduce
 
@@ -112,3 +119,34 @@ emath function rediscovers_apery:
             expect sound(zeta3.found, zeta3_bracket(60).lo)
             expect has(zeta2.found, [11, 11, 3], [1, 0, 0, 0, 0], [0, 5, 1, 0])
             expect sound(zeta2.found, pi_bracket(60).lo * pi_bracket(60).lo / 6)
+
+emath function catalan_bracket:
+    # G = (pi / 8) ln(2 + sqrt 3) + (3 / 8) sum_{n >= 0} 1 / (C(2n, n) (2n + 1)^2), with ln(2 + sqrt 3) = (2 / sqrt 3) sum_{k >= 0} 3^-k / (2k + 1). Both series are positive with term ratios below 1/3 and 1/2, so each tail lies below 3/2 and 2 times its next term.
+    inputs:
+        m: Int
+    outputs:
+        result: Itv
+    definitions:
+        partial = function term in Int -> Rat: fold(function acc in Rat: function k in Int: acc + term(k), 0 / 1, range(0, m))
+        three = function k in Int: fold(function acc in Int: function i in Int: acc * 3, 1, range(0, k))
+        t = function k in Int: 1 / ((2 * k + 1) * three(k))
+        s = function n in Int: 1 / (central(n) * (2 * n + 1) * (2 * n + 1))
+        scale = fold(function acc in Int: function i in Int: acc * 10, 1, range(0, 40))
+        r = root_enclosure(3 * scale * scale / 1, 2)
+        root3 = Itv: {lo: r.lo / scale, hi: r.hi / scale}
+        ln = itv_mul(itv_scale(root3, 2 / 3), Itv: {lo: partial(t), hi: partial(t) + 3 / 2 * t(m)})
+        result = itv_add(itv_scale(itv_mul(pi_bracket(m), ln), 1 / 8), itv_scale(Itv: {lo: partial(s), hi: partial(s) + 2 * s(m)}, 3 / 8))
+
+emath function rediscovers_catalan:
+    # 1 / (2G) = 1 - 2 / (7 - 32 / (19 - ...)), a(n) = 3n^2 + 3n + 1, b(n) = -2n^4, converges only geometrically (ratio about 1/2): the last difference between convergents underestimates its distance to the limit.
+    inputs:
+        unused: Int
+    outputs:
+        result: Hunt
+    definitions:
+        result = hunt(catalan_bracket(80), FormulaSearch: {a_basis: [[1, 1, 0], [1]], b_basis: [[1, 0, 0, 0, 0]], bounds: [3, 1, 2], relation_bound: 2, depth: 12, deep: 80, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 105})
+    tests:
+        example <catalan_continued_fraction>:
+            given unused = 0
+            expect has(result.found, [3, 3, 1], [0 - 2, 0, 0, 0, 0], [0, 1, 2, 0])
+            expect sound(result.found, catalan_bracket(100).lo)
