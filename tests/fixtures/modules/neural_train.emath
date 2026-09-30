@@ -1,0 +1,122 @@
+# End-to-end check of numerics.neural: the hand-written backward pass
+# must agree with finite differences of the loss, and a small network
+# trained with it must learn a function no single linear layer can
+# (XOR). Everything is deterministic: weights come from the seeded
+# uniform initializer, so every run trains the same network.
+#
+#     emath test tests/fixtures/modules/neural_train.emath --work 20000000
+
+use numerics.neural
+use fold.reduce
+
+emath function xor_inputs:
+    inputs:
+        unit: Int
+    outputs:
+        result: sequence(sequence(Float64))
+    definitions:
+        result = [[0.0f64, 0.0f64], [0.0f64, 1.0f64], [1.0f64, 0.0f64], [1.0f64, 1.0f64]]
+
+emath function xor_targets:
+    inputs:
+        unit: Int
+    outputs:
+        result: sequence(sequence(Float64))
+    definitions:
+        result = [[0.0f64], [1.0f64], [1.0f64], [0.0f64]]
+
+emath function net:
+    # 2 -> 4 tanh -> 1 sigmoid
+    inputs:
+        seed: Int
+    outputs:
+        result: sequence(Layer)
+    definitions:
+        result = [dense(seed, 2, 4, tanh_act(0)), dense(seed + 1, 4, 1, sigmoid(0))]
+
+emath function loss_at:
+    # MSE of the network whose parameter matrix p has entry (i, j) moved by h.
+    inputs:
+        p: Int
+        i: Int
+        j: Int
+        h: Float64
+    outputs:
+        result: Float64
+    definitions:
+        layers = net(7)
+        ps = mlp_params(layers)
+        moved = tabulate(function q in Int: if q == p: tabulate(function r in Int: tabulate(function c in Int: if r == i and c == j: ps[q][r][c] + h else: ps[q][r][c], length(ps[q][r])), length(ps[q])) else: ps[q], length(ps))
+        result = mse_loss(mlp_predict(with_params(layers, moved), xor_inputs(0)), xor_targets(0))
+
+emath function analytic:
+    # d loss / d (entry (i, j) of parameter matrix p) from the backward pass.
+    inputs:
+        p: Int
+        i: Int
+        j: Int
+    outputs:
+        result: Float64
+    definitions:
+        layers = net(7)
+        outs = mlp_forward(layers, xor_inputs(0))
+        dy = mse_grad(outs[length(outs) - 1], xor_targets(0))
+        result = mlp_backward(layers, outs, dy)[p][i][j]
+
+emath function gradient_error:
+    # Relative gap between the backward pass and a central difference.
+    inputs:
+        p: Int
+        i: Int
+        j: Int
+    outputs:
+        result: Float64
+    definitions:
+        h = 0.000001f64
+        numeric = (loss_at(p, i, j, h) - loss_at(p, i, j, 0.0f64 - h)) / (2.0f64 * h)
+        a = analytic(p, i, j)
+        gap = if a - numeric < 0.0f64: numeric - a else: a - numeric
+        scale = if a < 0.0f64: 0.0f64 - a else: a
+        result = gap / (scale + 0.00000001f64)
+    tests:
+        example <first_layer_weight>:
+            given p = 0
+            given i = 1
+            given j = 2
+            expect result < 0.00001f64
+        example <first_layer_bias>:
+            given p = 1
+            given i = 0
+            given j = 3
+            expect result < 0.00001f64
+        example <second_layer_weight>:
+            given p = 2
+            given i = 3
+            given j = 0
+            expect result < 0.00001f64
+        example <second_layer_bias>:
+            given p = 3
+            given i = 0
+            given j = 0
+            expect result < 0.00001f64
+
+emath function trained_xor:
+    # Adam for `steps` steps on the four XOR rows; returns the predictions.
+    inputs:
+        steps: Int
+    outputs:
+        result: sequence(sequence(Float64))
+    definitions:
+        layers = train(net(7), xor_inputs(0), xor_targets(0), function y in sequence(sequence(Float64)): function t in sequence(sequence(Float64)): mse_grad(y, t), steps, adam_config(0.1f64))
+        result = mlp_predict(layers, xor_inputs(0))
+    tests:
+        example <learns_xor>:
+            given steps = 300
+            expect result[0][0] < 0.1f64
+            expect result[1][0] > 0.9f64
+            expect result[2][0] > 0.9f64
+            expect result[3][0] < 0.1f64
+        example <untrained_does_not_know_xor>:
+            # the same network before training is not already right
+            given steps = 0
+            expect mse_loss(result, xor_targets(0)) > 0.1f64

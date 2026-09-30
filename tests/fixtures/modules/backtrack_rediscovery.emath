@@ -1,0 +1,172 @@
+# Rediscovery benchmark for search.backtrack: small exact values from
+# Ramsey theory that any exhaustive colouring search must reproduce
+# before it is trusted on open cases.
+#
+#   van der Waerden W(2, 3) = 9: 1..8 has a 2-colouring with no
+#       monochromatic 3-term progression; 1..9 has none.
+#   Schur S(3) = 13: 1..13 splits into 3 sum-free sets; 1..14 cannot.
+#   Ramsey R(3, 3) = 6: the edges of K5 have a 2-colouring with no
+#       monochromatic triangle; K6's do not.
+#
+# Each search prunes with an incremental test on the newest cell only;
+# every witness is then rechecked by a separate full checker written
+# without the pruning shortcut, so a pruning bug shows up as status -2
+# instead of a false claim. The first colour is fixed to 0 (colour
+# symmetry), which keeps "none exists" exact.
+#
+#     emath test tests/fixtures/modules/backtrack_rediscovery.emath --work 2000000000
+
+use search.backtrack
+use fold.reduce
+
+emath function colourings:
+    # Colour cells 0 .. n - 1 with k colours; cell 0 is colour 0.
+    inputs:
+        n: Int
+        k: Int
+        fits: sequence(Int) -> Bool
+    outputs:
+        result: Extend<sequence(Int)>
+    definitions:
+        grow = function s in sequence(Int): if length(s) == 0: [[0]] else: tabulate(function c in Int: concat(s, [c]), k)
+        result = Extend: {start: [], options: grow, ok: fits, done: function s in sequence(Int): length(s) == n}
+
+emath function no_new_progression:
+    # The newest cell ends no monochromatic 3-term progression.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        i = length(s) - 1
+        result = all(function d in Int: not (s[i - d] == s[i] and s[i - 2 * d] == s[i]), range(1, int_quot(i, 2)))
+
+emath function no_progression:
+    # Full check: no monochromatic a, a + d, a + 2d anywhere.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        n = length(s)
+        result = all(function a in Int: all(function d in Int: a + 2 * d >= n or not (s[a] == s[a + d] and s[a] == s[a + 2 * d]), range(1, n)), range(0, n))
+
+emath function vdw:
+    inputs:
+        n: Int
+    outputs:
+        result: Verdict<sequence(Int)>
+    definitions:
+        result = settle(colourings(n, 2, no_new_progression), no_progression, 100000)
+    tests:
+        example <eight_has_a_colouring>:
+            given n = 8
+            expect result.status == 1
+            expect no_progression(result.witness)
+        example <nine_has_none>:
+            given n = 9
+            expect result.status == 0
+
+emath function no_new_sum:
+    # Cell i holds the number i + 1; it is not x + y for x, y already in its colour class.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        i = length(s) - 1
+        result = all(function a in Int: not (s[a] == s[i] and s[i - a - 1] == s[i]), range(0, int_quot(i + 1, 2)))
+
+emath function sum_free:
+    # Full check: no x + y = z (x = y allowed) inside one colour class.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        n = length(s)
+        result = all(function x in Int: all(function y in Int: x + y > n or not (s[x - 1] == s[y - 1] and s[x - 1] == s[x + y - 1]), range(x, n)), range(1, n))
+
+emath function schur:
+    inputs:
+        n: Int
+    outputs:
+        result: Verdict<sequence(Int)>
+    definitions:
+        result = settle(colourings(n, 3, no_new_sum), sum_free, 10000000)
+    tests:
+        example <thirteen_splits>:
+            given n = 13
+            expect result.status == 1
+            expect sum_free(result.witness)
+        example <fourteen_cannot>:
+            given n = 14
+            expect result.status == 0
+
+emath function edge_count:
+    inputs:
+        v: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_quot(v * (v - 1), 2)
+
+emath function edge_ends:
+    # Edges ordered (0,1), (0,2), (1,2), (0,3), (1,3), (2,3), ...: edge e joins a < b.
+    inputs:
+        e: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        b = fold(function acc in Int: function k in Int: if edge_count(k + 1) <= e: k + 1 else: acc, 1, range(1, e + 1))
+        result = [e - edge_count(b), b]
+
+emath function edge_of:
+    inputs:
+        a: Int
+        b: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if a < b: edge_count(b) + a else: edge_count(a) + b
+
+emath function no_new_triangle:
+    # The newest edge (a, b) closes no monochromatic triangle a, b, c.
+    # Only c < a has both other edges coloured already; a triangle with
+    # a < c < b is checked later, when its edge (c, b) is the newest.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        e = length(s) - 1
+        ends = edge_ends(e)
+        a = ends[0]
+        b = ends[1]
+        result = all(function c in Int: not (s[edge_of(a, c)] == s[e] and s[edge_of(b, c)] == s[e]), range(0, a))
+
+emath function triangle_free:
+    # Full check over every vertex triple.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        v = fold(function acc in Int: function k in Int: if edge_count(k) == length(s): k else: acc, 0, range(0, length(s) + 2))
+        result = all(function a in Int: all(function b in Int: all(function c in Int: not (s[edge_of(a, b)] == s[edge_of(a, c)] and s[edge_of(a, b)] == s[edge_of(b, c)]), range(b + 1, v - b - 1)), range(a + 1, v - a - 1)), range(0, v))
+
+emath function ramsey33:
+    inputs:
+        v: Int
+    outputs:
+        result: Verdict<sequence(Int)>
+    definitions:
+        result = settle(colourings(edge_count(v), 2, no_new_triangle), triangle_free, 1000000)
+    tests:
+        example <k5_has_a_colouring>:
+            given v = 5
+            expect result.status == 1
+            expect triangle_free(result.witness)
+        example <k6_has_none>:
+            given v = 6
+            expect result.status == 0
