@@ -1,0 +1,54 @@
+# A formula hunt as a dream: each batch tries the next chunk of
+# continued fractions against a bracket of e, and dream_keep hands the
+# driver every formula found so far as a program that approximates e.
+# The driver writes them into world/kept.emath as e_formula_1, ...
+# The user sets the search space here and the budget on the command
+# line; the loop reports its domain exhausted once every candidate is
+# tried.
+#
+# Run: emath dream dream_formulas.emath --target StepHunt --work 400000000
+
+use analysis.series
+use search.formulas
+use fold.reduce
+
+emath function SeedHunt:
+    inputs:
+        unused: Int
+    outputs:
+        result: Hunt
+    definitions:
+        result = hunt_start(e_bracket(40), FormulaSearch: {a_degree: 1, b_degree: 1, bound: 2, relation_bound: 2, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 100})
+
+emath function StepHunt:
+    inputs:
+        state: Hunt
+        budget: Int
+    outputs:
+        result: Hunt
+    definitions:
+        result = hunt_step(state, budget)
+
+emath function dream_keep:
+    inputs:
+        state: Hunt
+    outputs:
+        result: sequence(Kept)
+    definitions:
+        result = kept(state, quote(e))
+
+emath function kept_programs_give_e:
+    # Every kept program, run at depth 30, is within 10^-20 of e.
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        e = e_bracket(60).lo
+        close = function k in Kept: (quote.evaluate(k.program)(30) - e) * 100000000000000000000
+        result = all(function k in Kept: close(k) < 1 / 1 and close(k) > 0 / 1 - 1 / 1, dream_keep(hunt_step(hunt_step(hunt_step(hunt_step(SeedHunt(0), 0), 0), 0), 0)))
+    tests:
+        example <every_kept_formula_computes_e>:
+            given unused = 0
+            expect result == true
+            expect length(dream_keep(hunt_step(hunt_step(hunt_step(hunt_step(SeedHunt(0), 0), 0), 0), 0))) > 0

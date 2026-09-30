@@ -1,0 +1,60 @@
+# Rediscovery benchmark for search.formulas: given only a certified
+# bracket of a constant, the hunt must find the classical continued
+# fractions for it before any claim about new ones.
+#
+#   Euler:     1 / (e - 2) = 1 + 1 / (2 + 2 / (3 + 3 / (4 + ...)))
+#              a(n) = n + 1, b(n) = n, relation [0, 1, 1, -2]
+#   Brouncker: 4 / pi = 1 + 1^2 / (3 + 2^2 / (5 + 3^2 / (7 + ...)))
+#              a(n) = 2n + 1, b(n) = n^2, relation [0, 4, 1, 0]
+
+use analysis.series
+use search.formulas
+use fold.reduce
+
+emath function has:
+    inputs:
+        found: sequence(Formula)
+        a: sequence(Int)
+        b: sequence(Int)
+        relation: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        result = any(function f in Formula: f.a == a and f.b == b and f.relation == relation, found)
+
+emath function sound:
+    # Every formula, run on to depth 80, lies within 10^-12 of its relation applied to c (c from a tighter bracket).
+    inputs:
+        found: sequence(Formula)
+        c: Rat
+    outputs:
+        result: Bool
+    definitions:
+        close = function f in Formula: (cf_value(f.a, f.b, 80) - (f.relation[0] * c + f.relation[1]) / (f.relation[2] * c + f.relation[3])) * 1000000000000
+        result = all(function f in Formula: close(f) < 1 / 1 and close(f) > 0 / 1 - 1 / 1, found)
+
+emath function rediscovers_euler_e:
+    inputs:
+        unused: Int
+    outputs:
+        result: Hunt
+    definitions:
+        result = hunt(e_bracket(40), FormulaSearch: {a_degree: 1, b_degree: 1, bound: 2, relation_bound: 2, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 625})
+    tests:
+        example <euler_continued_fraction>:
+            given unused = 0
+            expect has(result.found, [1, 1], [1, 0], [0, 1, 1, 0 - 2])
+            expect sound(result.found, e_bracket(60).lo)
+
+emath function rediscovers_brouncker_pi:
+    inputs:
+        unused: Int
+    outputs:
+        result: Hunt
+    definitions:
+        result = hunt(pi_bracket(40), FormulaSearch: {a_degree: 1, b_degree: 2, bound: 2, relation_bound: 4, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 3125})
+    tests:
+        example <brouncker_continued_fraction>:
+            given unused = 0
+            expect has(result.found, [2, 1], [1, 0, 0], [0, 4, 1, 0])
+            expect sound(result.found, pi_bracket(60).lo)
