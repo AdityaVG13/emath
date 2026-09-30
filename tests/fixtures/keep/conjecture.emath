@@ -1,0 +1,171 @@
+# The novelty judge of search.conjecture. Four rounds of
+# search.synthesis.explore from triangular numbers and Fibonacci, with
+# partial sums, differences, even positions and squares as transforms,
+# report these twelve laws as surviving every sequence they were tried
+# on, in this order (each found once from triangular numbers and once
+# from Fibonacci):
+#
+#   evens(squares(a)) = squares(evens(a))                       new
+#   the same, from Fibonacci                                    1 step
+#   evens(squares(partial_sums(a))) = squares(evens(partial_sums(a)))
+#   evens(squares(differences(a))) = squares(evens(differences(a)))
+#   evens(squares(evens(a))) = squares(evens(evens(a)))         1 step each
+#   differences(partial_sums(squares(a)))
+#     = squares(differences(partial_sums(a)))                   new
+#   evens(squares(squares(a))) = squares(squares(evens(a)))     2 steps
+#   ...and the Fibonacci twins of the last five.
+#
+# The judge keeps a law only when the kept laws, used as rewrites both
+# ways, cannot turn one side into the other within `depth` steps. Of the
+# twelve, two are new: squaring commutes with taking even positions,
+# and with differences(partial_sums(.)) (which drops the first term).
+# The other ten follow. With depth 1 the doubly-commuted law is out of
+# reach and counts as new too.
+#
+# The loop itself: three explore rounds as three dream steps find the
+# first law twice and refute the partial_sums(differences(a)) law; the
+# library keeps the new one as an executable check, law_1(a).
+#
+# Run: emath test conjecture.emath --work 400000000
+
+use search.synthesis
+use search.conjecture
+use fold.reduce
+
+emath function partial_sums:
+    inputs:
+        v: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = tabulate(function i in Int: sum(take(v, i + 1)), length(v))
+
+emath function differences:
+    inputs:
+        v: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = tabulate(function i in Int: v[i + 1] - v[i], length(v) - 1)
+
+emath function evens:
+    inputs:
+        v: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = tabulate(function i in Int: v[i + i], int_quot(length(v) + 1, 2))
+
+emath function squares:
+    inputs:
+        v: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = map(function x in Int: x * x, v)
+
+emath function settings:
+    inputs:
+        depth: Int
+    outputs:
+        result: Conjecturing
+    definitions:
+        how = Proposing: {transforms: [Transform: {name: quote(partial_sum), code: quote(partial_sums(x)), apply: partial_sums}, Transform: {name: quote(difference), code: quote(differences(x)), apply: differences}, Transform: {name: quote(bisect), code: quote(evens(x)), apply: evens}, Transform: {name: quote(square), code: quote(squares(x)), apply: squares}], train: 10, held: 4}
+        result = Conjecturing: {how: how, max_size: 5, blocks: [], pairs: [], depth: depth}
+
+emath function seeds:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Target)
+    definitions:
+        result = [Target: {name: quote(triangular), train: [0, 1, 3, 6, 10, 15, 21, 28, 36, 45], held: [55, 66, 78, 91], cap: 50}, Target: {name: quote(fibonacci), train: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34], held: [55, 89, 144, 233], cap: 30}]
+
+emath function survivors:
+    # The twelve surviving laws of four explore rounds, as code over a, in the order found.
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(sequence(Code))
+    definitions:
+        once = [[quote(evens(squares(partial_sums(a)))), quote(squares(evens(partial_sums(a))))], [quote(evens(squares(differences(a)))), quote(squares(evens(differences(a))))], [quote(evens(squares(evens(a)))), quote(squares(evens(evens(a))))], [quote(differences(partial_sums(squares(a)))), quote(squares(differences(partial_sums(a))))], [quote(evens(squares(squares(a)))), quote(squares(squares(evens(a))))]]
+        result = concat(concat([[quote(evens(squares(a))), quote(squares(evens(a)))], [quote(evens(squares(a))), quote(squares(evens(a)))]], once), once)
+
+emath function Judges:
+    inputs:
+        unused: Int
+    outputs:
+        two_new: Bool
+        steps: sequence(Int)
+        shallow: Int
+        either: sequence(Int)
+    definitions:
+        at = function c in Code: quote.evaluate(quote.substitute(c, "a", [0, 1, 2, 3, 4, 5]))
+        judged = judge(survivors(0), [], 2)
+        kept = filter(function l in Law: l.steps < 0, judged)
+        two_new = length(kept) == 2 and at(kept[0].right) == [0, 4, 16] and at(kept[1].left) == [1, 4, 9, 16, 25]
+        steps = map(function l in Law: l.steps, judged)
+        shallow = length(filter(function l in Law: l.steps < 0, judge(survivors(0), [], 1)))
+        # A kept law rewrites both ways: the same instance follows whichever side the search starts from.
+        either = map(function l in Law: l.steps, judge([[quote(evens(squares(partial_sums(a)))), quote(squares(evens(partial_sums(a))))], [quote(squares(evens(partial_sums(a)))), quote(evens(squares(partial_sums(a))))]], [kept[0]], 2))
+    tests:
+        example <keeps_only_new_laws>:
+            given unused = 0
+            expect two_new == true
+            expect steps == [0 - 1, 1, 1, 1, 1, 0 - 1, 2, 1, 1, 1, 1, 2]
+            expect shallow == 3
+            expect either == [1, 1]
+
+emath function StepConjecture:
+    inputs:
+        state: Conjectures
+        budget: Int
+    outputs:
+        result: Conjectures
+    definitions:
+        result = conjecture_step(state, settings(2))
+
+emath function SeedConjecture:
+    inputs:
+        unused: Int
+    outputs:
+        result: Conjectures
+    definitions:
+        result = conjecture_start(seeds(unused))
+
+emath function dream_keep:
+    inputs:
+        state: Conjectures
+    outputs:
+        result: sequence(Entry)
+    definitions:
+        result = library(state)
+
+emath function Dreams:
+    inputs:
+        unused: Int
+    outputs:
+        kept: Int
+        derived: Int
+        refuted: Bool
+        check: Bool
+        discerns: Bool
+    definitions:
+        state = StepConjecture(StepConjecture(StepConjecture(SeedConjecture(0), 0), 0), 0)
+        kept = length(state.laws)
+        derived = length(state.derived)
+        refuted = state.refuted > 0
+        laws = filter(function e in Entry: quote.view(e.name).name == quote.view(quote(law_1)).name, library(state))
+        check = length(laws) == 1 and quote.evaluate(laws[0].program)([3, 1, 4, 1, 5, 9, 2, 6]) == true
+        # A kept check tells the sequences a law holds on from those it does not: this one holds only from 0.
+        shifted = Law: {left: quote(partial_sums(differences(a))), right: quote(differences(partial_sums(a))), work_left: 0, work_right: 0, steps: 0 - 1}
+        only = library(Conjectures: {exploration: SeedConjecture(0).exploration, laws: [shifted], derived: [], refuted: 0, judged: 0, batch: 0, verdict: 0, used: 0})
+        discerns = quote.evaluate(only[0].program)([0, 1, 4]) == true and quote.evaluate(only[0].program)([3, 1, 4]) == false
+    tests:
+        example <dreams_and_judges>:
+            given unused = 0
+            expect kept == 1
+            expect derived == 1
+            expect refuted == true
+            expect check == true
+            expect discerns == true
