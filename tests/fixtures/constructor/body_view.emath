@@ -135,6 +135,10 @@ emath function body_pin:
             # A spread list views as Cons (head, tail) and makes back.
             expect quote.view(quote([1, ..[2, 3]])).kind == Cons
             expect quote.evaluate(quote.make(quote.view(quote([1, ..[2, 3]])))) == [1, 2, 3]
+        example <join_mints_numbered_names>:
+            given unused = 0
+            expect quote.view(quote.join(quote(formula), 3)).name == quote.view(quote(formula_3)).name
+            expect quote.view(quote.join(quote(pi), quote.join(quote(formula), 12))).name == quote.view(quote(pi_formula_12)).name
         example <unary_body_wraps_its_input>:
             given unused = 0
             expect unary_fragment_applies == true

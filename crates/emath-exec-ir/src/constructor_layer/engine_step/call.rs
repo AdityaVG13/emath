@@ -206,7 +206,13 @@ impl Engine {
                 }
                 let left = self.eval(&args[0])?;
                 let right = self.eval(&args[1])?;
-                let name = format!("{}_{}", quoted_identifier(&left)?, quoted_identifier(&right)?);
+                // A nonnegative Int on the right lets a loop mint numbered
+                // names (`formula_3`); the left operand keeps the leading letter.
+                let suffix = match &right {
+                    CValue::Int(n) if !n.to_string().starts_with('-') => n.to_string(),
+                    _ => quoted_identifier(&right)?,
+                };
+                let name = format!("{}_{}", quoted_identifier(&left)?, suffix);
                 let expr = path_expr(&name);
                 let deps = self.dependency_snapshot(&expr);
                 Ok(CValue::Code(Box::new(Code { expr, deps })))
