@@ -26,6 +26,17 @@
 # first law twice and refute the partial_sums(differences(a)) law; the
 # library keeps the new one as an executable check, law_1(a).
 #
+# Two-sequence operators. With pointwise addition as a combine, the
+# loop adds every pair of rules it learns, and its laws are over two
+# sequences a and b. From triangular numbers and Fibonacci, with partial
+# sums and differences, two rounds keep three laws as new:
+#
+#   add(a, b) = add(b, a)                                 commutativity
+#   partial_sums(add(a, b)) = add(partial_sums(a), partial_sums(b))
+#   differences(add(a, b)) = add(differences(a), differences(b))
+#
+# and derive the rest from them (the same laws with a and b swapped).
+#
 # Run: emath test conjecture.emath --work 400000000
 
 use search.synthesis
@@ -70,7 +81,7 @@ emath function settings:
     outputs:
         result: Conjecturing
     definitions:
-        how = Proposing: {transforms: [Transform: {name: quote(partial_sum), code: quote(partial_sums(x)), apply: partial_sums}, Transform: {name: quote(difference), code: quote(differences(x)), apply: differences}, Transform: {name: quote(bisect), code: quote(evens(x)), apply: evens}, Transform: {name: quote(square), code: quote(squares(x)), apply: squares}], train: 10, held: 4}
+        how = Proposing: {transforms: [Transform: {name: quote(partial_sum), code: quote(partial_sums(x)), apply: partial_sums}, Transform: {name: quote(difference), code: quote(differences(x)), apply: differences}, Transform: {name: quote(bisect), code: quote(evens(x)), apply: evens}, Transform: {name: quote(square), code: quote(squares(x)), apply: squares}], combines: [], train: 10, held: 4}
         result = Conjecturing: {how: how, max_size: 5, blocks: [], pairs: [], depth: depth}
 
 emath function seeds:
@@ -169,3 +180,52 @@ emath function Dreams:
             expect refuted == true
             expect check == true
             expect discerns == true
+
+emath function add:
+    inputs:
+        x: sequence(Int)
+        y: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        n = if length(x) < length(y): length(x) else: length(y)
+        result = tabulate(function i in Int: x[i] + y[i], n)
+
+emath function same_law:
+    # l is left = right, in either orientation.
+    inputs:
+        l: Law
+        left: Code
+        right: Code
+    outputs:
+        result: Bool
+    definitions:
+        id = function c in Code: quote.identity(c)
+        result = (id(l.left) == id(left) and id(l.right) == id(right)) or (id(l.left) == id(right) and id(l.right) == id(left))
+
+emath function Combines:
+    inputs:
+        unused: Int
+    outputs:
+        commutes: Bool
+        linear: Bool
+        derived: Bool
+        runs: Bool
+    definitions:
+        how = Proposing: {transforms: [Transform: {name: quote(partial_sum), code: quote(partial_sums(x)), apply: partial_sums}, Transform: {name: quote(difference), code: quote(differences(x)), apply: differences}], combines: [Combine: {name: quote(add), code: quote(add(x, y)), apply: add}], train: 10, held: 4}
+        step = function s in Conjectures: conjecture_step(s, Conjecturing: {how: how, max_size: 5, blocks: [], pairs: [], depth: 2})
+        state = step(step(step(conjecture_start(seeds(0)))))
+        has = function left in Code: function right in Code: any(function l in Law: same_law(l, left, right), state.laws)
+        commutes = has(quote(add(a, b)))(quote(add(b, a)))
+        linear = has(quote(partial_sums(add(a, b))))(quote(add(partial_sums(a), partial_sums(b)))) and has(quote(differences(add(a, b))))(quote(add(differences(a), differences(b))))
+        derived = length(state.derived) > 0 and length(state.laws) <= 4
+        two = filter(function l in Law: quote.identity(quote.substitute(l.left, "b", quote(zz))) != quote.identity(l.left), state.laws)
+        checker = quote.evaluate(check(two[0]))
+        runs = checker([1, 2, 3])([5, 7, 11]) == true and checker([1, 2, 3])([5, 7, 11, 13]) == true
+    tests:
+        example <laws_over_two_sequences>:
+            given unused = 0
+            expect commutes == true
+            expect linear == true
+            expect derived == true
+            expect runs == true

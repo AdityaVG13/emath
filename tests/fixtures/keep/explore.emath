@@ -69,7 +69,7 @@ emath function how:
     outputs:
         result: Proposing
     definitions:
-        result = Proposing: {transforms: [Transform: {name: quote(partial_sum), code: quote(partial_sums(x)), apply: partial_sums}, Transform: {name: quote(difference), code: quote(differences(x)), apply: differences}, Transform: {name: quote(bisect), code: quote(evens(x)), apply: evens}, Transform: {name: quote(square), code: quote(squares(x)), apply: squares}], train: 10, held: 4}
+        result = Proposing: {transforms: [Transform: {name: quote(partial_sum), code: quote(partial_sums(x)), apply: partial_sums}, Transform: {name: quote(difference), code: quote(differences(x)), apply: differences}, Transform: {name: quote(bisect), code: quote(evens(x)), apply: evens}, Transform: {name: quote(square), code: quote(squares(x)), apply: squares}], combines: [], train: 10, held: 4}
 
 emath function seeds:
     inputs:
