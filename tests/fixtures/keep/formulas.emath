@@ -6,6 +6,21 @@
 #              a(n) = n + 1, b(n) = n, relation [0, 1, 1, -2]
 #   Brouncker: 4 / pi = 1 + 1^2 / (3 + 2^2 / (5 + 3^2 / (7 + ...)))
 #              a(n) = 2n + 1, b(n) = n^2, relation [0, 4, 1, 0]
+#
+# Apery's fractions have large coefficients no plain enumeration
+# reaches (34 n^3 + 51 n^2 + 27 n + 5 alone is 103^4 cubics away), but
+# they live in small families: a(n) = alpha (2n + 1) n (n + 1) +
+# beta (2n + 1), b(n) = gamma n^6 is three integers. Searched as
+# combinations of basis polynomials:
+#
+#   zeta(3):   6 / zeta(3) = 5 - 1^6 / (117 - 2^6 / (535 - ...))
+#              a(n) = 34 n^3 + 51 n^2 + 27 n + 5, b(n) = -n^6
+#   zeta(2):   5 / zeta(2) = 3 + 1^4 / (25 + 2^4 / (69 + ...))
+#              a(n) = 11 n^2 + 11 n + 3, b(n) = n^4
+#
+# The zeta(3) bracket comes from the series
+# zeta(3) = 5/2 sum (-1)^(k+1) / (k^3 C(2k, k)), whose partial sums
+# alternate around it; zeta(2) = pi^2 / 6 from the pi bracket.
 
 use analysis.series
 use search.formulas
@@ -39,7 +54,7 @@ emath function rediscovers_euler_e:
     outputs:
         result: Hunt
     definitions:
-        result = hunt(e_bracket(40), FormulaSearch: {a_degree: 1, b_degree: 1, bound: 2, relation_bound: 2, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 625})
+        result = hunt(e_bracket(40), FormulaSearch: {a_basis: powers(1), b_basis: powers(1), bounds: [2, 2, 2, 2], relation_bound: 2, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 625})
     tests:
         example <euler_continued_fraction>:
             given unused = 0
@@ -52,9 +67,48 @@ emath function rediscovers_brouncker_pi:
     outputs:
         result: Hunt
     definitions:
-        result = hunt(pi_bracket(40), FormulaSearch: {a_degree: 1, b_degree: 2, bound: 2, relation_bound: 4, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 3125})
+        result = hunt(pi_bracket(40), FormulaSearch: {a_basis: powers(1), b_basis: powers(2), bounds: [2, 2, 2, 2, 2], relation_bound: 4, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 3125})
     tests:
         example <brouncker_continued_fraction>:
             given unused = 0
             expect has(result.found, [2, 1], [1, 0, 0], [0, 4, 1, 0])
             expect sound(result.found, pi_bracket(60).lo)
+
+emath function central:
+    # C(2k, k).
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function acc in Int: function i in Int: int_quot(acc * (k + i + 1), i + 1), 1, range(0, k))
+
+emath function zeta3_bracket:
+    # 5/2 times two consecutive partial sums of the alternating series: zeta(3) lies between them.
+    inputs:
+        terms: Int
+    outputs:
+        result: Itv
+    definitions:
+        partial = function m in Int: fold(function acc in Rat: function k in Int: acc + (if k - 2 * int_quot(k, 2) == 1: 1 / 1 else: 0 / 1 - 1 / 1) / (k * k * k * central(k)), 0 / 1, range(1, m + 1)) * 5 / 2
+        x = partial(terms)
+        y = partial(terms + 1)
+        result = if x < y: Itv: {lo: x, hi: y} else: Itv: {lo: y, hi: x}
+
+emath function rediscovers_apery:
+    inputs:
+        unused: Int
+    outputs:
+        zeta3: Hunt
+        zeta2: Hunt
+    definitions:
+        pi = pi_bracket(40)
+        zeta3 = hunt(zeta3_bracket(40), FormulaSearch: {a_basis: [[2, 3, 1, 0], [2, 1]], b_basis: [[1, 0, 0, 0, 0, 0, 0]], bounds: [20, 8, 1], relation_bound: 6, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 2091})
+        zeta2 = hunt(Itv: {lo: pi.lo * pi.lo / 6, hi: pi.hi * pi.hi / 6}, FormulaSearch: {a_basis: [[1, 1, 0], [1]], b_basis: [[1, 0, 0, 0, 0]], bounds: [12, 5, 1], relation_bound: 5, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 825})
+    tests:
+        example <apery_continued_fractions>:
+            given unused = 0
+            expect has(zeta3.found, [34, 51, 27, 5], [0 - 1, 0, 0, 0, 0, 0, 0], [0, 6, 1, 0])
+            expect sound(zeta3.found, zeta3_bracket(60).lo)
+            expect has(zeta2.found, [11, 11, 3], [1, 0, 0, 0, 0], [0, 5, 1, 0])
+            expect sound(zeta2.found, pi_bracket(60).lo * pi_bracket(60).lo / 6)

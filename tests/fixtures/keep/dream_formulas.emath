@@ -18,7 +18,7 @@ emath function SeedHunt:
     outputs:
         result: Hunt
     definitions:
-        result = hunt_start(e_bracket(40), FormulaSearch: {a_degree: 1, b_degree: 1, bound: 2, relation_bound: 2, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 100})
+        result = hunt_start(e_bracket(40), FormulaSearch: {a_basis: powers(1), b_basis: powers(1), bounds: [2, 2, 2, 2], relation_bound: 2, depth: 12, deep: 40, coarse: 1 / 1000, fine: 1 / 1000000000000, chunk: 100})
 
 emath function StepHunt:
     inputs:
