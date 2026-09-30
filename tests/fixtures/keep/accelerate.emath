@@ -19,6 +19,11 @@
 # program can get at most about three times cheaper; the check asks
 # for two.
 #
+# Every surviving form is also proven (search.certify): each spot and
+# form is a polynomial in n of bounded degree, so the values checked
+# prove it at every n >= 0. The refuted forms hold the min(i, 11)
+# branch, which has no bound, and are not.
+#
 # Run: emath test accelerate.emath --work 60000000
 
 use search.accelerate
@@ -34,6 +39,7 @@ emath function Accelerates:
         nicomachus: Bool
         refuted: Bool
         faster: Bool
+        proven: Bool
     definitions:
         slow = quote(function n in Int: sum(tabulate(function i in Int: i * i * i, n)) + 3 * sum(tabulate(function i in Int: i, n)) + sum(tabulate(function i in Int: if i < 11: i else: 11, n)))
         run = accelerate(slow, [30, 60], Settings: {max_size: 7, far: [20, 33, 50], inputs: [], limit: 10000000})
@@ -49,6 +55,7 @@ emath function Accelerates:
         slow_at = function k in Int: quote.evaluate(slow)(k)
         fast_at = function k in Int: quote.evaluate(run.program)(k)
         faster = run.work_after * 2 < run.work_before and fast_at(200) == slow_at(200)
+        proven = all(function f in ClosedForm: f.proof.proven, held) and not any(function f in ClosedForm: f.proof.proven, broken)
     tests:
         example <invents_its_speedup>:
             given unused = 0
@@ -56,6 +63,7 @@ emath function Accelerates:
             expect nicomachus == true
             expect refuted == true
             expect faster == true
+            expect proven == true
 
 # Linear loops with no closed form. accelerate fits, for each call over
 # n with integer values, laws f(2m), f(2m + 1), f(2m + 2) = a degree-two
@@ -71,6 +79,11 @@ emath function Accelerates:
 #               its own doubling laws, and the same speedup
 #   factorial   no degree-two law fits the values it was shown:
 #               nothing is conjectured
+#
+# The Fibonacci and Pell laws are proven: each loop is linear with two
+# state entries, so the error of each law satisfies a recurrence of
+# order 2 + 6 = 8, and the fit already holds at m = 0..11. The decoy's
+# branch has no bound, so its law is not.
 emath function fib_loop:
     inputs:
         n: Int
@@ -103,6 +116,7 @@ emath function AcceleratesByDoubling:
         refuted: Bool
         unseen: Bool
         none: Bool
+        proven: Bool
     definitions:
         settings = Settings: {max_size: 5, far: [40, 77], inputs: [], limit: 100000000}
         law = function d in DoublingLaw: function i in Int: quote.evaluate(d.laws[i])(3)(5)
@@ -117,6 +131,8 @@ emath function AcceleratesByDoubling:
         unseen = length(filter(function d in DoublingLaw: length(d.fails) == 0, again.doublings)) == 1 and again.work_after * 10 < again.work_before and quote.evaluate(again.program)(1500) == pell_loop(1500)
         fact = accelerate(quote(function n in Int: fact_loop(n)), [30, 60], settings)
         none = length(fact.doublings) == 0
+        pell_held = filter(function d in DoublingLaw: length(d.fails) == 0, again.doublings)
+        proven = held[0].proof.proven and held[0].proof.points == 8 and not broken[0].proof.proven and pell_held[0].proof.proven
     tests:
         example <invents_doubling_laws>:
             given unused = 0
@@ -124,6 +140,7 @@ emath function AcceleratesByDoubling:
             expect refuted == true
             expect unseen == true
             expect none == true
+            expect proven == true
 
 # The shipped pi bracket (analysis.series, Machin) brackets each atan
 # series by two partial sums, S(k) and S(k + 1), each computed from the

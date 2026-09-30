@@ -1,0 +1,105 @@
+# Certificates for laws over n = 0, 1, 2, ... (search.certify).
+#
+# shape(program) bounds what a quoted Int program is: the order of a
+# linear recurrence with constant coefficients its values satisfy for
+# n >= 0, and its degree when it is a polynomial. Two programs of
+# orders a and b that agree at a + b consecutive n from 0 agree at
+# every n >= 0 (their difference satisfies a recurrence of order
+# a + b); two polynomials need only one point more than the larger
+# degree.
+#
+#   sum of cubes = T(n)^2     degrees 4 and 4: five points prove it
+#   n^3 = 3n^2 - 2n           agrees at n = 0, 1, 2; the fourth point
+#                             refutes it, so it is not proven
+#   floor(n^2 / 2) = n^2 - n  agrees at 0, 1, 2, but floor(n^2 / 2) is
+#                             no polynomial: 1 is odd, so no bound, no proof
+#   Fibonacci, two ways       loops of state 2 and 3: five points
+#   a branch                  equal at every n, but the analysis does not
+#                             read branches: observed, not proven
+#   a squared step            agrees with Fibonacci at n = 0..3; its loop
+#                             is not linear, so no bound, no proof
+#   floor(T(n) / 2) = 0       T(n) = n(n - 1)/2 is even at n = 0, 1 but
+#                             has fractional coefficients, so evenness
+#                             need not repeat (T(2) = 1): no bound
+#   Fibonacci partial sums    order 3 (one more than Fibonacci), against
+#     = an order-3 loop       a loop that matches them at n = 0..4: the
+#                             sixth point refutes it
+#   Fibonacci plus n          order 2 + 2, against an order-3 loop that
+#     = an order-3 loop       matches at n = 0..4: n = 5 refutes it
+#
+# Run: emath test certify.emath
+
+use search.certify
+use fold.reduce
+
+emath function fib_loop:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[0] + p[1]], [0, 1], range(0, n))[0]
+
+emath function fib_three:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[2], p[1] + p[2]], [0, 1, 1], range(0, n))[0]
+
+emath function squared_step:
+    # 0, 1, 1, 2, 5, 27, ...: agrees with Fibonacci at n = 0..3, but its step is not linear, so it has no bound.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[1] * p[1] + p[0]], [0, 1], range(0, n))[0]
+
+emath function near_sums:
+    # 0, 0, 1, 2, 4, 9: a(n + 3) = 2 a(n + 2) + a(n), the partial sums of Fibonacci up to n = 4 (they go on 7).
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[2], 2 * p[2] + p[0]], [0, 0, 1], range(0, n))[0]
+
+emath function near_shifted:
+    # 0, 2, 3, 5, 7, 8: a(n + 3) = 3 a(n + 2) - 2 a(n + 1) - a(n), Fibonacci plus n up to n = 4 (they go on 10).
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[2], 3 * p[2] - 2 * p[1] - p[0]], [0, 2, 3], range(0, n))[0]
+
+emath function Certifies:
+    inputs:
+        unused: Int
+    outputs:
+        orders: sequence(Int)
+        degrees: sequence(Int)
+        proven: sequence(Bool)
+        points: sequence(Int)
+    definitions:
+        cubes = quote(function n in Int: sum(tabulate(function i in Int: i * i * i, n)))
+        fib = quote(function n in Int: fib_loop(n))
+        branch = quote(function n in Int: if n < 0: 0 else: n * n)
+        floor = quote(function n in Int: int_quot(n * n, 2))
+        tri = quote(function n in Int: int_quot(n * n - n, 2))
+        shapes = map(shape, [cubes, fib, branch, floor, tri])
+        orders = map(function s in Shape: s.order, shapes)
+        degrees = map(function s in Shape: s.degree, shapes)
+        limit = 10000000
+        certs = [certify_equal(cubes, quote(function n in Int: int_quot(n * n - n, 2) * int_quot(n * n - n, 2)), limit), certify_equal(quote(function n in Int: n * n * n), quote(function n in Int: 3 * n * n - 2 * n), limit), certify_equal(floor, quote(function n in Int: n * n - n), limit), certify_equal(fib, quote(function n in Int: fib_three(n)), limit), certify_equal(branch, quote(function n in Int: n * n), limit), certify_equal(quote(function n in Int: squared_step(n)), fib, limit), certify_equal(quote(function n in Int: int_quot(int_quot(n * n - n, 2), 2)), quote(function n in Int: 0), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: fib_loop(i), n))), quote(function n in Int: near_sums(n)), limit), certify_equal(quote(function n in Int: fib_loop(n) + n), quote(function n in Int: near_shifted(n)), limit)]
+        proven = map(function c in Certificate: c.proven, certs)
+        points = map(function c in Certificate: c.points, certs)
+    tests:
+        example <proves_only_what_it_can_bound>:
+            given unused = 0
+            expect orders == [5, 2, 0 - 1, 0 - 1, 3]
+            expect degrees == [4, 0 - 1, 0 - 1, 0 - 1, 2]
+            expect proven == [true, false, false, true, false, false, false, false, false]
+            expect points == [5, 4, 0, 5, 0, 0, 0, 6, 7]
