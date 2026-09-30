@@ -57,6 +57,74 @@ emath function Accelerates:
             expect refuted == true
             expect faster == true
 
+# Linear loops with no closed form. accelerate fits, for each call over
+# n with integer values, laws f(2m), f(2m + 1), f(2m + 2) = a degree-two
+# polynomial in f(m) and f(m + 1), from m = 0..7, checks them on
+# m = 8..11, tests them at the far m, and turns the survivors into a
+# halving program that needs about log n steps:
+#
+#   Fibonacci   F(2m) = 2 F(m) F(m+1) - F(m)^2, F(2m+1) = F(m)^2 + F(m+1)^2,
+#               F(2m+2) = F(m+1)^2 + 2 F(m) F(m+1), found from the loop
+#   the body    Fibonacci plus 1 past n = 30 fits the same laws on every
+#               value it was shown and fails at m = 40 and 77: refuted
+#   Pell        a(n) = 2 a(n-1) + a(n-2), a recurrence nobody told it:
+#               its own doubling laws, and the same speedup
+#   factorial   no degree-two law fits the values it was shown:
+#               nothing is conjectured
+emath function fib_loop:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[0] + p[1]], [0, 1], range(0, n))[0]
+
+emath function pell_loop:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], 2 * p[1] + p[0]], [0, 1], range(0, n))[0]
+
+emath function fact_loop:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function acc in Int: function k in Int: acc * (k + 1), 1, range(0, n))
+
+emath function AcceleratesByDoubling:
+    inputs:
+        unused: Int
+    outputs:
+        fibonacci: Bool
+        refuted: Bool
+        unseen: Bool
+        none: Bool
+    definitions:
+        settings = Settings: {max_size: 5, far: [40, 77], inputs: [], limit: 100000000}
+        law = function d in DoublingLaw: function i in Int: quote.evaluate(d.laws[i])(3)(5)
+        fib = quote(function n in Int: fib_loop(n) + (if n > 30: 1 else: 0))
+        run = accelerate(fib, [500, 1000], settings)
+        held = filter(function d in DoublingLaw: length(d.fails) == 0, run.doublings)
+        broken = filter(function d in DoublingLaw: length(d.fails) > 0, run.doublings)
+        fibonacci = length(held) == 1 and law(held[0])(0) == 21 and law(held[0])(1) == 34 and law(held[0])(2) == 55 and run.work_after * 10 < run.work_before and quote.evaluate(run.program)(1500) == quote.evaluate(fib)(1500)
+        refuted = length(broken) == 1 and broken[0].fails == [40, 77]
+        pell = quote(function n in Int: pell_loop(n))
+        again = accelerate(pell, [500, 1000], settings)
+        unseen = length(filter(function d in DoublingLaw: length(d.fails) == 0, again.doublings)) == 1 and again.work_after * 10 < again.work_before and quote.evaluate(again.program)(1500) == pell_loop(1500)
+        fact = accelerate(quote(function n in Int: fact_loop(n)), [30, 60], settings)
+        none = length(fact.doublings) == 0
+    tests:
+        example <invents_doubling_laws>:
+            given unused = 0
+            expect fibonacci == true
+            expect refuted == true
+            expect unseen == true
+            expect none == true
+
 # The shipped pi bracket (analysis.series, Machin) brackets each atan
 # series by two partial sums, S(k) and S(k + 1), each computed from the
 # first term. accelerate finds the pair, conjectures that the
