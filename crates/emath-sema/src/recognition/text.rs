@@ -226,8 +226,13 @@ pub fn expr_text(expr: &Expr) -> String {
             expr_text(domain),
             expr_text(body)
         ),
-        ExprKind::SequenceCons { head, tail } => {
-            format!("[{}, ..{}]", expr_text(head), expr_text(tail))
+        ExprKind::SequenceCons {
+            head,
+            tail,
+            spread_head,
+        } => {
+            let spread = if *spread_head { ".." } else { "" };
+            format!("[{spread}{}, ..{}]", expr_text(head), expr_text(tail))
         }
     }
 }

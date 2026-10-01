@@ -1,0 +1,35 @@
+# Emission lane: tail-recursive walks over a long sequence must cost
+# linear time in emitted code. Each step passes the same sequence
+# along; copying it per step makes a walk of n quadratic.
+
+use fold.reduce
+
+emath function walk_sum:
+    # Sum xs[i..] onto acc by self tail calls (the entry wrapper lane).
+    inputs:
+        xs: sequence(Float64)
+        i: Int
+        acc: Float64
+    outputs:
+        result: Float64
+    definitions:
+        result = if i >= length(xs): acc else: walk_sum(xs, i + 1, acc + xs[i])
+    tests:
+        example <three>:
+            given xs = [1.0f64, 2.0f64, 3.5f64]
+            given i = 0
+            given acc = 0.0f64
+            expect result == 6.5f64
+
+emath function fold_sum:
+    # Sum 0 .. n - 1 through fold over range (the inlined frame lane).
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function acc in Int: function k in Int: acc + k, 0, range(0, n))
+    tests:
+        example <ten>:
+            given n = 10
+            expect result == 45

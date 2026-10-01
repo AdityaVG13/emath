@@ -129,6 +129,123 @@ pub(crate) fn self_wrapper_kind() -> Option<ValueKind> {
     SELF_WRAPPER_KIND.with(|stack| stack.borrow().last().cloned())
 }
 
+thread_local! {
+    /// The recursive wrapper currently rendering as a loop: its
+    /// parameter names in position order, and every `CallSelf` op in
+    /// tail position of its body (keyed by op address while the
+    /// borrowed tree renders), each with the argument positions that
+    /// pass their parameter through unchanged.
+    static TAIL_LOOP: std::cell::RefCell<Vec<(Vec<String>, std::collections::HashMap<usize, Vec<bool>>)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Guarded entry onto the tail-loop stack: while a recursive
+/// wrapper's body renders, its tail self calls render as parameter
+/// rebinding plus `continue` (the wrapper body runs inside `loop`),
+/// so a walk of any length runs in constant stack and passes an
+/// unchanged sequence along without copying it. Only calls reached
+/// through the body's result and branch arms qualify: those render
+/// as plain blocks of the wrapper, never inside a closure or an
+/// inner `for` loop that would capture the `continue`.
+pub(crate) struct TailLoopScope;
+impl TailLoopScope {
+    pub(crate) fn enter(body: &EmirProgram, params: Vec<String>, states: usize) -> Self {
+        let inputs = params.len() - states;
+        let roots: Vec<Option<usize>> = (0..inputs).map(Some).collect();
+        let state_roots: Vec<Option<usize>> = (inputs..params.len()).map(Some).collect();
+        let mut tails = std::collections::HashMap::new();
+        collect_tail_calls(body, &roots, &state_roots, &mut tails);
+        TAIL_LOOP.with(|stack| stack.borrow_mut().push((params, tails)));
+        Self
+    }
+}
+impl Drop for TailLoopScope {
+    fn drop(&mut self) {
+        TAIL_LOOP.with(|stack| stack.borrow_mut().pop());
+    }
+}
+
+/// The wrapper parameter a register of `program` is, when it is one:
+/// a load of an input or state that the enclosing chain maps to a
+/// parameter position.
+fn param_of(
+    program: &EmirProgram,
+    value: EmirValue,
+    inputs: &[Option<usize>],
+    states: &[Option<usize>],
+) -> Option<usize> {
+    match program.ops.get(value.0 as usize).map(|(op, _)| op) {
+        Some(EmirOp::LoadInput(index)) => inputs.get(*index as usize).copied().flatten(),
+        Some(EmirOp::LoadState(index)) => states.get(*index as usize).copied().flatten(),
+        _ => None,
+    }
+}
+
+fn collect_tail_calls(
+    program: &EmirProgram,
+    inputs: &[Option<usize>],
+    states: &[Option<usize>],
+    tails: &mut std::collections::HashMap<usize, Vec<bool>>,
+) {
+    let Some((op, _)) = program.ops.get(program.result.0 as usize) else {
+        return;
+    };
+    match op {
+        EmirOp::CallSelf { inputs: args, .. } => {
+            let unchanged = args
+                .iter()
+                .enumerate()
+                .map(|(position, value)| {
+                    param_of(program, *value, inputs, states) == Some(position)
+                })
+                .collect();
+            tails.insert(std::ptr::from_ref(op) as usize, unchanged);
+        }
+        EmirOp::Branch {
+            args,
+            then_body,
+            else_body,
+            ..
+        } => {
+            // Arm input k is the branch's argument k in this program.
+            let arm_inputs: Vec<Option<usize>> = args
+                .iter()
+                .map(|value| param_of(program, *value, inputs, states))
+                .collect();
+            collect_tail_calls(then_body, &arm_inputs, &[], tails);
+            collect_tail_calls(else_body, &arm_inputs, &[], tails);
+        }
+        _ => {}
+    }
+}
+
+/// For a `CallSelf` op in tail position of the innermost loop-rendered
+/// wrapper: the wrapper's parameter names and which arguments pass
+/// their parameter through unchanged.
+pub(crate) fn tail_call_slot(op: &EmirOp) -> Option<(Vec<String>, Vec<bool>)> {
+    TAIL_LOOP.with(|stack| {
+        let stack = stack.borrow();
+        let (params, tails) = stack.last()?;
+        tails
+            .get(&(std::ptr::from_ref(op) as usize))
+            .map(|unchanged| (params.clone(), unchanged.clone()))
+    })
+}
+
+/// Whether every path of `program` ends in a loop-rendered tail call,
+/// so its rendered block has type `!` and takes no carrier widening.
+pub(crate) fn ends_in_tail_loop(program: &EmirProgram) -> bool {
+    match program.ops.get(program.result.0 as usize).map(|(op, _)| op) {
+        Some(op @ EmirOp::CallSelf { .. }) => tail_call_slot(op).is_some(),
+        Some(EmirOp::Branch {
+            then_body,
+            else_body,
+            ..
+        }) => ends_in_tail_loop(then_body) && ends_in_tail_loop(else_body),
+        _ => false,
+    }
+}
+
 /// Guarded entry onto the sibling-entry-carrier table stack (see
 /// `SIBLING_ENTRY_KINDS`).
 pub(crate) struct SiblingEntryScope;
@@ -838,9 +955,16 @@ pub(super) fn kind_at(kinds: &[ValueKind], value: EmirValue) -> ValueKind {
 /// see the enclosing body's kind, so `if p: self(..) else: self(..)`
 /// must yield to its sibling exactly as a bare self-call does.
 pub(super) fn result_is_call_self(program: &EmirProgram) -> bool {
+    register_is_call_self(program, program.result)
+}
+
+/// A self-call register, a branch whose arms both are, or a concat of
+/// self-call registers (`[..self(a), ..self(b)]` carries the
+/// function's own sequence carrier).
+fn register_is_call_self(program: &EmirProgram, value: EmirValue) -> bool {
     program
         .ops
-        .get(program.result.0 as usize)
+        .get(value.0 as usize)
         .is_some_and(|(op, _)| match op {
             EmirOp::CallSelf { .. } => true,
             EmirOp::Branch {
@@ -848,6 +972,9 @@ pub(super) fn result_is_call_self(program: &EmirProgram) -> bool {
                 else_body,
                 ..
             } => result_is_call_self(then_body) && result_is_call_self(else_body),
+            EmirOp::ListConcat(parts) => {
+                !parts.is_empty() && parts.iter().all(|part| register_is_call_self(program, *part))
+            }
             _ => false,
         })
 }
@@ -1166,6 +1293,23 @@ pub(super) fn kind_of_op(
             }
             if !matches!(declared, ValueKind::Other) {
                 return declared;
+            }
+            // An unresolved self call (inside a branch arm, whose own
+            // walk cannot see the enclosing body): the wrapper being
+            // rendered has decided its carrier. The provisional walk
+            // (`call_self_kind` set) never reads it, so a frame's own
+            // carrier is never decided from an enclosing wrapper.
+            if call_self_kind.is_none()
+                && let Some(wrapper) = self_wrapper_kind()
+                && !kind_is_degenerate(&wrapper)
+            {
+                return wrapper;
+            }
+            if call_self_kind == Some(&ValueKind::Other) {
+                // Provisional: the first-argument guess would leak an
+                // argument's carrier (a closure `f`) into the body's
+                // resolved kind; stay join-neutral.
+                return ValueKind::Other;
             }
             inputs
                 .first()

@@ -320,6 +320,10 @@ pub(crate) fn emit_constructor_entry_abi(
     }
     let params = params.join(", ");
     let input_names: Vec<String> = inputs.iter().map(|(name, _)| name.clone()).collect();
+    let recursive = contains_call_self(program);
+    let _tail = recursive.then(|| {
+        crate::codegen_render::TailLoopScope::enter(program, self_args.clone(), 0)
+    });
     let result_kind = program_kind(program, &input_names, &[], &kinds);
     // The expression-template boundary: the union collapses onto the
     // declared carrier through the checked projection; without a
@@ -401,12 +405,18 @@ pub(crate) fn emit_constructor_entry_abi(
     } else {
         (escape_ident(function_name), String::new())
     };
-    if contains_call_self(program) {
-        let self_params = self_params.join(", ");
+    if recursive {
+        // Tail self calls rebind the `mut` parameters and `continue`
+        // this loop (see `TailLoopScope`); other self calls recurse.
+        let self_params = self_params
+            .iter()
+            .map(|param| format!("mut {param}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         let call_args = self_args.join(", ");
         Ok((
             format!(
-                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        Ok({body})\n    }}\n    Ok(__self({call_args})?)\n}}\n"
+                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    #[allow(unused_mut, unreachable_code)]\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        loop {{ return Ok({body}); }}\n    }}\n    Ok(__self({call_args})?)\n}}\n"
             ),
             abi,
         ))

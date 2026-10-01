@@ -96,6 +96,36 @@ pub(super) fn cons_values(head: CValue, tail: CValue) -> Result<CValue, Construc
     }
 }
 
+/// `[..front, ..back]`, or `[front, ..back]` when not `spread`.
+pub(super) fn join_values(
+    front: CValue,
+    back: CValue,
+    spread: bool,
+) -> Result<CValue, ConstructorError> {
+    if !spread {
+        return cons_values(front, back);
+    }
+    match (front, back) {
+        (CValue::Sequence(mut front), CValue::Sequence(back)) => {
+            // A private front grows in place, so building a list by
+            // repeated appends onto a fresh value copies each element
+            // once per level, never the whole list per element.
+            if let Some(items) = std::sync::Arc::get_mut(&mut front) {
+                items.extend(back.iter().cloned());
+                return Ok(CValue::Sequence(front));
+            }
+            let mut items = Vec::with_capacity(front.len() + back.len());
+            items.extend(front.iter().cloned());
+            items.extend(back.iter().cloned());
+            Ok(CValue::Sequence(std::sync::Arc::new(items)))
+        }
+        (front, back) => Err(fault(
+            "type",
+            format!("an append joins two sequences, found {front} and {back}"),
+        )),
+    }
+}
+
 pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue, ConstructorError> {
     if matches!(
         op,

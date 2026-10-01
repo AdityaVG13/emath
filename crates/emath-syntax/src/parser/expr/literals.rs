@@ -400,6 +400,28 @@ impl super::super::Parser {
                         source: start.cover(self.last_span()),
                     });
                 }
+                if self.eat(&TokenKind::DotDot) {
+                    let head = self.parse_expr()?;
+                    if !(self.eat(&TokenKind::Comma) && self.eat(&TokenKind::DotDot)) {
+                        self.error_here(
+                            "E-SYN-102",
+                            "expected `, ..rest` after `[..head`: an append joins two sequences",
+                        );
+                        return None;
+                    }
+                    let tail = self.parse_expr()?;
+                    if !self.eat(&TokenKind::RBracket) {
+                        self.error_here("E-SYN-102", "expected `]` after sequence append");
+                    }
+                    return Some(Expr {
+                        kind: ExprKind::SequenceCons {
+                            head: Box::new(head),
+                            tail: Box::new(tail),
+                            spread_head: true,
+                        },
+                        source: start.cover(self.last_span()),
+                    });
+                }
                 let head = self.parse_expr()?;
                 if self.eat(&TokenKind::Comma) && matches!(self.peek(), TokenKind::DotDot) {
                     self.advance();
@@ -411,6 +433,7 @@ impl super::super::Parser {
                         kind: ExprKind::SequenceCons {
                             head: Box::new(head),
                             tail: Box::new(tail),
+                            spread_head: false,
                         },
                         source: start.cover(self.last_span()),
                     });

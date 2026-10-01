@@ -648,11 +648,23 @@ impl Engine {
                 }
                 Ok(CType::seq(element))
             }
-            ExprKind::SequenceCons { head, tail } => {
+            ExprKind::SequenceCons {
+                head,
+                tail,
+                spread_head,
+            } => {
                 let head = self.infer(types, head)?;
                 let tail = self.infer(types, tail)?;
+                let element = if *spread_head {
+                    match head {
+                        CType::Sequence(front) => *front,
+                        _ => CType::Unknown,
+                    }
+                } else {
+                    head
+                };
                 Ok(match tail {
-                    CType::Sequence(rest) => CType::seq(head.join(&rest).unwrap_or(CType::Unknown)),
+                    CType::Sequence(rest) => CType::seq(element.join(&rest).unwrap_or(CType::Unknown)),
                     _ => CType::any_seq(),
                 })
             }

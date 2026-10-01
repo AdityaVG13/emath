@@ -1362,15 +1362,24 @@ impl Lowerer {
                     fields: values,
                 }))
             }
-            ExprKind::SequenceCons { head, tail } => {
+            ExprKind::SequenceCons {
+                head,
+                tail,
+                spread_head,
+            } => {
                 // `[head, ..tail]`: cons as a one-element list
-                // concatenated onto the tail. ListConcat preserves
-                // element carriers (records stay records), unlike the
-                // Float64 dense-lane VectorConcat.
+                // concatenated onto the tail (`[..head, ..tail]`
+                // concatenates the head sequence itself). ListConcat
+                // preserves element carriers (records stay records),
+                // unlike the Float64 dense-lane VectorConcat.
                 let head = self.expr(head)?;
                 let tail = self.expr(tail)?;
-                let singleton = self.push(EmirOp::ListCreate(vec![head]));
-                Ok(self.push(EmirOp::ListConcat(vec![singleton, tail])))
+                let front = if *spread_head {
+                    head
+                } else {
+                    self.push(EmirOp::ListCreate(vec![head]))
+                };
+                Ok(self.push(EmirOp::ListConcat(vec![front, tail])))
             }
             ExprKind::Index { value, indices } => {
                 let vector = self.expr(value)?;
@@ -1780,7 +1789,7 @@ fn collect_free_names_bound(
                 collect_free_names_bound(field, bound, out);
             }
         }
-        ExprKind::SequenceCons { head, tail } => {
+        ExprKind::SequenceCons { head, tail, .. } => {
             collect_free_names_bound(head, bound, out);
             collect_free_names_bound(tail, bound, out);
         }
@@ -1876,7 +1885,7 @@ fn collect_unresolved(expr: &Expr, out: &mut Vec<String>) {
                 collect_unresolved(index, out);
             }
         }
-        ExprKind::SequenceCons { head, tail } => {
+        ExprKind::SequenceCons { head, tail, .. } => {
             collect_unresolved(head, out);
             collect_unresolved(tail, out);
         }
@@ -1981,7 +1990,7 @@ fn collect_call_sites(expr: &Expr, out: &mut BTreeMap<String, Vec<Vec<Option<Str
         // A cons head can carry a call (`[row_dot(tab, i, v), ..acc]`);
         // without this arm the callee never joins the sibling map and
         // the call falls through to the not-yet-emitted refusal.
-        ExprKind::SequenceCons { head, tail } => {
+        ExprKind::SequenceCons { head, tail, .. } => {
             collect_call_sites(head, out);
             collect_call_sites(tail, out);
         }

@@ -338,10 +338,12 @@ pub enum ExprKind {
         domain: Box<Expr>,
         body: Box<Expr>,
     },
-    /// `[head, ..tail]` sequence cons.
+    /// `[head, ..tail]` sequence cons; with `spread_head`, `[..head,
+    /// ..tail]` appends: `head` is itself a sequence spliced in front.
     SequenceCons {
         head: Box<Expr>,
         tail: Box<Expr>,
+        spread_head: bool,
     },
 }
 

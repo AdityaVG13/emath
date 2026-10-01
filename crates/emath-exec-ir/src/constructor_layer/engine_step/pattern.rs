@@ -13,7 +13,14 @@ impl Engine {
             {
                 Ok(true)
             }
-            (ExprKind::SequenceCons { head, tail }, CValue::Sequence(values))
+            (
+                ExprKind::SequenceCons {
+                    head,
+                    tail,
+                    spread_head: false,
+                },
+                CValue::Sequence(values),
+            )
                 if !values.is_empty() =>
             {
                 if let ExprKind::Path { segments, .. } = &head.kind {

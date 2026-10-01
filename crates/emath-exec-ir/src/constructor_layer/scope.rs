@@ -866,9 +866,14 @@ impl Rewriter<'_> {
                 domain: self.boxed(domain),
                 body: self.under(param, |s| s.boxed(body)),
             },
-            ExprKind::SequenceCons { head, tail } => ExprKind::SequenceCons {
+            ExprKind::SequenceCons {
+                head,
+                tail,
+                spread_head,
+            } => ExprKind::SequenceCons {
                 head: self.boxed(head),
                 tail: self.boxed(tail),
+                spread_head: *spread_head,
             },
             other => other.clone(),
         };

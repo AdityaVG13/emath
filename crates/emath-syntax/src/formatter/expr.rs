@@ -406,8 +406,12 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             out.push_str(": ");
             format_expr(out, body, Prec::Root);
         }
-        ExprKind::SequenceCons { head, tail } => {
-            out.push('[');
+        ExprKind::SequenceCons {
+            head,
+            tail,
+            spread_head,
+        } => {
+            out.push_str(if *spread_head { "[.." } else { "[" });
             format_expr(out, head, Prec::Root);
             out.push_str(", ..");
             format_expr(out, tail, Prec::Root);

@@ -184,8 +184,12 @@ pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: 
             canonical_expr_bytes(body, binders, out);
             binders.pop();
         }
-        ExprKind::SequenceCons { head, tail } => {
-            out.push(b';');
+        ExprKind::SequenceCons {
+            head,
+            tail,
+            spread_head,
+        } => {
+            out.push(if *spread_head { b'+' } else { b';' });
             canonical_expr_bytes(head, binders, out);
             canonical_expr_bytes(tail, binders, out);
         }
@@ -418,7 +422,7 @@ pub(super) fn free_path_names(expr: &Expr, binders: &mut Vec<String>, out: &mut 
             }
             free_path_names(else_arm, binders, out);
         }
-        ExprKind::SequenceCons { head, tail } => {
+        ExprKind::SequenceCons { head, tail, .. } => {
             free_path_names(head, binders, out);
             free_path_names(tail, binders, out);
         }
@@ -468,7 +472,7 @@ pub(super) fn mentioned_names(expr: &Expr, out: &mut BTreeSet<String>) {
         ExprKind::Slice { start, end } | ExprKind::Range { start, end, .. } => {
             start.iter().chain(end).for_each(|e| walk(e));
         }
-        ExprKind::Binary { left, right, .. } | ExprKind::SequenceCons { head: left, tail: right } => {
+        ExprKind::Binary { left, right, .. } | ExprKind::SequenceCons { head: left, tail: right, .. } => {
             walk(left);
             walk(right);
         }

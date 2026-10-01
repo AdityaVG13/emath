@@ -463,10 +463,12 @@ pub enum Kont {
     ConsLeft {
         head: Box<Expr>,
         tail: Box<Expr>,
+        spread_head: bool,
     },
     ConsAfterHead {
         head: CValue,
         tail: Box<Expr>,
+        spread_head: bool,
     },
     MatchWaiting {
         subject: Box<Expr>,

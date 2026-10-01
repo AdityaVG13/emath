@@ -1,5 +1,5 @@
 use super::super::{Engine, Checkpoint, CHECKPOINT_SCHEMA, IMAGE_IDENTITY, CHECKPOINT_ABI, ACCOUNTING_VERSION, Environment, ConstructorError, fault, CValue, ContinuationFrame, Kont, FnDecl, BTreeMap, Arc};
-use super::prelude::{apply_unary, binary, cons_values, index_seq, type_admits};
+use super::prelude::{apply_unary, binary, index_seq, join_values, type_admits};
 
 impl Engine {
     pub(in crate::constructor_layer) fn snapshot(&self) -> Checkpoint {
@@ -226,17 +226,26 @@ impl Engine {
                 index_seq(seq.clone(), i)?
             }
             Kont::UnaryAfter { op, value } => apply_unary(*op, self.eval(value)?)?,
-            Kont::ConsLeft { head, tail } => {
+            Kont::ConsLeft {
+                head,
+                tail,
+                spread_head,
+            } => {
                 let h = self.eval(head)?;
                 self.push_kont(|| Kont::ConsAfterHead {
                     head: h.clone(),
                     tail: tail.clone(),
+                    spread_head: *spread_head,
                 });
                 let t = self.eval(tail)?;
                 self.pop_kont();
-                cons_values(h, t)?
+                join_values(h, t, *spread_head)?
             }
-            Kont::ConsAfterHead { head, tail } => cons_values(head.clone(), self.eval(tail)?)?,
+            Kont::ConsAfterHead {
+                head,
+                tail,
+                spread_head,
+            } => join_values(head.clone(), self.eval(tail)?, *spread_head)?,
             Kont::MatchWaiting {
                 subject,
                 arms,
@@ -343,16 +352,21 @@ impl Engine {
                 _ => return Err(fault("type", "index must be Int")),
             },
             Kont::UnaryAfter { op, .. } => apply_unary(*op, incoming)?,
-            Kont::ConsLeft { tail, .. } => {
+            Kont::ConsLeft {
+                tail, spread_head, ..
+            } => {
                 self.push_kont(|| Kont::ConsAfterHead {
                     head: incoming.clone(),
                     tail: tail.clone(),
+                    spread_head: *spread_head,
                 });
                 let t = self.eval(tail)?;
                 self.pop_kont();
-                cons_values(incoming, t)?
+                join_values(incoming, t, *spread_head)?
             }
-            Kont::ConsAfterHead { head, .. } => cons_values(head.clone(), incoming)?,
+            Kont::ConsAfterHead {
+                head, spread_head, ..
+            } => join_values(head.clone(), incoming, *spread_head)?,
             Kont::MatchWaiting { arms, else_arm, .. } => {
                 self.choose_match(incoming, arms, else_arm)?
             }

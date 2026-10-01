@@ -1428,6 +1428,59 @@ fn emission_conformance_distributions() {
     );
 }
 
+const LONG_WALK_DRIVER: &str = r#"
+//! Tail-recursive walks over 200000 elements: linear in emitted code
+//! (well under a second even unoptimized), quadratic if each step
+//! copies the walked sequence (about 2e10 element copies).
+
+use long_walk::{fold_sum, walk_sum};
+
+fn main() {
+    let n = 200_000i64;
+    let xs: Vec<f64> = (0..n).map(|k| k as f64).collect();
+    let want = (n * (n - 1) / 2) as f64;
+    let mut failures = 0usize;
+
+    let start = std::time::Instant::now();
+    let got = walk_sum(xs, 0, 0.0);
+    let secs = start.elapsed().as_secs_f64();
+    if !matches!(&got, Ok(value) if *value == want) {
+        failures += 1;
+        println!("DIFF walk_sum EMITTED {:?}; VM = {want}", got);
+    }
+    if secs > 5.0 {
+        failures += 1;
+        println!("DIFF walk_sum took {secs:.1} s over {n} elements; linear walks finish well under 5 s");
+    }
+
+    let start = std::time::Instant::now();
+    let got = fold_sum(n);
+    let secs = start.elapsed().as_secs_f64();
+    if !matches!(&got, Ok(value) if *value == n * (n - 1) / 2) {
+        failures += 1;
+        println!("DIFF fold_sum EMITTED {:?}; VM = {}", got, n * (n - 1) / 2);
+    }
+    if secs > 5.0 {
+        failures += 1;
+        println!("DIFF fold_sum took {secs:.1} s over {n} elements; linear walks finish well under 5 s");
+    }
+
+    if failures == 0 {
+        println!("long_walk: all pins hold");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_long_walk() {
+    let diffs = run_lane("tests/fixtures/constructor/long_walk.emath", LONG_WALK_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted long_walk disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
 const FLOAT64_QUOTE_DRIVER: &str = r#"
 //! Authored pins of the Float64 quote lane against the emitted crate:
 //! a unary Float64 function template (one open constant) through

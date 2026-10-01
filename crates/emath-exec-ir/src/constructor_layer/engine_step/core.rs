@@ -1,6 +1,6 @@
 use super::super::{Engine, ConstructorError, Kont, Expr, CValue, ExprKind, parse_int, parse_exact, fault, Arc, BTreeMap, DomainShape, Closure, BinaryOp, Code, ExactInt, exact_fault};
 use super::prelude::{
-    apply_unary, arrow_domain_of_expr, binary, cons_values, domain_expr_of_shape, domain_shape_of_expr,
+    apply_unary, arrow_domain_of_expr, binary, join_values, domain_expr_of_shape, domain_shape_of_expr,
     domain_shape_of_type, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag,
     project_field, schema_tag,
 };
@@ -305,20 +305,27 @@ impl Engine {
             ExprKind::Record { type_path, fields } => {
                 self.finish_record_fields(type_path.clone(), BTreeMap::new(), fields.clone(), None)
             }
-            ExprKind::SequenceCons { head, tail } => {
+            ExprKind::SequenceCons {
+                head,
+                tail,
+                spread_head,
+            } => {
+                let spread_head = *spread_head;
                 self.push_kont(|| Kont::ConsLeft {
                     head: head.clone(),
                     tail: tail.clone(),
+                    spread_head,
                 });
                 let h = self.eval(head)?;
                 self.pop_kont();
                 self.push_kont(|| Kont::ConsAfterHead {
                     head: h.clone(),
                     tail: tail.clone(),
+                    spread_head,
                 });
                 let t = self.eval(tail)?;
                 self.pop_kont();
-                cons_values(h, t)
+                join_values(h, t, spread_head)
             }
             ExprKind::Index { value, indices } => {
                 let seq = self.eval(value)?;

@@ -199,9 +199,14 @@ pub(super) fn substitute_path(expr: &Expr, name: &str, replacement: &Expr, mint:
                 .map(|end| Box::new(substitute_path(end, name, replacement, mint))),
             inclusive: *inclusive,
         },
-        ExprKind::SequenceCons { head, tail } => ExprKind::SequenceCons {
+        ExprKind::SequenceCons {
+            head,
+            tail,
+            spread_head,
+        } => ExprKind::SequenceCons {
             head: Box::new(substitute_path(head, name, replacement, mint)),
             tail: Box::new(substitute_path(tail, name, replacement, mint)),
+            spread_head: *spread_head,
         },
         ExprKind::Record { type_path, fields } => ExprKind::Record {
             type_path: type_path.clone(),
@@ -799,8 +804,12 @@ pub(super) fn view_of(
         }
         // Its own kind: a walker reading `elements` off every `Sequence`
         // would fault on a spread list, which has head and tail instead.
-        ExprKind::SequenceCons { head, tail } => view_record(
-            "Cons",
+        ExprKind::SequenceCons {
+            head,
+            tail,
+            spread_head,
+        } => view_record(
+            if *spread_head { "Append" } else { "Cons" },
             BTreeMap::from([
                 ("head".into(), code_of(*head.clone())),
                 ("tail".into(), code_of(*tail.clone())),

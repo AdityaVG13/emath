@@ -326,8 +326,16 @@ pub(super) fn authored_control_expr(
                 }
                 text
             };
-            let then_body = widen(then_text, &then_kind, &else_kind);
-            let else_body = widen(else_text, &else_kind, &then_kind);
+            let then_body = if super::kinds::ends_in_tail_loop(then_body) {
+                then_text
+            } else {
+                widen(then_text, &then_kind, &else_kind)
+            };
+            let else_body = if super::kinds::ends_in_tail_loop(else_body) {
+                else_text
+            } else {
+                widen(else_text, &else_kind, &then_kind)
+            };
             // A union-valued condition (a boolean combinator inside an
             // expression template or quoted frame) projects to bool
             // checked - the same law as the Select arm.

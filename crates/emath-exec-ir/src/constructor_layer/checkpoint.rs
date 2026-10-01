@@ -610,8 +610,12 @@ pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
             encode_expr(value, out);
             out.push('\n');
         }
-        Kont::ConsLeft { head, tail } => {
-            out.push_str("kont ConsLeft\n");
+        Kont::ConsLeft {
+            head,
+            tail,
+            spread_head,
+        } => {
+            out.push_str(if *spread_head { "kont AppendLeft\n" } else { "kont ConsLeft\n" });
             out.push_str("expr ");
             encode_expr(head, out);
             out.push('\n');
@@ -619,8 +623,16 @@ pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
             encode_expr(tail, out);
             out.push('\n');
         }
-        Kont::ConsAfterHead { head, tail } => {
-            out.push_str("kont ConsAfterHead\n");
+        Kont::ConsAfterHead {
+            head,
+            tail,
+            spread_head,
+        } => {
+            out.push_str(if *spread_head {
+                "kont AppendAfterHead\n"
+            } else {
+                "kont ConsAfterHead\n"
+            });
             out.push_str("value ");
             encode_cvalue(head, ctx, out);
             out.push('\n');
@@ -869,13 +881,15 @@ pub(super) fn decode_kont<'a>(
                 value: Box::new(decode_expr_line(lines)?),
             })
         }
-        "ConsLeft" => Ok(Kont::ConsLeft {
+        "ConsLeft" | "AppendLeft" => Ok(Kont::ConsLeft {
             head: Box::new(decode_expr_line(lines)?),
             tail: Box::new(decode_expr_line(lines)?),
+            spread_head: tag == "AppendLeft",
         }),
-        "ConsAfterHead" => Ok(Kont::ConsAfterHead {
+        "ConsAfterHead" | "AppendAfterHead" => Ok(Kont::ConsAfterHead {
             head: decode_value_line(lines, ctx)?,
             tail: Box::new(decode_expr_line(lines)?),
+            spread_head: tag == "AppendAfterHead",
         }),
         "MatchWaiting" => {
             let arm_count: usize = parts
@@ -1323,8 +1337,12 @@ pub(super) fn encode_expr(expr: &Expr, out: &mut String) {
             }
             out.push(')');
         }
-        ExprKind::SequenceCons { head, tail } => {
-            out.push_str("(cons ");
+        ExprKind::SequenceCons {
+            head,
+            tail,
+            spread_head,
+        } => {
+            out.push_str(if *spread_head { "(append " } else { "(cons " });
             encode_expr(head, out);
             out.push(' ');
             encode_expr(tail, out);
@@ -1819,6 +1837,11 @@ pub(super) fn decode_expr_cur(cur: &mut Cursor<'_>) -> Result<Expr, ConstructorE
                 right: Box::new(decode_expr_cur(cur)?),
             }
         }
+        "cons" | "append" => ExprKind::SequenceCons {
+            head: Box::new(decode_expr_cur(cur)?),
+            tail: Box::new(decode_expr_cur(cur)?),
+            spread_head: tag == "append",
+        },
         "un" => {
             let op = un_op(cur.ident()?)
                 .ok_or_else(|| fault("incompatible_checkpoint", "unknown unary operator"))?;

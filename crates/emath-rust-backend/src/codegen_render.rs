@@ -342,8 +342,24 @@ pub(crate) fn op_expr(
                         render_expr(&owned_operand(program, *value, kinds))
                     }
                 })
-                .collect::<Vec<_>>()
-                .join(", ");
+                .collect::<Vec<_>>();
+            if let Some((params, unchanged)) = kinds::tail_call_slot(op) {
+                // Every new argument is computed before any parameter
+                // is rebound, so arguments read the old values.
+                let mut code = String::from("{ ");
+                let moved: Vec<usize> = (0..args.len())
+                    .filter(|position| !unchanged.get(*position).copied().unwrap_or(false))
+                    .collect();
+                for position in &moved {
+                    code.push_str(&format!("let __tail_{position} = {}; ", args[*position]));
+                }
+                for position in &moved {
+                    code.push_str(&format!("{} = __tail_{position}; ", params[*position]));
+                }
+                code.push_str("continue }");
+                return Ok(Expr::Raw(code));
+            }
+            let args = args.join(", ");
             // The recursive wrapper's signature is the enclosing
             // body's inferred result carrier (`program_kind` over the
             // same context - exactly the kind the `__self` /
@@ -2022,6 +2038,8 @@ fn literal_frame_expr(
         // scope names its decided carrier so nested `CallSelf` sites
         // cross from what `__frame_self` actually returns.
         let _wrapper = SelfWrapperScope::enter(result_kind.clone());
+        let param_names: Vec<String> = names.iter().chain(states.iter()).cloned().collect();
+        let _tail = TailLoopScope::enter(body, param_names, states.len());
         let mut body_code = replace_ident_prefix(
             &render_expr(&value_expr(body, &names, &states, &frame_kinds)?),
             "__self(",
@@ -2040,8 +2058,12 @@ fn literal_frame_expr(
             body_code = render_expr(&owned_value(Expr::Raw(body_code), &result_kind));
         }
         code.push_str(&format!(
-            "fn __frame_self({}) -> Result<{result_ty}, String> {{ Ok({body_code}) }} __frame_self({})? ",
-            params.join(", "),
+            "#[allow(unused_mut, unreachable_code)] fn __frame_self({}) -> Result<{result_ty}, String> {{ loop {{ return Ok({body_code}); }} }} __frame_self({})? ",
+            params
+                .iter()
+                .map(|param| format!("mut {param}"))
+                .collect::<Vec<_>>()
+                .join(", "),
             call_args.join(", ")
         ));
         code.push_str(" }");
