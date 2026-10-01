@@ -359,7 +359,10 @@ impl Engine {
                     // the declared input type; the runtime lane checks
                     // arguments against it).
                     domain: domain_shape_of_expr(domain),
-                    body: *body.clone(),
+                    // Destination-first: clone the body into its final field
+                    // instead of via a temporary Box owner. Infallible, and
+                    // nothing publishes until the enclosing Arc::new commits.
+                    body: (**body).clone(),
                     env: self.env.captured_by(body),
                     recursive: None,
                     body_key: Default::default(),
@@ -387,7 +390,10 @@ impl Engine {
                     let finished = Closure {
                         param: param.clone(),
                         domain: recur_domain.clone(),
-                        body: *body.clone(),
+                        // Destination-first: clone the body into its final field
+                        // instead of via a temporary Box owner. Infallible, and
+                        // nothing publishes until the enclosing Arc::new commits.
+                        body: (**body).clone(),
                         env: BTreeMap::new(),
                         recursive: Some(name.clone()),
                         body_key: Default::default(),
@@ -396,7 +402,10 @@ impl Engine {
                     return Ok(CValue::Closure(Arc::new(Closure {
                         param: param.clone(),
                         domain: recur_domain,
-                        body: *body.clone(),
+                        // Destination-first: clone the body into its final field
+                        // instead of via a temporary Box owner. Infallible, and
+                        // nothing publishes until the enclosing Arc::new commits.
+                        body: (**body).clone(),
                         env,
                         recursive: Some(name.clone()),
                         body_key: Default::default(),
@@ -405,7 +414,10 @@ impl Engine {
                 Ok(CValue::Closure(Arc::new(Closure {
                     param: String::new(),
                     domain: recur_domain,
-                    body: *body.clone(),
+                    // Destination-first: clone the body into its final field
+                    // instead of via a temporary Box owner. Infallible, and
+                    // nothing publishes until the enclosing Arc::new commits.
+                    body: (**body).clone(),
                     env: self.env.captured_by(body),
                     recursive: Some(name.clone()),
                     body_key: Default::default(),

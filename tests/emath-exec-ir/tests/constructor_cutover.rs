@@ -3136,6 +3136,45 @@ emath function NamedTailWalk:
         }
     });
 
+    probe.case("recur-record-body-preserved", |p| {
+        // Pass-3 destination-first pin (S13 record lane): a `recur`
+        // over a record of function literals builds its body Expr
+        // directly in the closure field instead of via a temporary Box
+        // owner. The asymmetric field bodies (+1 vs +2) discriminate a
+        // swapped or truncated body; the sibling lanes are pinned by
+        // `user-bound-names-win` (FunctionAbs) and
+        // `recur-tail-scales-nontail-caps` (recur-fn).
+        let source = r#"
+emath function RecRecord:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        fns = recur f in Pair: {a: Fn(Int, Int), b: Fn(Int, Int)}: Pair: {a: function k in Int: k + 1, b: function k in Int: k + 2}
+        pair = fns(0)
+        result = pair.a(n) + pair.b(n)
+"#;
+        let (tree, diagnostics) = parse_str(source);
+        p.demand(
+            "recrec-parsed",
+            !diagnostics.has_errors(),
+            format!("{diagnostics:?}"),
+        );
+        match evaluate_function(
+            &tree,
+            "RecRecord",
+            &BTreeMap::from([("n".into(), int(10))]),
+        ) {
+            Ok(value) => {
+                p.eq("recrec-computes", value, int(23));
+            }
+            Err(err) => {
+                p.fail("recrec-computes", err.to_string());
+            }
+        }
+    });
+
     eprintln!("constructor_cutover checks={}", probe.checks());
     probe.finish();
 }

@@ -1433,7 +1433,7 @@ const LONG_WALK_DRIVER: &str = r#"
 //! (well under a second even unoptimized), quadratic if each step
 //! copies the walked sequence (about 2e10 element copies).
 
-use long_walk::{fold_sum, walk_sum};
+use long_walk::{dot_self, fold_sum, walk_sum};
 
 fn main() {
     let n = 200_000i64;
@@ -1464,7 +1464,22 @@ fn main() {
         failures += 1;
         println!("DIFF fold_sum took {secs:.1} s over {n} elements; linear walks finish well under 5 s");
     }
-
+    // Captured sequences are shared, not copied, each time a step closure
+    // is rebuilt; copying makes this 1.6e11 element copies.
+    let m = 400_000i64;
+    let ys: Vec<f64> = (0..m).map(|k| (k % 7) as f64).collect();
+    let want = (0..m).map(|k| (k % 7) * (k % 7)).sum::<i64>() as f64;
+    let start = std::time::Instant::now();
+    let got = dot_self(ys);
+    let secs = start.elapsed().as_secs_f64();
+    if !matches!(&got, Ok(value) if *value == want) {
+        failures += 1;
+        println!("DIFF dot_self EMITTED {:?}; VM = {want}", got);
+    }
+    if secs > 5.0 {
+        failures += 1;
+        println!("DIFF dot_self took {secs:.1} s over {m} elements; linear walks finish well under 5 s");
+    }
     if failures == 0 {
         println!("long_walk: all pins hold");
     }

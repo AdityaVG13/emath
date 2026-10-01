@@ -974,6 +974,8 @@ pub(crate) fn op_expr(
                 let mut inputs = InputKinds::new();
                 let mut capture_bindings = String::new();
                 let mut bindings = String::new();
+                let depth = SharedCaptureScope::depth();
+                let mut shared = vec![None; parameters.len()];
                 inputs.insert(parameters[0].clone(), param_kind);
                 for (index, name) in parameters.iter().enumerate().skip(1) {
                     let argument = captures[index - 1];
@@ -999,14 +1001,35 @@ pub(crate) fn op_expr(
                         inputs.insert(name.clone(), kind);
                         continue;
                     }
-                    let value = render_expr(&owned_operand(program, argument, kinds));
-                    capture_bindings
-                        .push_str(&format!("let __program_capture_{index} = {value}; "));
-                    let borrow = if kind.is_copy() { "" } else { "&" };
-                    bindings.push_str(&format!("let {name} = {borrow}__program_capture_{index}; "));
+                    if kind.is_copy() {
+                        let value = render_expr(&owned_operand(program, argument, kinds));
+                        capture_bindings
+                            .push_str(&format!("let __program_capture_{index} = {value}; "));
+                        bindings.push_str(&format!("let {name} = __program_capture_{index}; "));
+                    } else {
+                        // Non-copy captures rest in a shared `Rc`: a
+                        // literal nested in a body (a curried fold step
+                        // rebuilt per element) re-shares the enclosing
+                        // capture instead of copying the sequence per
+                        // rebuild. Depth-suffixed names keep a nested
+                        // literal's bindings from shadowing the
+                        // enclosing captures they read.
+                        let holder = format!("__program_shared_{depth}_{index}");
+                        let value = match SharedCaptureScope::source(program, argument) {
+                            Some(source) => format!("std::rc::Rc::clone(&{source})"),
+                            None => format!(
+                                "std::rc::Rc::new({})",
+                                render_expr(&owned_operand(program, argument, kinds))
+                            ),
+                        };
+                        capture_bindings.push_str(&format!("let {holder} = {value}; "));
+                        bindings.push_str(&format!("let {name} = &*{holder}; "));
+                        shared[index] = Some(holder);
+                    }
                     inputs.insert(name.clone(), kind);
                 }
                 let _reference = ReferenceScope::enter();
+                let _shared = SharedCaptureScope::enter(body, shared);
                 let body_code = render_expr(&value_expr(body, &parameters, &[], &inputs)?);
                 let result_kind = program_kind(body, &parameters, &[], &inputs);
                 let result_ty = match &result_kind {

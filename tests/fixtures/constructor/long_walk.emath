@@ -33,3 +33,18 @@ emath function fold_sum:
         example <ten>:
             given n = 10
             expect result == 45
+
+emath function dot_self:
+    # Sum xs[i]^2 through a curried fold whose step closure captures xs:
+    # the inner closure is rebuilt every step, so copying the capture
+    # per step makes the fold quadratic.
+    inputs:
+        xs: sequence(Float64)
+    outputs:
+        result: Float64
+    definitions:
+        result = fold(function acc in Float64: function i in Int: acc + xs[i] * xs[i], 0.0f64, range(0, length(xs)))
+    tests:
+        example <three>:
+            given xs = [1.0f64, 2.0f64, 3.0f64]
+            expect result == 14.0f64

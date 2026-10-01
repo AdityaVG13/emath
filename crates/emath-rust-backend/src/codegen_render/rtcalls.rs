@@ -109,6 +109,40 @@ impl ReferenceScope {
 impl Drop for ReferenceScope {
     fn drop(&mut self) { REFERENCE_CONTEXT.with(|context| context.set(self.0)); }
 }
+thread_local! {
+    static SHARED_CAPTURES: std::cell::RefCell<Vec<(usize, Vec<Option<String>>)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+/// While a typed program literal's body renders, names the `Rc` that
+/// holds each of its shared captures (indexed by body input), so a
+/// literal nested in that body re-shares the capture instead of
+/// copying it every time the nested literal is rebuilt.
+pub(crate) struct SharedCaptureScope;
+impl SharedCaptureScope {
+    pub(crate) fn depth() -> usize {
+        SHARED_CAPTURES.with(|stack| stack.borrow().len())
+    }
+    pub(crate) fn enter(body: &EmirProgram, shared: Vec<Option<String>>) -> Self {
+        SHARED_CAPTURES.with(|stack| stack.borrow_mut().push((std::ptr::from_ref(body).addr(), shared)));
+        Self
+    }
+    /// The enclosing `Rc` behind `value` when it loads a shared capture
+    /// of the literal body being rendered.
+    pub(crate) fn source(program: &EmirProgram, value: EmirValue) -> Option<String> {
+        let Some((EmirOp::LoadInput(index), _)) = program.ops.get(value.0 as usize) else {
+            return None;
+        };
+        let key = std::ptr::from_ref(program).addr();
+        SHARED_CAPTURES.with(|stack| {
+            let stack = stack.borrow();
+            let (_, shared) = stack.iter().rev().find(|(body, _)| *body == key)?;
+            shared.get(usize::from(*index)).cloned().flatten()
+        })
+    }
+}
+impl Drop for SharedCaptureScope {
+    fn drop(&mut self) { SHARED_CAPTURES.with(|stack| { stack.borrow_mut().pop(); }); }
+}
 pub(super) fn checked_integer_result(call: Expr) -> Expr {
     if REFERENCE_CONTEXT.with(std::cell::Cell::get) {
         map_runtime_result(format!("{}.ok_or(\"i64 overflow\")", render_expr(&call)))
