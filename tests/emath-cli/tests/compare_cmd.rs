@@ -322,6 +322,31 @@ fn compare_cmd() {
         "{out}"
     );
 
+    // The affine world keeps how a value depends on each input range, so
+    // correlated quantities cancel where an enclosure only widens:
+    // (1 + x) - 1 - x over [0, 1] is exactly 0, not [-1, 1].
+    let out = compare_in("cancellation", "x=[0,1]", &["interval", "affine"]);
+    assert!(world_row(&out, "interval").contains("\"payload\":\"[-1,1]\""), "{out}");
+    let affine = world_row(&out, "affine");
+    assert!(affine.contains("\"payload\":\"0/1\""), "{out}");
+    // x(1 - x) over [0, 1]: the true range is [0, 1/4]; the enclosure
+    // is [0, 1], the affine form 1/4 ± 1/4.
+    let out = compare_in("logistic", "x=[0,1]", &["interval", "affine"]);
+    assert!(world_row(&out, "interval").contains("\"payload\":\"[0,1]\""), "{out}");
+    let affine = world_row(&out, "affine");
+    assert!(affine.contains("\"representation\":\"affine\""), "{out}");
+    assert!(affine.contains("\"payload\":\"1/4±1/4\""), "{out}");
+    assert!(affine.contains("\"width\":5e-1"), "{out}");
+    // 1/x over [1, 2] linearizes to exactly [1/2, 1].
+    let out = compare_in("invert", "x=[1,2]", &["affine"]);
+    assert!(world_row(&out, "affine").contains("\"payload\":\"3/4±1/4\""), "{out}");
+    let out = compare_in("invert", "x=[-1,1]", &["affine"]);
+    assert!(world_row(&out, "affine").contains("\"code\":\"division_by_zero\""), "{out}");
+    // A point input is exact, as in the exact world.
+    let out = compare_in("keep", "x=0.1", &["exact", "affine"]);
+    assert_eq!(verdict(&out), "agree", "{out}");
+    assert!(world_row(&out, "affine").contains("\"payload\":\"1/10\""), "{out}");
+
     // A grid evaluates every point in every world and maps where they
     // diverge. 1/n + 1/n + 1/n == 3/n fails in binary64 exactly at n = 5
     // and n = 10 among 1..=12.

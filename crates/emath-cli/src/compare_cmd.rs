@@ -7,7 +7,8 @@
 //! real data rounded to that float format, `int64` with integer
 //! arithmetic confined to signed 64-bit, `interval` with every real an
 //! outward-rounded binary64 enclosure (an enclosure agrees with the
-//! answers it contains).
+//! answers it contains), `affine` with every real exact and each range
+//! input an affine form, so correlated quantities cancel.
 //! The command never picks a winner. It prints each world's answer or
 //! refusal, the exact gap of each numeric answer from the first answer,
 //! and a verdict: `agree` (every world answered the same value),
@@ -28,7 +29,7 @@ use emath_exec_ir::exact_int::ExactInt;
 
 use crate::{CliExit, EXIT_IO, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 
-pub(crate) const USAGE: &str = "compare <file.emath> --function F [--set name=value] [--grid name=v1,v2,... | name=LO..HI | name=LO..HI/N] [--world reference|exact|float64|float32|bfloat16|int64|interval] [--work N] [--json]";
+pub(crate) const USAGE: &str = "compare <file.emath> --function F [--set name=value] [--grid name=v1,v2,... | name=LO..HI | name=LO..HI/N] [--world reference|exact|float64|float32|bfloat16|int64|interval|affine] [--work N] [--json]";
 
 /// Most input points one grid may evaluate.
 const GRID_LIMIT: usize = 10_000;
@@ -189,6 +190,7 @@ fn representation(value: &CValue) -> &'static str {
         CValue::Int(_) | CValue::Rat { .. } | CValue::Bool(_) => "exact_scalar",
         CValue::Float64(_) => "rounded_scalar",
         CValue::Interval { .. } => "enclosure",
+        CValue::Affine(_) => "affine",
         CValue::Code(_) => "code",
         _ => "structured",
     }
@@ -205,7 +207,8 @@ pub(crate) fn run(request: CompareRequest) -> CliExit {
                     request.json,
                     "E-CLI-USAGE",
                     &format!(
-                        "unknown world `{name}`; worlds are reference, exact, float64, float32, bfloat16, int64, interval"
+                        "unknown world `{name}`; worlds are {}",
+                        CarrierWorld::ALL.map(CarrierWorld::name).join(", ")
                     ),
                     EXIT_USAGE,
                 );

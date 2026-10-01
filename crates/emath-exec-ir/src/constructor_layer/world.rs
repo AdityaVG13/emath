@@ -38,6 +38,13 @@
 //!   exact as in the float worlds. The answer encloses the exact answer
 //!   for every input inside the input intervals; a branch the
 //!   enclosures cannot decide refuses `undecided_comparison`.
+//! - `Affine`: every real is exact, as in `Exact`, except a range input
+//!   `[lo, hi]`, which is an affine form with its own noise symbol (see
+//!   `affine`). Values computed from the same range stay correlated, so
+//!   `x - x` is 0 and `x * (1 - x)` over [0, 1] is 1/4 ± 1/4 where an
+//!   interval gives [0, 1]. The answer contains the exact answer for
+//!   every input inside the ranges; an undecidable branch refuses
+//!   `undecided_comparison`.
 //!
 //! Disagreement between worlds is information about the definition
 //! (rounding, cancellation, a branch flipped by rounding), not a fault
@@ -60,10 +67,11 @@ pub enum CarrierWorld {
     BFloat16,
     Int64,
     Interval,
+    Affine,
 }
 
 impl CarrierWorld {
-    pub const ALL: [CarrierWorld; 7] = [
+    pub const ALL: [CarrierWorld; 8] = [
         Self::Reference,
         Self::Exact,
         Self::Float64,
@@ -71,6 +79,7 @@ impl CarrierWorld {
         Self::BFloat16,
         Self::Int64,
         Self::Interval,
+        Self::Affine,
     ];
 
     #[must_use]
@@ -83,6 +92,7 @@ impl CarrierWorld {
             Self::BFloat16 => "bfloat16",
             Self::Int64 => "int64",
             Self::Interval => "interval",
+            Self::Affine => "affine",
         }
     }
 
@@ -99,7 +109,7 @@ impl CarrierWorld {
     /// Real data is inexact here (a float or an enclosure) while the
     /// program's literal constants stay exact.
     pub(super) fn splits_data(self) -> bool {
-        self.is_float() || self == Self::Interval
+        self.is_float() || matches!(self, Self::Interval | Self::Affine)
     }
 
     /// (significand bits, minimum normal exponent, maximum exponent) of
@@ -282,18 +292,29 @@ pub(super) fn exact_constant(expr: &Expr) -> Result<CValue, ConstructorError> {
 ///   in authored tests does; everything else reads as `emath run` does.
 /// - Interval: a real reads as its tightest enclosure; `[lo, hi]` for a
 ///   scalar real input is the range itself, rounded outward.
+/// - Affine: a real reads exactly; `[lo, hi]` for a scalar real input is
+///   an affine form over a fresh noise symbol.
 pub fn world_input(
     world: CarrierWorld,
     declared: Option<&TypeExpr>,
     raw: &str,
 ) -> Result<CValue, ConstructorError> {
-    if world == CarrierWorld::Interval && declared.is_some_and(is_scalar_real) {
+    if matches!(world, CarrierWorld::Interval | CarrierWorld::Affine)
+        && declared.is_some_and(is_scalar_real)
+    {
         if let Some(range) = raw
             .trim()
             .strip_prefix('[')
             .and_then(|r| r.strip_suffix(']'))
         {
-            return read_range(range);
+            let (lo, hi) = read_range(range)?;
+            if world == CarrierWorld::Affine {
+                return super::affine::from_range(&lo, &hi);
+            }
+            return super::interval::interval(
+                super::interval::enclose(&lo)?.0,
+                super::interval::enclose(&hi)?.1,
+            );
         }
     }
     let value = parse_constructor_scalar(raw);
@@ -301,6 +322,7 @@ pub fn world_input(
         // The narrow float worlds round a decimal from its exact value,
         // and the interval world encloses it.
         CarrierWorld::Exact
+        | CarrierWorld::Affine
         | CarrierWorld::Float32
         | CarrierWorld::BFloat16
         | CarrierWorld::Interval => true,
@@ -322,7 +344,8 @@ pub fn world_input(
 /// argument): exact reals round to a float world's format or become the
 /// tightest interval in `interval`; an `Int` outside 64 bits is refused
 /// in `int64`. A binary64 stays a binary64 in `exact` (it is reported
-/// as rounded, never relabeled exact).
+/// as rounded, never relabeled exact). An interval is a range with its
+/// own noise symbol in `affine`; an affine form keeps its symbols.
 pub(super) fn world_value(world: CarrierWorld, value: CValue) -> Result<CValue, ConstructorError> {
     Ok(match value {
         CValue::Rat { num, den } if world.is_float() => {
@@ -335,6 +358,11 @@ pub(super) fn world_value(world: CarrierWorld, value: CValue) -> Result<CValue, 
         }
         CValue::Int(n) if world == CarrierWorld::Int64 => {
             return with_world(world, || machine_int(n));
+        }
+        // An enclosure made elsewhere is a range here: it gets a symbol.
+        value @ CValue::Interval { .. } if world == CarrierWorld::Affine => {
+            let (lo, hi) = super::interval::enclose(&value)?;
+            super::affine::from_range(&CValue::Float64(lo), &CValue::Float64(hi))?
         }
         CValue::Sequence(items) => CValue::Sequence(std::sync::Arc::new(
             items
@@ -362,8 +390,8 @@ pub(super) fn world_value(world: CarrierWorld, value: CValue) -> Result<CValue, 
     })
 }
 
-/// `lo, hi` as an interval: each end read exactly, then rounded outward.
-fn read_range(range: &str) -> Result<CValue, ConstructorError> {
+/// The exact ends of a range `lo, hi`.
+fn read_range(range: &str) -> Result<(CValue, CValue), ConstructorError> {
     let invalid = || {
         fault(
             "invalid_input",
@@ -383,10 +411,7 @@ fn read_range(range: &str) -> Result<CValue, ConstructorError> {
             format!("the range `[{range}]` has its lower end above its upper end"),
         ));
     }
-    super::interval::interval(
-        super::interval::enclose(&lo)?.0,
-        super::interval::enclose(&hi)?.1,
-    )
+    Ok((lo, hi))
 }
 
 /// A declared real scalar type (`Rat`, `Float64`), not a container.
@@ -480,6 +505,13 @@ pub fn answers_agree(left: &CValue, right: &CValue) -> Result<bool, ConstructorE
         }
         (CValue::Interval { .. }, other) => contains(left, other),
         (other, CValue::Interval { .. }) => contains(right, other),
+        // Two forms agree when they span the same range; a form agrees
+        // with a number it contains.
+        (CValue::Affine(_), CValue::Affine(_)) => {
+            Ok(super::affine::contains(left, right)? && super::affine::contains(right, left)?)
+        }
+        (CValue::Affine(_), other) => super::affine::contains(left, other),
+        (other, CValue::Affine(_)) => super::affine::contains(right, other),
         (CValue::Sequence(a), CValue::Sequence(b)) => all_agree(a, b),
         (CValue::Tuple(a), CValue::Tuple(b)) => all_agree(a, b),
         _ => eq_values(left, right),
@@ -503,6 +535,10 @@ fn all_agree(left: &[CValue], right: &[CValue]) -> Result<bool, ConstructorError
 pub fn interval_width(value: &CValue) -> Option<f64> {
     match value {
         CValue::Interval { lo, hi } => Some(super::interval::width(*lo, *hi)),
+        CValue::Affine(_) => {
+            let (lo, hi) = super::interval::enclose(value).ok()?;
+            Some(super::interval::width(lo, hi))
+        }
         _ => None,
     }
 }

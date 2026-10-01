@@ -89,6 +89,7 @@ impl Engine {
                 if matches!(
                     current,
                     CarrierWorld::Exact
+                        | CarrierWorld::Affine
                         | CarrierWorld::Float32
                         | CarrierWorld::BFloat16
                         | CarrierWorld::Interval
@@ -96,7 +97,7 @@ impl Engine {
                     if let Some((numer, denom)) = decimal_to_rational(cleaned) {
                         let num = parse_exact(&numer)?;
                         let den = parse_exact(&denom)?;
-                        if current == CarrierWorld::Exact {
+                        if matches!(current, CarrierWorld::Exact | CarrierWorld::Affine) {
                             return CValue::Rat { num, den }.canon();
                         }
                         if current == CarrierWorld::Interval {
@@ -144,7 +145,7 @@ impl Engine {
                         let mut projected = true;
                         for segment in &segments[1..] {
                             if let Some(field) = project_field(&value, segment) { value = field } else {
-                                if matches!(value, CValue::Float64(_) | CValue::Interval { .. })
+                                if matches!(value, CValue::Float64(_) | CValue::Interval { .. } | CValue::Affine(_))
                                     && matches!(segment.as_str(), "numer" | "denom")
                                 {
                                     return Err(fault(

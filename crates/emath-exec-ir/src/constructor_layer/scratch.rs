@@ -122,6 +122,12 @@ fn render_value(value: &CValue, out: &mut String) -> Result<(), ConstructorError
                 "an interval is an interval-world value, not scratch cargo",
             ));
         }
+        CValue::Affine(_) => {
+            return Err(fault(
+                "scratch_unserializable",
+                "an affine form is an affine-world value, not scratch cargo",
+            ));
+        }
         CValue::Str(text) => {
             out.push_str(&format!("{{\"str\": {}}}", json_quote(text)));
         }

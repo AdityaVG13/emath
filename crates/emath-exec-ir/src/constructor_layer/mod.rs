@@ -36,6 +36,10 @@ pub enum CValue {
         lo: f64,
         hi: f64,
     },
+    /// A real that depends on shared noise symbols (exact center and
+    /// coefficients, at least one symbol): the carrier of the `affine`
+    /// world, see `affine`.
+    Affine(Arc<affine::AffineForm>),
     /// Text payload carrier (fbpb6 successor bead e6gvs): a Str literal
     /// evaluates as a first-class value. Structural equality only —
     /// the carrier exists without the string LIBRARY (no ordering,
@@ -229,6 +233,10 @@ impl fmt::Display for CValue {
             Self::Rat { num, den } => write!(f, "{num}/{den}"),
             Self::Float64(v) => write!(f, "{v}"),
             Self::Interval { lo, hi } => write!(f, "[{lo}, {hi}]"),
+            Self::Affine(form) => match affine::center_radius(form) {
+                Ok((center, radius)) => write!(f, "{center} ± {radius}"),
+                Err(_) => write!(f, "affine form"),
+            },
             Self::Str(text) => write!(f, "{text}"),
             // Contents are state, not a value: display the shape only,
             // never a snapshot that invites value-style comparison.
@@ -806,6 +814,7 @@ mod engine_step;
 mod eval;
 mod expr;
 mod identity;
+mod affine;
 mod interval;
 mod keep;
 mod ops;
@@ -820,6 +829,7 @@ mod value;
 mod world;
 
 pub(crate) use call::domain_shape_of_expr;
+pub use affine::AffineForm;
 pub use world::{
     answer_gap, answers_agree, configured_worlds, interval_width, with_world, with_worlds,
     world_input, CarrierWorld,

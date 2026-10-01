@@ -9,6 +9,9 @@ pub(super) fn cmp_numeric(left: &CValue, right: &CValue) -> Result<std::cmp::Ord
     if matches!(left, CValue::Interval { .. }) || matches!(right, CValue::Interval { .. }) {
         return super::interval::order(left, right);
     }
+    if matches!(left, CValue::Affine(_)) || matches!(right, CValue::Affine(_)) {
+        return super::affine::order(left, right);
+    }
     let float_rat = |value: &CValue| -> Result<(ExactInt, ExactInt), ConstructorError> {
         match value {
             CValue::Float64(x) => f64_exact_rat(*x)
@@ -34,6 +37,11 @@ pub(super) fn neg(value: CValue) -> Result<CValue, ConstructorError> {
         .canon(),
         CValue::Float64(x) => Ok(CValue::Float64(-x)),
         CValue::Interval { lo, hi } => Ok(CValue::Interval { lo: -hi, hi: -lo }),
+        value @ CValue::Affine(_) => super::affine::arithmetic(
+            BinaryOp::Sub,
+            &CValue::Int(ExactInt::from(0i64)),
+            &value,
+        ),
         other => Err(fault("type", format!("cannot negate {other}"))),
     }
 }
@@ -149,6 +157,9 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
             || int_quotient && world == super::world::CarrierWorld::Interval)
     {
         return super::interval::arithmetic(op, &left, &right);
+    }
+    if arithmetic && (matches!(left, CValue::Affine(_)) || matches!(right, CValue::Affine(_))) {
+        return super::affine::arithmetic(op, &left, &right);
     }
     let float_world = int_quotient && world.is_float();
     if float_world
@@ -295,8 +306,16 @@ pub(super) fn eq_values(left: &CValue, right: &CValue) -> Result<bool, Construct
         // rational). The previous structural default silently returned
         // false for mixed Float64 pairs.
         (
-            CValue::Int(_) | CValue::Rat { .. } | CValue::Float64(_) | CValue::Interval { .. },
-            CValue::Int(_) | CValue::Rat { .. } | CValue::Float64(_) | CValue::Interval { .. },
+            CValue::Int(_)
+            | CValue::Rat { .. }
+            | CValue::Float64(_)
+            | CValue::Interval { .. }
+            | CValue::Affine(_),
+            CValue::Int(_)
+            | CValue::Rat { .. }
+            | CValue::Float64(_)
+            | CValue::Interval { .. }
+            | CValue::Affine(_),
         ) => Ok(cmp_numeric(left, right)?.is_eq()),
         (CValue::Bool(a), CValue::Bool(b)) => Ok(a == b),
         // Mutable state has no total value equality: refuse by name

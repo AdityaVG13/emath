@@ -181,6 +181,61 @@ emath function WorldsLater:
         result = if WalkAt(n, 0, 0) >= 0: quote.worlds() else: quote.worlds()
 ";
 
+/// An affine form held across a suspension keeps its noise symbols: after
+/// `emath step`, `a - a` still cancels to zero and `a * a` is still an
+/// affine form, not an interval or a point.
+const AFFINE_ACROSS_STEP: &str = "emath function WalkAt:
+    inputs:
+        n: Int
+        i: Int
+        acc: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= n: acc else: WalkAt(n, i + 1, acc + i)
+
+emath function Held:
+    inputs:
+        n: Int
+    outputs:
+        result: (Rat, Rat)
+    definitions:
+        keep = function y in Rat: y
+        third = function y in Rat: y / 3
+        t = quote.world(\"interval\", third, 1.0, 1000).value
+        a = quote.world(\"affine\", keep, t, 1000).value
+        result = if WalkAt(n, 0, 0) >= 0: (a - a, a * a) else: (a, a)
+";
+
+#[test]
+fn step_resumes_a_held_affine_form() {
+    let mut p = Probe::new("emath step keeps an affine form's noise symbols");
+    let dir = std::env::temp_dir().join(format!("emath-step-affine-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let src = dir.join("affine_held.emath");
+    std::fs::write(&src, AFFINE_ACROSS_STEP).expect("write source");
+    let (text, code) = common::cli(&[
+        "run",
+        &src.to_string_lossy(),
+        "--function",
+        "Held",
+        "--set",
+        "n=500",
+        "--work",
+        "200",
+        "--out",
+        &dir.to_string_lossy(),
+    ]);
+    p.eq("suspends", code, EXIT_PARTIAL as i32);
+    p.contains("suspended receipt", &text, "suspended");
+    let checkpoint = dir.join("constructor-checkpoint.json");
+    let (text, code) = common::cli(&["step", &checkpoint.to_string_lossy(), "--work", "2000000"]);
+    p.eq("resume exit", code, EXIT_OK as i32);
+    p.contains("a - a cancels", &text, "(0/1, ");
+    p.contains("a * a stays affine", &text, " ± ");
+    p.finish();
+}
+
 #[test]
 fn step_resumes_under_the_runs_worlds() {
     let mut p = Probe::new("emath step keeps the suspended run's --worlds");

@@ -393,6 +393,11 @@ pub(super) fn compact_key(value: &CValue, out: &mut String) -> Option<()> {
             out.push_str(&format!("{}_{}", lo.to_bits(), hi.to_bits()));
             Some(())
         }
+        CValue::Affine(_) => {
+            out.push('Y');
+            out.push_str(&affine_text(value)?);
+            Some(())
+        }
         CValue::Sequence(items) => {
             out.push('[');
             for (i, item) in items.iter().enumerate() {
@@ -1012,6 +1017,11 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
         CValue::Interval { lo, hi } => {
             out.push_str(&format!("V {lo} {hi}"));
         }
+        CValue::Affine(_) => {
+            out.push_str("Y ");
+            // `affine::form` keeps every part exact, so this always reads.
+            out.push_str(&affine_text(value).expect("an affine form is exact"));
+        }
         CValue::Str(text) => {
             out.push_str("(str ");
             encode_quoted(text, out);
@@ -1147,6 +1157,13 @@ pub(super) fn decode_cvalue(text: &str, ctx: &mut DecodeCtx) -> Result<CValue, C
             .parse()
             .map_err(|_| fault("incompatible_checkpoint", "invalid Float64 in checkpoint"))?;
         return Ok(CValue::Float64(x));
+    }
+    if let Some(rest) = text.strip_prefix("Y ") {
+        let (value, used) = decode_affine(rest)?;
+        if !rest[used..].trim().is_empty() {
+            return Err(fault("incompatible_checkpoint", "invalid affine form in checkpoint"));
+        }
+        return Ok(value);
     }
     if let Some(rest) = text.strip_prefix("V ") {
         let invalid = || fault("incompatible_checkpoint", "invalid interval in checkpoint");
@@ -1790,6 +1807,11 @@ pub(super) fn decode_atom_cur(cur: &mut Cursor<'_>) -> Result<CValue, Constructo
             .map_err(|_| fault("incompatible_checkpoint", "invalid Float64 in checkpoint"))?;
         return Ok(CValue::Float64(x));
     }
+    if let Some(after) = rest.strip_prefix("Y ") {
+        let (value, used) = decode_affine(after)?;
+        cur.pos += 2 + used;
+        return Ok(value);
+    }
     if let Some(after) = rest.strip_prefix("V ") {
         let invalid = || fault("incompatible_checkpoint", "invalid interval in checkpoint");
         let (lo, used_lo) = take_token(after)?;
@@ -1829,6 +1851,51 @@ pub(super) fn token_boundary(text: &str, index: usize) -> bool {
             .as_bytes()
             .get(index)
             .is_some_and(|b| b.is_ascii_whitespace() || *b == b')')
+}
+
+/// An affine form as `center_num center_den count (symbol num den)*`.
+fn affine_text(value: &CValue) -> Option<String> {
+    let CValue::Affine(form) = value else { return None };
+    let (num, den) = super::affine::ratio(&form.center).ok()?;
+    let mut out = format!("{num} {den} {}", form.terms.len());
+    for (symbol, coefficient) in &form.terms {
+        let (num, den) = super::affine::ratio(coefficient).ok()?;
+        out.push_str(&format!(" {symbol} {num} {den}"));
+    }
+    Some(out)
+}
+
+/// Read `affine_text` back, returning the bytes used. Restored symbols
+/// are reserved so a resumed run never reuses one.
+fn decode_affine(text: &str) -> Result<(CValue, usize), ConstructorError> {
+    let invalid = || fault("incompatible_checkpoint", "invalid affine form in checkpoint");
+    let mut used = 0;
+    let mut next = || -> Result<&str, ConstructorError> {
+        let (token, n) = take_token(&text[used..])?;
+        used += n;
+        Ok(token)
+    };
+    let rational = |num: &str, den: &str| -> Result<CValue, ConstructorError> {
+        CValue::Rat {
+            num: ExactInt::parse(num).map_err(|_| invalid())?,
+            den: ExactInt::parse(den).map_err(|_| invalid())?,
+        }
+        .canon()
+    };
+    let center = {
+        let (num, den) = (next()?, next()?);
+        rational(num, den)?
+    };
+    let count: usize = next()?.parse().map_err(|_| invalid())?;
+    let mut terms = std::collections::BTreeMap::new();
+    for _ in 0..count {
+        let symbol: u64 = next()?.parse().map_err(|_| invalid())?;
+        let (num, den) = (next()?, next()?);
+        super::affine::reserve(symbol);
+        terms.insert(symbol, rational(num, den)?);
+    }
+    drop(next);
+    Ok((super::affine::form(center, terms)?, used))
 }
 
 pub(super) fn take_token(text: &str) -> Result<(&str, usize), ConstructorError> {

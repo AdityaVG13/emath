@@ -3031,7 +3031,7 @@ fn main() {
         println!("DIFF probe_work EMITTED {:?}; VM = 9", probe_work(1000));
     }
     let want = std::env::var("EXPECT_WORLDS")
-        .unwrap_or_else(|_| "reference,exact,float64,float32,bfloat16,int64,interval".into());
+        .unwrap_or_else(|_| "reference,exact,float64,float32,bfloat16,int64,interval,affine".into());
     match configured(0) {
         Ok(worlds) if worlds.join(",") == want => {}
         other => {

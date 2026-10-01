@@ -80,6 +80,24 @@ emath function near_root:
     definitions:
         result = x * x - 2
 
+# x(1 - x) and 1/x: an enclosure loses that both factors move with x;
+# an affine form keeps it.
+emath function logistic:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x * (1 - x)
+
+emath function invert:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = 1 / x
+
 # quote.world runs a function value under another world from inside the
 # language: a judge that sees where float64 and exact part ways.
 emath function judge:

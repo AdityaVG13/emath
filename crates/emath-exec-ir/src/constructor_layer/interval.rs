@@ -98,6 +98,10 @@ pub(super) fn enclose(value: &CValue) -> Result<(f64, f64), ConstructorError> {
         CValue::Float64(x) if x.is_finite() => Ok((*x, *x)),
         CValue::Int(n) => enclose_rational(n, &ExactInt::one()),
         CValue::Rat { num, den } => enclose_rational(num, den),
+        CValue::Affine(_) => {
+            let (lo, hi) = super::affine::bounds(value)?;
+            Ok((enclose(&lo)?.0, enclose(&hi)?.1))
+        }
         other => Err(fault("type", format!("{other} is not a real number"))),
     }
 }
