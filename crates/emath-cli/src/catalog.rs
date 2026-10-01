@@ -18,6 +18,7 @@ pub const COMMANDS: &[&str] = &[
     "loop",
     "dream",
     "keep",
+    "compare",
     "experiment",
     "step",
     "test",
@@ -180,6 +181,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
         "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--detach] | dream watch|resume|fork|export <run> | dream list",
         "keep" => "keep <file.emath> --function F [--name NAME] --to <library.emath> [--set name=value] [--work N] [--overwrite]",
+        "compare" => "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64] [--work N] [--json]",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
@@ -293,6 +295,9 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         }
         "keep" => {
             "evaluate a function that returns a closed quoted program and write it into a library file as an ordinary `emath function` with its source and content id; different existing text refuses without `--overwrite`"
+        }
+        "compare" => {
+            "evaluate one function under several carrier worlds (reference as authored, exact rationals, binary64) and report every answer, the gap between them, and whether they agree; never picks a winner"
         }
         "experiment" => {
             "build and measure an explicit baseline and candidate on one workload, then return an authored evaluator's decision; resumable with `--state`"
@@ -790,6 +795,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         ],
         "loop" => &["--target", "--budget", "--script", "--help", "-h"],
         "keep" => &["--function", "--name", "--to", "--set", "--work", "--overwrite", "--help", "-h"],
+        "compare" => &["--function", "--set", "--world", "--work", "--json", "--help", "-h"],
         "dream" => &[
             "--target",
             "--run",

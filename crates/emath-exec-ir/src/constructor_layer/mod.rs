@@ -803,8 +803,10 @@ mod scope;
 mod scratch;
 mod setup;
 mod value;
+mod world;
 
 pub(crate) use call::domain_shape_of_expr;
+pub use world::{answer_gap, answers_agree, with_world, world_input, CarrierWorld};
 pub use admit::*;
 pub use carry::{evaluate_function_carrying, fact_identity, prepare_module, CarriedEvaluation, PreparedModule, FACT_PREFIX};
 pub use checkpoint::*;

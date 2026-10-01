@@ -1,0 +1,49 @@
+# One file read under three carrier worlds by `emath compare`.
+
+emath function cancellation:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = (1 + x) - 1 - x
+
+emath function crosses:
+    inputs:
+        x: Rat
+    outputs:
+        result: Bool
+    definitions:
+        result = x + 0.2 == 0.3
+
+emath function thirds_add_up:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = 1 / n + 1 / n + 1 / n == 3 / n
+
+emath function tenth:
+    inputs:
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = 1 / n
+
+emath function square_plus_one:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n * n + 1
+
+emath function denominator:
+    inputs:
+        x: Rat
+    outputs:
+        result: Int
+    definitions:
+        result = x.denom

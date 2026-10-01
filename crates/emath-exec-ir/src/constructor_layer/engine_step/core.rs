@@ -4,6 +4,9 @@ use super::prelude::{
     domain_shape_of_type, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag,
     project_field, schema_tag,
 };
+use super::super::scalar::decimal_to_rational;
+use super::super::ops::float_of;
+use super::super::world::CarrierWorld;
 
 impl Engine {
     pub(in crate::constructor_layer) fn charge(&mut self) -> Result<(), ConstructorError> {
@@ -78,10 +81,23 @@ impl Engine {
                 if den.is_zero() {
                     return Err(fault("division_by_zero", "rational denominator is zero"));
                 }
-                CValue::Rat { num, den }.canon()
+                let value = CValue::Rat { num, den }.canon()?;
+                if crate::constructor_layer::world::current() == CarrierWorld::Float64 {
+                    return Ok(CValue::Float64(float_of(&value)?));
+                }
+                Ok(value)
             }
             ExprKind::Float(text) => {
                 let cleaned = text.trim_end_matches("f64").trim_end_matches("Float64");
+                if crate::constructor_layer::world::current() == CarrierWorld::Exact {
+                    if let Some((numer, denom)) = decimal_to_rational(cleaned) {
+                        return CValue::Rat {
+                            num: parse_exact(&numer)?,
+                            den: parse_exact(&denom)?,
+                        }
+                        .canon();
+                    }
+                }
                 cleaned
                     .parse::<f64>()
                     .map(CValue::Float64)
@@ -113,6 +129,14 @@ impl Engine {
                         let mut projected = true;
                         for segment in &segments[1..] {
                             if let Some(field) = project_field(&value, segment) { value = field } else {
+                                if matches!(value, CValue::Float64(_))
+                                    && matches!(segment.as_str(), "numer" | "denom")
+                                {
+                                    return Err(fault(
+                                        "type",
+                                        format!("`{}`: a Float64 has no exact `{segment}`", segments.join(".")),
+                                    ));
+                                }
                                 projected = false;
                                 break;
                             }

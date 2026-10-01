@@ -127,10 +127,20 @@ pub(super) fn join_values(
 }
 
 pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue, ConstructorError> {
-    if matches!(
+    let arithmetic = matches!(
         op,
         BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div
-    ) && (matches!(left, CValue::Float64(_)) || matches!(right, CValue::Float64(_)))
+    );
+    // In the Float64 world a rational never materializes: a rational
+    // operand or an integer quotient takes the binary64 lane.
+    let float_world = arithmetic
+        && super::world::current() == super::world::CarrierWorld::Float64
+        && (matches!(left, CValue::Rat { .. })
+            || matches!(right, CValue::Rat { .. })
+            || op == BinaryOp::Div);
+    if float_world
+        || arithmetic
+            && (matches!(left, CValue::Float64(_)) || matches!(right, CValue::Float64(_)))
     {
         let l = float_of(&left)?;
         let r = float_of(&right)?;

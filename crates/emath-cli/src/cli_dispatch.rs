@@ -176,6 +176,7 @@ pub(super) fn run_command(command: Command) -> CliExit {
         Command::Loop(request) => loop_cmd::run(request),
         Command::Dream(request) => dream_cmd::run(request),
         Command::Keep(request) => keep_cmd::run(request),
+        Command::Compare(request) => super::compare_cmd::run(request),
         Command::Experiment(request) => experiment_cmd::run(request),
         Command::Search(request) => compiled_search::run(request),
         Command::Step(request) => execution::step(request),

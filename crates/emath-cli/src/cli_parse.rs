@@ -107,6 +107,7 @@ pub(super) enum Command {
     Loop(loop_cmd::LoopRequest),
     Dream(dream_cmd::DreamRequest),
     Keep(keep_cmd::KeepRequest),
+    Compare(super::compare_cmd::CompareRequest),
     Experiment(experiment_cmd::ExperimentRequest),
     Search(compiled_search::SearchRequest),
     Step(execution::RunRequest),
@@ -405,6 +406,13 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         }),
         "keep" => require_single_file("keep", keep_cmd::USAGE, rest, keep_cmd::KeepRequest::parse)
             .map(Command::Keep),
+        "compare" => require_single_file(
+            "compare",
+            super::compare_cmd::USAGE,
+            rest,
+            super::compare_cmd::CompareRequest::parse,
+        )
+        .map(Command::Compare),
         "experiment" => require_single_file(
             "experiment",
             experiment_cmd::USAGE,

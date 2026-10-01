@@ -671,9 +671,24 @@ pub(in crate::constructor_layer) fn scalar_carrier_admits(name: &str, value: &CV
     match name {
         "Int" => matches!(value, CValue::Int(_)),
         "Bool" => matches!(value, CValue::Bool(_)),
-        "Rat" => matches!(value, CValue::Rat { .. } | CValue::Int(_)),
-        "Float64" => matches!(value, CValue::Float64(_)),
+        "Rat" | "Float64" => real_slot_admits(name, value),
         _ => true,
+    }
+}
+
+/// A real-number slot under the current carrier world: the world's own
+/// real carrier fills both `Rat` and `Float64` slots.
+fn real_slot_admits(name: &str, value: &CValue) -> bool {
+    use super::world::{current, CarrierWorld};
+    let exact = matches!(value, CValue::Rat { .. } | CValue::Int(_));
+    let float = matches!(value, CValue::Float64(_));
+    match (current(), name) {
+        (CarrierWorld::Reference, "Rat") => exact,
+        (CarrierWorld::Reference, _) => float,
+        (CarrierWorld::Exact, "Rat") => exact,
+        (CarrierWorld::Exact, _) => exact || float,
+        (CarrierWorld::Float64, "Rat") => float || matches!(value, CValue::Int(_)),
+        (CarrierWorld::Float64, _) => float,
     }
 }
 
@@ -714,9 +729,8 @@ pub(super) fn type_admits(ty: &TypeExpr, value: &CValue) -> bool {
         TypeKind::Path { segments, .. } => match segments.last().map(String::as_str) {
             Some("Int") => matches!(value, CValue::Int(_)),
             Some("Bool") => matches!(value, CValue::Bool(_)),
-            Some("Rat") => matches!(value, CValue::Rat { .. } | CValue::Int(_)),
+            Some(name @ ("Rat" | "Float64")) => real_slot_admits(name, value),
             Some("Str") => matches!(value, CValue::Str(_)),
-            Some("Float64") => matches!(value, CValue::Float64(_)),
             Some("Code") => matches!(value, CValue::Code(_)),
             Some("sequence") => matches!(value, CValue::Sequence(_)),
             _ => true,
