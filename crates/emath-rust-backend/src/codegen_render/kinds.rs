@@ -18,7 +18,10 @@ thread_local! {
     /// in a branch cannot re-derive it (the local inference reads
     /// only the branch), so the render reads the scope first and
     /// crosses from the carrier the wrapper actually returns.
-    static SELF_WRAPPER_KIND: std::cell::RefCell<Vec<ValueKind>> =
+    /// Beside it, the wrapper's parameter carriers in position order:
+    /// a `CallSelf` inside a closure body renders among the closure's
+    /// own inputs, so it reads the target's parameters here.
+    static SELF_WRAPPER_KIND: std::cell::RefCell<Vec<(ValueKind, Vec<ValueKind>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
     /// The emitted entry's result carrier per sibling function
     /// (pre-lowered over the crate's own functions before any
@@ -113,8 +116,8 @@ pub(crate) fn internal_entry_name(name: &str) -> String {
 /// shadow their enclosing wrapper exactly while they render.
 pub(crate) struct SelfWrapperScope;
 impl SelfWrapperScope {
-    pub(crate) fn enter(kind: ValueKind) -> Self {
-        SELF_WRAPPER_KIND.with(|stack| stack.borrow_mut().push(kind));
+    pub(crate) fn enter(kind: ValueKind, params: Vec<ValueKind>) -> Self {
+        SELF_WRAPPER_KIND.with(|stack| stack.borrow_mut().push((kind, params)));
         Self
     }
 }
@@ -127,7 +130,17 @@ impl Drop for SelfWrapperScope {
 /// The innermost rendering wrapper's result carrier, when one is
 /// being rendered.
 pub(crate) fn self_wrapper_kind() -> Option<ValueKind> {
-    SELF_WRAPPER_KIND.with(|stack| stack.borrow().last().cloned())
+    SELF_WRAPPER_KIND.with(|stack| stack.borrow().last().map(|(kind, _)| kind.clone()))
+}
+
+/// The innermost rendering wrapper's parameter carrier at `position`.
+pub(crate) fn self_wrapper_param(position: usize) -> Option<ValueKind> {
+    SELF_WRAPPER_KIND.with(|stack| {
+        stack
+            .borrow()
+            .last()
+            .and_then(|(_, params)| params.get(position).cloned())
+    })
 }
 
 thread_local! {
@@ -1058,6 +1071,18 @@ pub(super) fn join_arm_kinds(left: ValueKind, right: ValueKind) -> ValueKind {
         }
         (ValueKind::Rational, ValueKind::I64 | ValueKind::ExactInt)
         | (ValueKind::I64 | ValueKind::ExactInt, ValueKind::Rational) => ValueKind::Rational,
+        // A Code arm, or a list of family values (`[program]`), beside
+        // a node arm (`[v.body]` is a node sequence) joins in the node
+        // family, which holds code as a Code node.
+        (ValueKind::ExprCode, ValueKind::Node) | (ValueKind::Node, ValueKind::ExprCode) => {
+            ValueKind::Node
+        }
+        (ValueKind::Vector(element), ValueKind::Node)
+        | (ValueKind::Node, ValueKind::Vector(element))
+            if super::node_family(&element) =>
+        {
+            ValueKind::Node
+        }
         (ValueKind::Vector(left_element), ValueKind::Vector(right_element)) => {
             let joined = join_arm_kinds(*left_element, *right_element);
             if matches!(joined, ValueKind::Other) {
@@ -1255,7 +1280,7 @@ pub(super) fn kind_of_op(
         }
         EmirOp::CodeSubstitute { code, .. } => match kind_at(kinds, *code) {
             kind @ ValueKind::Code(_) => kind,
-            ValueKind::ExprCode => ValueKind::ExprCode,
+            ValueKind::ExprCode | ValueKind::Node => ValueKind::ExprCode,
             _ => ValueKind::Other,
         },
         // quote.view: a Code (or a Fragment node value) opens into

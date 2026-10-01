@@ -1782,9 +1782,11 @@ fn domain_signature(
             }
             match name.as_str() {
                 "Int" | "Rat" | "Bool" | "Text" | "Float64" => Some(name.clone()),
-                // The same carriers a declared `Code` / `Fragment`
-                // input takes (`type_signature`).
-                "Code" | "Fragment" => Some(name.clone()),
+                // A literal's `Code` binder admits any value at run
+                // time in the VM (its domain check passes everything
+                // but the numeric carriers), viewed records included,
+                // so it binds the dynamic node family.
+                "Code" | "Fragment" => Some("Fragment".into()),
                 _ => objects
                     .contains_key(name)
                     .then(|| format!("Record<{name}>")),

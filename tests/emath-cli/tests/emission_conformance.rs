@@ -1605,7 +1605,9 @@ fn emission_conformance_code_identity() {
 const CLOSURE_SELF_CALL_DRIVER: &str = r#"
 //! A function calling itself from inside a closure it hands to a fold.
 use closure_self_call::emath_rt::ExactInt;
-use closure_self_call::{counts_big, finds_x, leaves, misses_z, plugged, twice_literal};
+use closure_self_call::{
+    call_shapes, counts_big, finds_x, leaves, misses_z, plugged, twice_literal, x_first,
+};
 fn main() {
     let mut failures = 0usize;
     let got = leaves(10);
@@ -1629,6 +1631,18 @@ fn main() {
             failures += 1;
             println!("DIFF counts_big({k}) EMITTED {:?}; VM = {vm}", got);
         }
+    }
+    for (k, vm) in [(1, true), (0, false)] {
+        let got = x_first(k);
+        if got != Ok(vm) {
+            failures += 1;
+            println!("DIFF x_first({k}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    let got = call_shapes(5);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF call_shapes EMITTED {:?}; VM = true", got);
     }
     let got = twice_literal(4);
     if got != Ok(8) {

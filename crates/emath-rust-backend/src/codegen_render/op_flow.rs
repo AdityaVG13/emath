@@ -289,6 +289,10 @@ pub(super) fn authored_control_expr(
                         }
                     }
                 }
+                // A Code arm joining a node arm: the scalar node lift.
+                if *kind == ValueKind::ExprCode && joined_kind == ValueKind::Node {
+                    return render_expr(&super::to_node(Expr::Raw(text), kind));
+                }
                 if !matches!(joined_kind, ValueKind::Other)
                     && *kind != joined_kind
                     && !matches!(kind, ValueKind::Other)

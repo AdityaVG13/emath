@@ -100,6 +100,47 @@ emath function twice_literal:
             given k = 4
             expect result == 8
 
+emath function is_x:
+    # a list joined from a Code arm and a viewed-child arm, its element
+    # handed to a Code closure
+    inputs:
+        c: Code
+    outputs:
+        result: Bool
+    definitions:
+        v = quote.view(c)
+        target = if v.kind == Local: [c] else: if v.kind == Call: [v.args[0]] else: []
+        same = function f in Code: quote.identity(f) == quote.identity(quote(x))
+        result = if length(target) == 1: same(target[0]) else: false
+
+emath function x_first:
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = is_x(quote.substitute(quote(x + c), "c", k)) and is_x(if k > 0: quote(x) else: quote(y))
+    tests:
+        example <both_arms>:
+            given k = 1
+            expect result == true
+
+emath function call_shapes:
+    # a call-shape template (`range` over code, not scalar arithmetic)
+    # viewed after substitution, and a substitute into a viewed child
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        bound = quote.view(quote.view(quote.substitute(quote(range(0, x)), "x", k)).args[1]).value
+        child = quote.view(quote(y + c)).args[1]
+        result = bound == k and quote.evaluate(quote.substitute(child, "c", k + 1)) == k + 1
+    tests:
+        example <five>:
+            given k = 5
+            expect result == true
+
 emath function plug:
     # replace every local in c by value, rebuilding the calls
     inputs:

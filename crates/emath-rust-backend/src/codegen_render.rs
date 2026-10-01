@@ -322,9 +322,11 @@ pub(crate) fn op_expr(
                     // position) unwraps/rebuilds through the shared
                     // bridge - the VM's call arguments are codes, and
                     // the node lane wraps them as Code nodes.
-                    let param_kind = names
-                        .get(position)
-                        .and_then(|name| input_kinds.get(name).cloned());
+                    let param_kind = kinds::self_wrapper_param(position).or_else(|| {
+                        names
+                            .get(position)
+                            .and_then(|name| input_kinds.get(name).cloned())
+                    });
                     if let Some(target) = &param_kind {
                         if let Some(converted) = numeric_boundary_value(
                             &operand(program, *value),
@@ -341,6 +343,9 @@ pub(crate) fn op_expr(
                         })
                     {
                         return converted;
+                    }
+                    if param_kind == Some(ValueKind::Node) && kind != ValueKind::Node {
+                        return render_expr(&to_node(operand(program, *value), &kind));
                     }
                     if matches!(kind, ValueKind::Closure { .. }) {
                         // Closure carriers are shared `Rc` handles:
@@ -783,9 +788,14 @@ pub(crate) fn op_expr(
             // following stage calls.
 
             let ValueKind::Closure { .. } = kind_at(kinds, *callee_value) else {
-                return Err(BackendError::UnsupportedType(
-                    "closure call requires a callee with a declared signature".into(),
-                ));
+                return Err(BackendError::UnsupportedType(format!(
+                    "closure call requires a callee with a declared signature, found {:?} from {}",
+                    kind_at(kinds, *callee_value),
+                    program
+                        .ops
+                        .get(callee_value.0 as usize)
+                        .map_or("an input", |(op, _)| op.name())
+                )));
             };
             let callee = render_expr(&operand(program, *callee_value));
             let mut call = format!("({callee})");
@@ -825,6 +835,14 @@ pub(crate) fn op_expr(
                             && let Some(converted) = node_into(&expression, param)
                         {
                             return format!("&({converted})");
+                        }
+                        // Code or a scalar into a dynamic (node) binder.
+                        if *param == ValueKind::Node
+                            && value_kind != ValueKind::Node
+                            && node_family(&value_kind)
+                        {
+                            let lifted = to_node(operand(program, *value), &value_kind);
+                            return format!("&({})", render_expr(&lifted));
                         }
                         if let Some(converted) = numeric_boundary_value(
                             &operand(program, *value),
@@ -1129,25 +1147,45 @@ pub(crate) fn op_expr(
                 // arithmetic path stays CodeValue-typed throughout.
                 // Everything else the union lane cannot compute
                 // refuses named.
-                let body_value = if body_kind == ValueKind::CodeValue {
-                    value_expr(body, free, &[], &inputs)?
+                let compiled = if body_kind == ValueKind::CodeValue {
+                    value_expr(body, free, &[], &inputs)
                 } else if matches!(
                     body_kind,
                     ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
                 ) {
-                    to_code_value(value_expr(body, free, &[], &inputs)?, &body_kind)
+                    value_expr(body, free, &[], &inputs)
+                        .map(|value| to_code_value(value, &body_kind))
                 } else {
-                    return Err(BackendError::UnsupportedType(
+                    Err(BackendError::UnsupportedType(
                     "quote expression template body must compute the scalar union (Int/Rat/Bool arithmetic, comparisons, and boolean combinators over its free names)".into(),
-                ));
+                ))
+                };
+                // A template the union lane cannot compile (a call
+                // shape like `quote(fold(x, y, z))` matched by a
+                // structural walk, whose free names are not scalars)
+                // carries its tree alone, as made code does:
+                // evaluation runs the shared tree evaluator, which
+                // refuses what it cannot compute.
+                let body_value = match compiled {
+                    Ok(value) => Some(value),
+                    Err(_) if tree.is_some() => None,
+                    Err(error) => return Err(error),
                 };
                 let _reference = ReferenceScope::enter();
-                let body_code = render_expr(&body_value);
-                let bindings = free
-                    .iter()
-                    .enumerate()
-                    .map(|(index, name)| format!("let {name} = __code_free[{index}]; "))
-                    .collect::<String>();
+                let factory = match body_value {
+                    Some(body_value) => {
+                        let body_code = render_expr(&body_value);
+                        let bindings = free
+                            .iter()
+                            .enumerate()
+                            .map(|(index, name)| format!("let {name} = __code_free[{index}]; "))
+                            .collect::<String>();
+                        format!(
+                            "Some(std::rc::Rc::new(move |__code_free: &[emath_rt::code::CodeValue]| -> Result<emath_rt::code::CodeValue, String> {{ {bindings} Ok({body_code}) }}))"
+                        )
+                    }
+                    None => String::from("None"),
+                };
                 let free_list = free
                     .iter()
                     .map(|name| format!("String::from({name:?})"))
@@ -1169,7 +1207,7 @@ pub(crate) fn op_expr(
                     )
                 };
                 return Ok(Expr::Raw(format!(
-                    "{{ emath_rt::code::open_expr(vec![{free_list}], {tree_code}, Some(std::rc::Rc::new(move |__code_free: &[emath_rt::code::CodeValue]| -> Result<emath_rt::code::CodeValue, String> {{ {bindings} Ok({body_code}) }})), {deps_code}) }}"
+                    "{{ emath_rt::code::open_expr(vec![{free_list}], {tree_code}, {factory}, {deps_code}) }}"
                 )));
             }
             // The compiled FUNCTION template: the nested program lowers once
@@ -1337,38 +1375,39 @@ pub(crate) fn op_expr(
                         render_expr(&operand(program, *value))
                     )))
                 }
-                ValueKind::ExprCode => {
+                code_kind @ (ValueKind::ExprCode | ValueKind::Node) => {
                     let value_kind = kind_at(kinds, *value);
+                    // A node holding code (a viewed child, a dynamic
+                    // `Code` binder) substitutes into the code it
+                    // wraps.
+                    let target = if code_kind == ValueKind::Node {
+                        format!("({}).to_code()?", render_expr(&operand(program, *code)))
+                    } else {
+                        render_expr(&operand(program, *code))
+                    };
                     // A node-record value (a viewed subtree) or a
                     // Code value rides the STRUCTURAL lane - the
                     // VM's `value_to_expr` law: the replacement
                     // rebuilds into a tree and splices as a tree.
                     // A scalar keeps the compiled-constant lane.
                     match value_kind {
-                        ValueKind::Node => {
-                            Ok(Expr::Raw(format!(
-                                "({}).substitute_tree({}, ({}).make(&__EMATH_MODULE_TABLE)?)",
-                                render_expr(&operand(program, *code)),
-                                reference_code,
-                                render_expr(&operand(program, *value))
-                            )))
-                        }
-                        ValueKind::ExprCode => {
-                            Ok(Expr::Raw(format!(
-                                "({}).substitute_tree({}, {})",
-                                render_expr(&operand(program, *code)),
-                                reference_code,
-                                render_expr(&operand(program, *value))
-                            )))
-                        }
-                        value_kind if union_promotable(&value_kind)
-                            && value_kind != ValueKind::CodeValue =>
+                        ValueKind::Node => Ok(Expr::Raw(format!(
+                            "({target}).substitute_tree({}, ({}).make(&__EMATH_MODULE_TABLE)?)",
+                            reference_code,
+                            render_expr(&operand(program, *value))
+                        ))),
+                        ValueKind::ExprCode => Ok(Expr::Raw(format!(
+                            "({target}).substitute_tree({}, {})",
+                            reference_code,
+                            render_expr(&operand(program, *value))
+                        ))),
+                        value_kind
+                            if union_promotable(&value_kind)
+                                && value_kind != ValueKind::CodeValue =>
                         {
-                            let converted =
-                                to_code_value(operand(program, *value), &value_kind);
+                            let converted = to_code_value(operand(program, *value), &value_kind);
                             Ok(Expr::Raw(format!(
-                                "({}).substitute({}, {})",
-                                render_expr(&operand(program, *code)),
+                                "({target}).substitute({}, {})",
                                 reference_code,
                                 render_expr(&converted)
                             )))
@@ -1616,9 +1655,7 @@ pub(crate) fn op_expr(
                 ValueKind::ExprCode | ValueKind::Code(_) => {
                     Ok(Expr::Raw(format!("({code_expr}).identity()?")))
                 }
-                ValueKind::Node => Ok(Expr::Raw(format!(
-                    "emath_rt::code_tree::node_as_code(&({code_expr}))?.identity()?"
-                ))),
+                ValueKind::Node => Ok(Expr::Raw(format!("({code_expr}).to_code()?.identity()?"))),
                 _ => Err(BackendError::UnsupportedType(
                     "quote.identity requires a Code value".into(),
                 )),
@@ -1928,9 +1965,7 @@ fn entry_frame_call(
 /// sequences of them. `None` for any other target.
 pub(crate) fn node_into(expression: &str, target: &ValueKind) -> Option<String> {
     match target {
-        ValueKind::ExprCode => Some(format!(
-            "emath_rt::code_tree::node_as_code(&{expression})?"
-        )),
+        ValueKind::ExprCode => Some(format!("({expression}).to_code()?")),
         // A scalar node into a declared scalar: the checked projection
         // (a Rational refuses an Int parameter by name).
         ValueKind::I64 | ValueKind::Rational | ValueKind::Bool => {
@@ -1940,7 +1975,7 @@ pub(crate) fn node_into(expression: &str, target: &ValueKind) -> Option<String> 
                 _ => "project_bool",
             };
             Some(format!(
-                "emath_rt::code::{projection}(&emath_rt::code_tree::node_scalar(&{expression})?, \"argument\")?"
+                "emath_rt::code::{projection}(&({expression}).to_scalar()?, \"argument\")?"
             ))
         }
         ValueKind::Vector(element) => {
@@ -2107,8 +2142,12 @@ fn literal_frame_expr(
         // The frame fn IS the recursive wrapper for its body: the
         // scope names its decided carrier so nested `CallSelf` sites
         // cross from what `__frame_self` actually returns.
-        let _wrapper = SelfWrapperScope::enter(result_kind.clone());
         let param_names: Vec<String> = names.iter().chain(states.iter()).cloned().collect();
+        let param_kinds = param_names
+            .iter()
+            .map(|name| frame_kinds.get(name).cloned().unwrap_or(ValueKind::Other))
+            .collect();
+        let _wrapper = SelfWrapperScope::enter(result_kind.clone(), param_kinds);
         let _tail = TailLoopScope::enter(body, param_names, states.len());
         let mut body_code = replace_ident_prefix(
             &render_expr(&value_expr(body, &names, &states, &frame_kinds)?),

@@ -338,7 +338,7 @@ pub(crate) fn emit_constructor_entry_abi(
         // The projected carrier is what the entry (and its `__self`
         // wrapper, when the body recurses) returns; nested `CallSelf`
         // sites cross from it.
-        let _wrapper = SelfWrapperScope::enter(declared.clone());
+        let _wrapper = SelfWrapperScope::enter(declared.clone(), input_carriers.clone());
         let rendered = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
         let projected = match declared {
             ValueKind::I64 => format!(
@@ -379,7 +379,7 @@ pub(crate) fn emit_constructor_entry_abi(
         // body recurses) returns; nested `CallSelf` sites read it
         // from the scope instead of re-deriving a branch-local
         // inference that cannot see the enclosing join.
-        let _wrapper = SelfWrapperScope::enter(result_kind.clone());
+        let _wrapper = SelfWrapperScope::enter(result_kind.clone(), input_carriers.clone());
         let body = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
         (result_ty, body, result_kind)
     };

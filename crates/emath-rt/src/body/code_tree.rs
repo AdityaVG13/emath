@@ -427,6 +427,14 @@ impl NodeValue {
     pub fn equals(&self, other: impl std::borrow::Borrow<NodeValue>) -> Result<bool, String> {
         node_eq(self, other)
     }
+    /// Method spellings of `node_as_code` / `node_scalar`: a method
+    /// call auto-derefs a binding of any reference depth.
+    pub fn to_code(&self) -> Result<ExprCode, String> {
+        node_as_code(self)
+    }
+    pub fn to_scalar(&self) -> Result<CodeValue, String> {
+        node_scalar(self)
+    }
 }
 
 // ---------------------------------------------------------------------------
