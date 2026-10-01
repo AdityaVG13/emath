@@ -1,0 +1,35 @@
+# One rewrite climb step over a quoted program, natively: the rule
+# fold seeds `[]` from its sequence(Code) accumulator, `rewrites` and
+# `inside` recurse into each other across the import, the walk joins
+# node-sequence arms with Code-list arms, and the chosen node lands in
+# the Code field of the `Rewriting` record.
+use fold.reduce
+use search.optimize
+
+emath function size:
+    # nodes in a quoted expression
+    inputs:
+        c: Code
+    outputs:
+        result: Int
+    definitions:
+        v = quote.view(c)
+        result = if v.kind == Call: 1 + sum(map(function a in Code: size(a), v.args)) else: 1
+
+emath function factor_step:
+    # one step from x * k + x * 4 + (y + y) under factoring and doubling, scored by size
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        rules = [Rewrite: {pattern: quote(a * b + a * c), replacement: quote(a * (b + c))}, Rewrite: {pattern: quote(a + a), replacement: quote(a * 2)}]
+        program = quote.substitute(quote(x * c + x * 4 + (y + y)), "c", k)
+        score = function c in Code: size(c)
+        step = rewrite_step(rewrite_seed(program, score), rules, score)
+        value = quote.evaluate(quote.substitute(quote.substitute(step.best, "x", 2), "y", k))
+        result = step.best_work * 10000 + step.scored * 1000 + step.verdict * 100 + value
+    tests:
+        example <three>:
+            given k = 3
+            expect result == 93020

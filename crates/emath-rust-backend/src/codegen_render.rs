@@ -2016,6 +2016,9 @@ pub(crate) fn node_into(expression: &str, target: &ValueKind) -> Option<String> 
                 "emath_rt::code::{projection}(&({expression}).to_scalar()?, \"argument\")?"
             ))
         }
+        // A family element of a family sequence (`sequence(T)` with T
+        // bound to the node family) stays a node.
+        ValueKind::Node => Some(format!("({expression}).clone()")),
         ValueKind::Vector(element) => {
             let inner = node_into("__item", element)?;
             let element_ty = crate::rust_ir::render::render_ty(&element.rust_ty().ok()?);

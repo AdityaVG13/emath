@@ -298,16 +298,17 @@ pub fn emit_constructor_crate(
         }
     }
     // The emitted entry's true result carrier per function,
-    // pre-lowered once over the main-file functions before any
-    // rendering: a `CallSibling` register carries the callee's
-    // EMITTED carrier, and that is the callee's inferred body join -
+    // pre-lowered once over every lowered function (imported cycle
+    // members included) before any rendering: a `CallSibling`
+    // register carries the callee's EMITTED carrier, and that is the
+    // callee's inferred body join -
     // not the authored declaration - whenever the two disagree (a
     // Rat-typed inlined carrier joining an Int-declared recursive
     // tail emits the ratio carrier at the entry). The input kinds
     // mirror the entry ABI's declared carriers exactly.
     let mut sibling_kinds: BTreeMap<String, ValueKind> = BTreeMap::new();
-    for name in functions.iter() {
-        let Some(Ok(lowered)) = lowered.get(name) else {
+    for (name, lowered) in &lowered {
+        let Ok(lowered) = lowered else {
             continue;
         };
         let mut kinds = InputKinds::new();

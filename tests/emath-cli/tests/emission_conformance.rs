@@ -1626,7 +1626,7 @@ const CLOSURE_SELF_CALL_DRIVER: &str = r#"
 use closure_self_call::emath_rt::ExactInt;
 use closure_self_call::{
     applied_recur, call_shapes, counts_big, digits, finds_x, leaves, misses_z, paired, plugged,
-    twice_literal, x_first,
+    rewrite_total, twice_literal, x_first,
 };
 fn main() {
     let mut failures = 0usize;
@@ -1695,6 +1695,13 @@ fn main() {
             println!("DIFF paired({k}) EMITTED {:?}; VM = {vm}", got);
         }
     }
+    for (k, vm) in [(3, 208), (-2, 104), (0, 102)] {
+        let got = rewrite_total(k);
+        if got != Ok(vm) {
+            failures += 1;
+            println!("DIFF rewrite_total({k}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
     if failures == 0 {
         println!("closure_self_call: all pins hold");
     }
@@ -1709,6 +1716,36 @@ fn emission_conformance_closure_self_call() {
     assert!(
         diffs.is_empty(),
         "emitted closure_self_call disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+const REWRITE_CLIMB_DRIVER: &str = r#"
+//! One search.optimize rewrite step, emitted against the VM.
+use rewrite_climb::factor_step;
+fn main() {
+    let mut failures = 0usize;
+    // best_work * 10000 + scored * 1000 + verdict * 100 + best at x = 2, y = k
+    for (k, vm) in [(3, 93020), (-1, 93004), (0, 93008)] {
+        let got = factor_step(k);
+        if got != Ok(vm) {
+            failures += 1;
+            println!("DIFF factor_step({k}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    if failures == 0 {
+        println!("rewrite_climb: all pins hold");
+    }
+}
+"#;
+#[test]
+fn emission_conformance_rewrite_climb() {
+    let diffs = run_lane(
+        "tests/fixtures/constructor/rewrite_climb.emath",
+        REWRITE_CLIMB_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted rewrite_climb disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
 }

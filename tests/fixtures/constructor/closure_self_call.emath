@@ -223,3 +223,35 @@ emath function paired:
         example <two>:
             given k = 2
             expect result == 79
+
+emath function one_rewrite:
+    inputs:
+        t: Code
+        r: Int
+    outputs:
+        result: sequence(Code)
+    definitions:
+        result = if r > 0: [quote.substitute(t, "c", r)] else: []
+
+emath function collect_rewrites:
+    # a fold whose seed is `[]`: its carrier comes from the step closure's sequence(Code) accumulator
+    inputs:
+        rules: sequence(Int)
+        t: Code
+    outputs:
+        result: sequence(Code)
+    definitions:
+        result = fold(function acc in sequence(Code): function r in Int: concat(acc, one_rewrite(t, r)), [], rules)
+
+emath function rewrite_total:
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        cs = collect_rewrites([k, 0 - k, k + 1], quote(x * c))
+        result = length(cs) * 100 + quote.evaluate(quote.substitute(cs[length(cs) - 1], "x", 2))
+    tests:
+        example <three>:
+            given k = 3
+            expect result == 208

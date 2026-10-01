@@ -766,6 +766,9 @@ fn kind_signature(kind: &ValueKind) -> Option<String> {
         ValueKind::Text => "Text".into(),
         ValueKind::BigInt => "BigInt".into(),
         ValueKind::Complex => "Complex".into(),
+        // The dynamic node family's spelling (`from_signature` reads
+        // `Sequence` back as `Node`).
+        ValueKind::Node => "Sequence".into(),
         ValueKind::Vector(element) => format!("Vector<{}>", kind_signature(element)?),
         ValueKind::Matrix(element) => format!("Matrix<{}>", kind_signature(element)?),
         ValueKind::Record(name) => format!("Record<{name}>"),
@@ -2216,6 +2219,20 @@ pub(super) fn numeric_boundary_value(
         ))),
         (ValueKind::CodeValue, ValueKind::Bool) => Some(Expr::Raw(format!(
             "emath_rt::code::project_bool(&{}, {slot:?})?",
+            render_expr(expression)
+        ))),
+        // A Code arm beside node arms (or a `sequence(Code)` element
+        // joined with a node sequence) folds into the node family,
+        // which holds code as a Code node.
+        (ValueKind::ExprCode, ValueKind::Node) => {
+            Some(super::to_node(expression.clone(), &ValueKind::ExprCode))
+        }
+        // The reverse crossing: a node into a declared Code slot (a
+        // record field, a parameter, a `sequence(Code)` element)
+        // unwraps or rebuilds through the shared bridge, refusing a
+        // non-code node by name.
+        (ValueKind::Node, ValueKind::ExprCode) => Some(Expr::Raw(format!(
+            "({}).to_code()?",
             render_expr(expression)
         ))),
         (ValueKind::Vector(source), ValueKind::Vector(target)) => {
