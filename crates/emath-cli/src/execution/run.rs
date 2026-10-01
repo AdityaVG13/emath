@@ -22,7 +22,28 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
         Ok(source) => source,
         Err(error) => return diagnostic(request.json, EXIT_USAGE, "E-PKG-080", &error.to_string()),
     };
-    if let Some(exit) = run_constructor_layer(&request, &source) {
+    let mut worlds = Vec::new();
+    for name in &request.worlds {
+        match emath_exec_ir::constructor_layer::CarrierWorld::parse(name) {
+            Some(world) => worlds.push(world),
+            None => {
+                let known: Vec<&str> =
+                    emath_exec_ir::constructor_layer::CarrierWorld::ALL.iter().map(|w| w.name()).collect();
+                return diagnostic(
+                    request.json,
+                    EXIT_USAGE,
+                    "unknown_world",
+                    &format!("unknown world `{name}` in --worlds; worlds are {}", known.join(", ")),
+                );
+            }
+        }
+    }
+    let ran = if worlds.is_empty() {
+        run_constructor_layer(&request, &source)
+    } else {
+        emath_exec_ir::constructor_layer::with_worlds(&worlds, || run_constructor_layer(&request, &source))
+    };
+    if let Some(exit) = ran {
         return exit;
     }
     return diagnostic(

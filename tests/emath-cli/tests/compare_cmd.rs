@@ -391,6 +391,23 @@ fn compare_cmd() {
         world_row(&out, "reference").contains("\"payload\":\"(false,type)\""),
         "{out}"
     );
+    // `emath run --worlds` sets the list a judge reads; a bad name refuses.
+    let run = |worlds: &[&str]| {
+        let out = Command::new(emath_bin())
+            .arg("run")
+            .arg(workspace().join("tests/fixtures/compare/worlds.emath"))
+            .args(["--function", "configured", "--set", "unused=0"])
+            .args(worlds)
+            .env("EMATH_ROOT", workspace())
+            .output()
+            .expect("run emath run");
+        let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        (out.status.code(), text)
+    };
+    let (code, text) = run(&["--worlds", "exact,float64"]);
+    assert!(code == Some(0) && text.trim() == "[exact, float64]", "{code:?} {text}");
+    let (code, text) = run(&["--worlds", "exact,float65"]);
+    assert!(code != Some(0) && text.contains("float65"), "{code:?} {text}");
 }
 
 /// The values of input `name` at the divergent points, in grid order.

@@ -422,7 +422,7 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         .map(Command::Experiment),
         "run" => require_single_file(
             "run",
-            "run <file.emath> [--function NAME] [--set name=value] [--work N] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]",
+            "run <file.emath> [--function NAME] [--set name=value] [--work N] [--worlds w1,w2,...] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]",
             rest,
             |r| execution::RunRequest::parse(r, false),
         )

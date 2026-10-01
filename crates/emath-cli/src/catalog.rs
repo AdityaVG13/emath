@@ -176,7 +176,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
             "explain <E-CODE> [--list-codes] [--json]"
         }
         "run" => {
-            "run <file.emath> [--function NAME] [--set name=value] [--set-file path.json] [--work N] [--out dir] [--json]"
+            "run <file.emath> [--function NAME] [--set name=value] [--set-file path.json] [--work N] [--worlds w1,w2,...] [--out dir] [--json]"
         }
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
         "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--worlds w1,w2,...] [--detach] | dream watch|resume|fork|export <run> | dream list",
@@ -436,6 +436,7 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--raise" => "raise meaning dimension",
         "--forest" => "bounded parse forest output",
         "--world" => "target world label",
+        "--worlds" => "carrier worlds quote.worlds() returns (comma-separated; default every world)",
         "--dir" => "directory path",
         "--hole" => "semantic hole descriptor",
         "--declaration" => "declaration name",
@@ -773,6 +774,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "--set",
             "--set-file",
             "--work",
+            "--worlds",
             "--cancel-file",
             "--measure",
             "--branch-from",

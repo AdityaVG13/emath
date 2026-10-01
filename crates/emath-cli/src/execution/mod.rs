@@ -42,6 +42,8 @@ pub(crate) struct RunRequest {
     pub branch_from: Option<PathBuf>,
     pub relation: Option<String>,
     pub json: bool,
+    /// The world list `quote.worlds()` returns; empty leaves every world.
+    pub worlds: Vec<String>,
 }
 
 impl RunRequest {
@@ -55,6 +57,7 @@ impl RunRequest {
         let mut expected_revision = None;
         let mut cancel_file = None;
         let mut measure = None;
+        let mut worlds = None;
         let mut branch_from = None;
         let mut relation = None;
         let mut json = false;
@@ -128,6 +131,12 @@ impl RunRequest {
                     }
                     crate::assign_once(&mut relation, value.to_string())?;
                 }
+                "--worlds" if !continuation => {
+                    let list = crate::take_nonflag_value(args, &mut index)?;
+                    let names: Vec<String> =
+                        list.split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
+                    crate::assign_once(&mut worlds, names)?;
+                }
                 "--json" => json = true,
                 flag if flag.starts_with('-') => return None,
                 value => crate::assign_once(&mut path, PathBuf::from(value))?,
@@ -159,6 +168,7 @@ impl RunRequest {
             branch_from,
             relation,
             json,
+            worlds: worlds.unwrap_or_default(),
         })
     }
 }

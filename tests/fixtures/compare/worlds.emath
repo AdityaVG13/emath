@@ -115,3 +115,12 @@ emath function inner_refusal:
         denom = function y in Rat: y.denom
         inner = quote.world("float64", denom, x, 1000)
         result = (inner.done, inner.fault)
+
+# The host's configured world list (`--worlds`); every world when unset.
+emath function configured:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(Str)
+    definitions:
+        result = quote.worlds()
