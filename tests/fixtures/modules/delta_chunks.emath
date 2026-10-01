@@ -1,0 +1,51 @@
+# Which chunkings of a gated delta-rule layer give the serial state.
+#
+# Seven tokens with a 2 x 3 state, gates below one and one gate of
+# zero (a reset). Over exact rationals every chunk size from 1 to 7
+# gives the serial state, both composing the per-token maps and in
+# the WY form chunked kernels use. Stored in bfloat16, the WY chunks
+# of 4 round at other points than the token-by-token kernel and give
+# other bits. Resuming the chunked kernel from its own state after 4
+# tokens gives the uninterrupted bits; resuming after 2 does not,
+# because the chunks after the resume are anchored 2 tokens earlier.
+#
+# Run: emath test delta_chunks.emath
+
+use fold.reduce
+use algebra.linear.spaces
+use numerics.floats
+use numerics.delta_rule
+
+emath function DeltaChunks:
+    inputs:
+        unused: Int
+    outputs:
+        exact_chunked: Bool
+        exact_wy: Bool
+        rounded_differs: Bool
+        stored_in_format: Bool
+        aligned_resume: Bool
+        misaligned_resume: Bool
+    definitions:
+        s0 = [[1 / 2, 0 / 1, 0 - 1 / 4], [0 / 1, 1 / 3, 1 / 1]]
+        steps = [Step: {alpha: 9 / 10, beta: 1 / 2, k: [1 / 1, 0 / 1, 1 / 2], v: [1 / 1, 0 - 1 / 1]}, Step: {alpha: 3 / 4, beta: 1 / 3, k: [0 / 1, 1 / 1, 1 / 1], v: [2 / 1, 1 / 5]}, Step: {alpha: 1 / 1, beta: 2 / 3, k: [1 / 2, 0 - 1 / 2, 1 / 1], v: [0 - 1 / 2, 3 / 2]}, Step: {alpha: 0 / 1, beta: 1 / 4, k: [1 / 1, 1 / 1, 0 / 1], v: [1 / 3, 1 / 1]}, Step: {alpha: 7 / 8, beta: 1 / 1, k: [0 / 1, 0 / 1, 1 / 1], v: [5 / 4, 0 - 2 / 3]}, Step: {alpha: 5 / 6, beta: 1 / 5, k: [2 / 1, 1 / 1, 0 - 1 / 1], v: [0 / 1, 1 / 2]}, Step: {alpha: 1 / 2, beta: 3 / 4, k: [1 / 3, 1 / 1, 1 / 3], v: [1 / 1, 1 / 7]}]
+        exact = serial(s0, steps)
+        sizes = range(1, 7)
+        exact_chunked = all(function c in Int: chunked(s0, steps, c) == exact, sizes)
+        exact_wy = all(function c in Int: chunked_wy(s0, steps, c) == exact, sizes)
+        f = bfloat16(0)
+        whole = chunked_wy_in(f, s0, steps, 4)
+        rounded_differs = whole != serial_in(f, s0, steps)
+        stored_in_format = all(function row in sequence(Rat): all(function e in Rat: round_to(f, e) == e, row), whole)
+        resume = function r in Int: chunked_wy_in(f, chunked_wy_in(f, s0, take(steps, r), 4), seq_slice(steps, r, 7 - r), 4)
+        aligned_resume = resume(4) == whole
+        misaligned_resume = resume(2) == whole
+    tests:
+        example <delta_chunks>:
+            given unused = 0
+            expect exact_chunked == true
+            expect exact_wy == true
+            expect rounded_differs == true
+            expect stored_in_format == true
+            expect aligned_resume == true
+            expect misaligned_resume == false
