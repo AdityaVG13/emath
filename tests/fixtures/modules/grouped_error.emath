@@ -11,11 +11,13 @@
 # QuantGap is one output of the first group's linear layer, exact
 # weights minus the 4-bit read-back (the first weight, 0, is coded
 # exactly and left out; the others pinned to dequantize(fit(...))
-# below). Over inputs in [-1, 1] its worst case is dot_gap = 1351/1024000,
-# attained at worst_input. Run under carrier worlds it shows why the
-# affine world exists: interval arithmetic evaluates the two dot
-# products apart and encloses about [-4, 4]; the affine world keeps
-# the inputs shared and returns 0 ± 1351/1024000, the exact worst case:
+# below). Over inputs in [-1, 1] the gap ranges over
+# [-1351/1024000, 1351/1024000] (itv_dot of the weight differences),
+# and both ends are attained at box corners. Run under carrier worlds
+# it shows why the affine world exists: interval arithmetic evaluates
+# the two dot products apart and encloses about [-4, 4]; the affine
+# world keeps the inputs shared and returns 0 ± 1351/1024000, the
+# exact range:
 #
 #   emath compare grouped_error.emath --function QuantGap
 #       --set x1=[-1,1] --set x2=[-1,1] --set x3=[-1,1]
@@ -25,6 +27,7 @@
 
 use fold.reduce
 use algebra.linear.spaces
+use analysis.intervals
 use numerics.floats
 use numerics.grouped
 
@@ -48,7 +51,7 @@ emath function GroupedError:
         half_scale_broken: Bool
         bound_attained: Bool
         read_back_pinned: Bool
-        worst_case: Rat
+        gap: Itv
         attained: Bool
     definitions:
         w = [0 / 1, 1 / 3, 2 / 3, 999 / 1000, 0 - 3 / 4, 0 - 1 / 10, 1 / 5, 1 / 2]
@@ -58,15 +61,12 @@ emath function GroupedError:
         within_bound = holds(four) and holds(eight)
         half_scale_broken = worst_error(w, eight)[0] > eight.scales[0] / 2
         bound_attained = worst_error(w, eight)[0] == error_bound(w, eight)[0]
-        first = take(w, 4)
         back = take(dequantize(four), 4)
         read_back_pinned = back == [0 / 1, 5455 / 16384, 5455 / 8192, 16365 / 16384]
-        c = [0 / 1, 0 / 1, 0 / 1, 0 / 1]
-        r = [1 / 1, 1 / 1, 1 / 1, 1 / 1]
-        worst_case = dot_gap(first, back, c, r)
-        x = worst_input(first, back, c, r)
-        gap_at = vec_dot(first, x) - vec_dot(back, x)
-        attained = gap_at == worst_case or gap_at == 0 - worst_case
+        d = vec_add(take(w, 4), vec_scale(0 - 1 / 1, back))
+        gap = itv_dot(d, repeat(Itv: {lo: 0 - 1 / 1, hi: 1 / 1}, 4))
+        corner = function up in Bool: map(function di in Rat: if (di >= 0 / 1) == up: 1 / 1 else: 0 - 1 / 1, d)
+        attained = vec_dot(d, corner(true)) == gap.hi and vec_dot(d, corner(false)) == gap.lo
     tests:
         example <grouped_error>:
             given unused = 0
@@ -74,5 +74,5 @@ emath function GroupedError:
             expect half_scale_broken == true
             expect bound_attained == true
             expect read_back_pinned == true
-            expect worst_case == 1351 / 1024000
+            expect gap == Itv: {lo: 0 - 1351 / 1024000, hi: 1351 / 1024000}
             expect attained == true
