@@ -1677,12 +1677,11 @@ fn main() {
         failures += 1;
         println!("DIFF twice_literal EMITTED {:?}; VM = 8", got);
     }
-    // The emitted signature is `impl Debug` (an applied recur's carrier
-    // is not inferred), so the pin compares the printed value.
-    let got = format!("{:?}", applied_recur(12, 2));
-    if got != "Ok(55)" {
+    // The recur's declared `Int -> Int` names the carrier.
+    let got: Result<i64, String> = applied_recur(12, 2);
+    if got != Ok(55) {
         failures += 1;
-        println!("DIFF fib_ten EMITTED {got}; VM = 55");
+        println!("DIFF fib_ten EMITTED {got:?}; VM = 55");
     }
     for (n, vm) in [(11, vec![2, 0, 1]), (0, vec![])] {
         let got = digits(n);

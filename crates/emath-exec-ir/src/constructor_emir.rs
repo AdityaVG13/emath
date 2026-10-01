@@ -887,9 +887,27 @@ impl Lowerer {
         }
     }
 
+    /// The result carrier of a recur's declared arrow type, or empty when
+    /// the type is not an arrow with a native carrier. Type variables are
+    /// dropped: the closed lowering of the recur body does not bind them.
+    fn recur_result_signature(&self, ty: &Expr) -> String {
+        match domain_signature(ty, &self.objects, &self.type_vars) {
+            Some(sig) if sig.starts_with("Fn<") && !sig.contains("Var<") => {
+                let ExprKind::Call { args, .. } = &ty.kind else {
+                    return String::new();
+                };
+                args.last()
+                    .and_then(|result| domain_signature(result, &self.objects, &[]))
+                    .unwrap_or_default()
+            }
+            _ => String::new(),
+        }
+    }
+
     fn lower_recur_apply(
         &mut self,
         name: &str,
+        ty: &Expr,
         body: &Expr,
         args: &[Expr],
     ) -> Result<EmirValue, String> {
@@ -897,8 +915,9 @@ impl Lowerer {
             ExprKind::FunctionAbs { param, body, .. } => (param.as_str(), body.as_ref()),
             _ => return Err("recur emission expects a function literal".into()),
         };
+        let result = self.recur_result_signature(ty);
         let program = lower_int_primitive_recur(name, param, inner)
-            .map_or_else(|| lower_general_recur(name, param, inner), Ok)?;
+            .map_or_else(|| lower_general_recur(name, param, inner, result), Ok)?;
         let mut inputs = Vec::new();
         for arg in args {
             inputs.push(self.expr(arg)?);
@@ -1516,7 +1535,7 @@ impl Lowerer {
                 }))
             }
             ExprKind::Call { function, args } => match &function.kind {
-                ExprKind::Recur { name, body, .. } => self.lower_recur_apply(name, body, args),
+                ExprKind::Recur { name, ty, body } => self.lower_recur_apply(name, ty, body, args),
                 ExprKind::FunctionAbs {
                     param,
                     domain,
@@ -1883,7 +1902,7 @@ impl Lowerer {
                 )),
             },
             ExprKind::Cases { arms, else_arm, .. } => self.lower_cases(arms, else_arm),
-            ExprKind::Recur { name, body, .. } => {
+            ExprKind::Recur { name, ty, body } => {
                 if let ExprKind::FunctionAbs {
                     param, body: inner, ..
                 } = &body.kind
@@ -1892,7 +1911,8 @@ impl Lowerer {
                         return Ok(self.push(EmirOp::program_literal(program)));
                     }
                     if contains_self_call(inner, name) {
-                        let program = lower_general_recur(name, param, inner)?;
+                        let result = self.recur_result_signature(ty);
+                        let program = lower_general_recur(name, param, inner, result)?;
                         return Ok(self.push(EmirOp::program_literal(program)));
                     }
                 }
@@ -1910,6 +1930,7 @@ fn lower_closed(
     inputs: &[String],
     body: &Expr,
     self_name: Option<String>,
+    self_result: String,
 ) -> Result<EmirProgram, String> {
     let mut lowerer = Lowerer {
         inputs: inputs.to_vec(),
@@ -1920,7 +1941,7 @@ fn lower_closed(
         ops: Vec::new(),
         obligations: Vec::new(),
         self_name,
-        self_result: String::new(),
+        self_result,
         arrow_names: BTreeSet::new(),
         module_stamps: BTreeMap::new(),
         type_vars: Vec::new(),
@@ -1930,9 +1951,16 @@ fn lower_closed(
     Ok(lowerer.finish(result))
 }
 
-fn lower_general_recur(name: &str, param: &str, body: &Expr) -> Result<EmirProgram, String> {
+/// `result` is the recur's declared result carrier (`Int` for
+/// `recur f in Int -> Int`), which grounds its self-calls' kind.
+fn lower_general_recur(
+    name: &str,
+    param: &str,
+    body: &Expr,
+    result: String,
+) -> Result<EmirProgram, String> {
     let inputs = vec![param.to_string()];
-    lower_closed(&inputs, body, Some(name.to_string()))
+    lower_closed(&inputs, body, Some(name.to_string()), result)
 }
 
 fn expr_uses_quote(expr: &Expr) -> bool {
@@ -2716,7 +2744,7 @@ pub fn cvalue_to_emir(
                     "capturing closures are not emitted as input carriers in this cut".into(),
                 );
             }
-            let program = lower_closed(std::slice::from_ref(&clos.param), &clos.body, None)?;
+            let program = lower_closed(std::slice::from_ref(&clos.param), &clos.body, None, String::new())?;
             Ok(Value::Program(crate::interp::ProgramValue {
                 body: program,
                 captures: Vec::new(),
