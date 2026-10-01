@@ -2,6 +2,83 @@ use super::prelude::*;
 use super::scope;
 use super::{SyntaxTree, Engine, ConstructorError, Path, BTreeSet, Environment, BTreeMap, HashMap, DEFAULT_WORK, Cell, Item, Declaration, Rc, FnDecl, QueryDecl, ObjectSchema, PathBuf, UseTree};
 
+/// The module files a built artifact carries: the search roots and every
+/// imported file (absolute path and text) as resolved when it was built.
+struct EmbeddedModules {
+    roots: Vec<PathBuf>,
+    files: BTreeMap<PathBuf, String>,
+}
+
+thread_local! {
+    static EMBEDDED: std::cell::RefCell<Option<Rc<EmbeddedModules>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn embedded() -> Option<Rc<EmbeddedModules>> {
+    EMBEDDED.with(|cell| cell.borrow().clone())
+}
+
+/// Run `body` with imports resolved only from the given roots and files,
+/// never from disk or `EMATH_ROOT`: the same resolution the build saw,
+/// so an artifact answers the same wherever it runs.
+pub fn with_embedded_modules<T>(
+    roots: &[&str],
+    files: &[(&str, &str)],
+    body: impl FnOnce() -> T,
+) -> T {
+    let modules = EmbeddedModules {
+        roots: roots.iter().map(PathBuf::from).collect(),
+        files: files
+            .iter()
+            .map(|(path, text)| (PathBuf::from(path), (*text).to_string()))
+            .collect(),
+    };
+    let previous = EMBEDDED.with(|cell| cell.replace(Some(Rc::new(modules))));
+    struct Restore(Option<Rc<EmbeddedModules>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let previous = self.0.take();
+            EMBEDDED.with(|cell| *cell.borrow_mut() = previous);
+        }
+    }
+    let _restore = Restore(previous);
+    body()
+}
+
+/// The search roots and imported files (absolute path, text) a module
+/// resolves, for an artifact to carry (see `with_embedded_modules`).
+pub fn import_files(
+    tree: &SyntaxTree,
+    source: Option<&Path>,
+) -> Result<(Vec<PathBuf>, Vec<(PathBuf, String)>), ConstructorError> {
+    let roots = module_roots_for(source);
+    let graph = scope::load_graph(tree, &roots, source)?;
+    let mut files = Vec::new();
+    for module in &graph.modules {
+        let text = read_module_file(&module.file).map_err(|err| {
+            fault("E-USE-ADMISSION", format!("cannot read {}: {err}", module.file.display()))
+        })?;
+        files.push((module.file.clone(), text));
+    }
+    Ok((roots, files))
+}
+
+fn module_file_exists(path: &Path) -> bool {
+    match embedded() {
+        Some(modules) => modules.files.contains_key(path),
+        None => path.is_file(),
+    }
+}
+
+pub(super) fn read_module_file(path: &Path) -> std::io::Result<String> {
+    match embedded() {
+        Some(modules) => modules.files.get(path).cloned().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not carried by this artifact")
+        }),
+        None => std::fs::read_to_string(path),
+    }
+}
+
 pub(super) fn engine_from_tree(tree: &SyntaxTree) -> Result<Engine, ConstructorError> {
     engine_from_tree_at(tree, None)
 }
@@ -178,7 +255,7 @@ pub(super) fn resolve_import(
             let rel = PathBuf::from_iter(path[pkg.len()..].iter()).with_extension("emath");
             let dir = src.parent().unwrap_or_else(|| Path::new("."));
             let candidate = dir.join(rel);
-            if candidate.is_file() {
+            if module_file_exists(&candidate) {
                 return Ok(candidate);
             }
             return Err(fault(
@@ -201,7 +278,7 @@ pub(super) fn resolve_import(
         let rel = PathBuf::from_iter(path.iter()).with_extension("emath");
         let dir = src.parent().unwrap_or_else(|| Path::new("."));
         let candidate = dir.join(rel);
-        if candidate.is_file() {
+        if module_file_exists(&candidate) {
             return Ok(candidate);
         }
     }
@@ -313,7 +390,7 @@ pub fn resolve_module_path(
     let rel = PathBuf::from_iter(segs.iter()).with_extension("emath");
     for root in roots {
         let candidate = root.join(&rel);
-        if candidate.is_file() {
+        if module_file_exists(&candidate) {
             return Ok(candidate);
         }
     }
@@ -336,6 +413,9 @@ pub fn resolve_module_path(
 /// `language/domains` root (objects of study and applications), so a
 /// domain module can never shadow a tool of the same path.
 pub fn module_roots_for(source: Option<&Path>) -> Vec<PathBuf> {
+    if let Some(modules) = embedded() {
+        return modules.roots.clone();
+    }
     let mut modules = Vec::new();
     let mut domains = Vec::new();
     let mut add = |language: PathBuf| {

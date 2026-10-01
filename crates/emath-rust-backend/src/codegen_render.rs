@@ -1741,7 +1741,7 @@ pub(crate) fn op_expr(
                 ));
             }
             let call = format!(
-                "{BRIDGE}::run_entry(__EMATH_SOURCE, __EMATH_SOURCE_PATH, {function:?}, vec![{}], __EMATH_WORLDS)?",
+                "{BRIDGE}::run_entry(__EMATH_SOURCE, __EMATH_SOURCE_PATH, __EMATH_MODULE_ROOTS, __EMATH_MODULES, {function:?}, vec![{}], __EMATH_WORLDS)?",
                 args.join(", ")
             );
             let kind = ValueKind::from_signature(result);

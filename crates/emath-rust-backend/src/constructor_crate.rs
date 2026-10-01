@@ -592,12 +592,33 @@ pub fn emit_constructor_crate(
     }
     // A function using `quote.cost`/`quote.world`/`quote.worlds` runs in
     // the reference engine, which reads the module source: the crate
-    // embeds it, the path its `use` imports resolve from, and the world
-    // list `quote.worlds()` returns (the host's at build time).
+    // embeds it, every module its `use` imports resolve to (so the
+    // artifact never reads them from disk), and the world list
+    // `quote.worlds()` returns (the host's at build time).
     let engine_dependency = if rust.contains("artifact_bridge::run_entry") {
         let path = std::fs::canonicalize(spec_path).unwrap_or_else(|_| spec_path.to_path_buf());
-        match std::fs::read_to_string(&path) {
-            Ok(source) => {
+        let embedded = std::fs::read_to_string(&path)
+            .map_err(|error| format!("the reference engine needs the module source, which could not be read: {error}"))
+            .and_then(|source| {
+                emath_exec_ir::constructor_layer::import_files(main, Some(&path))
+                    .map(|modules| (source, modules))
+                    .map_err(|error| format!("the reference engine needs the imported modules, which could not be resolved: {}: {}", error.code, error.message))
+            });
+        match embedded {
+            Ok((source, (roots, modules))) => {
+                let roots = roots
+                    .iter()
+                    .map(|root| format!("{:?}", root.display().to_string()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let modules = modules
+                    .iter()
+                    .map(|(file, text)| format!("({:?}, {text:?})", file.display().to_string()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                rust.push_str(&format!(
+                    "static __EMATH_MODULE_ROOTS: &[&str] = &[{roots}];\nstatic __EMATH_MODULES: &[(&str, &str)] = &[{modules}];\n"
+                ));
                 let worlds = emath_exec_ir::constructor_layer::configured_worlds()
                     .iter()
                     .map(|world| format!("{:?}", world.name()))
@@ -657,9 +678,7 @@ pub fn emit_constructor_crate(
             }
             Err(error) => {
                 runnable = false;
-                unresolved.push(format!(
-                    "the reference engine needs the module source, which could not be read: {error}"
-                ));
+                unresolved.push(error);
                 String::new()
             }
         }

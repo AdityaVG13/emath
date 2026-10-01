@@ -188,7 +188,7 @@ fn load_uses(
         if graph.index.contains_key(&file) {
             continue;
         }
-        let text = std::fs::read_to_string(&file).map_err(|err| {
+        let text = super::setup::read_module_file(&file).map_err(|err| {
             fault(
                 "E-USE-ADMISSION",
                 format!("cannot read {}: {err}", file.display()),

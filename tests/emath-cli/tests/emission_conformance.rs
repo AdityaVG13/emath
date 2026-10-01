@@ -2938,8 +2938,22 @@ fn main() {
 
 #[test]
 fn emission_conformance_quote_cost() {
-    let diffs = run_lane("tests/fixtures/constructor/quote_cost.emath", QUOTE_COST_DRIVER);
+    let module_rel = "tests/fixtures/constructor/quote_cost.emath";
+    let diffs = run_lane(module_rel, QUOTE_COST_DRIVER);
     assert!(diffs.is_empty(), "emitted quote.cost disagrees with the VM on:\n{}", diffs.join("\n"));
+
+    // The artifact carries its `use fold.reduce` import: pointed at a
+    // library root that does not exist, it still answers.
+    let out = common::emitted_crate_dir(&repo_root().join(module_rel));
+    let run = Command::new(out.join("target").join("debug").join("conf_driver"))
+        .env("EMATH_ROOT", out.join("no-such-root"))
+        .output()
+        .expect("run conformance driver");
+    assert!(
+        run.status.success(),
+        "the artifact must not read imports from disk\n{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
 }
 
 const ENGINE_WORLDS_DRIVER: &str = r#"

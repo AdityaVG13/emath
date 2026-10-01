@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use emath_core::tree::SyntaxTree;
 
-use super::{evaluate_function_at, with_worlds, CValue, CarrierWorld};
+use super::{evaluate_function_at, with_embedded_modules, with_worlds, CValue, CarrierWorld};
 use crate::exact_int::ExactInt;
 
 /// A native value the artifact passes into the engine.
@@ -203,6 +203,8 @@ thread_local! {
 pub fn run_entry(
     source: &str,
     path: &str,
+    module_roots: &[&str],
+    modules: &[(&str, &str)],
     name: &str,
     inputs: Vec<(&str, CValue)>,
     worlds: &[&str],
@@ -225,6 +227,8 @@ pub fn run_entry(
         .into_iter()
         .map(|(input, value)| (input.to_string(), value))
         .collect();
-    with_worlds(&worlds, || evaluate_function_at(&tree, name, &inputs, Some(Path::new(path))))
-        .map_err(|error| format!("{}: {}", error.code, error.message))
+    with_embedded_modules(module_roots, modules, || {
+        with_worlds(&worlds, || evaluate_function_at(&tree, name, &inputs, Some(Path::new(path))))
+    })
+    .map_err(|error| format!("{}: {}", error.code, error.message))
 }
