@@ -2863,6 +2863,28 @@ fn emission_conformance_ratio_widen() {
     assert!(diffs.is_empty(), "emitted widen disagrees with the VM on:\n{}", diffs.join("\n"));
 }
 
+/// Union values (evaluated quoted expressions) mixed with Ints in one
+/// list, summed through a declared `sequence(Int)` parameter.
+const UNION_SUM_DRIVER: &str = r#"
+use union_sum::code_total;
+
+fn main() {
+    let got = code_total(1).map(|v| v.to_string());
+    if got.as_deref() != Ok("10") {
+        println!("DIFF code_total EMITTED {:?}; VM = 10", got);
+        println!("SUMMARY 1 conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all union_sum pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_union_sum() {
+    let diffs = run_lane("tests/fixtures/constructor/union_sum.emath", UNION_SUM_DRIVER);
+    assert!(diffs.is_empty(), "emitted union sum disagrees with the VM on:\n{}", diffs.join("\n"));
+}
+
 /// Oscillations seam pin: the generic self-recursion instantiation
 /// (tabulate_at at an `Int -> sequence(Rat)` closure — the CallSelf
 /// result kind mirrors the render's crossing decision) through the

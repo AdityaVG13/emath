@@ -1111,6 +1111,13 @@ pub(super) fn numeric_element_kind(values: &[EmirValue], kinds: &[ValueKind]) ->
             (ValueKind::Vector(left), ValueKind::Vector(right)) => {
                 ValueKind::Vector(Box::new(join(*left, *right)))
             }
+            // An evaluated quoted expression beside plain scalars: the
+            // list is one union sequence, as the VM's CValue list is.
+            (ValueKind::CodeValue, other) | (other, ValueKind::CodeValue)
+                if union_promotable(&other) || other == ValueKind::ExactInt =>
+            {
+                ValueKind::CodeValue
+            }
             (left, _) => left,
         }
     }
@@ -2258,6 +2265,10 @@ pub(super) fn numeric_boundary_value(
             "emath_rt::code::project_bool(&{}, {slot:?})?",
             render_expr(expression)
         ))),
+        (
+            ValueKind::I64 | ValueKind::ExactInt | ValueKind::Rational | ValueKind::Bool,
+            ValueKind::CodeValue,
+        ) => Some(super::to_code_value(expression.clone(), from)),
         // A Code arm beside node arms (or a `sequence(Code)` element
         // joined with a node sequence) folds into the node family,
         // which holds code as a Code node.

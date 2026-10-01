@@ -401,6 +401,12 @@ pub(super) fn exact_int_call_expr(
             ValueKind::Vector(inner) if *inner == ValueKind::ExactInt => {
                 format!("({}).clone()", render_expr(&operand(program, *arg)))
             }
+            // Union elements project to Int by name, as the VM's Int
+            // sum refuses a non-integer element.
+            ValueKind::Vector(inner) if *inner == ValueKind::CodeValue => format!(
+                "({}).iter().map(|item| emath_rt::code::project_exact_int(item, \"sequence element\")).collect::<Result<Vec<_>, String>>()?",
+                render_expr(&operand(program, *arg))
+            ),
             _ => format!(
                 "({}).iter().cloned().map(emath_rt::ExactInt::from).collect::<Vec<_>>()",
                 render_expr(&operand(program, *arg))

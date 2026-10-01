@@ -1,0 +1,26 @@
+# Evaluated quoted expressions are union values in emitted code. A list
+# that mixes them with plain Ints is one union sequence, and summing it
+# through a declared sequence(Int) parameter projects each element back
+# to Int (a non-Int element refuses by name, as in the VM).
+
+emath function total_of:
+    inputs:
+        xs: sequence(Int)
+        i: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= length(xs): int_sum(xs) else: total_of(xs, i + 1)
+
+emath function code_total:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        vals = [quote.evaluate(quote(2 + 3)), quote.evaluate(quote(4)), n]
+        result = total_of(vals, 0)
+    tests:
+        example <sums_union_and_int>:
+            given n = 1
+            expect result == 10
