@@ -1625,7 +1625,7 @@ const CLOSURE_SELF_CALL_DRIVER: &str = r#"
 //! A function calling itself from inside a closure it hands to a fold.
 use closure_self_call::emath_rt::ExactInt;
 use closure_self_call::{
-    applied_recur, call_shapes, counts_big, digits, finds_x, leaves, misses_z, plugged,
+    applied_recur, call_shapes, counts_big, digits, finds_x, leaves, misses_z, paired, plugged,
     twice_literal, x_first,
 };
 fn main() {
@@ -1687,6 +1687,13 @@ fn main() {
     if got != Ok(10) {
         failures += 1;
         println!("DIFF plugged_three EMITTED {:?}; VM = 10", got);
+    }
+    for (k, vm) in [(2, 79), (5, 178), (-3, -86)] {
+        let got = paired(k);
+        if got != Ok(ExactInt::from(vm)) {
+            failures += 1;
+            println!("DIFF paired({k}) EMITTED {:?}; VM = {vm}", got);
+        }
     }
     if failures == 0 {
         println!("closure_self_call: all pins hold");

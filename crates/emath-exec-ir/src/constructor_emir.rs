@@ -98,6 +98,45 @@ fn call_binds_closure(tree: &SyntaxTree, function: &Expr) -> bool {
     })
 }
 
+/// `h = blk.apply` (`Path[blk, apply]`, or `Call { Path[apply], [blk] }`)
+/// where `blk` is a declared input of an object type whose `apply`
+/// field is declared as an arrow: the def binds that closure, and its
+/// declared stage count lets `h(x, y)` apply curried. The object's
+/// representation is the type authority. `base` is the path whose
+/// head names the input.
+fn field_arrow_stages(
+    tree: &SyntaxTree,
+    decl: &Declaration,
+    base: &Expr,
+    field: &str,
+) -> Option<usize> {
+    let ExprKind::Path { segments, .. } = &base.kind else {
+        return None;
+    };
+    let base = segments.first()?;
+    let (_, ty) = section_typed_fields(decl, "inputs")
+        .into_iter()
+        .find(|(input, _)| input == base)?;
+    let TypeKind::Path { segments, .. } = &ty.kind else {
+        return None;
+    };
+    let [object] = segments.as_slice() else {
+        return None;
+    };
+    tree.items.iter().find_map(|item| match item {
+        Item::Declaration(object_decl)
+            if object_decl.as_kind == "object" && &object_decl.name == object =>
+        {
+            section_typed_fields(object_decl, "representation")
+                .into_iter()
+                .find(|(name, _)| name == field)
+                .map(|(_, ty)| arrow_type_stages(&ty))
+                .filter(|stages| *stages > 0)
+        }
+        _ => None,
+    })
+}
+
 /// Authored carrier signatures for one function: input carriers (one
 /// per declared input) and the output carrier (a multi-output
 /// function packs `Record<name>`, matching the entry emission's
@@ -335,12 +374,16 @@ fn lower_named(
                 // `quote.evaluate` call (`f = quote.evaluate(cand)`
                 // then `f(x)` is the program-space application seam),
                 // a path naming a module function (`h = weighted`
-                // coerces curried, one stage per input),
+                // coerces curried, one stage per input), an
+                // arrow-declared object field (`h = blk.apply`),
                 // and a partial application of a declared arrow
                 // (`model_at = predict(params)` on `A -> B -> C` binds
                 // the `B -> C` stage - the curried model seam).
                 let residual = match &expr.kind {
                     ExprKind::FunctionAbs { .. } => Some(literal_stages(expr)),
+                    ExprKind::Path { segments, .. } if segments.len() == 2 => {
+                        field_arrow_stages(tree, decl, expr, &segments[1])
+                    }
                     ExprKind::Path { segments, .. } if segments.len() == 1 => {
                         let head = &segments[0];
                         arrow_stages.get(head).copied().or_else(|| {
@@ -358,7 +401,11 @@ fn lower_named(
                         ExprKind::Path { segments, .. } if segments.len() == 1 => arrow_stages
                             .get(&segments[0])
                             .and_then(|stages| stages.checked_sub(args.len()))
-                            .filter(|remaining| *remaining > 0),
+                            .filter(|remaining| *remaining > 0)
+                            .or_else(|| match args.as_slice() {
+                                [base] => field_arrow_stages(tree, decl, base, &segments[0]),
+                                _ => None,
+                            }),
                         _ => None,
                     },
                     _ => None,

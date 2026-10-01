@@ -193,3 +193,33 @@ emath function applied_recur:
             given n = 12
             given k = 2
             expect result == 55
+
+emath object Pair2:
+    # a two-input function carried as a field
+    representation:
+        apply: Int -> Int -> Int
+        cap: Int
+
+emath function pair_apply:
+    # a function-typed field bound to a local, then called directly and inside a closure
+    inputs:
+        blk: Pair2
+        a: Int
+        b: Int
+    outputs:
+        result: Int
+    definitions:
+        h = blk.apply
+        result = h(a, b) + sum(map(function i in Int: h(a + i, b), [0, blk.cap]))
+
+emath function paired:
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = pair_apply(Pair2: {apply: function x in Int: function y in Int: x * 10 + y, cap: 1}, k, k + 1)
+    tests:
+        example <two>:
+            given k = 2
+            expect result == 79
