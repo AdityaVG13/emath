@@ -143,11 +143,30 @@ pub fn emit_constructor_crate(
         })
         .collect();
     let mut records = Vec::new();
+    let mut templates = std::collections::BTreeMap::new();
     for item in &tree.items {
         let emath_core::tree::Item::Declaration(decl) = item else {
             continue;
         };
-        if decl.as_kind == "object" {
+        if decl.as_kind == "object" && !decl.generics.is_empty() {
+            // A generic object has no layout of its own; each
+            // instantiation substitutes its carriers into these fields.
+            let params: Vec<String> =
+                decl.generics.iter().map(|generic| generic.name.clone()).collect();
+            let fields = emath_exec_ir::constructor_emir::section_typed_fields(decl, "representation")
+                .into_iter()
+                .map(|(field, ty)| {
+                    emath_exec_ir::constructor_emir::generic_type_signature(&ty, &objects, &params)
+                        .map(|signature| (field, signature))
+                })
+                .collect::<Option<Vec<_>>>();
+            if let Some(fields) = fields {
+                templates.insert(
+                    decl.name.clone(),
+                    crate::codegen_render::RecordTemplate { params, fields },
+                );
+            }
+        } else if decl.as_kind == "object" {
             let mut fields = Vec::new();
             let mut mappable = true;
             for (field, ty) in
@@ -189,6 +208,7 @@ pub fn emit_constructor_crate(
             }
         }
     }
+    let _templates = crate::codegen_render::RecordTemplateScope::enter(templates);
     let mut rust = String::from(EMITTED_HEADER);
     let mut runnable = true;
     let mut unresolved = Vec::new();
@@ -487,6 +507,33 @@ pub fn emit_constructor_crate(
         if let Some(refused) = refusals.remove(name) {
             unresolved.extend(refused);
         }
+    }
+    // Generic objects emit one struct per instantiation the rendered
+    // entries resolved; a struct's own fields may name further
+    // instantiations, so this runs to a fixed point.
+    let mut instantiated: BTreeSet<String> = BTreeSet::new();
+    loop {
+        let fresh: Vec<AuthoredRecord> = crate::codegen_render::take_instantiations()
+            .into_iter()
+            .filter(|(name, _)| instantiated.insert(name.clone()))
+            .map(|(name, fields)| AuthoredRecord { name, fields })
+            .collect();
+        if fresh.is_empty() {
+            break;
+        }
+        for record in &fresh {
+            for (_, signature) in &record.fields {
+                crate::codegen_render::touch_record_kinds(signature);
+            }
+        }
+        match emit_record_definitions(&fresh) {
+            Ok(definitions) => rust.push_str(&definitions),
+            Err(error) => {
+                runnable = false;
+                unresolved.push(error.to_string());
+            }
+        }
+        records.extend(fresh);
     }
     // A union-lane executor (`evaluate`/`evaluate_callable` over a Code
     // input) reads the table without carrying the tree lane.

@@ -1,0 +1,65 @@
+# Emission lane: one generic object used at two carriers. Each
+# instantiation (Monoid<Int>, Monoid<Float64>) needs its own native
+# layout, and a generic function over Monoid<T> reads the fields at the
+# carrier its call site binds.
+
+use fold.reduce
+
+emath object Monoid<T>:
+    # Identity element and the (curried) operation.
+    representation:
+        unit: T
+        op: T -> T -> T
+
+emath function adding:
+    inputs:
+        unit: Int
+    outputs:
+        result: Monoid<Int>
+    definitions:
+        result = Monoid: {unit: 0, op: function a in Int: function b in Int: a + b}
+
+emath function maxing:
+    inputs:
+        floor: Float64
+    outputs:
+        result: Monoid<Float64>
+    definitions:
+        result = Monoid: {unit: floor, op: function a in Float64: function b in Float64: if a >= b: a else: b}
+
+emath function crush<T>:
+    # Combine every element onto the identity, left to right.
+    inputs:
+        m: Monoid<T>
+        xs: sequence(T)
+    outputs:
+        result: T
+    definitions:
+        result = fold(function acc in T: function x in T: m.op(acc)(x), m.unit, xs)
+
+emath function total:
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: Int
+    definitions:
+        result = crush(adding(0), xs)
+    tests:
+        example <sums>:
+            given xs = [3, 4, 5]
+            expect result == 12
+
+emath function peak:
+    inputs:
+        xs: sequence(Float64)
+    outputs:
+        result: Float64
+    definitions:
+        result = crush(maxing(-1.0f64), xs)
+    tests:
+        example <largest>:
+            given xs = [0.5f64, 2.5f64, 1.0f64]
+            expect result == 2.5f64
+        example <empty_is_floor>:
+            given xs = []
+            expect result == -1.0f64

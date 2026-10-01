@@ -44,6 +44,7 @@ fn native_numeric_boundaries() {
         assert!(OverflowRecord(0).unwrap_err().contains("E-INT-002"));
         assert!(ClosureOverflow(0).unwrap_err().contains("E-INT-002"));
         assert_eq!(WideThroughFrame(0).unwrap().to_string(), "9223372036854775808");
+        assert_eq!(WideTimesFloat(0).unwrap(), 4611686018427387904.0);
         println!("native numeric boundaries passed");
     }
     "#;

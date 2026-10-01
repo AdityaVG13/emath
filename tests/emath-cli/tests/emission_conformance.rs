@@ -1495,6 +1495,51 @@ fn emission_conformance_long_walk() {
         diffs.join("\n")
     );
 }
+const GENERIC_RECORD_DRIVER: &str = r#"
+//! One generic object at two carriers: each instantiation has its own
+//! native layout, and the generic fold reads it at the bound carrier.
+use generic_record::{adding, maxing, peak, total};
+fn main() {
+    let mut failures = 0usize;
+    let got = total(vec![3, 4, 5]);
+    if !matches!(&got, Ok(12)) {
+        failures += 1;
+        println!("DIFF sums EMITTED {:?}; VM = 12", got);
+    }
+    let got = peak(vec![0.5, 2.5, 1.0]);
+    if !matches!(&got, Ok(value) if *value == 2.5) {
+        failures += 1;
+        println!("DIFF largest EMITTED {:?}; VM = 2.5", got);
+    }
+    let got = peak(vec![]);
+    if !matches!(&got, Ok(value) if *value == -1.0) {
+        failures += 1;
+        println!("DIFF empty_is_floor EMITTED {:?}; VM = -1.0", got);
+    }
+    let unit: Result<i64, String> = adding(7).map(|m| m.unit);
+    if !matches!(&unit, Ok(0)) {
+        failures += 1;
+        println!("DIFF adding.unit EMITTED {:?}; VM = 0", unit);
+    }
+    let unit: Result<f64, String> = maxing(-3.0).map(|m| m.unit);
+    if !matches!(&unit, Ok(value) if *value == -3.0) {
+        failures += 1;
+        println!("DIFF maxing.unit EMITTED {:?}; VM = -3.0", unit);
+    }
+    if failures == 0 {
+        println!("generic_record: all pins hold");
+    }
+}
+"#;
+#[test]
+fn emission_conformance_generic_record() {
+    let diffs = run_lane("tests/fixtures/constructor/generic_record.emath", GENERIC_RECORD_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted generic_record disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
 
 const FLOAT64_QUOTE_DRIVER: &str = r#"
 //! Authored pins of the Float64 quote lane against the emitted crate:

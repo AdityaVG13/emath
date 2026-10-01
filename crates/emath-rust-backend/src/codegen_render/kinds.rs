@@ -3,7 +3,8 @@
 use super::{
     BTreeMap, BackendError, BinOp, Block, EmirOp, EmirProgram, EmirValue, Expr, FoldCombine, Stmt,
     Ty, UnOp, checked_integer_result, escape_ident, exact_int_ref, flat_ssa, op_expr, operand,
-    owned_value, record_layout, render_expr, rt_call, to_code_value, to_node,
+    infer_instantiation, owned_value, record_ident, record_layout, record_template, render_expr,
+    rt_call, to_code_value, to_node,
 };
 
 /// Scalar carrier of an EMIR register. Exact carriers never widen implicitly.
@@ -456,7 +457,7 @@ impl ValueKind {
                 render_ty(&element.rust_ty()?)
             )),
             Self::Tensor => Ty::Named("emath_rt::Tensor".into()),
-            Self::Record(name) => Ty::Named(format!("EmathRecord_{}", escape_ident(name))),
+            Self::Record(name) => Ty::Named(format!("EmathRecord_{}", record_ident(name))),
             Self::Never => Ty::Named("!".into()),
             Self::Closure { params, result } => {
                 // Shared `Rc<dyn Fn>` carrier: callable through the
@@ -644,7 +645,49 @@ pub(super) fn instantiate_declared(arg_kinds: &[ValueKind], declared: &[String])
         .collect()
 }
 
-fn bind_signature_vars(signature: &str, kind: &ValueKind, bound: &mut BTreeMap<String, String>) {
+thread_local! {
+    static TYPE_BINDINGS: std::cell::RefCell<Vec<BTreeMap<String, String>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The type parameters an inlined generic frame's call site binds,
+/// in scope while that frame's body is kind-walked and rendered, so a
+/// binder domain lowered as `Var<T>` resolves to the site's carrier.
+pub(crate) struct TypeBindingScope;
+impl TypeBindingScope {
+    pub(crate) fn enter(arg_kinds: &[ValueKind], declared: &[String]) -> Self {
+        let mut bound = BTreeMap::new();
+        for (kind, signature) in arg_kinds.iter().zip(declared) {
+            bind_signature_vars(signature, kind, &mut bound);
+        }
+        TYPE_BINDINGS.with(|stack| stack.borrow_mut().push(bound));
+        Self
+    }
+}
+impl Drop for TypeBindingScope {
+    fn drop(&mut self) {
+        TYPE_BINDINGS.with(|stack| {
+            stack.borrow_mut().pop();
+        });
+    }
+}
+
+/// `signature` with each `Var<T>` the innermost binding frame knows
+/// replaced by its carrier; unbound variables stay (and kind as Other).
+pub(crate) fn bound_signature(signature: &str) -> String {
+    if !signature.contains("Var<") {
+        return signature.to_string();
+    }
+    TYPE_BINDINGS.with(|stack| {
+        let mut text = signature.to_string();
+        for bound in stack.borrow().iter().rev() {
+            text = substitute_signature_vars(&text, bound);
+        }
+        text
+    })
+}
+
+pub(crate) fn bind_signature_vars(signature: &str, kind: &ValueKind, bound: &mut BTreeMap<String, String>) {
     let signature = signature.trim();
     if let Some(name) = signature.strip_prefix("Var<").and_then(|rest| rest.strip_suffix('>')) {
         if !kind_is_degenerate(kind)
@@ -655,6 +698,23 @@ fn bind_signature_vars(signature: &str, kind: &ValueKind, bound: &mut BTreeMap<S
     } else if let Some(inner) = signature.strip_prefix("Vector<").and_then(|rest| rest.strip_suffix('>')) {
         if let ValueKind::Vector(element) = kind {
             bind_signature_vars(inner, element, bound);
+        }
+    } else if let Some(inner) = signature.strip_prefix("Record<").and_then(|rest| rest.strip_suffix('>')) {
+        // `Record<Pair<Var<A>,Int>>` against the instantiation
+        // `Pair<Bool,Int>`: the arguments bind pairwise.
+        if let ValueKind::Record(name) = kind
+            && let Some((base, args)) = inner.strip_suffix('>').and_then(|text| text.split_once('<'))
+            && let Some((kind_base, kind_args)) =
+                name.strip_suffix('>').and_then(|text| text.split_once('<'))
+            && base == kind_base
+        {
+            let args = split_signature_parts(args);
+            let kind_args = split_signature_parts(kind_args);
+            if args.len() == kind_args.len() {
+                for (arg, kind_arg) in args.iter().zip(kind_args) {
+                    bind_signature_vars(arg, &ValueKind::from_signature(kind_arg), bound);
+                }
+            }
         }
     } else if signature.starts_with("Fn<") && signature.ends_with('>') {
         let parts = split_signature_parts(&signature[3..signature.len() - 1]);
@@ -670,7 +730,7 @@ fn bind_signature_vars(signature: &str, kind: &ValueKind, bound: &mut BTreeMap<S
     }
 }
 
-fn substitute_signature_vars(signature: &str, bound: &BTreeMap<String, String>) -> String {
+pub(crate) fn substitute_signature_vars(signature: &str, bound: &BTreeMap<String, String>) -> String {
     let mut text = signature.to_string();
     for (name, kind) in bound {
         text = text.replace(&format!("Var<{name}>"), kind);
@@ -843,7 +903,7 @@ fn join_tuple_element(left: ValueKind, right: ValueKind) -> ValueKind {
     }
 }
 
-fn split_signature_parts(text: &str) -> Vec<&str> {
+pub(crate) fn split_signature_parts(text: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0usize;
     let mut start = 0usize;
@@ -1069,7 +1129,15 @@ pub(super) fn kind_of_op(
         EmirOp::ConstF64(_) => ValueKind::F64,
         EmirOp::ConstBool(_) => ValueKind::Bool,
         EmirOp::ConstText(_) | EmirOp::FormatText { .. } => ValueKind::Text,
-        EmirOp::RecordCreate { type_name, .. } => {
+        EmirOp::RecordCreate { type_name, fields } => {
+            if record_template(type_name).is_some() {
+                let fields = fields
+                    .iter()
+                    .map(|(name, value)| (name.clone(), kind_at(kinds, *value)))
+                    .collect::<Vec<_>>();
+                return infer_instantiation(type_name, &fields)
+                    .map_or(ValueKind::Other, ValueKind::Record);
+            }
             // A node-family tag or node record (not an authored
             // object layout) constructs a dynamic node value; the
             // emitter's admission gate guarantees only authored
@@ -1146,7 +1214,7 @@ pub(super) fn kind_of_op(
             if signature.is_empty() {
                 return ValueKind::Program;
             }
-            let param_kind = ValueKind::from_signature(signature);
+            let param_kind = ValueKind::from_signature(&bound_signature(signature));
             let names = (0..usize::from(body.input_count))
                 .map(|index| format!("__program_arg_{index}"))
                 .collect::<Vec<_>>();
@@ -1349,6 +1417,7 @@ pub(super) fn kind_of_op(
                 .map(|index| format!("__frame_state_{index}"))
                 .collect::<Vec<_>>();
             let arg_kinds = inputs.iter().map(|value| kind_at(kinds, *value)).collect::<Vec<_>>();
+            let _types = TypeBindingScope::enter(&arg_kinds, declared);
             let declared = instantiate_declared(&arg_kinds, declared);
             let mut frame = names
                 .iter()
@@ -1761,6 +1830,10 @@ pub(super) fn typed_operand(
     match (operand_kind(kinds, value), want) {
         (ValueKind::I64, ValueKind::F64) => as_f64(expr),
         (ValueKind::F64, ValueKind::I64) => as_i64(expr),
+        // The VM's mixed Int/Float64 widening (`CValue::Int::to_f64`).
+        (ValueKind::ExactInt, ValueKind::F64) => {
+            Expr::Raw(format!("({}).to_f64()", render_expr(&expr)))
+        }
         _ => expr,
     }
 }

@@ -3,7 +3,8 @@
 use super::{
     BackendError, EmirOp, EmirProgram, EmirValue, Expr, InputKinds, ValueKind, borrowed_value,
     escape_ident, input_kind, kind_at, local_state, node_family, operand,
-    operand_ref, owned_value, record_layout, render_expr, rt_call, to_node,
+    infer_instantiation, operand_ref, owned_value, record_ident, record_layout, record_template,
+    render_expr, rt_call, to_node,
 };
 
 use super::numeric_boundary_value;
@@ -101,6 +102,23 @@ pub(super) fn op_data_exprs(
             render_expr(&operand(program, *element))
         ))),
         EmirOp::RecordCreate { type_name, fields } => {
+            // A generic object's literal builds the instantiation its
+            // field carriers bind.
+            let instantiation;
+            let type_name = if record_template(type_name).is_some() {
+                let field_kinds = fields
+                    .iter()
+                    .map(|(name, value)| (name.clone(), kind_at(kinds, *value)))
+                    .collect::<Vec<_>>();
+                instantiation = infer_instantiation(type_name, &field_kinds).ok_or_else(|| {
+                    BackendError::UnsupportedType(format!(
+                        "generic record {type_name} literal leaves a type parameter unbound"
+                    ))
+                })?;
+                &instantiation
+            } else {
+                type_name
+            };
             if record_layout(type_name).is_none() {
                 // A node-family record (the structural walk's
                 // `Call: {callee: .., args: ..}` construction): the
@@ -159,6 +177,14 @@ pub(super) fn op_data_exprs(
                     name,
                 ) {
                     Some(converted) => render_expr(&converted),
+                    // Method-call clone: the receiver fixes the
+                    // literal's concrete closure type, which then
+                    // unsizes into the field's `Rc<dyn Fn>`
+                    // (`Rc::clone(&x)` takes its type from the field
+                    // and refuses the concrete closure).
+                    None if matches!(kind, ValueKind::Closure { .. }) => {
+                        format!("{}.clone()", render_expr(&expression))
+                    }
                     None => render_expr(&owned_value(expression, &kind)),
                 };
                 members.push(format!("{}: {value}", escape_ident(name)));
@@ -166,7 +192,7 @@ pub(super) fn op_data_exprs(
             let fields = members.join(", ");
             Ok(Expr::Raw(format!(
                 "EmathRecord_{} {{ {fields} }}",
-                escape_ident(type_name)
+                record_ident(type_name)
             )))
         }
         EmirOp::ConstComplex(real, imaginary) => {

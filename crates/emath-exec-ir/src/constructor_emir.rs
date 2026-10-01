@@ -252,6 +252,7 @@ fn lower_named(
             .into_iter()
             .map(|(callable, _, stamp)| (callable, stamp))
             .collect(),
+        type_vars: decl.generics.iter().map(|generic| generic.name.clone()).collect(),
     };
     if !unresolved.is_empty() {
         visiting.remove(name);
@@ -539,6 +540,10 @@ struct Lowerer {
     /// identity): the quote capture stamps free names that resolve
     /// against it, exactly as the VM's `dependency_snapshot` does.
     module_stamps: BTreeMap<String, u64>,
+    /// The enclosing declaration's type parameters: a binder domain
+    /// naming one lowers as `Var<name>`, which the backend binds per
+    /// inlined call site.
+    type_vars: Vec<String>,
 }
 
 impl Lowerer {
@@ -587,6 +592,7 @@ impl Lowerer {
             self_result: self.self_result.clone(),
             arrow_names: self.arrow_names.clone(),
             module_stamps: self.module_stamps.clone(),
+            type_vars: self.type_vars.clone(),
         }
     }
 
@@ -661,6 +667,7 @@ impl Lowerer {
             self_result: String::new(),
             arrow_names,
             module_stamps: self.module_stamps.clone(),
+            type_vars: self.type_vars.clone(),
         };
         let result = child.expr(body)?;
         let program = child.finish(result);
@@ -947,6 +954,20 @@ impl Lowerer {
                 field: called,
             }));
         }
+        // `r.add(x)` with `r` bound in this frame: the projected field
+        // is a closure value (a record's arrow-typed field), called
+        // indirectly like an arrow-named input.
+        if segments.len() >= 2
+            && !args.is_empty()
+            && (self.locals.contains_key(&segments[0]) || self.inputs.contains(&segments[0]))
+        {
+            let program = self.lookup_path(segments)?;
+            let mut inputs = Vec::new();
+            for arg in args {
+                inputs.push(self.expr(arg)?);
+            }
+            return Ok(self.push(EmirOp::CallValue { program, inputs }));
+        }
         Err(format!("call is not yet emitted: {called}"))
     }
 
@@ -1130,7 +1151,7 @@ impl Lowerer {
                     // first frame input; captures carry their own
                     // parent-frame kinds.
                     let mut declared = vec![
-                        domain_signature(domain, &self.objects).unwrap_or_default(),
+                        domain_signature(domain, &self.objects, &self.type_vars).unwrap_or_default(),
                     ];
                     declared.extend(std::iter::repeat_n(String::new(), capture_count));
                     Ok(self.push(EmirOp::CallFrame {
@@ -1188,7 +1209,7 @@ impl Lowerer {
                 // An unmapped domain keeps the empty numeric-lane
                 // signature (interp-verified carrier), matching the
                 // pre-typed-ABI behavior instead of refusing lowering.
-                let signature = domain_signature(domain, &self.objects).unwrap_or_default();
+                let signature = domain_signature(domain, &self.objects, &self.type_vars).unwrap_or_default();
                 Ok(self.push(EmirOp::ProgramLiteral {
                     body: nested,
                     captures,
@@ -1256,6 +1277,7 @@ impl Lowerer {
                         // parameter is the template's only binder.
                         arrow_names: BTreeSet::new(),
                         module_stamps: self.module_stamps.clone(),
+            type_vars: self.type_vars.clone(),
                     };
                     let lowered = child.expr(inner)?;
                     let program = child.finish(lowered);
@@ -1306,6 +1328,7 @@ impl Lowerer {
                         self_result: String::new(),
                         arrow_names: BTreeSet::new(),
                         module_stamps: self.module_stamps.clone(),
+            type_vars: self.type_vars.clone(),
                     };
                     let lowered = child.expr(body)?;
                     let program = child.finish(lowered);
@@ -1485,6 +1508,7 @@ fn lower_closed(
         self_result: String::new(),
         arrow_names: BTreeSet::new(),
         module_stamps: BTreeMap::new(),
+        type_vars: Vec::new(),
     };
     let result = lowerer.expr(body)?;
     Ok(lowerer.finish(result))
@@ -1621,10 +1645,13 @@ fn is_refuse_quote_call(function: &Expr, args: &[Expr]) -> bool {
 /// an object name -> `Record<Name>`, `sequence(T)` -> `Vector<T>`, and
 /// the arrow bridge `A -> B` (parsed as `Call { Path[Fn], [A, B] }`)
 /// -> `Fn<A,B>`. None means the domain has no native carrier.
-fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>) -> Option<String> {
+fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>, vars: &[String]) -> Option<String> {
     match &domain.kind {
         ExprKind::Path { segments, .. } => {
             let name = segments.last()?;
+            if segments.len() == 1 && vars.contains(name) {
+                return Some(format!("Var<{name}>"));
+            }
             match name.as_str() {
                 "Int" | "Rat" | "Bool" | "Text" | "Float64" => Some(name.clone()),
                 _ => objects.contains_key(name).then(|| format!("Record<{name}>")),
@@ -1641,7 +1668,7 @@ fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>) -> Option
                 return None;
             };
             (segments.last()? == "sequence")
-                .then(|| domain_signature(element, objects))
+                .then(|| domain_signature(element, objects, vars))
                 .flatten()
                 .map(|element| format!("Vector<{element}>"))
         }
@@ -1654,14 +1681,14 @@ fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>) -> Option
                 "Fn" => {
                     let parts = args
                         .iter()
-                        .map(|arg| domain_signature(arg, objects))
+                        .map(|arg| domain_signature(arg, objects, vars))
                         .collect::<Option<Vec<_>>>()?;
                     let (result, domains) = parts.split_last()?;
                     Some(format!("Fn<{},{}>", domains.join(","), result))
                 }
                 "sequence" => {
                     let [element] = args.as_slice() else { return None };
-                    Some(format!("Vector<{}>", domain_signature(element, objects)?))
+                    Some(format!("Vector<{}>", domain_signature(element, objects, vars)?))
                 }
                 _ => None,
             }
@@ -2053,6 +2080,16 @@ pub fn constructor_type_signature(ty: &TypeExpr, objects: &BTreeSet<String>) -> 
     type_signature(ty, objects, &[])
 }
 
+/// [`constructor_type_signature`] inside a generic declaration: each
+/// of `vars` (its type parameters) renders as `Var<name>`.
+pub fn generic_type_signature(
+    ty: &TypeExpr,
+    objects: &BTreeSet<String>,
+    vars: &[String],
+) -> Option<String> {
+    type_signature(ty, objects, vars)
+}
+
 /// `vars` are the declaration's type parameters; each renders as
 /// `Var<name>` so a caller can bind it from the arguments it passes.
 fn type_signature(ty: &TypeExpr, objects: &BTreeSet<String>, vars: &[String]) -> Option<String> {
@@ -2100,6 +2137,19 @@ fn type_signature(ty: &TypeExpr, objects: &BTreeSet<String>, vars: &[String]) ->
                 // A Fragment package (a viewed child: term + minted
                 // Scope witness) is a node-family record.
                 "Fragment" => Some("Fragment".into()),
+                // A generic object applied to carriers names its
+                // instantiation (`Record<Pair<Int,Bool>>`): each
+                // instantiation is its own layout.
+                name if objects.contains(name) && !generic_args.is_empty() => {
+                    let mut args = Vec::new();
+                    for arg in generic_args {
+                        let GenericArg::Type(arg) = arg else {
+                            return None;
+                        };
+                        args.push(type_signature(arg, objects, vars)?);
+                    }
+                    Some(format!("Record<{name}<{}>>", args.join(",")))
+                }
                 name if objects.contains(name) => Some(format!("Record<{name}>")),
                 _ => None,
             }
@@ -2477,6 +2527,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         self_result: String::new(),
         arrow_names: BTreeSet::new(),
         module_stamps: BTreeMap::new(),
+        type_vars: Vec::new(),
     };
     let acc = step.push(EmirOp::LoadInput(1));
     let coeff = if contains_path(coeff, param) {
@@ -2508,6 +2559,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         self_result: String::new(),
         arrow_names: BTreeSet::new(),
         module_stamps: BTreeMap::new(),
+        type_vars: Vec::new(),
     };
     let count = outer.push(EmirOp::LoadInput(0));
     let init = outer.expr(then_value).ok()?;

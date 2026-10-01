@@ -203,7 +203,7 @@ pub fn emit_record_definitions(records: &[AuthoredRecord]) -> Result<String, Bac
         if closure_fields.is_empty() {
             rust.push_str(&format!(
                 "#[derive(Clone, Debug, PartialEq)]\npub struct EmathRecord_{} {{\n{fields}}}\n\n",
-                escape_ident(&record.name)
+                crate::codegen_render::record_ident(&record.name)
             ));
             continue;
         }
@@ -214,7 +214,7 @@ pub fn emit_record_definitions(records: &[AuthoredRecord]) -> Result<String, Bac
         // fields compare by shared-handle identity (the same identity
         // fallback the VM's buffer law uses - a callable has no total
         // value equality) and print as `<closure>`.
-        let name = format!("EmathRecord_{}", escape_ident(&record.name));
+        let name = format!("EmathRecord_{}", crate::codegen_render::record_ident(&record.name));
         let debug_fields = record
             .fields
             .iter()

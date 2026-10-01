@@ -187,3 +187,16 @@ emath function WideThroughFrame:
         example <preserve_wide_frame>:
             given unused = 0
             expect result == 9223372036854775808
+
+emath function WideTimesFloat:
+    # A wide Int widens to Float64 in mixed arithmetic, as in the VM.
+    inputs:
+        unused: Int
+    outputs:
+        result: Float64
+    definitions:
+        result = int_quot(9223372036854775808, 1) * 0.5f64
+    tests:
+        example <wide_widens>:
+            given unused = 0
+            expect result == 4611686018427387904.0f64

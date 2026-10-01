@@ -28,7 +28,10 @@ mod rtcalls;
 use carrier::{carrier_payload_types, expect_carrier, op_self_index};
 pub(crate) use flat::*;
 pub(crate) use kinds::*;
-pub(crate) use record_layouts::{AuthoredRecordScope, record_layout};
+pub(crate) use record_layouts::{
+    AuthoredRecordScope, RecordTemplate, RecordTemplateScope, infer_instantiation, record_ident,
+    record_layout, record_template, take_instantiations, touch_record_kinds,
+};
 pub(crate) use rtcalls::*;
 
 /// Wrap an operand expression into the value union by its kind. Total
@@ -950,7 +953,7 @@ pub(crate) fn op_expr(
                         "typed program literal takes exactly one domain parameter".into(),
                     ));
                 }
-                let param_kind = ValueKind::from_signature(signature);
+                let param_kind = ValueKind::from_signature(&bound_signature(signature));
                 if matches!(param_kind, ValueKind::Other) {
                     return Err(BackendError::UnsupportedType(format!(
                         "program literal parameter domain {signature} has no native carrier"
@@ -1929,6 +1932,7 @@ fn literal_frame_expr(
         .map(|index| format!("__frame_state_{index}"))
         .collect::<Vec<_>>();
     let arg_kinds = inputs.iter().map(|value| kind_at(kinds, *value)).collect::<Vec<_>>();
+    let _types = TypeBindingScope::enter(&arg_kinds, declared);
     let declared = &instantiate_declared(&arg_kinds, declared);
     let mut refined = InputKinds::new();
     for (index, (name, value)) in names.iter().zip(inputs).enumerate() {
