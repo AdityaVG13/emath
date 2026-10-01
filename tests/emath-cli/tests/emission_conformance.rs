@@ -2884,6 +2884,33 @@ fn emission_conformance_union_sum() {
     assert!(diffs.is_empty(), "emitted union sum disagrees with the VM on:\n{}", diffs.join("\n"));
 }
 
+const CODE_FIELD_TEMPLATE_DRIVER: &str = r#"
+use code_field_template::{stored_apply, stored_same};
+
+fn main() {
+    let mut failures = 0usize;
+    if stored_apply(3) != Ok(7) {
+        failures += 1;
+        println!("DIFF stored_apply EMITTED {:?}; VM = 7", stored_apply(3));
+    }
+    if stored_same(3) != Ok(true) || stored_same(4) != Ok(false) {
+        failures += 1;
+        println!("DIFF stored_same EMITTED {:?} {:?}; VM = true false", stored_same(3), stored_same(4));
+    }
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all code_field_template pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_code_field_template() {
+    let diffs = run_lane("tests/fixtures/constructor/code_field_template.emath", CODE_FIELD_TEMPLATE_DRIVER);
+    assert!(diffs.is_empty(), "emitted Code-field template disagrees with the VM on:\n{}", diffs.join("\n"));
+}
+
 /// Oscillations seam pin: the generic self-recursion instantiation
 /// (tabulate_at at an `Int -> sequence(Rat)` closure — the CallSelf
 /// result kind mirrors the render's crossing decision) through the

@@ -35,10 +35,9 @@ pub struct Code<V: Clone + 'static> {
     free: Vec<String>,
     /// The distilled tree the literal carried (the dual
     /// representation the union lane already carries - the
-    /// view/make seam reads structure through it). `None` on a
-    /// substituted or made value: a bound constant is a factory
-    /// fact, not a tree splice, and a made-from-nodes program value
-    /// never carried one.
+    /// view/make seam reads structure through it). Substitution
+    /// splices the bound constant into it as a literal. `None` when
+    /// the template has no distilled tree (Float64 carriers).
     tree: Option<super::code_tree::CodeTree>,
     make: CodeFactory<V>,
 }
@@ -61,9 +60,7 @@ pub fn open<V: Clone + 'static>(free: Vec<String>, make: CodeFactory<V>) -> Code
 
 /// Open a compiled template WITH its distilled tree: the literal
 /// lane carries both representations so `quote.view` can open a
-/// program template's structure. `substitute` closes the tree lane
-/// (a bound constant is a factory splice, not a tree rewrite);
-/// made-from-nodes program values never carried one.
+/// program template's structure; `substitute` keeps both in step.
 pub fn open_with_tree<V: Clone + 'static>(
     free: Vec<String>,
     tree: super::code_tree::CodeTree,
@@ -74,8 +71,7 @@ pub fn open_with_tree<V: Clone + 'static>(
 
 impl<V: Clone + 'static> Code<V> {
     /// `quote.view` over a program template: the distilled tree the
-    /// literal carried. A substituted or made value has no tree lane
-    /// - the refusal names it, never guessing.
+    /// literal carried. A template without one refuses by name.
     pub fn view(
         &self,
         module: &super::code_tree::ModuleTable,
@@ -83,41 +79,104 @@ impl<V: Clone + 'static> Code<V> {
         match &self.tree {
             Some(tree) => Ok(super::code_tree::view_tree(tree, module)),
             None => Err(String::from(
-                "type: quote.view over a substituted or made program value has no tree lane in this cut",
+                "type: quote.view over a program value without a tree (a Float64 template)",
             )),
         }
     }
 
-    /// `quote.identity` over a program template's tree; a substituted
-    /// or made value has none to spell, so it refuses like `view`.
+    /// `quote.identity` over a program template's tree; refuses like
+    /// `view` when there is none.
     pub fn identity(&self) -> Result<i64, String> {
         match &self.tree {
             Some(tree) => super::code_tree::tree_identity(tree),
             None => Err(String::from(
-                "type: quote.identity over a substituted or made program value has no tree lane in this cut",
+                "type: quote.identity over a program value without a tree (a Float64 template)",
             )),
         }
     }
 }
 
-/// Bind one open constant by partial application.
-pub fn substitute<V: Clone + 'static>(code: &Code<V>, reference: &str, value: V) -> Code<V> {
+/// A template carrier's value as a tree literal. Float64 has no exact
+/// tree literal (its templates carry no tree), so it answers `None`.
+pub trait TreeScalar {
+    fn tree_literal(&self) -> Option<CodeValue>;
+}
+
+impl TreeScalar for i64 {
+    fn tree_literal(&self) -> Option<CodeValue> {
+        Some(CodeValue::Int(*self))
+    }
+}
+
+impl TreeScalar for ExactRatio {
+    fn tree_literal(&self) -> Option<CodeValue> {
+        Some(CodeValue::Rat(*self))
+    }
+}
+
+impl TreeScalar for bool {
+    fn tree_literal(&self) -> Option<CodeValue> {
+        Some(CodeValue::Bool(*self))
+    }
+}
+
+impl TreeScalar for f64 {
+    fn tree_literal(&self) -> Option<CodeValue> {
+        None
+    }
+}
+
+impl<V: Clone + 'static> Code<V> {
+    /// The template as a plain Code value (a `Code` record field, a
+    /// `Code` parameter): its tree with the same open names. The
+    /// compiled factory does not cross; the tree evaluator runs it,
+    /// with the same carrier laws and the closure's domain checks.
+    pub fn to_expr_code(&self) -> Result<ExprCode, String> {
+        match &self.tree {
+            Some(tree) => Ok(open_expr(
+                self.free.clone(),
+                tree.clone(),
+                None,
+                std::collections::BTreeMap::new(),
+            )),
+            None => Err(String::from(
+                "type: a program value without a tree (a Float64 template) cannot be stored as Code",
+            )),
+        }
+    }
+}
+
+/// Bind one open constant by partial application. The tree, when
+/// present, takes the value as a literal in the same step, so the
+/// substituted template still views, identifies, and stores as the
+/// VM's substituted code.
+pub fn substitute<V: Clone + TreeScalar + 'static>(
+    code: &Code<V>,
+    reference: &str,
+    value: V,
+) -> Code<V> {
     let Some(position) = code.free.iter().position(|name| name == reference) else {
         return code.clone();
     };
     let mut free = code.free.clone();
     free.remove(position);
     let inner = Rc::clone(&code.make);
+    let bound = value.clone();
     let make = Rc::new(move |rest: &[V]| {
         let mut all = rest[..position].to_vec();
-        all.push(value.clone());
+        all.push(bound.clone());
         all.extend_from_slice(&rest[position..]);
         inner(&all)
     });
-    // The tree lane closes: a bound constant is a factory splice,
-    // not a tree rewrite (view over a substituted value refuses by
-    // name through `Code::view`).
-    Code { free, tree: None, make }
+    let tree = match (&code.tree, value.tree_literal()) {
+        (Some(tree), Some(literal)) => Some(super::code_tree::substitute_tree(
+            tree,
+            reference,
+            &super::code_tree::CodeTree::Literal(literal),
+        )),
+        _ => None,
+    };
+    Code { free, tree, make }
 }
 
 /// The guarded executor: closed code yields the specialized unary

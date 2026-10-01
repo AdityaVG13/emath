@@ -2283,6 +2283,12 @@ pub(super) fn numeric_boundary_value(
             "({}).to_code()?",
             render_expr(expression)
         ))),
+        // A typed function template (substituted or not) into a
+        // declared Code slot crosses as its tree.
+        (ValueKind::Code(_), ValueKind::ExprCode) => Some(Expr::Raw(format!(
+            "({}).to_expr_code()?",
+            render_expr(expression)
+        ))),
         (ValueKind::Vector(source), ValueKind::Vector(target)) => {
             let item = Expr::Raw(
                 if source.is_copy() {

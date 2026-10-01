@@ -1,0 +1,43 @@
+# A typed function template with a constant substituted in is still
+# code: it can fill a Code record field, and viewing, identifying, or
+# evaluating it through the field gives the VM's answers.
+
+emath object Stored:
+    representation:
+        code: Code
+
+emath function store:
+    inputs:
+        k: Int
+    outputs:
+        result: Stored
+    definitions:
+        result = Stored: {code: quote.substitute(quote(function x in Int: x + m), "m", k)}
+
+emath function stored_apply:
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        f = quote.evaluate(store(k).code)
+        result = f(4)
+    tests:
+        example <applies_stored>:
+            given k = 3
+            expect result == 7
+
+emath function stored_same:
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.identity(store(k).code) == quote.identity(quote(function x in Int: x + 3))
+    tests:
+        example <identifies_stored>:
+            given k = 3
+            expect result == true
+        example <different_constant>:
+            given k = 4
+            expect result == false
