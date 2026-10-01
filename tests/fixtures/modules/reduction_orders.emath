@@ -1,0 +1,53 @@
+# Which kernel reduction orders give the bits of the serial row.
+#
+# A one-row kernel sums a 128-long dot product in one running FMA chain
+# (binary32 accumulator). A batched kernel that splits K into tiles of
+# 32 and adds the partials gives other bits on some input: same_bits
+# finds three summands where they differ. A tile as wide as the row
+# is the serial order. A warp reduction (32 lanes, butterfly) whose
+# lanes take their summands in another schedule is the same tree, so
+# the same bits for every input; regrouping its butterfly is not.
+#
+# Run: emath test reduction_orders.emath --work 2000000000 (about 3 s)
+
+use fold.reduce
+use numerics.floats
+use numerics.reductions
+
+emath function scheduled:
+    # strided(n, lanes) with every lane's k-th merge issued together (k outer, lanes inner): the same sums in another order.
+    inputs:
+        n: Int
+        lanes: Int
+    outputs:
+        result: Plan
+    definitions:
+        base = strided(n, lanes)
+        steps = int_quot(n, lanes) - 1
+        own = fold(function acc in sequence(Merge): function k in Int: concat(acc, map(function l in Int: Merge: {dst: l, src: l + lanes * k}, range(0, lanes))), [], range(1, steps))
+        result = Plan: {leaves: n, merges: concat(own, filter(function m in Merge: m.src < lanes, base.merges)), starts: base.starts}
+
+emath function ReductionOrders:
+    inputs:
+        unused: Int
+    outputs:
+        split_k: Bool
+        full_tile: Bool
+        rescheduled: Bool
+        regrouped: Bool
+    definitions:
+        f = binary32(0)
+        nonzero = function v in Verdict: length(filter(function x in Rat: x != 0 / 1, v.witness))
+        split = same_bits(f, sequential(128), tiled(128, 32), true)
+        split_k = not split.same and split.left != split.right and nonzero(split) == 3 and reduce(f, tiled(128, 32), split.witness, true) == split.right
+        full_tile = same_bits(f, sequential(128), tiled(128, 128), true).same
+        rescheduled = same_bits(f, strided(128, 32), scheduled(128, 32), true).same
+        tree = same_bits(f, strided(64, 32), strided(64, 16), true)
+        regrouped = not tree.same and tree.left != tree.right
+    tests:
+        example <reduction_orders>:
+            given unused = 0
+            expect split_k == true
+            expect full_tile == true
+            expect rescheduled == true
+            expect regrouped == true
