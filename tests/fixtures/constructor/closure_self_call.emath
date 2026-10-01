@@ -318,3 +318,30 @@ emath function callee_body_applies:
         example <positive>:
             given k = 4
             expect result == 26
+
+emath object Unary:
+    representation:
+        code: Code
+        apply: Int -> Int
+        cap: Int
+
+emath function evaluated_field:
+    # evaluated run-time code stored as a record's function field, then applied
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        c = quote.substitute(quote.make(quote.view(quote(function x in Int: x * m + 1))), "m", k)
+        b = Unary: {code: c, apply: quote.evaluate(c), cap: 10}
+        result = b.apply(3) + b.cap
+
+emath function evaluated_tabulate:
+    # evaluated run-time code passed to a generic function as its step
+    inputs:
+        k: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        c = quote.substitute(quote.make(quote.view(quote(function x in Int: x * m + 1))), "m", k)
+        result = tabulate(quote.evaluate(c), 4)

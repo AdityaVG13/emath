@@ -392,6 +392,7 @@ fn lower_named(
             (stages > 0).then_some((input, stages))
         })
         .collect();
+    let output_signature = authored_signatures(tree, name, &object_names).1;
     for (def_name, expr) in &defs {
         // `f = quote.evaluate(code)` used as a function: passed into a
         // declared arrow parameter of a module function (one agreed
@@ -410,6 +411,23 @@ fn lower_named(
         let lowered = match (&expr.kind, applied) {
             (ExprKind::Call { args, .. }, Some(applied)) => {
                 lowerer.lower_applied_evaluate(&args[0], applied)
+            }
+            // The single output's declared carrier is the expectation
+            // for a generic call handed evaluated code
+            // (`tabulate(quote.evaluate(c), n)` into `sequence(Int)`
+            // binds `T`, so the evaluated code is an `Int -> Int`).
+            (ExprKind::Call { function, args }, None)
+                if outputs.len() == 1
+                    && &outputs[0] == def_name
+                    && !output_signature.is_empty()
+                    && matches!(&function.kind, ExprKind::Path { segments, .. }
+                        if segments.len() == 1 && is_generic_function(tree, &segments[0]))
+                    && args.iter().any(|arg| {
+                        matches!(&arg.kind,
+                        ExprKind::Call { function, .. } if is_quote_evaluate_call(function))
+                    }) =>
+            {
+                lowerer.expr_expecting(expr, &output_signature)
             }
             _ => lowerer.expr(expr),
         };
@@ -624,6 +642,16 @@ fn evaluate_application(
     u16::try_from(arity).ok().map(CodeApplication::Union)
 }
 
+fn is_generic_function(tree: &SyntaxTree, name: &str) -> bool {
+    tree.items.iter().any(|item| {
+        matches!(
+            item,
+            Item::Declaration(decl)
+                if decl.as_kind == "function" && decl.name == name && !decl.generics.is_empty()
+        )
+    })
+}
+
 fn function_exists(tree: &SyntaxTree, name: &str) -> bool {
     tree.items.iter().any(|item| {
         matches!(
@@ -763,6 +791,16 @@ impl Lowerer {
         let ExprKind::Call { function, args } = &expr.kind else {
             return self.expr(expr);
         };
+        // Evaluated code expected as a function takes the declared
+        // arrow's callable lane.
+        if is_quote_evaluate_call(function)
+            && args.len() == 1
+            && expected.starts_with("Fn<")
+            && !expected.contains("Var<")
+        {
+            return self
+                .lower_applied_evaluate(&args[0], CodeApplication::Declared(expected.to_string()));
+        }
         let ExprKind::Path { segments, .. } = &function.kind else {
             return self.expr(expr);
         };

@@ -1632,7 +1632,8 @@ const CLOSURE_SELF_CALL_DRIVER: &str = r#"
 //! A function calling itself from inside a closure it hands to a fold.
 use closure_self_call::emath_rt::ExactInt;
 use closure_self_call::{
-    applied_recur, call_shapes, callee_body_applies, counts_big, digits, digits_are, finds_x, leaves, misses_z, paired, plugged,
+    applied_recur, call_shapes, callee_body_applies, counts_big, evaluated_field,
+    evaluated_tabulate, digits, digits_are, finds_x, leaves, misses_z, paired, plugged,
     rewrite_total, shelf_shape, twice_literal, x_first,
 };
 fn main() {
@@ -1728,6 +1729,20 @@ fn main() {
         if got != Ok(vm) {
             failures += 1;
             println!("DIFF callee_body_applies({k}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    for (k, vm) in [(2, 17), (-3, 2)] {
+        let got = evaluated_field(k);
+        if got != Ok(vm) {
+            failures += 1;
+            println!("DIFF evaluated_field({k}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    for (k, vm) in [(2, [1, 3, 5, 7]), (-3, [1, -2, -5, -8])] {
+        let got = evaluated_tabulate(k);
+        if got != Ok(vm.to_vec()) {
+            failures += 1;
+            println!("DIFF evaluated_tabulate({k}) EMITTED {:?}; VM = {vm:?}", got);
         }
     }
     if failures == 0 {
