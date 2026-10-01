@@ -366,6 +366,31 @@ fn compare_cmd() {
     // The largest residue, 2^-53, first appears at x = 0.4 (ties at 0.6
     // and 0.9 keep the earliest point).
     assert!(worst.contains("\"inputs\":{\"x\":\"0.4\"}"), "{out}");
+
+    // quote.world: a function value evaluated under another world from
+    // inside the language. The judge sees float64 part from exact at
+    // n = 5 and agree at n = 4.
+    let out = compare_in("judge", "n=5", &["reference"]);
+    assert!(world_row(&out, "reference").contains("\"payload\":\"true\""), "{out}");
+    let out = compare_in("judge", "n=4", &["reference"]);
+    assert!(world_row(&out, "reference").contains("\"payload\":\"false\""), "{out}");
+    // The argument 1/10 is read as float32 data inside; outside, the
+    // float64 world resumes for `x / 3`, and the exact world stays exact.
+    let out = compare_in("inside_out", "x=0.1", &["exact", "float64"]);
+    assert!(
+        world_row(&out, "exact").contains("\"payload\":\"(0.10000000149011612,1/30)\""),
+        "{out}"
+    );
+    assert!(
+        world_row(&out, "float64").contains("\"payload\":\"(0.10000000149011612,0.03333333333333333)\""),
+        "{out}"
+    );
+    // A refusal inside is reported as the inner answer.
+    let out = compare_in("inner_refusal", "x=0.1", &["reference"]);
+    assert!(
+        world_row(&out, "reference").contains("\"payload\":\"(false,type)\""),
+        "{out}"
+    );
 }
 
 /// The values of input `name` at the divergent points, in grid order.

@@ -1,4 +1,5 @@
 use super::super::{Engine, Expr, CValue, ConstructorError, ExprKind, Rc, Kont, fault, machine_int_basename, machine_buffer_basename, cint, Code, FnDecl, MAX_CALL_DEPTH, EvalTail};
+use super::super::world::CarrierWorld;
 use super::prelude::{admit_input_type, code_identity, is_refused_recipe, path_expr, project_field, rebuild_expr};
 
 /// The identifier a `quote.join` operand spells: a quoted single
@@ -198,7 +199,45 @@ impl Engine {
                         ));
                     }
                 };
-                self.measure_cost(callee, input, limit)
+                self.measure_cost(callee, input, limit, None)
+            }
+            "quote.world" => {
+                if args.len() != 4 {
+                    return Err(fault(
+                        "arity",
+                        "quote.world expects a world name, a function, an argument, and a work limit",
+                    ));
+                }
+                let world = match self.eval(&args[0])? {
+                    CValue::Str(name) => CarrierWorld::parse(&name).ok_or_else(|| {
+                        let names: Vec<&str> = CarrierWorld::ALL.iter().map(|w| w.name()).collect();
+                        fault(
+                            "unknown_world",
+                            format!("unknown world `{name}`; worlds are {}", names.join(", ")),
+                        )
+                    })?,
+                    other => {
+                        return Err(fault(
+                            "type",
+                            format!("quote.world expects a world name such as \"float64\", found {other}"),
+                        ));
+                    }
+                };
+                let callee = match self.eval(&args[1])? {
+                    CValue::Code(code) => self.eval_code(CValue::Code(code))?,
+                    other => other,
+                };
+                let input = self.eval(&args[2])?;
+                let limit = match self.eval(&args[3])? {
+                    CValue::Int(crate::exact_int::ExactInt::Small(n)) if n >= 0 => n as u64,
+                    other => {
+                        return Err(fault(
+                            "type",
+                            format!("quote.world expects a non-negative machine-size Int work limit, found {other}"),
+                        ));
+                    }
+                };
+                self.measure_cost(callee, input, limit, Some(world))
             }
             "quote.join" => {
                 if args.len() != 2 {

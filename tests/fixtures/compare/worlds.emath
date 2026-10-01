@@ -79,3 +79,39 @@ emath function near_root:
         result: Rat
     definitions:
         result = x * x - 2
+
+# quote.world runs a function value under another world from inside the
+# language: a judge that sees where float64 and exact part ways.
+emath function judge:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        thirds = function k in Int: 1 / k + 1 / k + 1 / k == 3 / k
+        exact = quote.world("exact", thirds, n, 100000)
+        float = quote.world("float64", thirds, n, 100000)
+        result = exact.value != float.value
+
+# The argument is read as the inner world reads data, the answer comes
+# back as that world produced it, and the outer world resumes after.
+emath function inside_out:
+    inputs:
+        x: Rat
+    outputs:
+        result: (Float64, Rat)
+    definitions:
+        keep = function y in Rat: y
+        inner = quote.world("float32", keep, x, 1000)
+        result = (inner.value, x / 3)
+
+# A refusal inside the inner world is an answer, not a crash.
+emath function inner_refusal:
+    inputs:
+        x: Rat
+    outputs:
+        result: (Bool, Str)
+    definitions:
+        denom = function y in Rat: y.denom
+        inner = quote.world("float64", denom, x, 1000)
+        result = (inner.done, inner.fault)

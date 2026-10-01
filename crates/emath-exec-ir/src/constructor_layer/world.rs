@@ -295,6 +295,50 @@ pub fn world_input(
     coerce_reals(value, world, exact_decimals)
 }
 
+/// A value made in one world, read as data by `world` (`quote.world`'s
+/// argument): exact reals round to a float world's format or become the
+/// tightest interval in `interval`; an `Int` outside 64 bits is refused
+/// in `int64`. A binary64 stays a binary64 in `exact` (it is reported
+/// as rounded, never relabeled exact).
+pub(super) fn world_value(world: CarrierWorld, value: CValue) -> Result<CValue, ConstructorError> {
+    Ok(match value {
+        CValue::Rat { num, den } if world.is_float() => {
+            CValue::Float64(world.round_rational(&num, &den))
+        }
+        CValue::Float64(x) if world.is_float() => CValue::Float64(world.round(x)),
+        value @ (CValue::Rat { .. } | CValue::Float64(_)) if world == CarrierWorld::Interval => {
+            let (lo, hi) = super::interval::enclose(&value)?;
+            super::interval::interval(lo, hi)?
+        }
+        CValue::Int(n) if world == CarrierWorld::Int64 => {
+            return with_world(world, || machine_int(n));
+        }
+        CValue::Sequence(items) => CValue::Sequence(std::sync::Arc::new(
+            items
+                .iter()
+                .cloned()
+                .map(|item| world_value(world, item))
+                .collect::<Result<_, _>>()?,
+        )),
+        CValue::Tuple(items) => CValue::Tuple(
+            items
+                .into_iter()
+                .map(|item| world_value(world, item))
+                .collect::<Result<_, _>>()?,
+        ),
+        CValue::Record { type_name, fields } => CValue::Record {
+            type_name,
+            fields: std::sync::Arc::new(
+                fields
+                    .iter()
+                    .map(|(name, field)| Ok((name.clone(), world_value(world, field.clone())?)))
+                    .collect::<Result<_, ConstructorError>>()?,
+            ),
+        },
+        other => other,
+    })
+}
+
 /// `lo, hi` as an interval: each end read exactly, then rounded outward.
 fn read_range(range: &str) -> Result<CValue, ConstructorError> {
     let invalid = || {

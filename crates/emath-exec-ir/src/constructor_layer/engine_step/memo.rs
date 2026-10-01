@@ -1,5 +1,6 @@
 use super::super::{Engine, CValue, ConstructorError, fault, cint, Code, call_memo_key, Closure, closure_memo_key, is_scalar, MAX_CALL_DEPTH, ContinuationFrame, Environment, ScalarArg, ScalarArgs, SCALAR_ARGS, FACT_PREFIX};
 use super::prelude::{fragment_term, substitute_path, value_to_expr};
+use super::super::world::{with_world, world_value, CarrierWorld};
 use crate::exact_int::ExactInt;
 
 /// The arguments as a `ScalarArgs` key, when they all fit one.
@@ -167,12 +168,25 @@ impl Engine {
     /// partial measurement is unwound and `budget_exhausted` propagates;
     /// a resume re-evaluates the enclosing expression, so the
     /// measurement restarts rather than continuing half way.
+    ///
+    /// `quote.world(w, f, x, limit)` is the same measurement under carrier
+    /// world `w`: `x` is read as `w` reads data, `f` runs with `w`
+    /// installed (the outer world resumes after, also on a fault), and the
+    /// record is `WorldAnswer {world, done, work, value | fault}`. The
+    /// empty memo matters twice here: no answer computed under one world
+    /// is reused under another. Values `f` captured were made in the outer
+    /// world and enter as they are, like the program's constants.
     pub(in crate::constructor_layer) fn measure_cost(
         &mut self,
         callee: CValue,
         input: CValue,
         limit: u64,
+        world: Option<CarrierWorld>,
     ) -> Result<CValue, ConstructorError> {
+        let input = match world {
+            Some(world) => world_value(world, input)?,
+            None => input,
+        };
         let outer_limit = self.work_limit;
         let start = self.work;
         let memo = std::mem::take(&mut self.memo);
@@ -187,7 +201,10 @@ impl Engine {
         // under the carrying host's policy.
         let facts_only = std::mem::replace(&mut self.facts_only_memo, true);
         self.work_limit = outer_limit.min(start.saturating_add(limit));
-        let outcome = self.apply_value(callee, &[input]);
+        let outcome = match world {
+            Some(world) => with_world(world, || self.apply_value(callee, &[input])),
+            None => self.apply_value(callee, &[input]),
+        };
         let work = self.work - start;
         let outer_exhausted = self.work > outer_limit;
         self.facts_only_memo = facts_only;
@@ -217,7 +234,14 @@ impl Engine {
                 fields.insert("fault".into(), CValue::Str(err.code));
             }
         }
-        Ok(CValue::Record { type_name: "Cost".into(), fields: std::sync::Arc::new(fields) })
+        let type_name = match world {
+            Some(world) => {
+                fields.insert("world".into(), CValue::Str(world.name().into()));
+                "WorldAnswer"
+            }
+            None => "Cost",
+        };
+        Ok(CValue::Record { type_name: type_name.into(), fields: std::sync::Arc::new(fields) })
     }
 
     /// One honesty site for the call-depth bound: names the reached
