@@ -1,0 +1,26 @@
+# A run-time program's value (the dynamic Int/Rat/Bool union) compared
+# with exact Int arithmetic. The comparison joins the two through the
+# union kernels; the exact Int narrows checked onto the union's i64
+# lane (E-INT-002 by name, never truncated). The shape is
+# search.certify's divisibility test.
+use fold.reduce
+
+emath function divisible_values:
+    # whether d divides prog(x) for x = 0..3
+    inputs:
+        prog: Code
+        d: Int
+    outputs:
+        result: Bool
+    definitions:
+        at = function x in Int: quote.evaluate(prog)(x)
+        result = all(function x in Int: (function y in Int: y == d * int_quot(y, d))(at(x)), range(0, 4))
+    tests:
+        example <three_divides_six_n>:
+            given prog = quote n in Int: n * 6
+            given d = 3
+            expect result == true
+        example <four_misses_six_n>:
+            given prog = quote n in Int: n * 6
+            given d = 4
+            expect result == false

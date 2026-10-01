@@ -83,6 +83,13 @@ pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
             "emath_rt::code::CodeValue::Bool({})",
             render_expr(&expr)
         )),
+        // The union's Int is i64; the VM's arbitrary-precision Int
+        // narrows checked (E-INT-002), never truncated - the same law
+        // as `to_node`.
+        ValueKind::ExactInt => Expr::Raw(format!(
+            "emath_rt::code::CodeValue::Int({})",
+            render_expr(&kinds::coerce_to_ty(expr, ValueKind::ExactInt, &Ty::I64))
+        )),
         other => unreachable!(
             "the union-lane kind rules admit only Int/Rat/Bool beside the union, found {other:?}"
         ),

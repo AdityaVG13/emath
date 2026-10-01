@@ -1554,6 +1554,60 @@ fn emission_conformance_named_fn() {
         diffs.join("\n")
     );
 }
+const UNION_EXACT_COMPARE_DRIVER: &str = r#"
+//! A run-time program's union value compared with exact Int
+//! arithmetic: the emitted comparison must agree with the VM.
+use union_exact_compare::divisible_values;
+use union_exact_compare::emath_rt::code::{open_expr, CodeValue, ExprCode};
+use union_exact_compare::emath_rt::code_tree::{CodeTree, TreeBinary, TreeDomain};
+
+// quote n in Int: n * 6
+fn six_n() -> ExprCode {
+    open_expr(
+        Vec::new(),
+        CodeTree::Closure {
+            param: "n".to_string(),
+            domain: TreeDomain::Scalar("Int".to_string()),
+            body: Box::new(CodeTree::Binary {
+                op: TreeBinary::Mul,
+                left: Box::new(CodeTree::Path(vec!["n".to_string()])),
+                right: Box::new(CodeTree::Literal(CodeValue::Int(6))),
+            }),
+        },
+        None,
+        std::collections::BTreeMap::new(),
+    )
+}
+
+fn main() {
+    let mut failures = 0usize;
+    let got = divisible_values(six_n(), 3);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF three_divides_six_n EMITTED {:?}; VM = true", got);
+    }
+    let got = divisible_values(six_n(), 4);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF four_misses_six_n EMITTED {:?}; VM = false", got);
+    }
+    if failures == 0 {
+        println!("union_exact_compare: all pins hold");
+    }
+}
+"#;
+#[test]
+fn emission_conformance_union_exact_compare() {
+    let diffs = run_lane(
+        "tests/fixtures/constructor/union_exact_compare.emath",
+        UNION_EXACT_COMPARE_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted union_exact_compare disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
 const GENERIC_RECORD_DRIVER: &str = r#"
 //! One generic object at two carriers: each instantiation has its own
 //! native layout, and the generic fold reads it at the bound carrier.

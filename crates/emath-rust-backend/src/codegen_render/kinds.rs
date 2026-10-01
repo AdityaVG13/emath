@@ -1910,9 +1910,8 @@ pub(super) fn cmp_expr(
         // The union lane: comparisons route through the dynamic
         // kernels - exact cross-multiplication ordering, VALUE
         // equality (`2 == 2/1` is true), mixed kinds never equal.
-        // The joinable pair is guaranteed by the kind rules (the arm
-        // only fires when the other side is Int/Rat/Bool/union), so
-        // both sides wrap totally.
+        // The other side is Int/Rat/Bool/union, or an exact Int that
+        // narrows checked onto the union's i64 (`to_code_value`).
         (ValueKind::CodeValue, _) | (_, ValueKind::CodeValue) => {
             let left = to_code_value(operand(program, left), &lk);
             let right = to_code_value(operand(program, right), &rk);
