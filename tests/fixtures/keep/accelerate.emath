@@ -80,13 +80,21 @@ emath function Accelerates:
 #   Tribonacci  t(n) = t(n-1) + t(n-2) + t(n-3): no law in two values
 #               fits, so the fit widens to t(m), t(m+1), t(m+2), and
 #               t(2m) .. t(2m+3) are quadratics in those three
+#   Tetranacci  order four: the code bounds the order at four, so the
+#               fit widens to four values
+#   lag 6       a(n) = a(n-1) + a(n-6): a window of six values, the
+#               widest whose fit still proves the law; seven laws in
+#               28 monomials make each halving step costly, so it is
+#               about 2.8x cheaper at n = 500 and 1000, not 10x
 #   factorial   no degree-two law fits the values it was shown:
 #               nothing is conjectured
 #
 # The Fibonacci and Pell laws are proven: each loop is linear with two
 # state entries, so the error of each law satisfies a recurrence of
 # order 2 + 6 = 8, and the fit already holds at m = 0..11. Tribonacci's
-# is 3 + 10 = 13, within the 16 values m = 0..15 its wider fit holds at.
+# is 3 + 10 = 13, within the 16 values m = 0..15 its wider fit holds at;
+# Tetranacci's 4 + 15 = 19 is within 21, and lag 6's 6 + 28 = 34 is
+# exactly the 34 its fit holds at.
 # The decoy's branch has no bound, so its law is not.
 emath function fib_loop:
     inputs:
@@ -112,6 +120,22 @@ emath function trib_loop:
     definitions:
         result = fold(function p in sequence(Int): function k in Int: [p[1], p[2], p[0] + p[1] + p[2]], [0, 0, 1], range(0, n))[0]
 
+emath function tetra_loop:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[2], p[3], p[0] + p[1] + p[2] + p[3]], [0, 0, 0, 1], range(0, n))[0]
+
+emath function lag6_loop:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[2], p[3], p[4], p[5], p[0] + p[5]], [1, 0, 0, 0, 0, 1], range(0, n))[0]
+
 emath function fact_loop:
     inputs:
         n: Int
@@ -130,6 +154,8 @@ emath function AcceleratesByDoubling:
         none: Bool
         tribonacci: Bool
         proven: Bool
+        tetranacci: Bool
+        lag6: Bool
     definitions:
         settings = Settings: {max_size: 5, far: [40, 77], inputs: [], limit: 100000000}
         law = function d in DoublingLaw: function i in Int: quote.evaluate(d.laws[i])([3, 5])
@@ -149,6 +175,9 @@ emath function AcceleratesByDoubling:
         tribonacci = length(trib_held) == 1 and length(trib_held[0].laws) == 4 and quote.evaluate(trib_held[0].laws[3])([4, 7, 13]) == 504 and trib.work_after * 10 < trib.work_before and quote.evaluate(trib.program)(1500) == trib_loop(1500) and trib_held[0].proof.proven and trib_held[0].proof.points == 13
         pell_held = filter(function d in DoublingLaw: length(d.fails) == 0, again.doublings)
         proven = held[0].proof.proven and held[0].proof.points == 8 and not broken[0].proof.proven and pell_held[0].proof.proven
+        widened = function loop in Code: function w in Int: function points in Int: function speedup in Int: (function r in Acceleration: (function ok in sequence(DoublingLaw): length(ok) == 1 and length(ok[0].laws) == w + 1 and ok[0].proof.proven and ok[0].proof.points == points and r.work_after * speedup < r.work_before and quote.evaluate(r.program)(1500) == quote.evaluate(loop)(1500))(filter(function d in DoublingLaw: length(d.fails) == 0, r.doublings)))(accelerate(loop, [500, 1000], settings))
+        tetranacci = widened(quote(function n in Int: tetra_loop(n)))(4)(19)(9)
+        lag6 = widened(quote(function n in Int: lag6_loop(n)))(6)(34)(2)
     tests:
         example <invents_doubling_laws>:
             given unused = 0
@@ -158,6 +187,8 @@ emath function AcceleratesByDoubling:
             expect none == true
             expect tribonacci == true
             expect proven == true
+            expect tetranacci == true
+            expect lag6 == true
 
 # The shipped pi bracket (analysis.series, Machin) brackets each atan
 # series by two partial sums, S(k) and S(k + 1), each computed from the
