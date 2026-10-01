@@ -201,6 +201,16 @@ impl Engine {
                 };
                 self.measure_cost(callee, input, limit, None)
             }
+            "quote.worlds" => {
+                if !args.is_empty() {
+                    return Err(fault("arity", "quote.worlds takes no arguments"));
+                }
+                let names = super::super::world::configured_worlds()
+                    .into_iter()
+                    .map(|world| CValue::Str(world.name().to_string()))
+                    .collect();
+                Ok(CValue::Sequence(std::sync::Arc::new(names)))
+            }
             "quote.world" => {
                 if args.len() != 4 {
                     return Err(fault(

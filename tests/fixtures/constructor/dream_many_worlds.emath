@@ -1,0 +1,60 @@
+# A dream that dreams in several carrier worlds at once. The loop walks
+# keys 1..12; a key scores one point for every configured world whose
+# answer to "do k thirds add up to k/3?" differs from the exact world's.
+# The judge reads the run's world list with quote.worlds() (the dream's
+# --worlds default), so the same module finds different keys under
+# different configurations: exact alone sees nothing, float64 parts
+# from exact first at k = 5.
+#
+# Run: emath dream tests/fixtures/constructor/dream_many_worlds.emath --worlds exact,float64
+
+use search.archive
+use search.experiments
+use search.research
+
+emath function parts:
+    inputs:
+        world: Str
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        thirds = function n in Int: 1 / n + 1 / n + 1 / n == 3 / n
+        here = quote.world(world, thirds, k, 100000)
+        exact = quote.world("exact", thirds, k, 100000)
+        result = if here.done and here.value != exact.value: 1 else: 0
+
+emath function disagreements:
+    inputs:
+        worlds: sequence(Str)
+        i: Int
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= length(worlds): 0 else: parts(worlds[i], k) + disagreements(worlds, i + 1, k)
+
+emath function MakeScore:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> CaseSet -> Rat
+    definitions:
+        result = function k in Int: function cs in CaseSet: (0 - disagreements(quote.worlds(), 0, k)) / 1
+
+emath function SeedManyWorlds:
+    inputs:
+        unused: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_seed(1, function k in Int: k / 1, CaseSet: {ids: [0]}, MakeScore(0), function k in Int: function cs in CaseSet: -1, 1, 0, 1, 1)
+
+emath function StepManyWorlds:
+    inputs:
+        state: LoopState
+        budget: Int
+    outputs:
+        result: LoopState
+    definitions:
+        result = research_batch(state, function k in Int: k / 1, function k in Int: k >= 1 and k <= 12, function k in Int: [k + 1], function k in Int: 0, function f in Int: 1, MakeScore(0), MakeScore(0), function k in Int: function cs in CaseSet: -1, function k in Int: true, function s in Rat: false, function a in Rat: function b in Rat: a < b, function k in Int: function cs in CaseSet: cs, budget)

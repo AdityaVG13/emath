@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use emath_exec_ir::constructor_layer::CValue;
+use emath_exec_ir::constructor_layer::{with_worlds, CValue};
 
 use super::chain::{self, ChainSeam, KeepSeam};
 use super::inbox;
@@ -27,7 +27,7 @@ use super::journal::{
 use super::ledger::Ledger;
 use super::resume::{kept_at, ladder_of, resumable, truncate_metrics};
 use super::rundir::{
-    append_line, read_acks, read_requests, write_atomic, Ended, Request, RunConfig, RunDir, RunInfo,
+    append_line, read_acks, read_requests, worlds_text, write_atomic, Ended, Request, RunConfig, RunDir, RunInfo,
 };
 use super::{declares_emission_seam, DreamConfig, DreamRun};
 use crate::host::{state_archive, verdict_name, FactDraw, HostFault, LoopHost, LoopSession};
@@ -83,6 +83,7 @@ fn config_obj(config: &RunConfig) -> Obj {
         .int("max_batches", config.max_batches)
         .opt_int("max_units", config.max_units)
         .int("checkpoint_every", config.checkpoint_every)
+        .opt_str("worlds", worlds_text(config).as_deref())
 }
 
 impl Driver {
@@ -756,11 +757,23 @@ pub fn drive(dir: &Path) -> Result<(), HostFault> {
     }
     lock.set_len(0).map_err(io)?;
     lock.write_all(std::process::id().to_string().as_bytes()).map_err(io)?;
-    let result = Driver::open(dir).and_then(|mut driver| {
-        let ran = driver.run();
-        let flushed = driver.flush_on_exit();
-        ran.and(flushed)
-    });
+    // The world list scopes the whole drive: Seed, every Step, and the
+    // in-process verification of emitted levels all read it.
+    let worlds = match run.info().and_then(|info| info.config.carrier_worlds()) {
+        Ok(worlds) if !worlds.is_empty() => Some(worlds),
+        _ => None,
+    };
+    let drive = || {
+        Driver::open(dir).and_then(|mut driver| {
+            let ran = driver.run();
+            let flushed = driver.flush_on_exit();
+            ran.and(flushed)
+        })
+    };
+    let result = match worlds {
+        Some(worlds) => with_worlds(&worlds, drive),
+        None => drive(),
+    };
     if let Err(fault) = &result {
         record_fault(&run, fault);
     }

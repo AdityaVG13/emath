@@ -20,7 +20,7 @@ use emath_tui::host::HostFault;
 
 use crate::{CliExit, EXIT_OK, EXIT_REFUSED};
 
-pub(crate) const USAGE: &str = "dream <file.emath> [--target StepFn] [--run NAME] [--overwrite] [--budget N] [--budget-step N] [--plateau-close N] [--max-batches N] [--max-units N] [--checkpoint-every N] [--keep-checkpoints N] [--work N] [--detach] [--theme aurora|nordic|paper] [--hide p1,p2] [--no-measure] [--root DIR] | dream watch|resume|fork|export <run> | dream list";
+pub(crate) const USAGE: &str = "dream <file.emath> [--target StepFn] [--run NAME] [--overwrite] [--budget N] [--budget-step N] [--plateau-close N] [--max-batches N] [--max-units N] [--checkpoint-every N] [--keep-checkpoints N] [--work N] [--worlds w1,w2,...] [--detach] [--theme aurora|nordic|paper] [--hide p1,p2] [--no-measure] [--root DIR] | dream watch|resume|fork|export <run> | dream list";
 
 /// Viewer flags shared by every attaching subcommand.
 #[derive(Clone, Debug, Default)]
@@ -44,7 +44,7 @@ pub(crate) enum DreamRequest {
 
 const VALUED: &[&str] = &[
     "--target", "--run", "--budget", "--budget-step", "--plateau-close", "--max-batches", "--max-units", "--checkpoint-every",
-    "--keep-checkpoints", "--theme", "--hide", "--at", "--format", "--table", "-o", "--root", "--work",
+    "--keep-checkpoints", "--theme", "--hide", "--at", "--format", "--table", "-o", "--root", "--work", "--worlds",
 ];
 
 struct Args {
@@ -167,6 +167,9 @@ impl DreamRequest {
                 }
                 if let Some(v) = args.num("--work").ok()? {
                     config.work = v;
+                }
+                if let Some(list) = args.value("--worlds") {
+                    config.worlds = list.split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
                 }
                 DreamRequest::Start {
                     config: Box::new(config),

@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use emath_artifact::{parse_json_document, JsonValue};
+use emath_exec_ir::constructor_layer::CarrierWorld;
 
 use super::chain;
 use super::journal::{complete_lines, io_fault, Obj};
@@ -52,6 +53,9 @@ pub struct RunConfig {
     pub keep_checkpoints: usize,
     /// Engine steps per Seed/Step evaluation (`DreamConfig::work`).
     pub work: u64,
+    /// The carrier worlds `quote.worlds()` returns to the module's
+    /// judges; empty leaves the engine default (every world).
+    pub worlds: Vec<String>,
 }
 
 impl RunConfig {
@@ -70,6 +74,7 @@ impl RunConfig {
             checkpoint_every: 25,
             keep_checkpoints: 8,
             work: dream.work,
+            worlds: Vec::new(),
         }
     }
 
@@ -98,7 +103,23 @@ impl RunConfig {
                  must each be at least 1",
             ));
         }
-        Ok(())
+        self.carrier_worlds().map(|_| ())
+    }
+
+    /// The configured worlds, each name checked against the engine's.
+    pub fn carrier_worlds(&self) -> Result<Vec<CarrierWorld>, HostFault> {
+        self.worlds
+            .iter()
+            .map(|name| {
+                CarrierWorld::parse(name).ok_or_else(|| {
+                    let known: Vec<&str> = CarrierWorld::ALL.iter().map(|w| w.name()).collect();
+                    HostFault::fault(
+                        "dream_config",
+                        format!("unknown world `{name}` in --worlds; worlds are {}", known.join(", ")),
+                    )
+                })
+            })
+            .collect()
     }
 }
 
@@ -326,6 +347,9 @@ impl RunDir {
         cfg.checkpoint_every = int("checkpoint_every").and_then(|v| u64::try_from(v).ok()).unwrap_or(cfg.checkpoint_every);
         cfg.keep_checkpoints = int("keep_checkpoints").and_then(|v| usize::try_from(v).ok()).unwrap_or(cfg.keep_checkpoints);
         cfg.work = int("work").and_then(|v| u64::try_from(v).ok()).unwrap_or(cfg.work);
+        cfg.worlds = json_string(obj_get(&config, "worlds"))
+            .map(|list| list.split(',').filter(|w| !w.is_empty()).map(str::to_string).collect())
+            .unwrap_or_default();
         let argv = match obj_get(&entries, "argv") {
             Some(JsonValue::Arr(items)) => items.iter().filter_map(|item| json_string(Some(item))).collect(),
             _ => Vec::new(),
@@ -358,7 +382,8 @@ impl RunDir {
             .opt_int("max_units", c.max_units)
             .int("checkpoint_every", c.checkpoint_every)
             .int("keep_checkpoints", c.keep_checkpoints)
-            .int("work", c.work);
+            .int("work", c.work)
+            .opt_str("worlds", worlds_text(c).as_deref());
         let argv: Vec<String> = info.argv.iter().map(|arg| emath_core::json_quote(arg)).collect();
         let ended = match &info.ended {
             Some(ended) => Obj::new()
@@ -595,3 +620,7 @@ pub fn read_requests(run: &RunDir) -> Vec<Request> {
         .collect()
 }
 
+/// The configured world list as `run.json` and the journal spell it.
+pub(super) fn worlds_text(config: &RunConfig) -> Option<String> {
+    (!config.worlds.is_empty()).then(|| config.worlds.join(","))
+}

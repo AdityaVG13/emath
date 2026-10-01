@@ -511,6 +511,42 @@ fn dream_worlds() {
 }
 
 #[test]
+fn dream_many_worlds() {
+    let mut probe = Probe::new("emath dream: one judge dreams across the run's configured carrier worlds");
+    let root = std::env::temp_dir().join(format!("emath_dream_many_worlds_{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("runs root");
+    let root_s = root.display().to_string();
+    let module_s = workspace().join("tests/fixtures/constructor/dream_many_worlds.emath").display().to_string();
+    let last_incumbent = |run: &str| {
+        let journal = root.join(run).join("journal.jsonl");
+        wait_ended(&journal);
+        let text = std::fs::read_to_string(&journal).unwrap_or_default();
+        let last = text.lines().filter(|l| l.contains("\"t\":\"batch\"")).count() as u64;
+        (incumbent_at(&text, last), text)
+    };
+    for (run, worlds) in [("one", "exact"), ("two", "exact,float64")] {
+        let (out, code) = emath(&[
+            "dream", &module_s, "--worlds", worlds, "--budget", "100000", "--plateau-close", "50",
+            "--checkpoint-every", "1", "--run", run, "--root", &root_s,
+        ]);
+        assert_eq!(code, Some(0), "{out}");
+    }
+    let (one, text) = last_incumbent("one");
+    probe.demand("exact-alone-sees-no-divergence", one == Some(1), text);
+    let (two, text) = last_incumbent("two");
+    probe.demand("float64-parts-from-exact-at-five", two == Some(5), text.clone());
+
+    let (out, code) = emath(&["dream", "fork", "two", "--at", "6", "--run", "two-6", "--root", &root_s]);
+    assert_eq!(code, Some(0), "{out}");
+    let (_, forked) = last_incumbent("two-6");
+    probe.demand("fork-keeps-the-worlds", forked == text, format!("{forked}\n---\n{text}"));
+
+    let (out, code) = emath(&["dream", &module_s, "--worlds", "exact,float65", "--run", "bad", "--root", &root_s]);
+    probe.demand("unknown-world-refuses", code != Some(0) && out.contains("float65"), format!("exit {code:?}\n{out}"));
+    probe.finish();
+}
+
+#[test]
 fn dream_revision() {
     let mut probe = Probe::new("emath dream: evidence revises the model, and the model finds a plan nobody measured");
     let root = std::env::temp_dir().join(format!("emath_dream_revision_{}", std::process::id()));

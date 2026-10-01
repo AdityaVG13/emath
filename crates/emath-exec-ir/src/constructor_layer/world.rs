@@ -44,7 +44,7 @@
 //! of either world. The world is per thread and scoped by `with_world`,
 //! so one process can evaluate the same tree under several worlds.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use emath_core::tree::{BinaryOp, Expr, ExprKind, GenericArg, TypeExpr, TypeKind, UnaryOp};
 
@@ -207,6 +207,29 @@ pub fn with_world<T>(world: CarrierWorld, body: impl FnOnce() -> T) -> T {
 
 pub(super) fn current() -> CarrierWorld {
     WORLD.with(Cell::get)
+}
+
+thread_local! {
+    static CONFIGURED: RefCell<Option<Vec<CarrierWorld>>> = const { RefCell::new(None) };
+}
+
+/// Run `body` with `worlds` as the host-configured world list that
+/// `quote.worlds()` reads; the previous list is restored on return.
+pub fn with_worlds<T>(worlds: &[CarrierWorld], body: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Vec<CarrierWorld>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let previous = self.0.take();
+            CONFIGURED.with(|cell| *cell.borrow_mut() = previous);
+        }
+    }
+    let _restore = Restore(CONFIGURED.with(|cell| cell.replace(Some(worlds.to_vec()))));
+    body()
+}
+
+/// The host-configured world list; every world when the host set none.
+pub(super) fn configured_worlds() -> Vec<CarrierWorld> {
+    CONFIGURED.with(|cell| cell.borrow().clone()).unwrap_or_else(|| CarrierWorld::ALL.to_vec())
 }
 
 /// An expression built only from integer and rational literals with
