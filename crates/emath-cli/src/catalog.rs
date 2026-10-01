@@ -181,7 +181,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
         "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--detach] | dream watch|resume|fork|export <run> | dream list",
         "keep" => "keep <file.emath> --function F [--name NAME] --to <library.emath> [--set name=value] [--work N] [--overwrite]",
-        "compare" => "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64|float32|bfloat16|int64] [--work N] [--json]",
+        "compare" => "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64|float32|bfloat16|int64|interval] [--work N] [--json]",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"

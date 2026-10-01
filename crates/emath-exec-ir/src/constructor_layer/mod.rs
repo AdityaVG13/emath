@@ -30,6 +30,12 @@ pub enum CValue {
         den: ExactInt,
     },
     Float64(f64),
+    /// A real known only to lie in `[lo, hi]` (finite binary64 endpoints,
+    /// `lo <= hi`): the carrier of the `interval` world, see `interval`.
+    Interval {
+        lo: f64,
+        hi: f64,
+    },
     /// Text payload carrier (fbpb6 successor bead e6gvs): a Str literal
     /// evaluates as a first-class value. Structural equality only —
     /// the carrier exists without the string LIBRARY (no ordering,
@@ -222,6 +228,7 @@ impl fmt::Display for CValue {
             Self::Int(v) => write!(f, "{v}"),
             Self::Rat { num, den } => write!(f, "{num}/{den}"),
             Self::Float64(v) => write!(f, "{v}"),
+            Self::Interval { lo, hi } => write!(f, "[{lo}, {hi}]"),
             Self::Str(text) => write!(f, "{text}"),
             // Contents are state, not a value: display the shape only,
             // never a snapshot that invites value-style comparison.
@@ -793,6 +800,7 @@ mod engine_step;
 mod eval;
 mod expr;
 mod identity;
+mod interval;
 mod keep;
 mod ops;
 mod prelude;
@@ -806,7 +814,9 @@ mod value;
 mod world;
 
 pub(crate) use call::domain_shape_of_expr;
-pub use world::{answer_gap, answers_agree, with_world, world_input, CarrierWorld};
+pub use world::{
+    answer_gap, answers_agree, interval_width, with_world, world_input, CarrierWorld,
+};
 pub use admit::*;
 pub use carry::{evaluate_function_carrying, fact_identity, prepare_module, CarriedEvaluation, PreparedModule, FACT_PREFIX};
 pub use checkpoint::*;

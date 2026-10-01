@@ -5,7 +5,9 @@
 //! `constructor_layer::world`): `reference` as authored, `exact` with
 //! every real an exact rational, `float64` / `float32` / `bfloat16` with
 //! real data rounded to that float format, `int64` with integer
-//! arithmetic confined to signed 64-bit.
+//! arithmetic confined to signed 64-bit, `interval` with every real an
+//! outward-rounded binary64 enclosure (an enclosure agrees with the
+//! answers it contains).
 //! The command never picks a winner. It prints each world's answer or
 //! refusal, the exact gap of each numeric answer from the first answer,
 //! and a verdict: `agree` (every world answered the same value),
@@ -20,12 +22,12 @@ use emath_artifact::JsonWriter;
 use emath_core::tree::{Item, StmtKind, TypeExpr};
 use emath_exec_ir::constructor_layer::{
     CValue, CarrierWorld, DEFAULT_WORK, answer_gap, answers_agree, evaluate_function_carrying,
-    prepare_module, with_world, world_input,
+    interval_width, prepare_module, with_world, world_input,
 };
 
 use crate::{CliExit, EXIT_IO, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 
-pub(crate) const USAGE: &str = "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64|float32|bfloat16|int64] [--work N] [--json]";
+pub(crate) const USAGE: &str = "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64|float32|bfloat16|int64|interval] [--work N] [--json]";
 
 #[derive(Clone, Debug)]
 pub(crate) struct CompareRequest {
@@ -174,6 +176,7 @@ fn representation(value: &CValue) -> &'static str {
     match value {
         CValue::Int(_) | CValue::Rat { .. } | CValue::Bool(_) => "exact_scalar",
         CValue::Float64(_) => "rounded_scalar",
+        CValue::Interval { .. } => "enclosure",
         CValue::Code(_) => "code",
         _ => "structured",
     }
@@ -189,7 +192,9 @@ pub(crate) fn run(request: CompareRequest) -> CliExit {
                 return refuse(
                     request.json,
                     "E-CLI-USAGE",
-                    &format!("unknown world `{name}`; worlds are reference, exact, float64, float32, bfloat16, int64"),
+                    &format!(
+                        "unknown world `{name}`; worlds are reference, exact, float64, float32, bfloat16, int64, interval"
+                    ),
                     EXIT_USAGE,
                 );
             }
@@ -226,13 +231,19 @@ pub(crate) fn run(request: CompareRequest) -> CliExit {
     let outcomes: Vec<Outcome> = worlds
         .iter()
         .map(|&world| {
-            let inputs: BTreeMap<String, CValue> = request
+            let inputs: Result<BTreeMap<String, CValue>, _> = request
                 .given
                 .iter()
-                .map(|(name, raw)| (name.clone(), world_input(world, declared.get(name), raw)))
+                .map(|(name, raw)| {
+                    world_input(world, declared.get(name), raw).map(|value| (name.clone(), value))
+                })
                 .collect();
+            let (inputs, read) = match inputs {
+                Ok(inputs) => (inputs, Ok(())),
+                Err(err) => (BTreeMap::new(), Err(err)),
+            };
             let answer = with_world(world, || {
-                prepare_module(&tree, Some(&request.path))
+                read.and_then(|()| prepare_module(&tree, Some(&request.path)))
                     .and_then(|module| {
                         evaluate_function_carrying(
                             &module,
@@ -280,6 +291,10 @@ fn report(request: &CompareRequest, identity: &Identity, outcomes: &[Outcome]) -
                 if let Some(gap) = gap.filter(|g| *g != 0.0) {
                     row.field("gap", &format!("{gap:e}"));
                     line.push_str(&format!("   (gap {gap:e})"));
+                }
+                if let Some(width) = interval_width(value) {
+                    row.field("width", &format!("{width:e}"));
+                    line.push_str(&format!("   (width {width:e})"));
                 }
                 let claim = claim(identity, &request.function, outcome, value);
                 let mut claim_row = JsonWriter::object();

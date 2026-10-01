@@ -6,6 +6,9 @@ use super::prelude::*;
 /// `1 / 2 == 0.5` is true and `3 < 3.5` compares 3 against 7/2 with no
 /// rounding. Non-finite Float64 operands fault `non_finite_scalar`.
 pub(super) fn cmp_numeric(left: &CValue, right: &CValue) -> Result<std::cmp::Ordering, ConstructorError> {
+    if matches!(left, CValue::Interval { .. }) || matches!(right, CValue::Interval { .. }) {
+        return super::interval::order(left, right);
+    }
     let float_rat = |value: &CValue| -> Result<(ExactInt, ExactInt), ConstructorError> {
         match value {
             CValue::Float64(x) => f64_exact_rat(*x)
@@ -30,6 +33,7 @@ pub(super) fn neg(value: CValue) -> Result<CValue, ConstructorError> {
         }
         .canon(),
         CValue::Float64(x) => Ok(CValue::Float64(-x)),
+        CValue::Interval { lo, hi } => Ok(CValue::Interval { lo: -hi, hi: -lo }),
         other => Err(fault("type", format!("cannot negate {other}"))),
     }
 }
@@ -137,10 +141,16 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
     // inputs are already Float64, so a rational seen here is one of the
     // program's exact constants and stays exact.
     let world = super::world::current();
-    let float_world = op == BinaryOp::Div
-        && world.is_float()
-        && matches!(left, CValue::Int(_))
-        && matches!(right, CValue::Int(_));
+    let int_quotient =
+        op == BinaryOp::Div && matches!(left, CValue::Int(_)) && matches!(right, CValue::Int(_));
+    if arithmetic
+        && (matches!(left, CValue::Interval { .. })
+            || matches!(right, CValue::Interval { .. })
+            || int_quotient && world == super::world::CarrierWorld::Interval)
+    {
+        return super::interval::arithmetic(op, &left, &right);
+    }
+    let float_world = int_quotient && world.is_float();
     if float_world
         || arithmetic
             && (matches!(left, CValue::Float64(_)) || matches!(right, CValue::Float64(_)))
@@ -285,8 +295,8 @@ pub(super) fn eq_values(left: &CValue, right: &CValue) -> Result<bool, Construct
         // rational). The previous structural default silently returned
         // false for mixed Float64 pairs.
         (
-            CValue::Int(_) | CValue::Rat { .. } | CValue::Float64(_),
-            CValue::Int(_) | CValue::Rat { .. } | CValue::Float64(_),
+            CValue::Int(_) | CValue::Rat { .. } | CValue::Float64(_) | CValue::Interval { .. },
+            CValue::Int(_) | CValue::Rat { .. } | CValue::Float64(_) | CValue::Interval { .. },
         ) => Ok(cmp_numeric(left, right)?.is_eq()),
         (CValue::Bool(a), CValue::Bool(b)) => Ok(a == b),
         // Mutable state has no total value equality: refuse by name

@@ -383,6 +383,11 @@ pub(super) fn compact_key(value: &CValue, out: &mut String) -> Option<()> {
             out.push_str(&x.to_bits().to_string());
             Some(())
         }
+        CValue::Interval { lo, hi } => {
+            out.push('V');
+            out.push_str(&format!("{}_{}", lo.to_bits(), hi.to_bits()));
+            Some(())
+        }
         CValue::Sequence(items) => {
             out.push('[');
             for (i, item) in items.iter().enumerate() {
@@ -999,6 +1004,9 @@ pub(super) fn encode_cvalue(value: &CValue, ctx: &mut EncodeCtx, out: &mut Strin
             out.push_str("F ");
             out.push_str(&x.to_string());
         }
+        CValue::Interval { lo, hi } => {
+            out.push_str(&format!("V {lo} {hi}"));
+        }
         CValue::Str(text) => {
             out.push_str("(str ");
             encode_quoted(text, out);
@@ -1134,6 +1142,14 @@ pub(super) fn decode_cvalue(text: &str, ctx: &mut DecodeCtx) -> Result<CValue, C
             .parse()
             .map_err(|_| fault("incompatible_checkpoint", "invalid Float64 in checkpoint"))?;
         return Ok(CValue::Float64(x));
+    }
+    if let Some(rest) = text.strip_prefix("V ") {
+        let invalid = || fault("incompatible_checkpoint", "invalid interval in checkpoint");
+        let (lo, hi) = rest.split_once(' ').ok_or_else(invalid)?;
+        return Ok(CValue::Interval {
+            lo: lo.parse().map_err(|_| invalid())?,
+            hi: hi.parse().map_err(|_| invalid())?,
+        });
     }
     if let Some(rest) = text.strip_prefix("S ") {
         return decode_compound(rest, true, ctx);
@@ -1768,6 +1784,16 @@ pub(super) fn decode_atom_cur(cur: &mut Cursor<'_>) -> Result<CValue, Constructo
             .parse()
             .map_err(|_| fault("incompatible_checkpoint", "invalid Float64 in checkpoint"))?;
         return Ok(CValue::Float64(x));
+    }
+    if let Some(after) = rest.strip_prefix("V ") {
+        let invalid = || fault("incompatible_checkpoint", "invalid interval in checkpoint");
+        let (lo, used_lo) = take_token(after)?;
+        let (hi, used_hi) = take_token(&after[used_lo..])?;
+        cur.pos += 2 + used_lo + used_hi;
+        return Ok(CValue::Interval {
+            lo: lo.parse().map_err(|_| invalid())?,
+            hi: hi.parse().map_err(|_| invalid())?,
+        });
     }
     if rest.starts_with('U') && token_boundary(rest, 1) {
         cur.pos += 1;

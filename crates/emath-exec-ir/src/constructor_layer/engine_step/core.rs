@@ -5,6 +5,7 @@ use super::prelude::{
     project_field, schema_tag,
 };
 use super::super::scalar::decimal_to_rational;
+use super::super::interval;
 use super::super::world::{self, CarrierWorld};
 
 impl Engine {
@@ -87,13 +88,20 @@ impl Engine {
                 let current = world::current();
                 if matches!(
                     current,
-                    CarrierWorld::Exact | CarrierWorld::Float32 | CarrierWorld::BFloat16
+                    CarrierWorld::Exact
+                        | CarrierWorld::Float32
+                        | CarrierWorld::BFloat16
+                        | CarrierWorld::Interval
                 ) {
                     if let Some((numer, denom)) = decimal_to_rational(cleaned) {
                         let num = parse_exact(&numer)?;
                         let den = parse_exact(&denom)?;
                         if current == CarrierWorld::Exact {
                             return CValue::Rat { num, den }.canon();
+                        }
+                        if current == CarrierWorld::Interval {
+                            let (lo, hi) = interval::enclose_rational(&num, &den)?;
+                            return interval::interval(lo, hi);
                         }
                         let x = current.round_rational(&num, &den);
                         if !x.is_finite() {
@@ -136,12 +144,12 @@ impl Engine {
                         let mut projected = true;
                         for segment in &segments[1..] {
                             if let Some(field) = project_field(&value, segment) { value = field } else {
-                                if matches!(value, CValue::Float64(_))
+                                if matches!(value, CValue::Float64(_) | CValue::Interval { .. })
                                     && matches!(segment.as_str(), "numer" | "denom")
                                 {
                                     return Err(fault(
                                         "type",
-                                        format!("`{}`: a Float64 has no exact `{segment}`", segments.join(".")),
+                                        format!("`{}`: {value} has no exact `{segment}`", segments.join(".")),
                                     ));
                                 }
                                 projected = false;
@@ -287,7 +295,7 @@ impl Engine {
                 apply_unary(*op, v)
             }
             ExprKind::Binary { op, left, right } => {
-                if world::current().is_float() && world::is_literal_constant(expr) {
+                if world::current().splits_data() && world::is_literal_constant(expr) {
                     return world::exact_constant(expr);
                 }
                 let l = self.eval_with_kont(left, || Kont::BinLeft {

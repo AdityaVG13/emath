@@ -71,3 +71,11 @@ emath function keep:
         result: Rat
     definitions:
         result = x
+
+emath function near_root:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x * x - 2

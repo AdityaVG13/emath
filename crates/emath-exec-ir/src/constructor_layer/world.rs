@@ -30,6 +30,14 @@
 //! - `Int64`: reals as in `Reference`; every `Int` arithmetic result
 //!   must fit a signed 64-bit machine integer, and one that does not is
 //!   refused as `machine_overflow` instead of growing. `Rat` stays exact.
+//! - `Interval`: real data is an enclosure (`CValue::Interval`, binary64
+//!   endpoints rounded outward, see `interval`): a decimal or rational
+//!   input or decimal literal reads as the tightest binary64 interval
+//!   around its exact value, a caller may pass a range `[lo, hi]`, and
+//!   every operation encloses its exact result. Program constants stay
+//!   exact as in the float worlds. The answer encloses the exact answer
+//!   for every input inside the input intervals; a branch the
+//!   enclosures cannot decide refuses `undecided_comparison`.
 //!
 //! Disagreement between worlds is information about the definition
 //! (rounding, cancellation, a branch flipped by rounding), not a fault
@@ -51,16 +59,18 @@ pub enum CarrierWorld {
     Float32,
     BFloat16,
     Int64,
+    Interval,
 }
 
 impl CarrierWorld {
-    pub const ALL: [CarrierWorld; 6] = [
+    pub const ALL: [CarrierWorld; 7] = [
         Self::Reference,
         Self::Exact,
         Self::Float64,
         Self::Float32,
         Self::BFloat16,
         Self::Int64,
+        Self::Interval,
     ];
 
     #[must_use]
@@ -72,6 +82,7 @@ impl CarrierWorld {
             Self::Float32 => "float32",
             Self::BFloat16 => "bfloat16",
             Self::Int64 => "int64",
+            Self::Interval => "interval",
         }
     }
 
@@ -83,6 +94,12 @@ impl CarrierWorld {
     /// Real data is a rounded binary float in this world.
     pub(super) fn is_float(self) -> bool {
         matches!(self, Self::Float64 | Self::Float32 | Self::BFloat16)
+    }
+
+    /// Real data is inexact here (a float or an enclosure) while the
+    /// program's literal constants stay exact.
+    pub(super) fn splits_data(self) -> bool {
+        self.is_float() || self == Self::Interval
     }
 
     /// (significand bits, minimum normal exponent, maximum exponent) of
@@ -240,12 +257,30 @@ pub(super) fn exact_constant(expr: &Expr) -> Result<CValue, ConstructorError> {
 /// - Float64: a rational reads as its nearest binary64.
 /// - Reference: a decimal for a `Rat` input reads exactly, as a `given`
 ///   in authored tests does; everything else reads as `emath run` does.
-#[must_use]
-pub fn world_input(world: CarrierWorld, declared: Option<&TypeExpr>, raw: &str) -> CValue {
+/// - Interval: a real reads as its tightest enclosure; `[lo, hi]` for a
+///   scalar real input is the range itself, rounded outward.
+pub fn world_input(
+    world: CarrierWorld,
+    declared: Option<&TypeExpr>,
+    raw: &str,
+) -> Result<CValue, ConstructorError> {
+    if world == CarrierWorld::Interval && declared.is_some_and(is_scalar_real) {
+        if let Some(range) = raw
+            .trim()
+            .strip_prefix('[')
+            .and_then(|r| r.strip_suffix(']'))
+        {
+            return read_range(range);
+        }
+    }
     let value = parse_constructor_scalar(raw);
     let exact_decimals = match world {
-        // The narrow float worlds round a decimal from its exact value.
-        CarrierWorld::Exact | CarrierWorld::Float32 | CarrierWorld::BFloat16 => true,
+        // The narrow float worlds round a decimal from its exact value,
+        // and the interval world encloses it.
+        CarrierWorld::Exact
+        | CarrierWorld::Float32
+        | CarrierWorld::BFloat16
+        | CarrierWorld::Interval => true,
         CarrierWorld::Reference | CarrierWorld::Int64 => {
             declared.and_then(real_carrier_of) == Some("Rat")
         }
@@ -258,6 +293,40 @@ pub fn world_input(world: CarrierWorld, declared: Option<&TypeExpr>, raw: &str) 
         other => other,
     };
     coerce_reals(value, world, exact_decimals)
+}
+
+/// `lo, hi` as an interval: each end read exactly, then rounded outward.
+fn read_range(range: &str) -> Result<CValue, ConstructorError> {
+    let invalid = || {
+        fault(
+            "invalid_input",
+            format!("`[{range}]` is not a range `[lo, hi]` of two numbers"),
+        )
+    };
+    let (lo, hi) = range.split_once(',').ok_or_else(invalid)?;
+    let end = |text: &str| match parse_constructor_scalar(text.trim()) {
+        CValue::Float64(_) => exact_decimal(text.trim()).ok_or_else(invalid),
+        value @ (CValue::Int(_) | CValue::Rat { .. }) => Ok(value),
+        _ => Err(invalid()),
+    };
+    let (lo, hi) = (end(lo)?, end(hi)?);
+    if cmp_numeric(&lo, &hi)?.is_gt() {
+        return Err(fault(
+            "invalid_input",
+            format!("the range `[{range}]` has its lower end above its upper end"),
+        ));
+    }
+    super::interval::interval(
+        super::interval::enclose(&lo)?.0,
+        super::interval::enclose(&hi)?.1,
+    )
+}
+
+/// A declared real scalar type (`Rat`, `Float64`), not a container.
+fn is_scalar_real(ty: &TypeExpr) -> bool {
+    matches!(&ty.kind, TypeKind::Path { segments, generic_args }
+        if generic_args.is_empty()
+            && matches!(segments.last().map(String::as_str), Some("Rat" | "Float64")))
 }
 
 /// The exact rational a signed decimal text denotes.
@@ -281,16 +350,24 @@ fn exact_decimal(text: &str) -> Option<CValue> {
     .ok()
 }
 
-fn coerce_reals(value: CValue, world: CarrierWorld, exact_decimals: bool) -> CValue {
-    match value {
+fn coerce_reals(
+    value: CValue,
+    world: CarrierWorld,
+    exact_decimals: bool,
+) -> Result<CValue, ConstructorError> {
+    Ok(match value {
         // Inside a sequence the caller's text is gone; `{:?}` is the
         // shortest text that reads back as `x`.
         CValue::Float64(x) if exact_decimals => match exact_decimal(&format!("{x:?}")) {
-            Some(exact) => coerce_reals(exact, world, false),
-            None => CValue::Float64(world.round(x)),
+            Some(exact) => coerce_reals(exact, world, false)?,
+            None => coerce_reals(CValue::Float64(x), world, false)?,
         },
         CValue::Rat { num, den } if world.is_float() => {
             CValue::Float64(world.round_rational(&num, &den))
+        }
+        value @ (CValue::Rat { .. } | CValue::Float64(_)) if world == CarrierWorld::Interval => {
+            let (lo, hi) = super::interval::enclose(&value)?;
+            super::interval::interval(lo, hi)?
         }
         CValue::Float64(x) => CValue::Float64(world.round(x)),
         CValue::Sequence(items) => CValue::Sequence(std::sync::Arc::new(
@@ -298,10 +375,10 @@ fn coerce_reals(value: CValue, world: CarrierWorld, exact_decimals: bool) -> CVa
                 .iter()
                 .cloned()
                 .map(|item| coerce_reals(item, world, exact_decimals))
-                .collect(),
+                .collect::<Result<_, _>>()?,
         )),
         other => other,
-    }
+    })
 }
 
 /// The real-number carrier a declared type names, looking through
@@ -326,9 +403,41 @@ fn real_carrier_of(ty: &TypeExpr) -> Option<&'static str> {
 
 /// Whether two answers denote the same value. Numeric carriers compare
 /// exactly by value (a finite binary64 is an exact rational), so `1/5`
-/// and the binary64 nearest 0.2 disagree.
+/// and the binary64 nearest 0.2 disagree. An interval agrees with a
+/// number it encloses, and with an identical interval.
 pub fn answers_agree(left: &CValue, right: &CValue) -> Result<bool, ConstructorError> {
-    eq_values(left, right)
+    use super::interval::contains;
+    match (left, right) {
+        (CValue::Interval { lo: a, hi: b }, CValue::Interval { lo: c, hi: d }) => {
+            Ok(a == c && b == d)
+        }
+        (CValue::Interval { .. }, other) => contains(left, other),
+        (other, CValue::Interval { .. }) => contains(right, other),
+        (CValue::Sequence(a), CValue::Sequence(b)) => all_agree(a, b),
+        (CValue::Tuple(a), CValue::Tuple(b)) => all_agree(a, b),
+        _ => eq_values(left, right),
+    }
+}
+
+fn all_agree(left: &[CValue], right: &[CValue]) -> Result<bool, ConstructorError> {
+    if left.len() != right.len() {
+        return Ok(false);
+    }
+    for (a, b) in left.iter().zip(right) {
+        if !answers_agree(a, b)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// An upper bound on the width of an interval answer.
+#[must_use]
+pub fn interval_width(value: &CValue) -> Option<f64> {
+    match value {
+        CValue::Interval { lo, hi } => Some(super::interval::width(*lo, *hi)),
+        _ => None,
+    }
 }
 
 /// `left - right` for two numeric scalars, computed exactly and rounded

@@ -676,15 +676,16 @@ pub(in crate::constructor_layer) fn scalar_carrier_admits(name: &str, value: &CV
     }
 }
 
-/// A real-number slot under the current carrier world. In a float world
-/// a `Rat` slot holds float data and the program's exact constants.
+/// A real-number slot under the current carrier world. In a float or
+/// interval world a `Rat` slot holds that data and the program's exact
+/// constants; an interval stands in for a real in any real slot.
 fn real_slot_admits(name: &str, value: &CValue) -> bool {
     use super::world::{current, CarrierWorld};
     let exact = matches!(value, CValue::Rat { .. } | CValue::Int(_));
-    let float = matches!(value, CValue::Float64(_));
+    let float = matches!(value, CValue::Float64(_) | CValue::Interval { .. });
     let world = current();
     match name {
-        "Rat" => exact || world.is_float() && float,
+        "Rat" => exact || world.splits_data() && float,
         _ => float || world == CarrierWorld::Exact && exact,
     }
 }

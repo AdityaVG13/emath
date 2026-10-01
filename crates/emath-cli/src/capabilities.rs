@@ -29,7 +29,7 @@ pub fn capabilities_json() -> String {
     let commands: &[(&str, &str, &str)] = &[
         ("check", "Parse and admit constructor source", "check <file.emath|-> [--json]"),
         ("run", "Evaluate an emath function or query; print a constructor receipt", "run <file.emath> [--function NAME] [--set name=value] [--set-file path.json] [--json]"),
-        ("compare", "Evaluate one function under several carrier worlds and report where the answers agree or differ", "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64|float32|bfloat16|int64] [--json]"),
+        ("compare", "Evaluate one function under several carrier worlds and report where the answers agree or differ", "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64|float32|bfloat16|int64|interval] [--json]"),
         ("step", "Resume a constructor-layer continuation", "step <checkpoint.json> [--work N] [--json]"),
         ("inspect", "Read a saved constructor checkpoint", "inspect <checkpoint.json> [--json]"),
         ("verify", "Replay recorded observations; not a theorem", "verify <checkpoint.json> [--json]"),

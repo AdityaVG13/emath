@@ -116,6 +116,12 @@ fn render_value(value: &CValue, out: &mut String) -> Result<(), ConstructorError
         CValue::Float64(f) => {
             out.push_str(&format!("{{\"f64\": \"{:016x}\"}}", f.to_bits()));
         }
+        CValue::Interval { .. } => {
+            return Err(fault(
+                "scratch_unserializable",
+                "an interval is an interval-world value, not scratch cargo",
+            ));
+        }
         CValue::Str(text) => {
             out.push_str(&format!("{{\"str\": {}}}", json_quote(text)));
         }

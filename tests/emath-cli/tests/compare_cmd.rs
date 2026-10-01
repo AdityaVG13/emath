@@ -29,11 +29,16 @@ fn workspace() -> PathBuf {
 }
 
 fn compare(function: &str, set: &str) -> String {
+    compare_in(function, set, &[])
+}
+
+fn compare_in(function: &str, set: &str, worlds: &[&str]) -> String {
     let fixture = workspace().join("tests/fixtures/compare/worlds.emath");
     let out = Command::new(emath_bin())
         .arg("compare")
         .arg(&fixture)
         .args(["--function", function, "--set", set, "--json"])
+        .args(worlds.iter().flat_map(|world| ["--world", world]))
         .env("EMATH_ROOT", workspace())
         .output()
         .expect("run emath compare");
@@ -242,4 +247,72 @@ fn compare_cmd() {
     let float = world_row(&out, "float64");
     assert!(float.contains("\"execution\":\"refused\""), "{out}");
     assert!(float.contains("\"code\":\"type\""), "{out}");
+
+    // The interval world encloses: each answer is a binary64 interval
+    // that contains the exact answer, so beside the exact worlds the
+    // verdict is `agree` even where every float world disagrees.
+    let out = compare_in("tenth", "n=10", &["exact", "interval"]);
+    assert_eq!(verdict(&out), "agree", "{out}");
+    let enclosure = world_row(&out, "interval");
+    assert!(
+        enclosure.contains("\"representation\":\"enclosure\""),
+        "{out}"
+    );
+    assert!(
+        enclosure.contains("\"payload\":\"[0.09999999999999999,0.1]\""),
+        "{out}"
+    );
+    // The nearest binary64 to 1/3 lies below it, the one to 1/10 above:
+    // both enclosures step outward on the correct side.
+    let out = compare_in("tenth", "n=3", &["exact", "interval"]);
+    assert_eq!(verdict(&out), "agree", "{out}");
+    assert!(
+        world_row(&out, "interval")
+            .contains("\"payload\":\"[0.3333333333333333,0.33333333333333337]\""),
+        "{out}"
+    );
+    // A decimal input reads as the tightest interval around its exact value.
+    let out = compare_in("keep", "x=0.1", &["interval"]);
+    assert!(
+        world_row(&out, "interval").contains("\"payload\":\"[0.09999999999999999,0.1]\""),
+        "{out}"
+    );
+    let out = compare_in("keep", "x=0.3", &["interval"]);
+    assert!(
+        world_row(&out, "interval").contains("\"payload\":\"[0.3,0.30000000000000004]\""),
+        "{out}"
+    );
+    // A divisor enclosure that contains zero refuses by name.
+    let out = compare_in("tenth", "n=0", &["interval"]);
+    assert!(
+        world_row(&out, "interval").contains("\"code\":\"division_by_zero\""),
+        "{out}"
+    );
+    let out = compare_in("cancellation", "x=0.1", &["reference", "interval"]);
+    assert_eq!(verdict(&out), "agree", "{out}");
+    // Four RK4 steps with every data operation rounded outward still
+    // enclose the exact rational.
+    let out = compare_in("grow", "steps=4", &["exact", "interval"]);
+    assert_eq!(verdict(&out), "agree", "{out}");
+    assert!(world_row(&out, "interval").contains("\"width\":"), "{out}");
+    // A range input: x*x - 2 over [1.4, 1.5].
+    let out = compare_in("near_root", "x=[1.4,1.5]", &["interval"]);
+    let enclosure = world_row(&out, "interval");
+    assert!(
+        enclosure.contains("\"payload\":\"[-0.0400000000000") && enclosure.contains(",0.25]\""),
+        "{out}"
+    );
+    let out = compare_in("near_root", "x=[1.5,1.4]", &["interval"]);
+    assert!(
+        world_row(&out, "interval").contains("\"code\":\"invalid_input\""),
+        "{out}"
+    );
+    // `x + 0.2 == 0.3` with x around 0.1: the enclosures overlap, so the
+    // branch is not decided and the world refuses instead of guessing.
+    let out = compare_in("crosses", "x=0.1", &["exact", "interval"]);
+    assert_eq!(verdict(&out), "partial", "{out}");
+    assert!(
+        world_row(&out, "interval").contains("\"code\":\"undecided_comparison\""),
+        "{out}"
+    );
 }
