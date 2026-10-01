@@ -1625,8 +1625,8 @@ const CLOSURE_SELF_CALL_DRIVER: &str = r#"
 //! A function calling itself from inside a closure it hands to a fold.
 use closure_self_call::emath_rt::ExactInt;
 use closure_self_call::{
-    applied_recur, call_shapes, counts_big, digits, finds_x, leaves, misses_z, paired, plugged,
-    rewrite_total, twice_literal, x_first,
+    applied_recur, call_shapes, callee_body_applies, counts_big, digits, digits_are, finds_x, leaves, misses_z, paired, plugged,
+    rewrite_total, shelf_shape, twice_literal, x_first,
 };
 fn main() {
     let mut failures = 0usize;
@@ -1700,6 +1700,27 @@ fn main() {
         if got != Ok(vm) {
             failures += 1;
             println!("DIFF rewrite_total({k}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    for (k, vm) in [(4, 234), (-7, 223)] {
+        let got = shelf_shape(k);
+        if got != Ok(vm) {
+            failures += 1;
+            println!("DIFF shelf_shape({k}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    for (n, vm) in [(11, true), (10, false)] {
+        let got = digits_are(n);
+        if got != Ok(vm) {
+            failures += 1;
+            println!("DIFF digits_are({n}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    for (k, vm) in [(4, 26), (-2, -3)] {
+        let got = callee_body_applies(k);
+        if got != Ok(vm) {
+            failures += 1;
+            println!("DIFF callee_body_applies({k}) EMITTED {:?}; VM = {vm}", got);
         }
     }
     if failures == 0 {

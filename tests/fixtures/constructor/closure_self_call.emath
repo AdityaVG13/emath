@@ -255,3 +255,66 @@ emath function rewrite_total:
         example <three>:
             given k = 3
             expect result == 208
+
+emath object Shelf:
+    representation:
+        rows: sequence(sequence(sequence(Int)))
+        n: Int
+
+emath function shelf_shape:
+    # nested empty rows whose element carrier comes only from the field they fill
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        s = Shelf: {rows: repeat(repeat([], 3), 2), n: k}
+        result = length(s.rows) * 100 + length(s.rows[1]) * 10 + length(s.rows[1][2]) + s.n
+    tests:
+        example <four>:
+            given k = 4
+            expect result == 234
+
+emath function digits_are:
+    # exact-integer digits compared with a literal Int sequence
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = digits(n) == [2, 0, 1]
+    tests:
+        example <eleven>:
+            given n = 11
+            expect result == true
+
+emath function sq_plus:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n * n + 1
+
+emath function triple:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 3 * n
+
+emath function callee_body_applies:
+    # bodies of called functions unfolded through a closure parameter that carries a viewed node
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        v = quote.view(if k > 0: quote(sq_plus(k)) else: quote(triple(k)))
+        bodies = map(function g in Code: quote.body(g).fragment, [v.callee])
+        result = quote.evaluate(quote.make(bodies[0]))(k + 1)
+    tests:
+        example <positive>:
+            given k = 4
+            expect result == 26

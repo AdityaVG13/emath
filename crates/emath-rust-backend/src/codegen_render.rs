@@ -1630,7 +1630,10 @@ pub(crate) fn op_expr(
             // Opaque record - the VM's `quote_body` law arm for arm
             // (`quote_body_over_node`).
             ValueKind::Node => Ok(Expr::Raw(format!(
-                "emath_rt::code_tree::quote_body_over_node(&({}), &__EMATH_DEFINITIONS)?",
+                // The untyped first binding keeps the operand's own type
+                // (owned, or borrowed as a closure parameter); the typed
+                // second binding then deref-coerces either to one layer.
+                "emath_rt::code_tree::quote_body_over_node({{ let __held = &({}); let __node: &emath_rt::code_tree::NodeValue = __held; __node }}, &__EMATH_DEFINITIONS)?",
                 render_expr(&operand(program, *code))
             ))),
             ValueKind::Code(_) => Err(BackendError::UnsupportedType(

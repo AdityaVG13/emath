@@ -2071,6 +2071,43 @@ pub(super) fn cmp_expr(
                     right: Box::new(operand(program, right)),
                 }
             } else {
+                // Sequences whose elements sit on different integer
+                // lanes (`[i64]` beside `[ExactInt]`) compare after the
+                // narrower side widens exactly, as the VM compares values.
+                if let (ValueKind::Vector(_), ValueKind::Vector(_)) = (&lk, &rk)
+                    && lk != rk
+                {
+                    fn widens(from: &ValueKind, to: &ValueKind) -> bool {
+                        match (from, to) {
+                            (ValueKind::I64, ValueKind::ExactInt | ValueKind::Rational)
+                            | (ValueKind::ExactInt, ValueKind::Rational) => true,
+                            (ValueKind::Vector(from), ValueKind::Vector(to)) => widens(from, to),
+                            _ => false,
+                        }
+                    }
+                    let widened = if widens(&lk, &rk) {
+                        numeric_boundary_value(&operand(program, left), &lk, &rk, "comparison")
+                            .map(|left| (left, operand(program, right)))
+                    } else if widens(&rk, &lk) {
+                        numeric_boundary_value(&operand(program, right), &rk, &lk, "comparison")
+                            .map(|right| (operand(program, left), right))
+                    } else {
+                        None
+                    };
+                    if let Some((left, right)) = widened {
+                        return Expr::Bin {
+                            op,
+                            left: Box::new(Expr::Raw(format!(
+                                "({}).as_slice()",
+                                render_expr(&left)
+                            ))),
+                            right: Box::new(Expr::Raw(format!(
+                                "({}).as_slice()",
+                                render_expr(&right)
+                            ))),
+                        };
+                    }
+                }
                 // Non-copy carriers compare through a common view: the
                 // observed binding renders as a borrow (`&Vec<f64>`)
                 // and the expected literal as an owned value

@@ -169,6 +169,15 @@ pub(super) fn op_data_exprs(
                         BackendError::UnsupportedType(format!("unknown record field {name}"))
                     })?;
                 let kind = ValueKind::from_signature(&ty.1);
+                // The artifact's tree evaluator yields scalars only: an
+                // evaluated run-time code cannot become a function value.
+                if kind_at(kinds, *value) == ValueKind::CodeValue
+                    && matches!(kind, ValueKind::Closure { .. })
+                {
+                    return Err(BackendError::UnsupportedType(format!(
+                        "record {type_name} field {name} needs a function; evaluated run-time code is a scalar in emitted code (the VM runs it)"
+                    )));
+                }
                 let expression = operand(program, *value);
                 let value = match numeric_boundary_value(
                     &expression,

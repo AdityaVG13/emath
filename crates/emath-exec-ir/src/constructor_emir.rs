@@ -174,6 +174,30 @@ fn authored_signatures(
     (declared, result)
 }
 
+/// A generic single-output function's result signature with its type
+/// parameters spelled `Var<name>` (`repeat<T>` yields `Vector<Var<T>>`);
+/// `None` for a non-generic or multi-output function.
+fn generic_result_signature(
+    tree: &SyntaxTree,
+    name: &str,
+    object_names: &BTreeSet<String>,
+) -> Option<String> {
+    let decl = tree.items.iter().find_map(|item| match item {
+        Item::Declaration(decl) if decl.as_kind == "function" && decl.name == name => Some(decl),
+        _ => None,
+    })?;
+    if decl.generics.is_empty() {
+        return None;
+    }
+    let vars: Vec<String> = decl
+        .generics
+        .iter()
+        .map(|generic| generic.name.clone())
+        .collect();
+    let [(_, ty)] = section_typed_fields(decl, "outputs").try_into().ok()?;
+    type_signature(&ty, object_names, &vars)
+}
+
 fn lower_named(
     tree: &SyntaxTree,
     name: &str,
@@ -275,6 +299,33 @@ fn lower_named(
     }
     unresolved.sort();
     unresolved.dedup();
+    let hints = TypeHints {
+        object_fields: tree
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Declaration(object) if object.as_kind == "object" => Some(object),
+                _ => None,
+            })
+            .filter(|object| object.generics.is_empty())
+            .map(|object| {
+                let fields = section_typed_fields(object, "representation")
+                    .into_iter()
+                    .filter_map(|(field, ty)| {
+                        constructor_type_signature(&ty, &object_names).map(|sig| (field, sig))
+                    })
+                    .collect();
+                (object.name.clone(), fields)
+            })
+            .collect(),
+        sibling_results: siblings
+            .keys()
+            .filter_map(|callee| {
+                generic_result_signature(tree, callee, &object_names)
+                    .map(|sig| (callee.clone(), sig))
+            })
+            .collect(),
+    };
     let mut lowerer = Lowerer {
         inputs: inputs.clone(),
         locals: BTreeMap::new(),
@@ -313,6 +364,7 @@ fn lower_named(
             .iter()
             .map(|generic| generic.name.clone())
             .collect(),
+        hints: std::rc::Rc::new(hints),
     };
     if !unresolved.is_empty() {
         visiting.remove(name);
@@ -619,6 +671,72 @@ struct Lowerer {
     /// naming one lowers as `Var<name>`, which the backend binds per
     /// inlined call site.
     type_vars: Vec<String>,
+    /// Declared carriers a call site can be checked against from the
+    /// outside (see [`TypeHints`]).
+    hints: std::rc::Rc<TypeHints>,
+}
+
+/// Carriers known from where a value lands rather than from the value
+/// itself: an authored object's field signatures, and each inlined
+/// generic sibling's result signature with its type parameters
+/// (`Vector<Var<T>>`). `repeat(repeat([], 8), 8)` written into a
+/// `sequence(sequence(sequence(Rule)))` field has no element carrier
+/// of its own; the field binds `T` for both calls.
+#[derive(Default)]
+struct TypeHints {
+    object_fields: BTreeMap<String, BTreeMap<String, String>>,
+    sibling_results: BTreeMap<String, String>,
+}
+
+/// Binds the `Var<name>`s of `pattern` against the concrete carrier
+/// signature `concrete`, structurally (`Vector<Var<T>>` against
+/// `Vector<Record<Rule>>` binds `T` to `Record<Rule>`). Mismatched
+/// shapes bind nothing; the first binding of a name wins.
+fn bind_signature_vars(pattern: &str, concrete: &str, bound: &mut BTreeMap<String, String>) {
+    if let Some(name) = pattern
+        .strip_prefix("Var<")
+        .and_then(|rest| rest.strip_suffix('>'))
+    {
+        bound
+            .entry(name.to_string())
+            .or_insert_with(|| concrete.to_string());
+        return;
+    }
+    let (Some((head, args)), Some((concrete_head, concrete_args))) = (
+        pattern
+            .strip_suffix('>')
+            .and_then(|text| text.split_once('<')),
+        concrete
+            .strip_suffix('>')
+            .and_then(|text| text.split_once('<')),
+    ) else {
+        return;
+    };
+    let (args, concrete_args) = (signature_args(args), signature_args(concrete_args));
+    if head == concrete_head && args.len() == concrete_args.len() {
+        for (arg, concrete_arg) in args.iter().zip(&concrete_args) {
+            bind_signature_vars(arg, concrete_arg, bound);
+        }
+    }
+}
+
+/// The top-level comma-separated arguments of a signature's `<...>`.
+fn signature_args(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let (mut depth, mut start) = (0usize, 0usize);
+    for (index, ch) in text.char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(text[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(text[start..].trim());
+    parts
 }
 
 impl Lowerer {
@@ -632,6 +750,65 @@ impl Lowerer {
         (0..self.inputs.len())
             .map(|index| self.push(EmirOp::LoadInput(index as u16)))
             .collect()
+    }
+
+    /// Lowers `expr` where its value must have the carrier `expected`.
+    /// A call to an inlined generic sibling binds its type parameters
+    /// from `expected` against the callee's result, and the inlined
+    /// frame declares the instantiated input carriers, so an argument
+    /// with no carrier of its own (`[]`) gets one; the arguments are
+    /// lowered against those carriers in turn. Anything else lowers
+    /// as usual.
+    fn expr_expecting(&mut self, expr: &Expr, expected: &str) -> Result<EmirValue, String> {
+        let ExprKind::Call { function, args } = &expr.kind else {
+            return self.expr(expr);
+        };
+        let ExprKind::Path { segments, .. } = &function.kind else {
+            return self.expr(expr);
+        };
+        let [called] = segments.as_slice() else {
+            return self.expr(expr);
+        };
+        let inlined = self.self_name.as_deref() != Some(called.as_str())
+            && !self.entry_siblings.contains_key(called)
+            && !self.locals.contains_key(called)
+            && !self.inputs.contains(called);
+        let (Some((body, declared)), Some(result)) = (
+            self.siblings.get(called).filter(|_| inlined).cloned(),
+            self.hints.sibling_results.get(called).cloned(),
+        ) else {
+            return self.expr(expr);
+        };
+        if declared.len() != args.len() {
+            return self.expr(expr);
+        }
+        let mut bound = BTreeMap::new();
+        bind_signature_vars(&result, expected, &mut bound);
+        let declared: Vec<String> = declared
+            .iter()
+            .map(|signature| {
+                bound
+                    .iter()
+                    .fold(signature.clone(), |text, (var, carrier)| {
+                        text.replace(&format!("Var<{var}>"), carrier)
+                    })
+            })
+            .collect();
+        let mut inputs = Vec::with_capacity(args.len());
+        for (arg, signature) in args.iter().zip(&declared) {
+            inputs.push(if signature.is_empty() || signature.contains("Var<") {
+                self.expr(arg)?
+            } else {
+                self.expr_expecting(arg, signature)?
+            });
+        }
+        Ok(self.push(EmirOp::CallFrame {
+            body,
+            inputs,
+            state: Vec::new(),
+            declared,
+            callee: Some(called.clone()),
+        }))
     }
 
     fn nested(&self, expr: &Expr) -> Result<EmirProgram, String> {
@@ -668,6 +845,7 @@ impl Lowerer {
             arrow_names: self.arrow_names.clone(),
             module_stamps: self.module_stamps.clone(),
             type_vars: self.type_vars.clone(),
+            hints: self.hints.clone(),
         }
     }
 
@@ -751,6 +929,7 @@ impl Lowerer {
             arrow_names,
             module_stamps: self.module_stamps.clone(),
             type_vars: self.type_vars.clone(),
+            hints: self.hints.clone(),
         };
         let result = child.expr(body)?;
         let program = child.finish(result);
@@ -1455,6 +1634,7 @@ impl Lowerer {
                         arrow_names: BTreeSet::new(),
                         module_stamps: self.module_stamps.clone(),
                         type_vars: self.type_vars.clone(),
+                        hints: self.hints.clone(),
                     };
                     let lowered = child.expr(inner)?;
                     let program = child.finish(lowered);
@@ -1508,6 +1688,7 @@ impl Lowerer {
                         arrow_names: BTreeSet::new(),
                         module_stamps: self.module_stamps.clone(),
                         type_vars: self.type_vars.clone(),
+                        hints: self.hints.clone(),
                     };
                     // A body the compiled lane cannot lower (a recursive
                     // function literal) keeps its tree alone: the
@@ -1568,8 +1749,17 @@ impl Lowerer {
                     ));
                 }
                 let mut values = Vec::with_capacity(fields.len());
+                let hints = std::rc::Rc::clone(&self.hints);
                 for (name, field) in fields {
-                    values.push((name.clone(), self.expr(field)?));
+                    let value = match hints
+                        .object_fields
+                        .get(&type_name)
+                        .and_then(|fields| fields.get(name))
+                    {
+                        Some(expected) => self.expr_expecting(field, expected)?,
+                        None => self.expr(field)?,
+                    };
+                    values.push((name.clone(), value));
                 }
                 Ok(self.push(EmirOp::RecordCreate {
                     type_name,
@@ -1695,6 +1885,7 @@ fn lower_closed(
         arrow_names: BTreeSet::new(),
         module_stamps: BTreeMap::new(),
         type_vars: Vec::new(),
+        hints: std::rc::Rc::default(),
     };
     let result = lowerer.expr(body)?;
     Ok(lowerer.finish(result))
@@ -2778,6 +2969,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         arrow_names: BTreeSet::new(),
         module_stamps: BTreeMap::new(),
         type_vars: Vec::new(),
+        hints: std::rc::Rc::default(),
     };
     let acc = step.push(EmirOp::LoadInput(1));
     let coeff = if contains_path(coeff, param) {
@@ -2810,6 +3002,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         arrow_names: BTreeSet::new(),
         module_stamps: BTreeMap::new(),
         type_vars: Vec::new(),
+        hints: std::rc::Rc::default(),
     };
     let count = outer.push(EmirOp::LoadInput(0));
     let init = outer.expr(then_value).ok()?;
