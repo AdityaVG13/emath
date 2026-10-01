@@ -819,6 +819,13 @@ pub(crate) fn op_expr(
                         {
                             return render_expr(&to_code_value(operand(program, *value), &value_kind));
                         }
+                        // A viewed child (a node) crossing into a Code
+                        // parameter: the VM's elements are codes.
+                        if value_kind == ValueKind::Node
+                            && let Some(converted) = node_into(&expression, param)
+                        {
+                            return format!("&({converted})");
+                        }
                         if let Some(converted) = numeric_boundary_value(
                             &operand(program, *value),
                             &kind_at(kinds, *value),
@@ -1924,6 +1931,18 @@ pub(crate) fn node_into(expression: &str, target: &ValueKind) -> Option<String> 
         ValueKind::ExprCode => Some(format!(
             "emath_rt::code_tree::node_as_code(&{expression})?"
         )),
+        // A scalar node into a declared scalar: the checked projection
+        // (a Rational refuses an Int parameter by name).
+        ValueKind::I64 | ValueKind::Rational | ValueKind::Bool => {
+            let projection = match target {
+                ValueKind::I64 => "project_i64",
+                ValueKind::Rational => "project_ratio",
+                _ => "project_bool",
+            };
+            Some(format!(
+                "emath_rt::code::{projection}(&emath_rt::code_tree::node_scalar(&{expression})?, \"argument\")?"
+            ))
+        }
         ValueKind::Vector(element) => {
             let inner = node_into("__item", element)?;
             let element_ty = crate::rust_ir::render::render_ty(&element.rust_ty().ok()?);
@@ -1987,11 +2006,11 @@ fn literal_frame_expr(
         // carrier (the view's args/children wrap codes as Code nodes)
         // crosses through the shared bridge: unwrap or rebuild, never
         // a silent type change.
-        if kind == ValueKind::ExprCode && kind_at(kinds, *value) == ValueKind::Node {
-            code.push_str(&format!(
-                "let {name} = &emath_rt::code_tree::node_as_code({})?; ",
-                render_expr(&operand(outer, *value))
-            ));
+        if kind_at(kinds, *value) == ValueKind::Node
+            && let Some(converted) = node_into(&render_expr(&operand(outer, *value)), &kind)
+        {
+            let borrow = if kind.is_copy() { "" } else { "&" };
+            code.push_str(&format!("let {name} = {borrow}{converted}; "));
             frame_kinds.insert(name.clone(), kind);
             continue;
         }

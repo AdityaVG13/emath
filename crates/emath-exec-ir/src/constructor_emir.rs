@@ -683,6 +683,10 @@ impl Lowerer {
         if is_arrow_domain(domain) {
             arrow_names.insert(param.to_string());
         }
+        // A literal's call to the enclosing function (the structural
+        // walks' `any(function k in Code: walk(k), kids)`) is that
+        // function's recursion, unless the literal binds the name.
+        let self_name = self.self_name.clone().filter(|name| !inputs.contains(name));
         let mut child = Lowerer {
             inputs,
             locals: BTreeMap::new(),
@@ -691,8 +695,12 @@ impl Lowerer {
             objects: self.objects.clone(),
             ops: Vec::new(),
             obligations: Vec::new(),
-            self_name: None,
-            self_result: String::new(),
+            self_result: if self_name.is_some() {
+                self.self_result.clone()
+            } else {
+                String::new()
+            },
+            self_name,
             arrow_names,
             module_stamps: self.module_stamps.clone(),
             type_vars: self.type_vars.clone(),
@@ -1774,6 +1782,9 @@ fn domain_signature(
             }
             match name.as_str() {
                 "Int" | "Rat" | "Bool" | "Text" | "Float64" => Some(name.clone()),
+                // The same carriers a declared `Code` / `Fragment`
+                // input takes (`type_signature`).
+                "Code" | "Fragment" => Some(name.clone()),
                 _ => objects
                     .contains_key(name)
                     .then(|| format!("Record<{name}>")),

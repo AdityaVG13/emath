@@ -1,0 +1,125 @@
+# A function that calls itself from inside a closure it passes to a
+# fold (`any(function k in Code: mentions(k, var), kids)`): the shape
+# of the search modules' structural walks (certify's `mentions`,
+# optimize's `instantiate`). The closure's call is the enclosing
+# function's recursion, not a field projection or an unknown name.
+use fold.reduce
+
+emath function leaves:
+    # Fibonacci by a tree of calls, each level mapped by a closure
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n < 2: 1 else: sum(map(function k in Int: leaves(k), [n - 1, n - 2]))
+    tests:
+        example <ten>:
+            given n = 10
+            expect result == 89
+
+emath function mentions:
+    # whether a local named like var occurs anywhere in c
+    inputs:
+        c: Code
+        var: Code
+    outputs:
+        result: Bool
+    definitions:
+        v = quote.view(c)
+        here = if v.kind == Local: v.name == quote.view(var).name else: false
+        kids = if v.kind == Call: v.args else: []
+        result = here or any(function k in Code: mentions(k, var), kids)
+
+emath function finds_x:
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = mentions(quote.substitute(quote(y * (x + c)), "c", k), quote(x))
+    tests:
+        example <deep_local>:
+            given k = 2
+            expect result == true
+
+emath function misses_z:
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = mentions(quote.substitute(quote(y * (x + c)), "c", k), quote(z))
+    tests:
+        example <absent>:
+            given k = 2
+            expect result == false
+
+emath function big_literals:
+    # how many literal leaves exceed 2: a viewed literal's value orders
+    inputs:
+        c: Code
+    outputs:
+        result: Int
+    definitions:
+        v = quote.view(c)
+        here = if v.kind == Literal: (if v.value > 2: 1 else: 0) else: 0
+        kids = if v.kind == Call: v.args else: []
+        result = here + sum(map(function k in Code: big_literals(k), kids))
+
+emath function counts_big:
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = big_literals(quote.substitute(quote(x * c + 1 + 5), "c", k))
+    tests:
+        example <three_and_five>:
+            given k = 3
+            expect result == 2
+
+emath function twice:
+    inputs:
+        d: Int
+    outputs:
+        result: Int
+    definitions:
+        result = d * 2
+
+emath function twice_literal:
+    # a viewed literal's value passed to an Int input
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = twice(quote.view(quote.substitute(quote(c), "c", k)).value)
+    tests:
+        example <four>:
+            given k = 4
+            expect result == 8
+
+emath function plug:
+    # replace every local in c by value, rebuilding the calls
+    inputs:
+        c: Code
+        value: Code
+    outputs:
+        result: Code
+    definitions:
+        n = quote.view(c)
+        result = if n.kind == Local: value else: if n.kind == Call: quote.make(Call: {callee: n.callee, args: map(function a in Code: plug(a, value), n.args)}) else: c
+
+emath function plugged:
+    # x * x + 1 at x = k
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.evaluate(plug(quote(x * x + 1), quote.substitute(quote(c), "c", k)))
+    tests:
+        example <three>:
+            given k = 3
+            expect result == 10

@@ -264,6 +264,30 @@ pub fn node_eq(
     })
 }
 
+/// `<`, `>`, `<=`, `>=` over the record family: only scalars order
+/// (exactly, by cross-multiplication, as the VM's `cmp_numeric`);
+/// ordering a record, sequence, or code value refuses.
+pub fn node_cmp(
+    left: impl std::borrow::Borrow<NodeValue>,
+    right: impl std::borrow::Borrow<NodeValue>,
+) -> Result<core::cmp::Ordering, String> {
+    match (left.borrow(), right.borrow()) {
+        (NodeValue::Scalar(a), NodeValue::Scalar(b)) => super::code::code_cmp(a, b),
+        _ => Err(String::from("type: ordering requires numeric operands")),
+    }
+}
+
+/// The scalar a node holds (a viewed literal's `value`), for a
+/// declared Int/Rat/Bool parameter; any other node refuses.
+pub fn node_scalar(node: impl std::borrow::Borrow<NodeValue>) -> Result<CodeValue, String> {
+    match node.borrow() {
+        NodeValue::Scalar(value) => Ok(*value),
+        _ => Err(String::from(
+            "type: a scalar parameter received a non-scalar value",
+        )),
+    }
+}
+
 /// A tag record: the VM's `schema_tag` - a record whose type name IS
 /// the tag, with no fields (`Call`, `Add`, `transparent`, ...).
 pub fn node_tag(name: &str) -> NodeValue {

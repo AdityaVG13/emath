@@ -608,7 +608,10 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
     }
     if kind == ValueKind::Node {
         let declared_kind = ValueKind::from_signature(signature);
-        if declared_kind == ValueKind::ExprCode {
+        if matches!(
+            declared_kind,
+            ValueKind::ExprCode | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
+        ) {
             return declared_kind;
         }
     }
@@ -1885,18 +1888,20 @@ pub(super) fn cmp_expr(
         // walk's kind test). A scalar beside a node folds into the
         // family (mixed shapes are never equal).
         (ValueKind::Node, _) | (_, ValueKind::Node) => {
-            let left = to_node(operand(program, left), &lk);
-            let right = to_node(operand(program, right), &rk);
+            let left = render_expr(&to_node(operand(program, left), &lk));
+            let right = render_expr(&to_node(operand(program, right), &rk));
+            let ordered = |orderings: &str| {
+                format!(
+                    "matches!(emath_rt::code_tree::node_cmp(&{left}, &{right})?, {orderings})"
+                )
+            };
             let raw = match op {
-                BinOp::Eq => format!("({}).equals(&{})?", render_expr(&left), render_expr(&right)),
-                BinOp::Ne => format!(
-                    "!({}).equals(&{})?",
-                    render_expr(&left),
-                    render_expr(&right)
-                ),
-                BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
-                    unreachable!("ordering over node records is not authored")
-                }
+                BinOp::Eq => format!("({left}).equals(&{right})?"),
+                BinOp::Ne => format!("!({left}).equals(&{right})?"),
+                BinOp::Lt => ordered("core::cmp::Ordering::Less"),
+                BinOp::Gt => ordered("core::cmp::Ordering::Greater"),
+                BinOp::Le => ordered("core::cmp::Ordering::Less | core::cmp::Ordering::Equal"),
+                BinOp::Ge => ordered("core::cmp::Ordering::Greater | core::cmp::Ordering::Equal"),
                 BinOp::Add
                 | BinOp::Sub
                 | BinOp::Mul

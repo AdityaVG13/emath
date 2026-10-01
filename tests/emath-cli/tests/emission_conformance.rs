@@ -1602,6 +1602,61 @@ fn emission_conformance_code_identity() {
         diffs.join("\n")
     );
 }
+const CLOSURE_SELF_CALL_DRIVER: &str = r#"
+//! A function calling itself from inside a closure it hands to a fold.
+use closure_self_call::emath_rt::ExactInt;
+use closure_self_call::{counts_big, finds_x, leaves, misses_z, plugged, twice_literal};
+fn main() {
+    let mut failures = 0usize;
+    let got = leaves(10);
+    if got != Ok(ExactInt::from(89)) {
+        failures += 1;
+        println!("DIFF leaves_ten EMITTED {:?}; VM = 89", got);
+    }
+    let got = finds_x(2);
+    if got != Ok(true) {
+        failures += 1;
+        println!("DIFF deep_local EMITTED {:?}; VM = true", got);
+    }
+    let got = misses_z(2);
+    if got != Ok(false) {
+        failures += 1;
+        println!("DIFF absent EMITTED {:?}; VM = false", got);
+    }
+    for (k, vm) in [(3, 2), (2, 1)] {
+        let got = counts_big(k);
+        if got != Ok(ExactInt::from(vm)) {
+            failures += 1;
+            println!("DIFF counts_big({k}) EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    let got = twice_literal(4);
+    if got != Ok(8) {
+        failures += 1;
+        println!("DIFF twice_literal EMITTED {:?}; VM = 8", got);
+    }
+    let got = plugged(3);
+    if got != Ok(10) {
+        failures += 1;
+        println!("DIFF plugged_three EMITTED {:?}; VM = 10", got);
+    }
+    if failures == 0 {
+        println!("closure_self_call: all pins hold");
+    }
+}
+"#;
+#[test]
+fn emission_conformance_closure_self_call() {
+    let diffs = run_lane(
+        "tests/fixtures/constructor/closure_self_call.emath",
+        CLOSURE_SELF_CALL_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted closure_self_call disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
 const UNION_EXACT_COMPARE_DRIVER: &str = r#"
 //! A run-time program's union value compared with exact Int
 //! arithmetic: the emitted comparison must agree with the VM.
