@@ -5,8 +5,7 @@ use super::prelude::{
     project_field, schema_tag,
 };
 use super::super::scalar::decimal_to_rational;
-use super::super::ops::float_of;
-use super::super::world::CarrierWorld;
+use super::super::world::{self, CarrierWorld};
 
 impl Engine {
     pub(in crate::constructor_layer) fn charge(&mut self) -> Result<(), ConstructorError> {
@@ -81,15 +80,11 @@ impl Engine {
                 if den.is_zero() {
                     return Err(fault("division_by_zero", "rational denominator is zero"));
                 }
-                let value = CValue::Rat { num, den }.canon()?;
-                if crate::constructor_layer::world::current() == CarrierWorld::Float64 {
-                    return Ok(CValue::Float64(float_of(&value)?));
-                }
-                Ok(value)
+                CValue::Rat { num, den }.canon()
             }
             ExprKind::Float(text) => {
                 let cleaned = text.trim_end_matches("f64").trim_end_matches("Float64");
-                if crate::constructor_layer::world::current() == CarrierWorld::Exact {
+                if world::current() == CarrierWorld::Exact {
                     if let Some((numer, denom)) = decimal_to_rational(cleaned) {
                         return CValue::Rat {
                             num: parse_exact(&numer)?,
@@ -280,6 +275,9 @@ impl Engine {
                 apply_unary(*op, v)
             }
             ExprKind::Binary { op, left, right } => {
+                if world::current() == CarrierWorld::Float64 && world::is_literal_constant(expr) {
+                    return world::exact_constant(expr);
+                }
                 let l = self.eval_with_kont(left, || Kont::BinLeft {
                     op: *op,
                     left: left.clone(),

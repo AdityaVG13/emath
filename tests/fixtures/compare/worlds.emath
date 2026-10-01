@@ -1,5 +1,21 @@
 # One file read under three carrier worlds by `emath compare`.
 
+use numerics.rk4
+
+# y' = y from t = 0 to 1 in `steps` classical RK4 steps (approximates e).
+# The tableau and its exact order conditions are program constants, so
+# the float64 world checks them exactly and integrates in binary64.
+emath function grow:
+    inputs:
+        steps: Int
+    outputs:
+        result: Rat
+    definitions:
+        h = 1 / steps
+        f = function t in Rat: function y in Rat: y
+        walk = recur go in Int -> Rat -> Rat: function k in Int: function y in Rat: if k == 0: y else: go(k - 1, rk4_step(y, 0, h, f))
+        result = walk(steps, 1)
+
 emath function cancellation:
     inputs:
         x: Rat

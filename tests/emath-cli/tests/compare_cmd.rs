@@ -11,6 +11,9 @@
 //!   integer quotients round and the sum misses: `disagree`. `1/n` alone
 //!   is a binary64 in the float64 world, 2^-54-ish away from 1/10.
 //! - Integer arithmetic is the same in every world: `agree`.
+//! - Four RK4 steps of y' = y: the exact worlds agree on a rational; the
+//!   float64 world passes RK4's exact order-condition guard (the tableau
+//!   is a program constant) and integrates in binary64: `disagree`.
 //! - `x.denom` has no meaning for a binary64: the float64 world refuses
 //!   by name while the exact worlds answer 10: `partial`.
 
@@ -156,6 +159,24 @@ fn compare_cmd() {
             "{out}"
         );
     }
+
+    // RK4 guards its tableau with exact order conditions. In float64 the
+    // tableau is a program constant, so the guard holds and the stepping
+    // itself runs in binary64: an answer near the exact one, not a
+    // refusal.
+    let out = compare("grow", "steps=4");
+    assert_eq!(verdict(&out), "disagree", "{out}");
+    assert!(
+        world_row(&out, "exact").contains("\"payload\":\"3873359651615041/1424967069597696\""),
+        "{out}"
+    );
+    let float = world_row(&out, "float64");
+    assert!(float.contains("\"execution\":\"returned\""), "{out}");
+    assert!(
+        float.contains("\"representation\":\"rounded_scalar\""),
+        "{out}"
+    );
+    assert!(float.contains("\"gap\":"), "{out}");
 
     let out = compare("denominator", "x=0.1");
     assert_eq!(verdict(&out), "partial", "{out}");

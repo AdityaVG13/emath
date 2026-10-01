@@ -131,13 +131,15 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
         op,
         BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div
     );
-    // In the Float64 world a rational never materializes: a rational
-    // operand or an integer quotient takes the binary64 lane.
-    let float_world = arithmetic
+    // In the Float64 world a quotient of run-time integers is new real
+    // data and takes the binary64 lane. Literal constants (`1 / 6`) are
+    // computed under the reference laws before they get here, and real
+    // inputs are already Float64, so a rational seen here is one of the
+    // program's exact constants and stays exact.
+    let float_world = op == BinaryOp::Div
         && super::world::current() == super::world::CarrierWorld::Float64
-        && (matches!(left, CValue::Rat { .. })
-            || matches!(right, CValue::Rat { .. })
-            || op == BinaryOp::Div);
+        && matches!(left, CValue::Int(_))
+        && matches!(right, CValue::Int(_));
     if float_world
         || arithmetic
             && (matches!(left, CValue::Float64(_)) || matches!(right, CValue::Float64(_)))

@@ -10,10 +10,14 @@
 //!   A Float64 value can still appear (an input the caller supplied as a
 //!   float, or an operation with no exact result); it is reported as
 //!   rounded, never relabeled exact.
-//! - `Float64`: every real is a binary64. Rational literals and the
-//!   division of integers round to nearest, arithmetic touching a
-//!   rational runs in binary64, and a `Rat` slot accepts `Float64`.
-//!   `Int` stays an exact integer in every world.
+//! - `Float64`: real-valued DATA is binary64: real inputs, and every
+//!   quotient of integers computed at run time (`1 / n`). The program's
+//!   own constants - expressions built only from number literals
+//!   (`1 / 6`, `0 / 1`) - and exact arithmetic among them stay exact,
+//!   because they define the method (a Runge-Kutta tableau and its
+//!   order conditions), not its data. A constant that meets a binary64
+//!   rounds to nearest there, as a constant does in a float program. A
+//!   `Rat` slot accepts `Float64`. `Int` stays exact in every world.
 //!
 //! Disagreement between worlds is information about the definition
 //! (rounding, cancellation, a branch flipped by rounding), not a fault
@@ -22,10 +26,10 @@
 
 use std::cell::Cell;
 
-use emath_core::tree::{GenericArg, TypeExpr, TypeKind};
+use emath_core::tree::{BinaryOp, Expr, ExprKind, GenericArg, TypeExpr, TypeKind, UnaryOp};
 
 use super::prelude::*;
-use super::{CValue, ConstructorError};
+use super::{CValue, ConstructorError, fault, parse_exact, parse_int};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CarrierWorld {
@@ -71,6 +75,47 @@ pub fn with_world<T>(world: CarrierWorld, body: impl FnOnce() -> T) -> T {
 
 pub(super) fn current() -> CarrierWorld {
     WORLD.with(Cell::get)
+}
+
+/// An expression built only from integer and rational literals with
+/// `+ - * /` and sign: a constant of the program's definition
+/// (`1 / 6`, `-(1 / 2)`, `0 / 1`), not run-time data.
+pub(super) fn is_literal_constant(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::Int(_) | ExprKind::Rational { .. } => true,
+        ExprKind::Unary {
+            op: UnaryOp::Neg | UnaryOp::Pos,
+            value,
+        } => is_literal_constant(value),
+        ExprKind::Binary { op, left, right } => {
+            matches!(
+                op,
+                BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div
+            ) && is_literal_constant(left)
+                && is_literal_constant(right)
+        }
+        _ => false,
+    }
+}
+
+/// The exact value of a literal constant, computed under the reference
+/// carrier laws whatever world is installed. Pure: no engine step, so a
+/// budget suspension can never land inside a constant.
+pub(super) fn exact_constant(expr: &Expr) -> Result<CValue, ConstructorError> {
+    fn go(expr: &Expr) -> Result<CValue, ConstructorError> {
+        match &expr.kind {
+            ExprKind::Int(text) => parse_int(text),
+            ExprKind::Rational { numer, denom } => CValue::Rat {
+                num: parse_exact(numer)?,
+                den: parse_exact(denom)?,
+            }
+            .canon(),
+            ExprKind::Unary { op, value } => apply_unary(*op, go(value)?),
+            ExprKind::Binary { op, left, right } => binary(*op, go(left)?, go(right)?),
+            _ => Err(fault("type", "not a literal constant")),
+        }
+    }
+    with_world(CarrierWorld::Reference, || go(expr))
 }
 
 /// Read a caller-supplied input value in `world`. `declared` is the
