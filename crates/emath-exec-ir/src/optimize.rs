@@ -158,7 +158,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         EmirOp::CodeMake { node } => out.push(*node),
         EmirOp::CodeBody { code } => out.push(*code),
         EmirOp::CodeOpen { package } => out.push(*package),
-        EmirOp::CodeBind { code } => out.push(*code),
+        EmirOp::CodeBind { code } | EmirOp::CodeIdentity { code } => out.push(*code),
     }
 }
 

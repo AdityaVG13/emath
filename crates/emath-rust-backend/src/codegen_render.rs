@@ -1600,6 +1600,23 @@ pub(crate) fn op_expr(
             )),
         }
         }
+        EmirOp::CodeIdentity { code } => {
+            // quote.identity: the VM's canonical identity over the
+            // distilled tree. A view's child is a node; it crosses into
+            // Code through the call-marshal bridge first.
+            let code_expr = render_expr(&operand(program, *code));
+            match kind_at(kinds, *code) {
+                ValueKind::ExprCode | ValueKind::Code(_) => {
+                    Ok(Expr::Raw(format!("({code_expr}).identity()?")))
+                }
+                ValueKind::Node => Ok(Expr::Raw(format!(
+                    "emath_rt::code_tree::node_as_code(&({code_expr}))?.identity()?"
+                ))),
+                _ => Err(BackendError::UnsupportedType(
+                    "quote.identity requires a Code value".into(),
+                )),
+            }
+        }
         EmirOp::CodeBind { code } => {
             // quote.bind (the call form): the mint walk - the
             // identity over the distilled subset - with the

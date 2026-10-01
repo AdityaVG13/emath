@@ -1554,6 +1554,54 @@ fn emission_conformance_named_fn() {
         diffs.join("\n")
     );
 }
+const CODE_IDENTITY_DRIVER: &str = r#"
+//! quote.identity in the emitted crate: the VM's exact numbers (FNV-1a
+//! over the canonical bytes) and the equalities the search modules use.
+use code_identity::{
+    body_identity, child_matches_template, different_code_differs, renamed_binders_agree,
+    substituted_identity, template_identity,
+};
+fn main() {
+    let mut failures = 0usize;
+    let pins: [(&str, Result<i64, String>, i64); 3] = [
+        ("template", template_identity(1), 1083551230141008259),
+        ("substituted_half", substituted_identity((1, 2)), 6799677611696251689),
+        ("sequence_binder_body", body_identity(1), -3712620093599836444),
+    ];
+    for (name, got, vm) in pins {
+        if got != Ok(vm) {
+            failures += 1;
+            println!("DIFF {name} EMITTED {:?}; VM = {vm}", got);
+        }
+    }
+    let bools = [
+        ("alpha_equivalent", renamed_binders_agree(3)),
+        ("distinct", different_code_differs(1)),
+        ("child_is_x", child_matches_template(1)),
+    ];
+    for (name, got) in bools {
+        if got != Ok(true) {
+            failures += 1;
+            println!("DIFF {name} EMITTED {:?}; VM = true", got);
+        }
+    }
+    if failures == 0 {
+        println!("code_identity: all pins hold");
+    }
+}
+"#;
+#[test]
+fn emission_conformance_code_identity() {
+    let diffs = run_lane(
+        "tests/fixtures/constructor/code_identity.emath",
+        CODE_IDENTITY_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted code_identity disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
 const UNION_EXACT_COMPARE_DRIVER: &str = r#"
 //! A run-time program's union value compared with exact Int
 //! arithmetic: the emitted comparison must agree with the VM.

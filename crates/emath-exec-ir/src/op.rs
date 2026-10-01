@@ -416,6 +416,12 @@ pub enum EmirOp {
     CodeBind {
         code: EmirValue,
     },
+    /// `quote.identity(code)`: the VM's canonical identity of a code
+    /// value (equal up to renaming of bound names) as an Int, computed
+    /// over the distilled tree with the VM's exact bytes.
+    CodeIdentity {
+        code: EmirValue,
+    },
 
     /// Concatenate list carriers, preserving element carriers. The
     /// authored cons spelling `[head, ..tail]` lowers here; unlike

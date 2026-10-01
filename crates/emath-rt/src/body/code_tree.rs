@@ -966,6 +966,142 @@ pub fn node_items(node: impl std::borrow::Borrow<NodeValue>) -> Result<Vec<NodeV
     }
 }
 
+/// `quote.identity`: the VM's canonical code identity (normative
+/// source: constructor_layer/identity.rs `code_identity`) - FNV-1a over
+/// de Bruijn-style bytes, so code equal up to renaming of bound names
+/// has one identity, cast to Int exactly as the VM casts it. Every
+/// tree arm writes the bytes the VM writes for the expression it was
+/// distilled from. A binder domain the tree does not record (the VM's
+/// `unknown` shape) cannot be spelled back and refuses by name.
+pub fn tree_identity(tree: &CodeTree) -> Result<i64, String> {
+    let mut out = Vec::new();
+    canonical_tree_bytes(tree, &mut Vec::new(), &mut out)?;
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in out {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    Ok(hash as i64)
+}
+
+fn canonical_tree_bytes(
+    tree: &CodeTree,
+    binders: &mut Vec<String>,
+    out: &mut Vec<u8>,
+) -> Result<(), String> {
+    match tree {
+        CodeTree::Literal(CodeValue::Int(value)) => {
+            out.push(b'I');
+            out.extend_from_slice(value.to_string().as_bytes());
+        }
+        CodeTree::Literal(CodeValue::Rat((numer, denom))) => {
+            out.push(b'R');
+            out.extend_from_slice(numer.to_string().as_bytes());
+            out.push(b'/');
+            out.extend_from_slice(denom.to_string().as_bytes());
+        }
+        CodeTree::Literal(CodeValue::Bool(value)) => {
+            out.push(b'B');
+            out.push(u8::from(*value));
+        }
+        CodeTree::Path(segments) => {
+            if let Some(depth) = binders.iter().rposition(|b| b == &segments[0]) {
+                out.push(b'#');
+                out.extend_from_slice(&(depth as u16).to_le_bytes());
+                for segment in &segments[1..] {
+                    out.push(b'.');
+                    out.extend_from_slice(segment.as_bytes());
+                }
+            } else if segments.len() == 1 && segments[0].contains('(') {
+                // `quote.view` exposes a sequence domain as a one-segment
+                // path spelled `sequence(T)`; the VM's view holds the
+                // domain expression itself, a call.
+                domain_spelling_bytes(&segments[0], out)?;
+            } else {
+                out.push(b'P');
+                for segment in segments {
+                    out.push(b'.');
+                    out.extend_from_slice(segment.as_bytes());
+                }
+            }
+        }
+        CodeTree::Call { function, args } => {
+            out.push(b'C');
+            canonical_tree_bytes(function, binders, out)?;
+            for arg in args {
+                canonical_tree_bytes(arg, binders, out)?;
+            }
+        }
+        CodeTree::Binary { op, left, right } => {
+            out.push(b'Y');
+            out.extend_from_slice(op.name().as_bytes());
+            canonical_tree_bytes(left, binders, out)?;
+            canonical_tree_bytes(right, binders, out)?;
+        }
+        CodeTree::Unary { op, value } => {
+            out.push(b'U');
+            out.extend_from_slice(op.name().as_bytes());
+            canonical_tree_bytes(value, binders, out)?;
+        }
+        CodeTree::Closure { param, domain, body } => {
+            out.push(b'L');
+            match domain {
+                TreeDomain::Scalar(name) => {
+                    out.push(b'P');
+                    out.push(b'.');
+                    out.extend_from_slice(name.as_bytes());
+                }
+                TreeDomain::Sequence(spelling) => domain_spelling_bytes(spelling, out)?,
+                TreeDomain::Unknown => return Err(unrecorded_domain()),
+            }
+            binders.push(param.clone());
+            canonical_tree_bytes(body, binders, out)?;
+            binders.pop();
+        }
+        CodeTree::Tuple(items) => {
+            out.push(b'[');
+            for item in items {
+                canonical_tree_bytes(item, binders, out)?;
+            }
+        }
+        CodeTree::If {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            out.push(b'?');
+            canonical_tree_bytes(condition, binders, out)?;
+            canonical_tree_bytes(then_value, binders, out)?;
+            canonical_tree_bytes(else_value, binders, out)?;
+        }
+    }
+    Ok(())
+}
+
+/// The VM's domain expression bytes for a recorded domain spelling:
+/// a scalar name is a path, `sequence(T)` is a call of `sequence`.
+fn domain_spelling_bytes(spelling: &str, out: &mut Vec<u8>) -> Result<(), String> {
+    if let Some(element) = spelling
+        .strip_prefix("sequence(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        out.extend_from_slice(b"CP.sequence");
+        return domain_spelling_bytes(element, out);
+    }
+    if matches!(spelling, "Int" | "Rat" | "Bool" | "Float64") {
+        out.extend_from_slice(b"P.");
+        out.extend_from_slice(spelling.as_bytes());
+        return Ok(());
+    }
+    Err(unrecorded_domain())
+}
+
+fn unrecorded_domain() -> String {
+    String::from(
+        "unsupported: quote.identity over a binder domain the artifact tree does not record (only Int, Rat, Bool, Float64 and sequences of them)",
+    )
+}
+
 /// A node value in a Code position (the call-marshal bridge): a Code
 /// node unwraps to its own ExprCode unchanged (the VM's call arguments
 /// ARE codes); any other node value rebuilds into a factory-free,

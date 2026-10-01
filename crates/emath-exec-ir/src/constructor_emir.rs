@@ -972,6 +972,10 @@ impl Lowerer {
                     let code = self.expr(&args[0])?;
                     Ok(self.push(EmirOp::CodeBind { code }))
                 }
+                ("quote.identity", 1) => {
+                    let code = self.expr(&args[0])?;
+                    Ok(self.push(EmirOp::CodeIdentity { code }))
+                }
                 _ => Err(format!("call is not yet emitted: {called}")),
             };
         }

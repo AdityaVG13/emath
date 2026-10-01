@@ -1,0 +1,98 @@
+# quote.identity: the canonical identity of a code value - an Int that
+# is equal for code equal up to renaming of bound names. The emitted
+# lane must produce the VM's exact numbers, not just the same
+# equalities: identities can be stored and compared across runs.
+# Every case substitutes its input into the code, so the build cannot
+# fold it to a constant and the compiled identity runs.
+
+emath function template_identity:
+    # x * 2 + k
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.identity(quote.substitute(quote(x * 2 + c), "c", k))
+
+emath function substituted_identity:
+    # a substituted Rat value becomes a literal in the code
+    inputs:
+        r: Rat
+    outputs:
+        result: Int
+    definitions:
+        result = quote.identity(quote.substitute(quote(z + 1), "z", r))
+
+emath function size:
+    inputs:
+        xs: sequence(Rat)
+    outputs:
+        result: Int
+    definitions:
+        result = length(xs)
+
+emath function body_identity:
+    # an unfolded body: a binder over a sequence domain, used in the body
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        named = if k > 0: quote(size) else: quote(body_identity)
+        result = quote.identity(quote.body(named).fragment)
+
+emath function inc_a:
+    inputs:
+        a: Int
+    outputs:
+        result: Int
+    definitions:
+        result = a + 1
+
+emath function inc_b:
+    inputs:
+        b: Int
+    outputs:
+        result: Int
+    definitions:
+        result = b + 1
+
+emath function renamed_binders_agree:
+    # two bodies that differ only in their input's name
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        left = quote.body(if k > 0: quote(inc_a) else: quote(size)).fragment
+        right = quote.body(if k > 0: quote(inc_b) else: quote(size)).fragment
+        result = quote.identity(left) == quote.identity(right)
+    tests:
+        example <alpha_equivalent>:
+            given k = 3
+            expect result == true
+
+emath function different_code_differs:
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.identity(quote.substitute(quote(x + c), "c", k)) != quote.identity(quote.substitute(quote(x + c), "c", k + 1))
+    tests:
+        example <distinct>:
+            given k = 1
+            expect result == true
+
+emath function child_matches_template:
+    # a child of a view is a node; its identity is its code's
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.identity(quote.view(quote.substitute(quote(x + c), "c", k)).args[0]) == quote.identity(quote(x))
+    tests:
+        example <child_is_x>:
+            given k = 1
+            expect result == true

@@ -87,6 +87,17 @@ impl<V: Clone + 'static> Code<V> {
             )),
         }
     }
+
+    /// `quote.identity` over a program template's tree; a substituted
+    /// or made value has none to spell, so it refuses like `view`.
+    pub fn identity(&self) -> Result<i64, String> {
+        match &self.tree {
+            Some(tree) => super::code_tree::tree_identity(tree),
+            None => Err(String::from(
+                "type: quote.identity over a substituted or made program value has no tree lane in this cut",
+            )),
+        }
+    }
 }
 
 /// Bind one open constant by partial application.
@@ -639,6 +650,9 @@ impl ExprCode {
     /// the same law as its free function.
     pub fn view(&self, module: &super::code_tree::ModuleTable) -> super::code_tree::NodeValue {
         super::code_tree::view_quoted(self, module)
+    }
+    pub fn identity(&self) -> Result<i64, String> {
+        super::code_tree::tree_identity(&self.tree)
     }
     pub fn substitute(&self, reference: &str, value: CodeValue) -> ExprCode {
         substitute_expr(self, reference, value)
