@@ -2911,6 +2911,117 @@ fn emission_conformance_code_field_template() {
     assert!(diffs.is_empty(), "emitted Code-field template disagrees with the VM on:\n{}", diffs.join("\n"));
 }
 
+const QUOTE_COST_DRIVER: &str = r#"
+use quote_cost::{Costs, RepeatWork};
+
+fn main() {
+    let mut failures = 0usize;
+    match Costs(40) {
+        Ok(c) if c.same && c.cheaper && c.stopped && c.repeatable && c.contained => {}
+        other => {
+            failures += 1;
+            println!("DIFF Costs EMITTED {:?}; VM = all true", other.map(|c| (c.same, c.cheaper, c.stopped, c.repeatable, c.contained)));
+        }
+    }
+    // The VM's engine-step count for this application.
+    if RepeatWork(0) != Ok(539) {
+        failures += 1;
+        println!("DIFF RepeatWork EMITTED {:?}; VM = 539", RepeatWork(0));
+    }
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all quote_cost pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_quote_cost() {
+    let diffs = run_lane("tests/fixtures/constructor/quote_cost.emath", QUOTE_COST_DRIVER);
+    assert!(diffs.is_empty(), "emitted quote.cost disagrees with the VM on:\n{}", diffs.join("\n"));
+}
+
+const ENGINE_WORLDS_DRIVER: &str = r#"
+use engine_worlds::{configured, disagreements, inner_fault, judge, narrowed};
+
+fn main() {
+    let mut failures = 0usize;
+    if judge(10) != Ok(true) || judge(2) != Ok(false) {
+        failures += 1;
+        println!("DIFF judge EMITTED {:?} {:?}; VM = true false", judge(10), judge(2));
+    }
+    if narrowed((1, 3)) != Ok(0.3333333432674408) {
+        failures += 1;
+        println!("DIFF narrowed EMITTED {:?}; VM = 0.3333333432674408", narrowed((1, 3)));
+    }
+    if inner_fault((1, 3)).as_deref() != Ok("type") {
+        failures += 1;
+        println!("DIFF inner_fault EMITTED {:?}; VM = type", inner_fault((1, 3)));
+    }
+    // A compiled recursive caller of an engine-run function.
+    if disagreements(10) != Ok(2) {
+        failures += 1;
+        println!("DIFF disagreements EMITTED {:?}; VM = 2", disagreements(10));
+    }
+    let want = std::env::var("EXPECT_WORLDS")
+        .unwrap_or_else(|_| "reference,exact,float64,float32,bfloat16,int64,interval".into());
+    match configured(0) {
+        Ok(worlds) if worlds.join(",") == want => {}
+        other => {
+            failures += 1;
+            println!("DIFF configured EMITTED {other:?}; VM = {want}");
+        }
+    }
+    if failures > 0 {
+        println!("SUMMARY {failures} conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all engine_worlds pins conform");
+}
+"#;
+
+/// The default build answers every world from `quote.worlds()`; a
+/// `--worlds` build bakes that list in, and an unknown name refuses.
+#[test]
+fn emission_conformance_engine_worlds() {
+    let module_rel = "tests/fixtures/constructor/engine_worlds.emath";
+    let diffs = run_lane(module_rel, ENGINE_WORLDS_DRIVER);
+    assert!(diffs.is_empty(), "emitted quote.world disagrees with the VM on:\n{}", diffs.join("\n"));
+
+    let module = repo_root().join(module_rel);
+    let out = common::emitted_crate_dir(&module);
+    let _lock = common::lock_emitted_crate(&out);
+    let (text, code) = cli(&[
+        "build",
+        module.to_str().expect("utf8 module path"),
+        "--out",
+        out.to_str().expect("utf8 scratch path"),
+        "--worlds",
+        "exact,float64",
+        "--json",
+    ]);
+    assert_eq!(code, 0, "emath build --worlds failed\n{text}");
+    let status = common::cargo_build_emitted(&out, &["--bin", "conf_driver"]);
+    assert!(status.status.success(), "{}", String::from_utf8_lossy(&status.stderr));
+    let run = Command::new(out.join("target").join("debug").join("conf_driver"))
+        .env("EXPECT_WORLDS", "exact,float64")
+        .output()
+        .expect("run conformance driver");
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stdout));
+
+    let (text, code) = cli(&[
+        "build",
+        module.to_str().expect("utf8 module path"),
+        "--out",
+        out.to_str().expect("utf8 scratch path"),
+        "--worlds",
+        "float65",
+    ]);
+    assert_ne!(code, 0, "an unknown world must refuse\n{text}");
+    assert!(text.contains("unknown world `float65`"), "{text}");
+}
+
 /// Oscillations seam pin: the generic self-recursion instantiation
 /// (tabulate_at at an `Int -> sequence(Rat)` closure — the CallSelf
 /// result kind mirrors the render's crossing decision) through the

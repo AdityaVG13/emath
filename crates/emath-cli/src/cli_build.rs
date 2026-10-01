@@ -135,6 +135,9 @@ pub enum BuildRequest {
         out: PathBuf,
         dry_run: bool,
         json: bool,
+        /// The world list a built `quote.worlds()` returns; empty
+        /// leaves every world.
+        worlds: Vec<String>,
     },
 }
 
@@ -143,6 +146,7 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
     let mut out = None;
     let mut dry_run = false;
     let mut json = false;
+    let mut worlds = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -154,6 +158,12 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
             }
             "--dry-run" => dry_run = true,
             "--json" => json = true,
+            "--worlds" => {
+                let list = take_nonflag_value(args, &mut index)?;
+                let names: Vec<String> =
+                    list.split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
+                assign_once(&mut worlds, names)?;
+            }
             other if other.starts_with('-') => return None,
             other => assign_once(&mut path, PathBuf::from(other))?,
         }
@@ -168,10 +178,11 @@ pub(super) fn parse_build_request(args: &[String]) -> Option<BuildRequest> {
         out,
         dry_run,
         json,
+        worlds: worlds.unwrap_or_default(),
     })
 }
 
-/// `build <file> [--out <dir>] [--dry-run] [--json]`
+/// `build <file> [--out <dir>] [--dry-run] [--worlds w1,w2,...] [--json]`
 /// (default out: `target/emath` under the working directory).
 pub fn build(request: BuildRequest) -> CliExit {
     let BuildRequest::Ready {
@@ -179,7 +190,27 @@ pub fn build(request: BuildRequest) -> CliExit {
         out,
         dry_run,
         json,
+        worlds,
     } = request;
+    let mut carrier_worlds = Vec::new();
+    for name in &worlds {
+        match emath_exec_ir::constructor_layer::CarrierWorld::parse(name) {
+            Some(world) => carrier_worlds.push(world),
+            None => {
+                let known: Vec<&str> = emath_exec_ir::constructor_layer::CarrierWorld::ALL
+                    .iter()
+                    .map(|w| w.name())
+                    .collect();
+                return refuse_coded(
+                    "build",
+                    json,
+                    EXIT_USAGE,
+                    "unknown_world",
+                    &format!("unknown world `{name}` in --worlds; worlds are {}", known.join(", ")),
+                );
+            }
+        }
+    }
     if let Some(code) = refuse_malformed_project_lock(&spec) {
         return code;
     }
@@ -241,7 +272,14 @@ pub fn build(request: BuildRequest) -> CliExit {
         }
         return EXIT_OK;
     }
-    if let Some(exit) = build_constructor_file(&spec, &out, json) {
+    let built = if carrier_worlds.is_empty() {
+        build_constructor_file(&spec, &out, json)
+    } else {
+        emath_exec_ir::constructor_layer::with_worlds(&carrier_worlds, || {
+            build_constructor_file(&spec, &out, json)
+        })
+    };
+    if let Some(exit) = built {
         return exit;
     }
     refuse_coded(

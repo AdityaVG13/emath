@@ -325,7 +325,7 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         .map(Command::Planner),
         "build" => require_single_file(
             "build",
-            "build <file.emath> [--out <dir>] [--dry-run] [--json]",
+            "build <file.emath> [--out <dir>] [--dry-run] [--worlds w1,w2,...] [--json]",
             rest,
             parse_build_request,
         )

@@ -228,7 +228,7 @@ pub fn with_worlds<T>(worlds: &[CarrierWorld], body: impl FnOnce() -> T) -> T {
 }
 
 /// The host-configured world list; every world when the host set none.
-pub(super) fn configured_worlds() -> Vec<CarrierWorld> {
+pub fn configured_worlds() -> Vec<CarrierWorld> {
     CONFIGURED.with(|cell| cell.borrow().clone()).unwrap_or_else(|| CarrierWorld::ALL.to_vec())
 }
 

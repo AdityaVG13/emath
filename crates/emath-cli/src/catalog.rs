@@ -136,7 +136,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "check" => "check <file.emath|-> [--verify-data] [--json]",
         "plan" => "plan <file.emath> [--json]",
         "planner" => "planner <file.emath> [--json] [--parametric]",
-        "build" => "build <file.emath> [--out <dir>] [--dry-run] [--json]",
+        "build" => "build <file.emath> [--out <dir>] [--dry-run] [--worlds w1,w2,...] [--json]",
         "parse" => "parse --forest <file.emath> [--out <dir>]",
         "expand" => "expand <file.emath> [--json]",
         "solve" => "solve --check <file.emath> [--json] [--apply <label>]",
@@ -835,7 +835,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "freeze" => &["--json", "--out", "-o", "--help", "-h"],
         "planner" => &["--json", "--parametric", "--help", "-h"],
         "fit" => &["--json", "--help", "-h"],
-        "build" => &["--json", "--out", "-o", "--dry-run", "--help", "-h"],
+        "build" => &["--json", "--out", "-o", "--dry-run", "--worlds", "--help", "-h"],
         "new" => &["--out", "-o", "--dry-run", "--force", "--json", "--help", "-h"],
         "test" => &["--work", "--out", "-o", "--help", "-h"],
         "vendor" | "agent" | "signature" | "genesis" => {

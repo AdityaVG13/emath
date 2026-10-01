@@ -160,6 +160,7 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
         EmirOp::CodeOpen { package } => out.push(*package),
         EmirOp::CodeBind { code } | EmirOp::CodeIdentity { code } => out.push(*code),
         EmirOp::CodeJoin { left, right } => out.extend([*left, *right]),
+        EmirOp::EngineCall { inputs, .. } => out.extend(inputs.iter().map(|(_, value)| *value)),
     }
 }
 

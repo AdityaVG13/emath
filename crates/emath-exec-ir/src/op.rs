@@ -422,6 +422,16 @@ pub enum EmirOp {
     CodeIdentity {
         code: EmirValue,
     },
+    /// Run the named module function in the reference engine with the
+    /// given inputs (by declared name), reading its answer back as the
+    /// declared `result` carrier signature. Emitted for a function
+    /// that uses `quote.cost`, `quote.world`, or `quote.worlds`, whose
+    /// answers are the engine's (engine steps, carrier worlds).
+    EngineCall {
+        function: String,
+        inputs: Vec<(String, EmirValue)>,
+        result: String,
+    },
     /// `quote.join(left, right)`: the code naming the identifier
     /// `left_right`, from two quoted identifiers (or name tags), or a
     /// quoted identifier and a nonnegative Int; dependencies stamp as

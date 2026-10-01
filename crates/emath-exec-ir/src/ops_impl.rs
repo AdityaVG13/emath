@@ -109,6 +109,7 @@ impl EmirOp {
             Self::CodeBind { .. } => "code-bind",
             Self::CodeIdentity { .. } => "code-identity",
             Self::CodeJoin { .. } => "code-join",
+            Self::EngineCall { .. } => "engine-call",
             Self::CallProgram { .. } => "call-program",
             Self::CallScalarProgram { .. } => "call-scalar-program",
             Self::CallRealProgram { .. } => "call-real-program",

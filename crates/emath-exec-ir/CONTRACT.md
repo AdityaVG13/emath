@@ -30,6 +30,14 @@ all-scalar calls. Values are identical; work counts differ (a repeated
 non-scalar call is free under the all-calls memo), which is why
 `quote.cost` measures under the non-suspending policy on every host.
 
+`constructor_layer::artifact_bridge` is the seam a built artifact links
+to run one function in this engine (`run_entry`, with the
+`ToCValue`/`FromCValue` crossings for Int, Rat, Bool, Float64, Str, and
+sequences). `emath build` routes a function using `quote.cost`,
+`quote.world`, or `quote.worlds` through it, so artifact answers and work
+counts are this engine's; a value that does not fit its native carrier
+refuses by name.
+
 ## Purpose and layer
 
 `emath-exec-ir` is the stable executable machine between admitted semantic terms and execution providers. It owns universal literals, registers, construction/storage/indexing, control, capability application, provider continuations, semantic images, and artifact loading. It does not own mathematical feature identity or meaning.

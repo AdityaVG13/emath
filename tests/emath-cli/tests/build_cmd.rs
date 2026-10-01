@@ -181,7 +181,7 @@ fn probe() {
         p.contains(
             "usage without the flag",
             &text,
-            "[--out <dir>] [--dry-run] [--json]",
+            "[--out <dir>] [--dry-run] [--worlds w1,w2,...] [--json]",
         );
     });
 
@@ -196,7 +196,7 @@ fn probe() {
         p.contains(
             "usage without the flag",
             &text,
-            "[--out <dir>] [--dry-run] [--json]",
+            "[--out <dir>] [--dry-run] [--worlds w1,w2,...] [--json]",
         );
     });
 

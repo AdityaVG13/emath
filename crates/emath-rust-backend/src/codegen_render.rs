@@ -1692,6 +1692,73 @@ pub(crate) fn op_expr(
                 )),
             }
         }
+        EmirOp::EngineCall {
+            function,
+            inputs,
+            result,
+        } => {
+            // The artifact runs this function in the reference engine:
+            // the crate links `emath-exec-ir` and embeds the module
+            // source (see `constructor_crate`).
+            fn crosses(kind: &ValueKind) -> bool {
+                match kind {
+                    ValueKind::I64
+                    | ValueKind::Rational
+                    | ValueKind::Bool
+                    | ValueKind::F64
+                    | ValueKind::Text => true,
+                    ValueKind::Vector(element) => crosses(element),
+                    _ => false,
+                }
+            }
+            const BRIDGE: &str = "emath_exec_ir::constructor_layer::artifact_bridge";
+            let mut args = Vec::with_capacity(inputs.len());
+            for (input, value) in inputs {
+                let kind = kind_at(kinds, *value);
+                if !crosses(&kind) {
+                    return Err(BackendError::UnsupportedType(format!(
+                        "`{function}` runs in the reference engine; its input `{input}` carries {kind:?}, which does not cross into the engine"
+                    )));
+                }
+                args.push(format!(
+                    "({input:?}, {BRIDGE}::ToCValue::to_cvalue(&{}))",
+                    render_expr(&operand(program, *value))
+                ));
+            }
+            let call = format!(
+                "{BRIDGE}::run_entry(__EMATH_SOURCE, __EMATH_SOURCE_PATH, {function:?}, vec![{}], __EMATH_WORLDS)?",
+                args.join(", ")
+            );
+            let kind = ValueKind::from_signature(result);
+            let refuse = || {
+                BackendError::UnsupportedType(format!(
+                    "`{function}` runs in the reference engine; its declared result `{result}` does not cross back"
+                ))
+            };
+            let read = if let ValueKind::Record(name) = &kind {
+                let layout = record_layout(name).ok_or_else(refuse)?;
+                let mut fields = Vec::with_capacity(layout.len());
+                for (field, signature) in &layout {
+                    if !crosses(&ValueKind::from_signature(signature)) {
+                        return Err(refuse());
+                    }
+                    fields.push(format!(
+                        "{}: {BRIDGE}::field(&__answer, {field:?})?",
+                        escape_ident(field)
+                    ));
+                }
+                format!("EmathRecord_{} {{ {} }}", record_ident(name), fields.join(", "))
+            } else if crosses(&kind) {
+                let ty = kind.rust_ty().map_err(|_| refuse())?;
+                format!(
+                    "{BRIDGE}::read::<{}>(&__answer)?",
+                    crate::rust_ir::render::render_ty(&ty)
+                )
+            } else {
+                return Err(refuse());
+            };
+            Ok(Expr::Raw(format!("{{ let __answer = {call}; {read} }}")))
+        }
         EmirOp::CodeJoin { left, right } => {
             // Both operands cross into the node family (a quoted name,
             // a name tag, or an Int suffix); the runtime checks them.

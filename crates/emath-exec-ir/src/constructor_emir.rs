@@ -227,6 +227,51 @@ fn lower_named(
     let inputs = section_fields(decl, "inputs");
     let outputs = section_fields(decl, "outputs");
     let authored_defs = section_assigns(decl, "definitions");
+    // Engine steps and carrier worlds exist only in the reference
+    // engine, so a function measuring or switching worlds runs there.
+    let mut engine_sites = BTreeMap::new();
+    for (_, expr) in &authored_defs {
+        collect_call_sites(expr, &mut engine_sites);
+    }
+    if ["quote.cost", "quote.world", "quote.worlds"]
+        .iter()
+        .any(|op| engine_sites.contains_key(*op))
+    {
+        visiting.remove(name);
+        let object_names: BTreeSet<String> = object_kinds(tree).into_keys().collect();
+        let (_, result) = authored_signatures(tree, name, &object_names);
+        let mut ops = Vec::new();
+        let mut call_inputs = Vec::new();
+        for (index, input) in inputs.iter().enumerate() {
+            let index_u16 = u16::try_from(index).map_err(|_| "input count".to_string())?;
+            ops.push((EmirOp::LoadInput(index_u16), Span::default()));
+            let register = u32::try_from(index).map_err(|_| "input count".to_string())?;
+            call_inputs.push((input.clone(), EmirValue(register)));
+        }
+        let call = u32::try_from(ops.len()).map_err(|_| "op count".to_string())?;
+        ops.push((
+            EmirOp::EngineCall {
+                function: name.to_string(),
+                inputs: call_inputs,
+                result,
+            },
+            Span::default(),
+        ));
+        let lowered = LoweredFunction {
+            program: EmirProgram {
+                ops,
+                result: EmirValue(call),
+                input_count: u16::try_from(inputs.len()).map_err(|_| "input count".to_string())?,
+                state_count: 0,
+                domain_obligations: Vec::new(),
+            },
+            inputs,
+            runnable: true,
+            unresolved: Vec::new(),
+        };
+        cache.insert(name.to_string(), lowered.clone());
+        return Ok(lowered);
+    }
     let defs = if authored_defs.iter().any(|(_, expr)| expr_uses_quote(expr)) {
         match crate::constructor_layer::residual_output_exprs(tree, name) {
             Ok(residual) => residual,

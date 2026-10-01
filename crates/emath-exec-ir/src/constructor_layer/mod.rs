@@ -793,6 +793,7 @@ struct ObjectSchema {
 // the `pub use` lines below are the crate-visible surface and match
 // the original single-file API.
 mod admit;
+pub mod artifact_bridge;
 mod call;
 mod carry;
 mod checkpoint;
@@ -815,7 +816,8 @@ mod world;
 
 pub(crate) use call::domain_shape_of_expr;
 pub use world::{
-    answer_gap, answers_agree, interval_width, with_world, with_worlds, world_input, CarrierWorld,
+    answer_gap, answers_agree, configured_worlds, interval_width, with_world, with_worlds,
+    world_input, CarrierWorld,
 };
 pub use admit::*;
 pub use carry::{evaluate_function_carrying, fact_identity, prepare_module, CarriedEvaluation, PreparedModule, FACT_PREFIX};
