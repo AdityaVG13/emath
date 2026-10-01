@@ -422,6 +422,14 @@ pub enum EmirOp {
     CodeIdentity {
         code: EmirValue,
     },
+    /// `quote.join(left, right)`: the code naming the identifier
+    /// `left_right`, from two quoted identifiers (or name tags), or a
+    /// quoted identifier and a nonnegative Int; dependencies stamp as
+    /// the VM's do.
+    CodeJoin {
+        left: EmirValue,
+        right: EmirValue,
+    },
 
     /// Concatenate list carriers, preserving element carriers. The
     /// authored cons spelling `[head, ..tail]` lowers here; unlike

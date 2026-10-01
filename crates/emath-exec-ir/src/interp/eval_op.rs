@@ -49,7 +49,8 @@ pub(super) fn eval_op(
         | EmirOp::CodeBody { .. }
         | EmirOp::CodeOpen { .. }
         | EmirOp::CodeBind { .. }
-        | EmirOp::CodeIdentity { .. } => {
+        | EmirOp::CodeIdentity { .. }
+        | EmirOp::CodeJoin { .. } => {
             Err(EvalFault::CarrierRefused {
                 op: op.name(),
                 detail: String::from(

@@ -1300,6 +1300,7 @@ pub(super) fn kind_of_op(
         // dual-representation Code value.
         EmirOp::CodeBind { .. } => ValueKind::ExprCode,
         EmirOp::CodeIdentity { .. } => ValueKind::I64,
+        EmirOp::CodeJoin { .. } => ValueKind::ExprCode,
         // quote.evaluate: closed code yields the specialized unary
         // closure over the template's carrier (a def bound to it is
         // callable), or - for an expression template - the computed

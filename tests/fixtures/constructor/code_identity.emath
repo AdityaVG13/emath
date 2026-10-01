@@ -159,3 +159,26 @@ emath function recur_over_sequence:
         result: Int
     definitions:
         result = quote.identity(quote.substitute(quote(recur g in Int -> Rat: function d in Int: size(r) + d), "r", xs))
+
+emath function joined_name:
+    # a numbered name minted from an input: pi_formula_k
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.identity(quote.join(quote.join(quote(pi), quote(formula)), k))
+
+emath function joined_tag:
+    # a viewed local's name tag joins like a quoted identifier
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        name = quote.view(if k > 0: quote(alpha) else: quote(beta)).name
+        result = quote.identity(quote.join(name, quote(x))) == quote.identity(if k > 0: quote(alpha_x) else: quote(beta_x))
+    tests:
+        example <tag_joins>:
+            given k = 1
+            expect result == true

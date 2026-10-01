@@ -984,6 +984,11 @@ impl Lowerer {
                     let code = self.expr(&args[0])?;
                     Ok(self.push(EmirOp::CodeIdentity { code }))
                 }
+                ("quote.join", 2) => {
+                    let left = self.expr(&args[0])?;
+                    let right = self.expr(&args[1])?;
+                    Ok(self.push(EmirOp::CodeJoin { left, right }))
+                }
                 _ => Err(format!("call is not yet emitted: {called}")),
             };
         }

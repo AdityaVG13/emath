@@ -307,7 +307,8 @@ pub(crate) fn op_expr(
             {
                 return Ok(call);
             }
-            literal_frame_expr(body, inputs, state, program, kinds, declared)
+            let owns_self = crate::frame_owns_self(callee.as_deref(), declared);
+            literal_frame_expr(body, inputs, state, program, kinds, declared, owns_self)
         }
         EmirOp::CallSelf { inputs, result } => {
             // The recursive target (`__self` at entries, `__frame_self`
@@ -1680,6 +1681,24 @@ pub(crate) fn op_expr(
                 )),
             }
         }
+        EmirOp::CodeJoin { left, right } => {
+            // Both operands cross into the node family (a quoted name,
+            // a name tag, or an Int suffix); the runtime checks them.
+            let mut sides = Vec::with_capacity(2);
+            for value in [*left, *right] {
+                let kind = kind_at(kinds, value);
+                if !node_family(&kind) {
+                    return Err(BackendError::UnsupportedType(format!(
+                        "quote.join expects quoted identifiers, found {kind:?}"
+                    )));
+                }
+                sides.push(render_expr(&to_node(operand(program, value), &kind)));
+            }
+            Ok(Expr::Raw(format!(
+                "emath_rt::code_tree::join_quoted(&({}), &({}), &__EMATH_MODULE_TABLE)?",
+                sides[0], sides[1]
+            )))
+        }
         EmirOp::CodeBind { code } => {
             // quote.bind (the call form): the mint walk - the
             // identity over the distilled subset - with the
@@ -2015,6 +2034,7 @@ fn literal_frame_expr(
     outer: &EmirProgram,
     kinds: &[ValueKind],
     declared: &[String],
+    owns_self: bool,
 ) -> Result<Expr, BackendError> {
     if inputs.len() != usize::from(body.input_count) || state.len() != usize::from(body.state_count)
     {
@@ -2113,7 +2133,7 @@ fn literal_frame_expr(
     }
     let _reference = ReferenceScope::enter();
     let _state = LocalStateScope::enter();
-    if contains_call_self(body) {
+    if owns_self && contains_call_self(body) {
         // A sibling body that recurses on itself cannot inline: its
         // `__self` would bind the entry's wrapper with the wrong
         // signature. Render the frame as a local recursive fn over

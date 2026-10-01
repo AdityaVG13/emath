@@ -4,6 +4,7 @@
 # optimize's `instantiate`). The closure's call is the enclosing
 # function's recursion, not a field projection or an unknown name.
 use fold.reduce
+use exact.integers
 
 emath function leaves:
     # Fibonacci by a tree of calls, each level mapped by a closure
@@ -164,3 +165,31 @@ emath function plugged:
         example <three>:
             given k = 3
             expect result == 10
+
+emath function digits:
+    # base-3 digits of n, lowest first: the self-call sits inside a literal applied on the spot
+    inputs:
+        n: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if n == 0: [] else: (function base in Int: [n - quot_int(n, base) * base, ..digits(quot_int(n, base))])(3)
+    tests:
+        example <base_three>:
+            given n = 11
+            expect result == [2, 0, 1]
+
+emath function applied_recur:
+    # a recur applied on the spot: its self-calls are its own, not the enclosing function's
+    inputs:
+        n: Int
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur f in Int -> Int: function m in Int: if m < 2: m else: f(m - 1) + f(m - 2))(n - k)
+    tests:
+        example <fib_ten>:
+            given n = 12
+            given k = 2
+            expect result == 55

@@ -1558,13 +1558,16 @@ const CODE_IDENTITY_DRIVER: &str = r#"
 //! quote.identity in the emitted crate: the VM's exact numbers (FNV-1a
 //! over the canonical bytes) and the equalities the search modules use.
 use code_identity::{
-    body_identity, child_matches_template, different_code_differs, recur_identity,
+    body_identity, child_matches_template, different_code_differs, joined_name, joined_tag,
+    recur_identity,
     recur_over_sequence, recur_renamed_agree, recur_round_trip, recur_shadows,
     renamed_binders_agree, substituted_identity, template_identity,
 };
 fn main() {
     let mut failures = 0usize;
-    let pins: [(&str, Result<i64, String>, i64); 7] = [
+    let pins: [(&str, Result<i64, String>, i64); 9] = [
+        ("joined_twelve", joined_name(12), -4213184102754636739),
+        ("joined_zero", joined_name(0), -2904622620705799990),
         ("template", template_identity(1), 1083551230141008259),
         ("substituted_half", substituted_identity((1, 2)), 6799677611696251689),
         ("sequence_binder_body", body_identity(1), -3712620093599836444),
@@ -1586,12 +1589,20 @@ fn main() {
         ("alpha_equivalent_recur", recur_renamed_agree(2)),
         ("recur_name_bound", recur_shadows(2)),
         ("recur_view_make", recur_round_trip(2)),
+        ("tag_joins", joined_tag(1)),
+        ("tag_joins_other", joined_tag(0)),
     ];
     for (name, got) in bools {
         if got != Ok(true) {
             failures += 1;
             println!("DIFF {name} EMITTED {:?}; VM = true", got);
         }
+    }
+    // A negative number is not a name suffix: the VM refuses `type`.
+    let got = joined_name(-1);
+    if !matches!(&got, Err(e) if e.starts_with("type")) {
+        failures += 1;
+        println!("DIFF joined_negative EMITTED {:?}; VM = type refusal", got);
     }
     if failures == 0 {
         println!("code_identity: all pins hold");
@@ -1614,7 +1625,8 @@ const CLOSURE_SELF_CALL_DRIVER: &str = r#"
 //! A function calling itself from inside a closure it hands to a fold.
 use closure_self_call::emath_rt::ExactInt;
 use closure_self_call::{
-    call_shapes, counts_big, finds_x, leaves, misses_z, plugged, twice_literal, x_first,
+    applied_recur, call_shapes, counts_big, digits, finds_x, leaves, misses_z, plugged,
+    twice_literal, x_first,
 };
 fn main() {
     let mut failures = 0usize;
@@ -1656,6 +1668,20 @@ fn main() {
     if got != Ok(8) {
         failures += 1;
         println!("DIFF twice_literal EMITTED {:?}; VM = 8", got);
+    }
+    // The emitted signature is `impl Debug` (an applied recur's carrier
+    // is not inferred), so the pin compares the printed value.
+    let got = format!("{:?}", applied_recur(12, 2));
+    if got != "Ok(55)" {
+        failures += 1;
+        println!("DIFF fib_ten EMITTED {got}; VM = 55");
+    }
+    for (n, vm) in [(11, vec![2, 0, 1]), (0, vec![])] {
+        let got = digits(n);
+        if got != Ok(vm.iter().map(|&d: &i64| ExactInt::from(d)).collect::<Vec<_>>()) {
+            failures += 1;
+            println!("DIFF digits({n}) EMITTED {:?}; VM = {vm:?}", got);
+        }
     }
     let got = plugged(3);
     if got != Ok(10) {

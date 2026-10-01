@@ -452,8 +452,24 @@ pub(crate) fn contains_call_self(program: &emath_exec_ir::EmirProgram) -> bool {
         EmirOp::Iterate { body, stop, .. } => {
             contains_call_self(body) || stop.as_ref().is_some_and(contains_call_self)
         }
+        // An applied function literal renders inline too: its
+        // self-calls are the enclosing function's recursion.
+        EmirOp::CallFrame {
+            body,
+            callee,
+            declared,
+            ..
+        } if !frame_owns_self(callee.as_deref(), declared) => contains_call_self(body),
         _ => false,
     })
+}
+
+/// Whether a frame's self-calls target the frame itself: a named
+/// sibling's do, and so do an applied `recur`'s (a recur frame declares
+/// no inputs). An applied function literal always declares its
+/// parameter; its self-calls target the enclosing function.
+pub(crate) fn frame_owns_self(callee: Option<&str>, declared: &[String]) -> bool {
+    callee.is_some() || declared.is_empty()
 }
 
 /// Whether a program carries the shared-tree lane (a union-lane

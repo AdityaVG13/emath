@@ -1377,6 +1377,49 @@ pub fn make_quoted(node: impl std::borrow::Borrow<NodeValue>, module: &ModuleTab
     Ok(super::code::open_expr(free, tree, None, deps))
 }
 
+/// `quote.join` (the VM's arm in engine_step/call.rs): the code naming
+/// `left_right`. Each side is a quoted single identifier or a name tag;
+/// the right side may instead be a nonnegative Int (`formula_3`).
+pub fn join_quoted(
+    left: &NodeValue,
+    right: &NodeValue,
+    module: &ModuleTable,
+) -> Result<ExprCode, String> {
+    let suffix = match right {
+        NodeValue::Scalar(CodeValue::Int(n)) if *n >= 0 => n.to_string(),
+        other => quoted_identifier(other)?,
+    };
+    let name = format!("{}_{}", quoted_identifier(left)?, suffix);
+    make_quoted(
+        NodeValue::Code(Box::new(super::code::open_expr(
+            Vec::new(),
+            CodeTree::Path(vec![name]),
+            None,
+            BTreeMap::new(),
+        ))),
+        module,
+    )
+}
+
+fn quoted_identifier(value: &NodeValue) -> Result<String, String> {
+    let name = match value {
+        NodeValue::Code(code) => match &code.tree {
+            CodeTree::Path(segments) if segments.len() == 1 => segments[0].clone(),
+            _ => String::new(),
+        },
+        NodeValue::Record(name, fields) if fields.is_empty() => name.clone(),
+        _ => String::new(),
+    };
+    let mut chars = name.chars();
+    let identifier = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if identifier {
+        Ok(name)
+    } else {
+        Err(String::from("type: quote.join expects quoted identifiers"))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tree substitution and the tree evaluator
 
