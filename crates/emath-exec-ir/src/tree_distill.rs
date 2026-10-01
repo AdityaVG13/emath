@@ -127,6 +127,11 @@ pub(crate) fn distill_tree(expr: &Expr) -> Result<CodeTree, String> {
             domain: tree_domain(domain),
             body: Box::new(distill_tree(body)?),
         }),
+        ExprKind::Recur { name, ty, body } => Ok(CodeTree::Recur {
+            name: name.clone(),
+            ty: Box::new(distill_tree(ty)?),
+            body: Box::new(distill_tree(body)?),
+        }),
         ExprKind::Float(_) => Err(String::from(
             "float templates are not emitted in the artifact tree lane",
         )),

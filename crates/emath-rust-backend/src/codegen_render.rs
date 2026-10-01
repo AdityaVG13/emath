@@ -263,6 +263,11 @@ pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
                 tree_expr(body)
             )
         }
+        CodeTree::Recur { name, ty, body } => format!(
+            "emath_rt::code_tree::CodeTree::Recur {{ name: String::from({name:?}), ty: Box::new({}), body: Box::new({}) }}",
+            tree_expr(ty),
+            tree_expr(body)
+        ),
         CodeTree::Tuple(items) => format!(
             "emath_rt::code_tree::CodeTree::Tuple(vec![{}])",
             items.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
@@ -1401,6 +1406,20 @@ pub(crate) fn op_expr(
                             reference_code,
                             render_expr(&operand(program, *value))
                         ))),
+                        // A sequence of scalars becomes a list of
+                        // literals (`value_to_expr` over a sequence).
+                        ValueKind::Vector(ref element) if node_family(element) => {
+                            let owned = Expr::Raw(format!(
+                                "({}).clone()",
+                                render_expr(&operand(program, *value))
+                            ));
+                            let node = to_node(owned, &value_kind);
+                            Ok(Expr::Raw(format!(
+                                "({target}).substitute_tree({}, ({}).make(&__EMATH_MODULE_TABLE)?)",
+                                reference_code,
+                                render_expr(&node)
+                            )))
+                        }
                         value_kind
                             if union_promotable(&value_kind)
                                 && value_kind != ValueKind::CodeValue =>

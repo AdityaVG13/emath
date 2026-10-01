@@ -1457,7 +1457,18 @@ impl Lowerer {
                         module_stamps: self.module_stamps.clone(),
                         type_vars: self.type_vars.clone(),
                     };
-                    let lowered = child.expr(body)?;
+                    // A body the compiled lane cannot lower (a recursive
+                    // function literal) keeps its tree alone: the
+                    // refusing body has no union kind, so the backend
+                    // evaluates the template through the tree evaluator.
+                    let lowered = match child.expr(body) {
+                        Ok(lowered) => lowered,
+                        Err(detail) => {
+                            child.ops.clear();
+                            child.obligations.clear();
+                            child.push(EmirOp::Refuse(detail))
+                        }
+                    };
                     let program = child.finish(lowered);
                     Ok(self.push(EmirOp::CodeLiteral {
                         body: program,
@@ -1894,9 +1905,10 @@ fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut
             collect_free_names_bound(body, bound, out);
             bound.remove(param);
         }
-        ExprKind::Recur { name, body, ty } => {
+        // The declared type is a type expression, never a value
+        // reference (the VM's `free_path_names`).
+        ExprKind::Recur { name, body, .. } => {
             bound.insert(name.clone());
-            collect_free_names_bound(ty, bound, out);
             collect_free_names_bound(body, bound, out);
             bound.remove(name);
         }

@@ -200,6 +200,14 @@ pub enum CodeTree {
         domain: TreeDomain,
         body: Box<CodeTree>,
     },
+    /// A recursive function literal (the VM's `Recur`): the name the
+    /// body calls itself by, the declared type (`A -> B`, kept as the
+    /// code it was written as), and the body (a function literal).
+    Recur {
+        name: String,
+        ty: Box<CodeTree>,
+        body: Box<CodeTree>,
+    },
     Tuple(Vec<CodeTree>),
     If {
         condition: Box<CodeTree>,
@@ -832,6 +840,17 @@ pub fn view_tree(tree: &CodeTree, module: &ModuleTable) -> NodeValue {
                 ],
             )
         }),
+        CodeTree::Recur { name, ty, body } => with_mint(|mint| {
+            view_record(
+                "Recur",
+                vec![
+                    ("name", node_tag(name)),
+                    ("type", code_of((**ty).clone())),
+                    ("body", code_of((**body).clone())),
+                    ("scope", fragment_package(mint, body, Some(name))),
+                ],
+            )
+        }),
         CodeTree::Tuple(items) => with_mint(|mint| {
             view_record(
                 "Sequence",
@@ -1090,6 +1109,13 @@ fn canonical_tree_bytes(
             canonical_tree_bytes(body, binders, out)?;
             binders.pop();
         }
+        CodeTree::Recur { name, ty, body } => {
+            out.push(b'V');
+            canonical_tree_bytes(ty, binders, out)?;
+            binders.push(name.clone());
+            canonical_tree_bytes(body, binders, out)?;
+            binders.pop();
+        }
         CodeTree::Tuple(items) => {
             out.push(b'[');
             for item in items {
@@ -1255,6 +1281,29 @@ pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
                         body: Box::new(body),
                     })
                 }
+                "Recur" => {
+                    let name = match fields.get("name") {
+                        Some(name) => tag_name(name)
+                            .map(str::to_string)
+                            .ok_or_else(|| String::from("Recur missing name"))?,
+                        None => return Err(String::from("Recur missing name")),
+                    };
+                    let ty = rebuild_node(
+                        fields
+                            .get("type")
+                            .ok_or_else(|| String::from("Recur missing type"))?,
+                    )?;
+                    let body = rebuild_node(
+                        fields
+                            .get("body")
+                            .ok_or_else(|| String::from("Recur missing body"))?,
+                    )?;
+                    Ok(CodeTree::Recur {
+                        name,
+                        ty: Box::new(ty),
+                        body: Box::new(body),
+                    })
+                }
                 "Fragment" => fields
                     .get("term")
                     .ok_or_else(|| String::from("Fragment missing term"))
@@ -1372,6 +1421,12 @@ pub fn substitute_tree(tree: &CodeTree, reference: &str, replacement: &CodeTree)
                 }
             }
         }
+        CodeTree::Recur { name, .. } if name == reference => tree.clone(),
+        CodeTree::Recur { name, ty, body } => CodeTree::Recur {
+            name: name.clone(),
+            ty: Box::new(substitute_tree(ty, reference, replacement)),
+            body: Box::new(substitute_tree(body, reference, replacement)),
+        },
         CodeTree::Tuple(items) => CodeTree::Tuple(
             items
                 .iter()
@@ -1419,6 +1474,13 @@ fn collect_free_names(tree: &CodeTree, free: &mut BTreeSet<String>) {
             let mut inner = BTreeSet::new();
             collect_free_names(body, &mut inner);
             inner.remove(param);
+            free.extend(inner);
+        }
+        // The type is a type expression, never a value reference.
+        CodeTree::Recur { name, body, .. } => {
+            let mut inner = BTreeSet::new();
+            collect_free_names(body, &mut inner);
+            inner.remove(name);
             free.extend(inner);
         }
         CodeTree::Tuple(items) => items.iter().for_each(|item| collect_free_names(item, free)),
@@ -1512,6 +1574,9 @@ pub fn evaluate_tree(
         }
         CodeTree::Closure { param, .. } => Err(format!(
             "tree: closure `{param} -> _` is not a scalar value in the tree evaluator"
+        )),
+        CodeTree::Recur { name, .. } => Err(format!(
+            "tree: recursive function `{name}` is not a scalar value in the tree evaluator"
         )),
         CodeTree::Binary { op, left, right } => match op {
             TreeBinary::And => {

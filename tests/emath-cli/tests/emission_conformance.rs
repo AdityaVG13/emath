@@ -1558,15 +1558,20 @@ const CODE_IDENTITY_DRIVER: &str = r#"
 //! quote.identity in the emitted crate: the VM's exact numbers (FNV-1a
 //! over the canonical bytes) and the equalities the search modules use.
 use code_identity::{
-    body_identity, child_matches_template, different_code_differs, renamed_binders_agree,
-    substituted_identity, template_identity,
+    body_identity, child_matches_template, different_code_differs, recur_identity,
+    recur_over_sequence, recur_renamed_agree, recur_round_trip, recur_shadows,
+    renamed_binders_agree, substituted_identity, template_identity,
 };
 fn main() {
     let mut failures = 0usize;
-    let pins: [(&str, Result<i64, String>, i64); 3] = [
+    let pins: [(&str, Result<i64, String>, i64); 7] = [
         ("template", template_identity(1), 1083551230141008259),
         ("substituted_half", substituted_identity((1, 2)), 6799677611696251689),
         ("sequence_binder_body", body_identity(1), -3712620093599836444),
+        ("recur_three", recur_identity(3), 8921994034227166034),
+        ("recur_minus_two", recur_identity(-2), -4154231795667992624),
+        ("recur_over_two", recur_over_sequence(vec![(1, 2), (3, 1)]), -3980976677755716721),
+        ("recur_over_empty", recur_over_sequence(vec![]), -3818502551705519958),
     ];
     for (name, got, vm) in pins {
         if got != Ok(vm) {
@@ -1578,6 +1583,9 @@ fn main() {
         ("alpha_equivalent", renamed_binders_agree(3)),
         ("distinct", different_code_differs(1)),
         ("child_is_x", child_matches_template(1)),
+        ("alpha_equivalent_recur", recur_renamed_agree(2)),
+        ("recur_name_bound", recur_shadows(2)),
+        ("recur_view_make", recur_round_trip(2)),
     ];
     for (name, got) in bools {
         if got != Ok(true) {

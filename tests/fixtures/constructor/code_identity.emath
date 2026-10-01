@@ -96,3 +96,66 @@ emath function child_matches_template:
         example <child_is_x>:
             given k = 1
             expect result == true
+
+emath function recur_identity:
+    # a quoted recursive function with its constant substituted
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.identity(quote.substitute(quote(recur g in Int -> Int: function n in Int: if n < 1: c else: g(n - 1) + 1), "c", k))
+
+emath function recur_renamed_agree:
+    # two recursive functions that differ only in the names they bind
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        left = if k > 0: quote(recur g in Int -> Int: function n in Int: g(n - 1) + 1) else: quote(size)
+        right = if k > 0: quote(recur h in Int -> Int: function m in Int: h(m - 1) + 1) else: quote(size)
+        result = quote.identity(left) == quote.identity(right)
+    tests:
+        example <alpha_equivalent_recur>:
+            given k = 2
+            expect result == true
+
+emath function recur_shadows:
+    # the recursive name is bound inside: only the g outside it is replaced
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        q = if k > 0: quote([g, recur g in Int -> Int: function n in Int: g(n - 1) + 1]) else: quote([g, 1])
+        expected = if k > 0: quote([h, recur g in Int -> Int: function n in Int: g(n - 1) + 1]) else: quote([h, 1])
+        result = quote.identity(quote.substitute(q, "g", quote(h))) == quote.identity(expected)
+    tests:
+        example <recur_name_bound>:
+            given k = 2
+            expect result == true
+
+emath function recur_round_trip:
+    # a viewed recursive function is a Recur node and makes back to itself
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        q = if k > 0: quote(recur g in Int -> Int: function n in Int: g(n - 1) + 1) else: quote(x + 1)
+        v = quote.view(q)
+        result = (v.kind == Recur) == (k > 0) and quote.identity(quote.make(v)) == quote.identity(q)
+    tests:
+        example <recur_view_make>:
+            given k = 2
+            expect result == true
+
+emath function recur_over_sequence:
+    # a sequence bound into a recursive function that calls a module function
+    inputs:
+        xs: sequence(Rat)
+    outputs:
+        result: Int
+    definitions:
+        result = quote.identity(quote.substitute(quote(recur g in Int -> Rat: function d in Int: size(r) + d), "r", xs))
