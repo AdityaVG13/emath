@@ -180,7 +180,22 @@ fn lower_named(
     for (_, expr) in &defs {
         collect_call_sites(expr, &mut call_sites);
     }
-    let callees: BTreeSet<String> = call_sites.keys().cloned().collect();
+    let mut callees: BTreeSet<String> = call_sites.keys().cloned().collect();
+    // A module function named as a value (`map(double, xs)`,
+    // `{apply: float_tanh}`) lowers too: the value is a closure that
+    // calls it. Inputs and definitions shadow function names.
+    let shadowing: BTreeSet<&String> = inputs
+        .iter()
+        .chain(defs.iter().map(|(def, _)| def))
+        .collect();
+    for (_, expr) in &defs {
+        let mut free = BTreeSet::new();
+        collect_free_names(expr, "", &mut free);
+        callees.extend(
+            free.into_iter()
+                .filter(|free| !shadowing.contains(free) && function_exists(tree, free)),
+        );
+    }
     let objects = object_kinds(tree);
     let object_names: BTreeSet<String> = objects.keys().cloned().collect();
     // Path independence (see `ConstructorLowering`): no open ancestor
@@ -306,20 +321,32 @@ fn lower_named(
                 lowerer.locals.insert(def_name.clone(), value);
                 // A def bound to a closure value is closure-valued:
                 // later one-argument calls on this name are closure
-                // calls, not field access. Four sources: a function
+                // calls, not field access. Sources: a function
                 // literal, a path naming a known arrow name, a call
                 // to a declared function with a single arrow output
                 // (`fam = MakeFamily(0)` then `fam(1/2)` is the lift
                 // pattern's applied-local shape), a
                 // `quote.evaluate` call (`f = quote.evaluate(cand)`
                 // then `f(x)` is the program-space application seam),
+                // a path naming a module function (`h = weighted`
+                // coerces curried, one stage per input),
                 // and a partial application of a declared arrow
                 // (`model_at = predict(params)` on `A -> B -> C` binds
                 // the `B -> C` stage - the curried model seam).
                 let residual = match &expr.kind {
                     ExprKind::FunctionAbs { .. } => Some(literal_stages(expr)),
                     ExprKind::Path { segments, .. } if segments.len() == 1 => {
-                        arrow_stages.get(&segments[0]).copied()
+                        let head = &segments[0];
+                        arrow_stages.get(head).copied().or_else(|| {
+                            let shadowed =
+                                lowerer.locals.contains_key(head) || lowerer.inputs.contains(head);
+                            lowerer
+                                .siblings
+                                .get(head)
+                                .filter(|_| !shadowed)
+                                .map(|(_, declared)| declared.len())
+                                .filter(|stages| *stages > 0)
+                        })
                     }
                     ExprKind::Call { function, args } => match &function.kind {
                         ExprKind::Path { segments, .. } if segments.len() == 1 => arrow_stages
@@ -735,7 +762,79 @@ impl Lowerer {
                 fields: Vec::new(),
             }));
         }
+        let siblings = std::rc::Rc::clone(&self.siblings);
+        if segments.len() == 1
+            && let Some((body, declared)) = siblings.get(&name)
+        {
+            return self.named_function_value(&name, body, declared);
+        }
         Err(format!("unbound `{name}` in emission"))
+    }
+
+    /// A module function named as a value: the curried closure literal
+    /// `function a in A: function b in B: name(a, b)` over its declared
+    /// input carriers (the VM's coercion of a named function).
+    fn named_function_value(
+        &mut self,
+        name: &str,
+        body: &EmirProgram,
+        declared: &[String],
+    ) -> Result<EmirValue, String> {
+        if declared.is_empty() {
+            return Err(format!(
+                "function `{name}` used as a value must take at least one input"
+            ));
+        }
+        if declared
+            .iter()
+            .any(|signature| signature.is_empty() || signature.contains("Var<"))
+        {
+            return Err(format!(
+                "function `{name}` used as a value needs concrete declared input carriers"
+            ));
+        }
+        Ok(self.named_function_stage(name, body, declared, Vec::new()))
+    }
+
+    /// Stage `bound.len()` of a curried named-function closure: binds
+    /// the next input and captures the arguments bound so far. A
+    /// literal's explicit parameter precedes its captures, so input 0
+    /// is this stage's argument and inputs 1.. are the earlier ones.
+    fn named_function_stage(
+        &mut self,
+        name: &str,
+        body: &EmirProgram,
+        declared: &[String],
+        bound: Vec<EmirValue>,
+    ) -> EmirValue {
+        let depth = bound.len();
+        let mut child = self.capture_child();
+        child.inputs = (0..=depth)
+            .map(|index| format!("__named_arg{index}"))
+            .collect();
+        let own = child.push(EmirOp::LoadInput(0));
+        let mut args: Vec<EmirValue> = (1..=depth)
+            .map(|index| child.push(EmirOp::LoadInput(index as u16)))
+            .collect();
+        args.push(own);
+        let result = if depth + 1 == declared.len() {
+            child.push(EmirOp::CallFrame {
+                body: body.clone(),
+                inputs: args,
+                state: Vec::new(),
+                declared: declared.to_vec(),
+                callee: Some(name.to_string()),
+            })
+        } else {
+            child.named_function_stage(name, body, declared, args)
+        };
+        let program = child.finish(result);
+        self.push(EmirOp::ProgramLiteral {
+            body: program,
+            captures: bound,
+            vector_input: false,
+            signature: declared[depth].clone(),
+        })
     }
 
     /// `quote.evaluate(code)` whose value is used as a function: the

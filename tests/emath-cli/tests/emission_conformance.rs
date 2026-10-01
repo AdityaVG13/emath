@@ -1495,6 +1495,62 @@ fn emission_conformance_long_walk() {
         diffs.join("\n")
     );
 }
+const NAMED_FN_DRIVER: &str = r#"
+//! A named function used as a value: passed to an arrow input, stored
+//! in a record field, mapped by a generic fold, and - with two inputs -
+//! coerced curried as a fold step or a local binding.
+use named_fn_closure_arg::{
+    run_composed, run_direct, run_field, run_fold, run_local, run_map,
+};
+fn main() {
+    let mut failures = 0usize;
+    let got = run_direct(0);
+    if got != Ok((6, 1)) {
+        failures += 1;
+        println!("DIFF coerces_and_applies EMITTED {:?}; VM = 6/1", got);
+    }
+    let got = run_composed(0);
+    if got != Ok((12, 1)) {
+        failures += 1;
+        println!("DIFF applies_through_two_calls EMITTED {:?}; VM = 12/1", got);
+    }
+    let got = run_field(0);
+    if got != Ok((10, 1)) {
+        failures += 1;
+        println!("DIFF field_holds_named EMITTED {:?}; VM = 10/1", got);
+    }
+    let got = run_map(vec![(1, 1), (1, 2)]);
+    if got != Ok(vec![(2, 1), (1, 1)]) {
+        failures += 1;
+        println!("DIFF maps_named EMITTED {:?}; VM = [2/1, 1/1]", got);
+    }
+    let got = run_fold(vec![1, 3]);
+    if got != Ok((7, 1)) {
+        failures += 1;
+        println!("DIFF folds_named_pair EMITTED {:?}; VM = 7/1", got);
+    }
+    let got = run_local(0);
+    if got != Ok((8, 3)) {
+        failures += 1;
+        println!("DIFF local_holds_named_pair EMITTED {:?}; VM = 8/3", got);
+    }
+    if failures == 0 {
+        println!("named_fn: all pins hold");
+    }
+}
+"#;
+#[test]
+fn emission_conformance_named_fn() {
+    let diffs = run_lane(
+        "tests/fixtures/constructor/named_fn_closure_arg.emath",
+        NAMED_FN_DRIVER,
+    );
+    assert!(
+        diffs.is_empty(),
+        "emitted named_fn_closure_arg disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
 const GENERIC_RECORD_DRIVER: &str = r#"
 //! One generic object at two carriers: each instantiation has its own
 //! native layout, and the generic fold reads it at the bound carrier.

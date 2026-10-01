@@ -4,6 +4,12 @@
 # behavior: the bare name yielded an unapplied closure value —
 # calling it returned the closure itself. Pinned by
 # `named-fn-closure-arg-coerces`.
+use fold.reduce
+
+emath object Op:
+    representation:
+        apply: Rat -> Rat
+
 emath function double:
     inputs:
         x: Rat
@@ -54,3 +60,67 @@ emath function run_composed:
         example <applies_through_two_calls>:
             given unused = 0
             expect result == 12 / 1
+
+emath function run_field:
+    # a named function stored in a record field, then called through it
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        o = Op: {apply: double}
+        result = o.apply(5 / 1)
+    tests:
+        example <field_holds_named>:
+            given unused = 0
+            expect result == 10 / 1
+
+emath function run_map:
+    # a named function as the mapped closure of a generic fold
+    inputs:
+        xs: sequence(Rat)
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = map(double, xs)
+    tests:
+        example <maps_named>:
+            given xs = [1 / 1, 1 / 2]
+            expect result == [2 / 1, 1 / 1]
+
+emath function weighted:
+    # two inputs of different carriers, not commutative: argument order shows
+    inputs:
+        acc: Rat
+        x: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = acc * 2 + x
+
+emath function run_fold:
+    # a two-input named function coerces curried as a fold step
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: Rat
+    definitions:
+        result = fold(weighted, 1 / 2, xs)
+    tests:
+        example <folds_named_pair>:
+            given xs = [1, 3]
+            expect result == 7 / 1
+
+emath function run_local:
+    # a two-input named function bound to a local, then applied
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        h = weighted
+        result = h(1 / 3, 2)
+    tests:
+        example <local_holds_named_pair>:
+            given unused = 0
+            expect result == 8 / 3
