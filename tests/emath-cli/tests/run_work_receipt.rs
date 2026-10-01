@@ -157,3 +157,58 @@ fn run_lane_honors_work_for_module_runs() {
     p.eq("default budget still partial", code, EXIT_PARTIAL as i32);
     p.finish();
 }
+
+/// A run's `--worlds` list is part of its meaning: a run that suspends
+/// and resumes through `emath step` must answer as the uninterrupted
+/// run does, so `quote.worlds()` after the resume still names only the
+/// worlds the run started with (not every world).
+const WORLDS_AFTER_WORK: &str = "emath function WalkAt:
+    inputs:
+        n: Int
+        i: Int
+        acc: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= n: acc else: WalkAt(n, i + 1, acc + i)
+
+emath function WorldsLater:
+    inputs:
+        n: Int
+    outputs:
+        result: sequence(Str)
+    definitions:
+        result = if WalkAt(n, 0, 0) >= 0: quote.worlds() else: quote.worlds()
+";
+
+#[test]
+fn step_resumes_under_the_runs_worlds() {
+    let mut p = Probe::new("emath step keeps the suspended run's --worlds");
+    let dir = std::env::temp_dir().join(format!("emath-step-worlds-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let src = dir.join("worlds_later.emath");
+    std::fs::write(&src, WORLDS_AFTER_WORK).expect("write source");
+    let (text, code) = common::cli(&[
+        "run",
+        &src.to_string_lossy(),
+        "--function",
+        "WorldsLater",
+        "--set",
+        "n=500",
+        "--worlds",
+        "exact,float64",
+        "--work",
+        "200",
+        "--out",
+        &dir.to_string_lossy(),
+    ]);
+    p.eq("suspends", code, EXIT_PARTIAL as i32);
+    p.contains("suspended receipt", &text, "suspended");
+    let checkpoint = dir.join("constructor-checkpoint.json");
+    let (text, code) = common::cli(&["step", &checkpoint.to_string_lossy(), "--work", "2000000"]);
+    p.eq("resume exit", code, EXIT_OK as i32);
+    p.contains("first world", &text, "exact");
+    p.contains("second world", &text, "float64");
+    p.eq("no other world", text.contains("reference") || text.contains("interval"), false);
+    p.finish();
+}

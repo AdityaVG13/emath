@@ -650,6 +650,10 @@ pub struct Checkpoint {
     pub source: String,
     pub inputs: BTreeMap<String, CValue>,
     pub next_ref: u64,
+    /// The world list `quote.worlds()` returned when the run suspended;
+    /// a resume runs under it so it answers as the uninterrupted run.
+    /// Empty in a checkpoint that predates the field: every world.
+    pub worlds: Vec<String>,
 }
 
 pub const CHECKPOINT_SCHEMA: &str = "emath.constructor-checkpoint.v2";
@@ -675,6 +679,7 @@ impl Default for Checkpoint {
             source: String::new(),
             inputs: BTreeMap::new(),
             next_ref: 0,
+            worlds: Vec::new(),
         }
     }
 }

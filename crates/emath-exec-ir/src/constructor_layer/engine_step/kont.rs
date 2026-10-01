@@ -23,6 +23,10 @@ impl Engine {
             source: self.source_text.clone(),
             inputs: self.inputs.clone(),
             next_ref: self.next_ref,
+            worlds: super::super::configured_worlds()
+                .iter()
+                .map(|world| world.name().to_string())
+                .collect(),
         }
     }
 

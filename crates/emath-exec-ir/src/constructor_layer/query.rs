@@ -1,4 +1,4 @@
-use super::{SyntaxTree, BTreeMap, CValue, Receipt, ConstructorError, Path, Code, Checkpoint, CHECKPOINT_SCHEMA, IMAGE_IDENTITY, CHECKPOINT_ABI, ACCOUNTING_VERSION, BTreeSet, Engine, Expr, ExprKind};
+use super::{SyntaxTree, BTreeMap, CValue, Receipt, ConstructorError, Path, Code, Checkpoint, CHECKPOINT_SCHEMA, IMAGE_IDENTITY, CHECKPOINT_ABI, ACCOUNTING_VERSION, BTreeSet, Engine, Expr, ExprKind, CarrierWorld, configured_worlds, with_worlds};
 use super::prelude::*;
 
 /// Evaluate a named query.
@@ -63,6 +63,26 @@ pub fn evaluate_function_budgeted_reported(
     source_path: Option<&Path>,
     source_text: &str,
 ) -> Result<(CValue, u64), (ConstructorError, Checkpoint)> {
+    if let Some(checkpoint) = checkpoint.filter(|checkpoint| !checkpoint.worlds.is_empty()) {
+        let worlds = checkpoint
+            .worlds
+            .iter()
+            .map(|name| {
+                CarrierWorld::parse(name).ok_or_else(|| {
+                    (
+                        fault("incompatible_checkpoint", format!("checkpoint names unknown world `{name}`")),
+                        checkpoint.clone(),
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let resumed = Checkpoint { worlds: Vec::new(), ..checkpoint.clone() };
+        return with_worlds(&worlds, || {
+            evaluate_function_budgeted_reported(
+                tree, name, inputs, work_limit, Some(&resumed), source_id, source_path, source_text,
+            )
+        });
+    }
     let mut engine = engine_from_tree_at(tree, source_path).map_err(|err| {
         (
             err,
@@ -81,6 +101,7 @@ pub fn evaluate_function_budgeted_reported(
                 source: source_text.into(),
                 inputs: inputs.clone(),
                 next_ref: 0,
+                worlds: configured_worlds().iter().map(|world| world.name().to_string()).collect(),
             },
         )
     })?;

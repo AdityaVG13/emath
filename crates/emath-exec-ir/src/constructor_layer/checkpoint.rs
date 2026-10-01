@@ -37,6 +37,9 @@ impl Checkpoint {
         out.push_str(&format!("next_ref={}\n", self.next_ref));
         out.push_str(&format!("accounting={}\n", self.accounting));
         out.push_str(&format!("remaining={}\n", self.remaining));
+        if !self.worlds.is_empty() {
+            out.push_str(&format!("worlds={}\n", self.worlds.join(",")));
+        }
         out.push_str(&format!("scope_count={}\n", self.scopes.len()));
         for id in &self.scopes {
             out.push_str(&format!("scope {id}\n"));
@@ -118,6 +121,8 @@ impl Checkpoint {
                     .map_err(|_| fault("incompatible_checkpoint", "next_ref is not an integer"))?;
             } else if let Some(value) = line.strip_prefix("accounting=") {
                 checkpoint.accounting = value.to_string();
+            } else if let Some(value) = line.strip_prefix("worlds=") {
+                checkpoint.worlds = value.split(',').map(str::to_string).collect();
             } else if let Some(value) = line.strip_prefix("remaining=") {
                 checkpoint.remaining = value
                     .parse()
