@@ -84,18 +84,30 @@ impl Engine {
             }
             ExprKind::Float(text) => {
                 let cleaned = text.trim_end_matches("f64").trim_end_matches("Float64");
-                if world::current() == CarrierWorld::Exact {
+                let current = world::current();
+                if matches!(
+                    current,
+                    CarrierWorld::Exact | CarrierWorld::Float32 | CarrierWorld::BFloat16
+                ) {
                     if let Some((numer, denom)) = decimal_to_rational(cleaned) {
-                        return CValue::Rat {
-                            num: parse_exact(&numer)?,
-                            den: parse_exact(&denom)?,
+                        let num = parse_exact(&numer)?;
+                        let den = parse_exact(&denom)?;
+                        if current == CarrierWorld::Exact {
+                            return CValue::Rat { num, den }.canon();
                         }
-                        .canon();
+                        let x = current.round_rational(&num, &den);
+                        if !x.is_finite() {
+                            return Err(fault(
+                                "non_finite_scalar",
+                                format!("{text} overflows the {} carrier", current.name()),
+                            ));
+                        }
+                        return Ok(CValue::Float64(x));
                     }
                 }
                 cleaned
                     .parse::<f64>()
-                    .map(CValue::Float64)
+                    .map(|x| CValue::Float64(current.round(x)))
                     .map_err(|_| fault("invalid_literal", format!("not Float64: {text}")))
             }
             ExprKind::Bool(v) => Ok(CValue::Bool(*v)),
@@ -275,7 +287,7 @@ impl Engine {
                 apply_unary(*op, v)
             }
             ExprKind::Binary { op, left, right } => {
-                if world::current() == CarrierWorld::Float64 && world::is_literal_constant(expr) {
+                if world::current().is_float() && world::is_literal_constant(expr) {
                     return world::exact_constant(expr);
                 }
                 let l = self.eval_with_kont(left, || Kont::BinLeft {

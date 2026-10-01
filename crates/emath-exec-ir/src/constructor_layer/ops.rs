@@ -23,7 +23,7 @@ pub(super) fn cmp_numeric(left: &CValue, right: &CValue) -> Result<std::cmp::Ord
 
 pub(super) fn neg(value: CValue) -> Result<CValue, ConstructorError> {
     match value {
-        CValue::Int(n) => Ok(CValue::Int(n.checked_neg().map_err(exact_fault)?)),
+        CValue::Int(n) => super::world::machine_int(n.checked_neg().map_err(exact_fault)?),
         CValue::Rat { num, den } => CValue::Rat {
             num: num.checked_neg().map_err(exact_fault)?,
             den,
@@ -136,16 +136,20 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
     // computed under the reference laws before they get here, and real
     // inputs are already Float64, so a rational seen here is one of the
     // program's exact constants and stays exact.
+    let world = super::world::current();
     let float_world = op == BinaryOp::Div
-        && super::world::current() == super::world::CarrierWorld::Float64
+        && world.is_float()
         && matches!(left, CValue::Int(_))
         && matches!(right, CValue::Int(_));
     if float_world
         || arithmetic
             && (matches!(left, CValue::Float64(_)) || matches!(right, CValue::Float64(_)))
     {
-        let l = float_of(&left)?;
-        let r = float_of(&right)?;
+        // In a narrow float world an exact operand (a program constant,
+        // an integer) rounds to the narrow format first, as it would in
+        // a program on that format; the result rounds once more.
+        let l = world.round(float_of(&left)?);
+        let r = world.round(float_of(&right)?);
         let out = match op {
             BinaryOp::Add => l + r,
             BinaryOp::Sub => l - r,
@@ -158,6 +162,7 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
             }
             _ => unreachable!(),
         };
+        let out = world.round(out);
         if !out.is_finite() {
             return Err(fault("non_finite_scalar", "non-finite Float64 result"));
         }
@@ -213,7 +218,7 @@ pub(super) fn binary(op: BinaryOp, left: CValue, right: CValue) -> Result<CValue
                     && integer_operands
                     && matches!(op, BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul)
                 {
-                    return Ok(CValue::Int(num.clone()));
+                    return super::world::machine_int(num.clone());
                 }
             }
             Ok(value)

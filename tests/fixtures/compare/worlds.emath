@@ -1,4 +1,4 @@
-# One file read under three carrier worlds by `emath compare`.
+# One file read under every carrier world by `emath compare`.
 
 use numerics.rk4
 
@@ -63,3 +63,11 @@ emath function denominator:
         result: Int
     definitions:
         result = x.denom
+
+emath function keep:
+    inputs:
+        x: Rat
+    outputs:
+        result: Rat
+    definitions:
+        result = x

@@ -1,5 +1,5 @@
 //! `emath compare` end-to-end over `tests/fixtures/compare/worlds.emath`:
-//! one definition, three carrier worlds, every answer reported.
+//! one definition, every carrier world, every answer reported.
 //!
 //! - `(1 + x) - 1 - x` at x = 0.1 is exactly 0 in the exact worlds and a
 //!   nonzero binary64 residue in the float64 world: `disagree`, with the
@@ -125,6 +125,17 @@ fn compare_cmd() {
         world_row(&out, "float64").contains("\"payload\":\"false\""),
         "{out}"
     );
+    // In binary32 the rounded sum lands on the rounded 0.3 (and in
+    // bfloat16 too): the answer depends on the format, not just on
+    // whether it rounds.
+    assert!(
+        world_row(&out, "float32").contains("\"payload\":\"true\""),
+        "{out}"
+    );
+    assert!(
+        world_row(&out, "bfloat16").contains("\"payload\":\"true\""),
+        "{out}"
+    );
 
     let out = compare("thirds_add_up", "n=10");
     assert_eq!(verdict(&out), "disagree", "{out}");
@@ -150,15 +161,55 @@ fn compare_cmd() {
     let float = world_row(&out, "float64");
     assert!(float.contains("\"payload\":\"0.1\""), "{out}");
     assert!(float.contains("\"gap\":5.551115123125783e-18"), "{out}");
+    assert!(
+        world_row(&out, "float32").contains("\"payload\":\"0.10000000149011612\""),
+        "{out}"
+    );
+    assert!(
+        world_row(&out, "bfloat16").contains("\"payload\":\"0.10009765625\""),
+        "{out}"
+    );
+
+    // Inputs 1e-25 above and below the binary32 midpoint 1 + 2^-24. Both
+    // read in binary64 as that midpoint exactly (ties-to-even would give
+    // 1 for both); rounding from the caller's exact decimal splits them.
+    let out = compare("keep", "x=1.0000000596046447753906251");
+    assert!(
+        world_row(&out, "float32").contains("\"payload\":\"1.0000001192092896\""),
+        "{out}"
+    );
+    let out = compare("keep", "x=1.0000000596046447753906249");
+    assert!(
+        world_row(&out, "float32").contains("\"payload\":\"1\""),
+        "{out}"
+    );
 
     let out = compare("square_plus_one", "n=7");
     assert_eq!(verdict(&out), "agree", "{out}");
-    for world in ["reference", "exact", "float64"] {
+    for world in [
+        "reference",
+        "exact",
+        "float64",
+        "float32",
+        "bfloat16",
+        "int64",
+    ] {
         assert!(
             world_row(&out, world).contains("\"payload\":\"50\""),
             "{out}"
         );
     }
+    // 3037000500^2 passes 2^63 - 1: the exact worlds grow, the int64
+    // world refuses by name.
+    let out = compare("square_plus_one", "n=3037000500");
+    assert_eq!(verdict(&out), "partial", "{out}");
+    assert!(
+        world_row(&out, "reference").contains("\"payload\":\"9223372037000250001\""),
+        "{out}"
+    );
+    let machine = world_row(&out, "int64");
+    assert!(machine.contains("\"execution\":\"refused\""), "{out}");
+    assert!(machine.contains("\"code\":\"machine_overflow\""), "{out}");
 
     // RK4 guards its tableau with exact order conditions. In float64 the
     // tableau is a program constant, so the guard holds and the stepping

@@ -141,7 +141,7 @@ impl Engine {
                 } else {
                     exact_int_prod(&items)
                 };
-                value.map(CValue::Int).map_err(exact_fault)
+                super::super::world::machine_int(value.map_err(exact_fault)?)
             }
             _ => {
                 if args.len() != 2 {
@@ -160,7 +160,7 @@ impl Engine {
                         ));
                     }
                 };
-                value.map(CValue::Int).map_err(exact_fault)
+                super::super::world::machine_int(value.map_err(exact_fault)?)
             }
         }
     }

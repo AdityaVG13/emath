@@ -3,7 +3,9 @@
 //!
 //! A world is a configuration of the reference engine (see
 //! `constructor_layer::world`): `reference` as authored, `exact` with
-//! every real an exact rational, `float64` with every real a binary64.
+//! every real an exact rational, `float64` / `float32` / `bfloat16` with
+//! real data rounded to that float format, `int64` with integer
+//! arithmetic confined to signed 64-bit.
 //! The command never picks a winner. It prints each world's answer or
 //! refusal, the exact gap of each numeric answer from the first answer,
 //! and a verdict: `agree` (every world answered the same value),
@@ -23,7 +25,7 @@ use emath_exec_ir::constructor_layer::{
 
 use crate::{CliExit, EXIT_IO, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 
-pub(crate) const USAGE: &str = "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64] [--work N] [--json]";
+pub(crate) const USAGE: &str = "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64|float32|bfloat16|int64] [--work N] [--json]";
 
 #[derive(Clone, Debug)]
 pub(crate) struct CompareRequest {
@@ -187,7 +189,7 @@ pub(crate) fn run(request: CompareRequest) -> CliExit {
                 return refuse(
                     request.json,
                     "E-CLI-USAGE",
-                    &format!("unknown world `{name}`; worlds are reference, exact, float64"),
+                    &format!("unknown world `{name}`; worlds are reference, exact, float64, float32, bfloat16, int64"),
                     EXIT_USAGE,
                 );
             }
