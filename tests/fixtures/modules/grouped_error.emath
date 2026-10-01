@@ -59,7 +59,7 @@ emath function GroupedError:
         eight = fit(bfloat16(0), 8, 4, w)
         holds = function q in Grouped: all(function j in Int: worst_error(w, q)[j] <= error_bound(w, q)[j], range(0, 2))
         within_bound = holds(four) and holds(eight)
-        half_scale_broken = worst_error(w, eight)[0] > eight.scales[0] / 2
+        half_scale_broken = worst_error(w, eight)[0] > eight.grids[0].scale / 2
         bound_attained = worst_error(w, eight)[0] == error_bound(w, eight)[0]
         back = take(dequantize(four), 4)
         read_back_pinned = back == [0 / 1, 5455 / 16384, 5455 / 8192, 16365 / 16384]
