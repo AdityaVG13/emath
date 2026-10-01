@@ -1,4 +1,4 @@
-# The learn loop as a dream: each batch is one search.synthesis
+# The learn loop as a dream: each batch is one search.learning
 # learn_round over the curriculum, and `dream_keep` hands the driver
 # every rule learned so far. The driver keeps each new rule into the
 # run's own library, world/kept.emath, as it is learned. Round 1
@@ -12,6 +12,7 @@
 # Run: emath dream dream_learn.emath --target StepLearn --work 50000000
 
 use search.synthesis
+use search.learning
 
 emath object LearnState:
     representation:

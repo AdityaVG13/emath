@@ -1,4 +1,4 @@
-# The loop with no one in it: search.synthesis.learn explains each
+# The loop with no one in it: search.learning.learn explains each
 # target from the base blocks and the rules it has already learned,
 # round after round, until a round learns nothing new. Sums of cubes
 # and Fibonacci at even positions have no rule within five parts over
@@ -10,6 +10,7 @@
 #   emath keep learn.emath --function Curriculum --to lib/learned.emath --set unused=0 --work 50000000
 
 use search.synthesis
+use search.learning
 
 emath function targets:
     inputs:

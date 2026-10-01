@@ -1,5 +1,5 @@
 # The novelty judge of search.conjecture. Four rounds of
-# search.synthesis.explore from triangular numbers and Fibonacci, with
+# search.exploration.explore from triangular numbers and Fibonacci, with
 # partial sums, differences, even positions and squares as transforms,
 # report these twelve laws as surviving every sequence they were tried
 # on, in this order (each found once from triangular numbers and once
@@ -40,6 +40,8 @@
 # Run: emath test conjecture.emath --work 400000000
 
 use search.synthesis
+use search.learning
+use search.exploration
 use search.conjecture
 use fold.reduce
 

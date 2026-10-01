@@ -4445,43 +4445,19 @@ fn emission_conformance_stiff() {
     );
 }
 
-const LINALG_DRIVER: &str = r#"
-//! Authored pins of algebra/linalg.emath against the emitted crate
-//! (emath-49o8, the substitute-lane pass).
-//!
-//! The hess/grad family refused through quote.substitute's
-//! static-reference seam: d_form's chain rule reads the callee
-//! fragment's binder name at runtime (a minted-scope tag record),
-//! which the emitted lane had no spelling for. The reference now
-//! rides as a node-family operand (the tag record's type name IS the
-//! binder - the VM's dynamic reference law), a node-carried
-//! replacement substitutes structurally through quote.make, the
-//! program template carries its distilled tree so quote.view opens
-//! it, tuple domains kind as positional sequences (_N projects
-//! checked), and a concat with any node-family operand stays in the
-//! family. These rows pin every tier: the sparse carrier records,
-//! the dense core, and the quoted differentiator end to end (the
-//! substitute + evaluate round trip on the emitted ExprCode).
-//! Transcription boundaries: ratios compare cross-multiplied; the
-//! driver builds the quoted bodies as distilled trees (the same
-//! shapes quote(...) distills) over the EMPTY module table - the
-//! pinned bodies reference no module globals.
+const SPARSE_DRIVER: &str = r#"
+//! Authored pins of algebra/linear/sparse.emath against the emitted
+//! crate: the sparse carrier records (SpEnt / SpMat), the entry and row
+//! walks, the guard-first bad_sp_index refusals, and the agreement law
+//! against the dense product (matrices mat_vec, spaces zero_vec, both
+//! carried by the emitted crate).
 
-//! The vector and matrix kernels linalg builds on (spaces vec_dot /
-//! vec_axpy / zero_vec, matrices mat_vec) are pinned here too: the
-//! emitted linalg crate carries them.
-
-use linalg::{
-    grad_quote, hess_col, hess_symmetric, hess_vec, hessian_rows, mat_vec, oscillator_modes,
-    place_row, sp_dense_law, sp_matvec, sp_ok, sp_row_at, sp_to_dense, square_walk, vec_axpy,
-    vec_dot, zero_vec, EmathRecord_SpEnt as Ent, EmathRecord_SpMat as Sp,
+use sparse::{
+    mat_vec, place_row, sp_dense_law, sp_matvec, sp_ok, sp_row_at, sp_to_dense, zero_vec,
+    EmathRecord_SpEnt as Ent, EmathRecord_SpMat as Sp,
 };
 
 type R = (i128, i128);
-
-use linalg::emath_rt::code::CodeValue;
-use linalg::emath_rt::code::ExprCode;
-use linalg::emath_rt::code_tree::{CodeTree, ModuleTable, TreeBinary};
 
 fn q(n: i128, d: i128) -> R {
     (n, d)
@@ -4551,66 +4527,6 @@ fn xq<T: std::fmt::Debug>(got: &Result<T, String>, atom: &str) -> Option<String>
     }
 }
 
-// Distilled-tree builders (the same shapes quote(...) distills).
-fn path(name: &str) -> CodeTree {
-    CodeTree::Path(vec![name.to_string()])
-}
-
-fn int(value: i64) -> CodeTree {
-    CodeTree::Literal(CodeValue::Int(value))
-}
-
-fn add(left: CodeTree, right: CodeTree) -> CodeTree {
-    CodeTree::Binary {
-        op: TreeBinary::Add,
-        left: Box::new(left),
-        right: Box::new(right),
-    }
-}
-
-fn mul(left: CodeTree, right: CodeTree) -> CodeTree {
-    CodeTree::Binary {
-        op: TreeBinary::Mul,
-        left: Box::new(left),
-        right: Box::new(right),
-    }
-}
-
-fn expr(free: &[&str], tree: CodeTree) -> ExprCode {
-    linalg::emath_rt::code::open_expr(
-        free.iter().map(|name| name.to_string()).collect(),
-        tree,
-        None,
-        std::collections::BTreeMap::new(),
-    )
-}
-
-fn var(name: &str) -> ExprCode {
-    expr(&[name], path(name))
-}
-
-// x*x + 2*y*y + x*y (the quadratic fixture every hess row uses)
-fn quadratic_body() -> ExprCode {
-    expr(
-        &["x", "y"],
-        add(
-            add(mul(path("x"), path("x")), mul(mul(int(2), path("y")), path("y"))),
-            mul(path("x"), path("y")),
-        ),
-    )
-}
-
-// x*x*y + y*y*y (the coupled fixture)
-fn coupled_body() -> ExprCode {
-    expr(
-        &["x", "y"],
-        add(
-            mul(mul(path("x"), path("x")), path("y")),
-            mul(mul(path("y"), path("y")), path("y")),
-        ),
-    )
-}
-
 fn main() {
     let mut failures = 0usize;
 
@@ -4677,7 +4593,7 @@ fn main() {
         ],
     );
     let x = vec![q(1, 1), q(2, 1), q(3, 1)];
-    let got = linalg::sp_matvec_at(a.clone(), x.clone(), 0);
+    let got = sparse::sp_matvec_at(a.clone(), x.clone(), 0);
     if let Some(diff) = lq(&got, &[q(5, 1), q(0, 1), q(8, 1)]) {
         failures += 1;
         println!("DIFF sp_matvec_at_matches_the_wrapper_fixture EMITTED {diff}; VM = [5, 0, 8]");
@@ -4702,18 +4618,6 @@ fn main() {
         println!("DIFF sparse_refuses_width EMITTED {diff}; VM = Err(bad_sp_index)");
     }
 
-    // vec_dot (spaces): 1*3 + 2*4 = 11
-    let got = vec_dot(vec![q(1, 1), q(2, 1)], vec![q(3, 1), q(4, 1)]);
-    if let Some(diff) = rq(&got, q(11, 1)) {
-        failures += 1;
-        println!("DIFF vec_dot_basic EMITTED {diff}; VM = 11");
-    }
-    // vec_dot width mismatch refuses dim_mismatch
-    let got = vec_dot(vec![q(1, 1), q(2, 1)], vec![q(3, 1)]);
-    if let Some(diff) = xq(&got, "dim_mismatch") {
-        failures += 1;
-        println!("DIFF vec_dot_width_refuses EMITTED {diff}; VM = Err(dim_mismatch)");
-    }
 
     // example <symmetric_pair> (matrices mat_vec)
     let got = mat_vec(
@@ -4741,18 +4645,155 @@ fn main() {
         println!("DIFF sparse_agrees_dense EMITTED {diff}; VM = true");
     }
 
-    // example <square_walk_square>
-    let got = square_walk(vec![vec![q(1, 1), q(0, 1)], vec![q(0, 1), q(1, 1)]], 0);
-    if let Some(diff) = bq(&got, true) {
-        failures += 1;
-        println!("DIFF square_walk_square EMITTED {diff}; VM = true");
+
+    if failures > 0 {
+        panic!("{failures} sparse row(s) disagree with the VM");
     }
-    // example <square_walk_ragged> (the mat_det ragged refusal fixture)
-    let got = square_walk(vec![vec![q(1, 1), q(2, 1)], vec![q(3, 1)]], 0);
-    if let Some(diff) = bq(&got, false) {
-        failures += 1;
-        println!("DIFF square_walk_ragged EMITTED {diff}; VM = false");
+}
+"#;
+
+#[test]
+fn emission_conformance_sparse() {
+    let diffs = run_lane("language/modules/algebra/linear/sparse.emath", SPARSE_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted sparse disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const HESSIAN_DRIVER: &str = r#"
+//! Authored pins of analysis/hessian.emath against the emitted crate
+//! (emath-49o8, the substitute-lane pass).
+//!
+//! The hess/grad family refused through quote.substitute's
+//! static-reference seam: d_form's chain rule reads the callee
+//! fragment's binder name at runtime (a minted-scope tag record),
+//! which the emitted lane had no spelling for. The reference now
+//! rides as a node-family operand (the tag record's type name IS the
+//! binder - the VM's dynamic reference law), a node-carried
+//! replacement substitutes structurally through quote.make, the
+//! program template carries its distilled tree so quote.view opens
+//! it, tuple domains kind as positional sequences (_N projects
+//! checked), and a concat with any node-family operand stays in the
+//! family. These rows pin the quoted differentiator end to end (the
+//! substitute + evaluate round trip on the emitted ExprCode).
+//! Transcription boundaries: ratios compare cross-multiplied; the
+//! driver builds the quoted bodies as distilled trees (the same
+//! shapes quote(...) distills) over the EMPTY module table - the
+//! pinned bodies reference no module globals.
+
+use hessian::{grad_quote, hess_col, hess_symmetric, hess_vec, hessian_rows, vec_axpy};
+
+use hessian::emath_rt::code::CodeValue;
+use hessian::emath_rt::code::ExprCode;
+use hessian::emath_rt::code_tree::{CodeTree, ModuleTable, TreeBinary};
+
+type R = (i128, i128);
+
+fn q(n: i128, d: i128) -> R {
+    (n, d)
+}
+
+fn eq(a: &R, b: &R) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+fn lq(got: &Result<Vec<R>, String>, want: &[R]) -> Option<String> {
+    match got {
+        Ok(v)
+            if v.len() == want.len()
+                && v.iter().zip(want).all(|(a, b)| eq(a, b)) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
     }
+}
+
+fn llq(got: &Result<Vec<Vec<R>>, String>, want: &[&[R]]) -> Option<String> {
+    match got {
+        Ok(v)
+            if v.len() == want.len()
+                && v.iter()
+                    .zip(want)
+                    .all(|(row, want)| {
+                        row.len() == want.len()
+                            && row.iter().zip(want.iter()).all(|(a, b)| eq(a, b))
+                    }) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn bq(got: &Result<bool, String>, want: bool) -> Option<String> {
+    match got {
+        Ok(v) if *v == want => None,
+        Ok(v) => Some(format!("{v}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+// Distilled-tree builders (the same shapes quote(...) distills).
+fn path(name: &str) -> CodeTree {
+    CodeTree::Path(vec![name.to_string()])
+}
+
+fn int(value: i64) -> CodeTree {
+    CodeTree::Literal(CodeValue::Int(value))
+}
+
+fn add(left: CodeTree, right: CodeTree) -> CodeTree {
+    CodeTree::Binary {
+        op: TreeBinary::Add,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+fn mul(left: CodeTree, right: CodeTree) -> CodeTree {
+    CodeTree::Binary {
+        op: TreeBinary::Mul,
+        left: Box::new(left),
+        right: Box::new(right),
+    }
+}
+
+fn expr(free: &[&str], tree: CodeTree) -> ExprCode {
+    hessian::emath_rt::code::open_expr(
+        free.iter().map(|name| name.to_string()).collect(),
+        tree,
+        None,
+        std::collections::BTreeMap::new(),
+    )
+}
+
+fn var(name: &str) -> ExprCode {
+    expr(&[name], path(name))
+}
+
+// x*x + 2*y*y + x*y (the quadratic fixture every hess row uses)
+fn quadratic_body() -> ExprCode {
+    expr(
+        &["x", "y"],
+        add(
+            add(mul(path("x"), path("x")), mul(mul(int(2), path("y")), path("y"))),
+            mul(path("x"), path("y")),
+        ),
+    )
+}
+
+// x*x*y + y*y*y (the coupled fixture)
+fn coupled_body() -> ExprCode {
+    expr(
+        &["x", "y"],
+        add(
+            mul(mul(path("x"), path("x")), path("y")),
+            mul(mul(path("y"), path("y")), path("y")),
+        ),
+    )
+}
+
+fn main() {
+    let mut failures = 0usize;
 
     // example <grad_quote_value> (grad_quote: THE substitute seam -
     // d_form's dynamic reference, the structural replacement, the
@@ -4802,7 +4843,7 @@ fn main() {
     }
 
     // example <hess_vec_walk_matches_the_wrapper_fixture>
-    let got = linalg::hess_vec_walk(
+    let got = hessian::hess_vec_walk(
         quadratic_body(),
         vars.clone(),
         point.clone(),
@@ -4841,7 +4882,7 @@ fn main() {
     // example <routes_agree_coupled> (the mixed-partials certificate:
     // column route == row route EXACTLY on the coupled fixture)
     let coupled_point = vec![q(3, 1), q(5, 1)];
-    let got = linalg::hess_routes_agree(
+    let got = hessian::hess_routes_agree(
         coupled_body(),
         vars.clone(),
         coupled_point.clone(),
@@ -4860,6 +4901,106 @@ fn main() {
         println!("DIFF symmetric_coupled EMITTED {diff}; VM = true");
     }
 
+
+    if failures > 0 {
+        panic!("{failures} hessian row(s) disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_hessian() {
+    let diffs = run_lane("language/modules/analysis/hessian.emath", HESSIAN_DRIVER);
+    assert!(
+        diffs.is_empty(),
+        "emitted hessian disagrees with the VM on:\n{}",
+        diffs.join("\n")
+    );
+}
+
+const LINALG_DRIVER: &str = r#"
+//! Authored pins of algebra/linalg.emath against the emitted crate:
+//! the dense core's square walk, the spaces vec_dot kernel the
+//! eigenvector check builds on, and the rational eigen-lane end to end
+//! (oscillator_modes).
+
+use linalg::{oscillator_modes, square_walk, vec_dot};
+
+type R = (i128, i128);
+
+fn q(n: i128, d: i128) -> R {
+    (n, d)
+}
+
+fn eq(a: &R, b: &R) -> bool {
+    a.0 * b.1 == b.0 * a.1
+}
+
+fn lq(got: &Result<Vec<R>, String>, want: &[R]) -> Option<String> {
+    match got {
+        Ok(v)
+            if v.len() == want.len()
+                && v.iter().zip(want).all(|(a, b)| eq(a, b)) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn bq(got: &Result<bool, String>, want: bool) -> Option<String> {
+    match got {
+        Ok(v) if *v == want => None,
+        Ok(v) => Some(format!("{v}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn rq(got: &Result<R, String>, want: R) -> Option<String> {
+    match got {
+        Ok(v) if eq(&v, &want) => None,
+        Ok(v) => Some(format!("{v:?}")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn xq<T: std::fmt::Debug>(got: &Result<T, String>, atom: &str) -> Option<String> {
+    match got {
+        Err(e) if e == atom => None,
+        Ok(v) => Some(format!("Ok({v:?})")),
+        Err(e) => Some(format!("Err({e})")),
+    }
+}
+
+fn main() {
+    let mut failures = 0usize;
+
+    // vec_dot (spaces): 1*3 + 2*4 = 11
+    let got = vec_dot(vec![q(1, 1), q(2, 1)], vec![q(3, 1), q(4, 1)]);
+    if let Some(diff) = rq(&got, q(11, 1)) {
+        failures += 1;
+        println!("DIFF vec_dot_basic EMITTED {diff}; VM = 11");
+    }
+    // vec_dot width mismatch refuses dim_mismatch
+    let got = vec_dot(vec![q(1, 1), q(2, 1)], vec![q(3, 1)]);
+    if let Some(diff) = xq(&got, "dim_mismatch") {
+        failures += 1;
+        println!("DIFF vec_dot_width_refuses EMITTED {diff}; VM = Err(dim_mismatch)");
+    }
+
+
+    // example <square_walk_square>
+    let got = square_walk(vec![vec![q(1, 1), q(0, 1)], vec![q(0, 1), q(1, 1)]], 0);
+    if let Some(diff) = bq(&got, true) {
+        failures += 1;
+        println!("DIFF square_walk_square EMITTED {diff}; VM = true");
+    }
+    // example <square_walk_ragged> (the mat_det ragged refusal fixture)
+    let got = square_walk(vec![vec![q(1, 1), q(2, 1)], vec![q(3, 1)]], 0);
+    if let Some(diff) = bq(&got, false) {
+        failures += 1;
+        println!("DIFF square_walk_ragged EMITTED {diff}; VM = false");
+    }
+
+
     // example <modes_pinned> (oscillator_modes: the two-mass
     // stiffness eigenvalues [1, 3])
     let got = oscillator_modes(0);
@@ -4867,6 +5008,7 @@ fn main() {
         failures += 1;
         println!("DIFF modes_pinned EMITTED {diff}; VM = [1, 3]");
     }
+
 
     if failures > 0 {
         panic!("{failures} linalg row(s) disagree with the VM");

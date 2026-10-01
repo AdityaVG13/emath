@@ -1,4 +1,4 @@
-# The loop sets its own targets: search.synthesis.explore starts from
+# The loop sets its own targets: search.exploration.explore starts from
 # triangular numbers and Fibonacci, and after each round applies four
 # sequence transforms (partial sums, differences, even positions,
 # squares) to every rule that round learned. Round 2 explains all
@@ -28,6 +28,8 @@
 #   emath keep explore.emath --function Explored --to lib/explored.emath --set unused=0 --work 50000000
 
 use search.synthesis
+use search.learning
+use search.exploration
 use fold.reduce
 use search.optimize
 
