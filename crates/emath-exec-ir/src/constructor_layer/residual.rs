@@ -23,9 +23,30 @@ pub fn residual_output_exprs(
         .ok_or_else(|| fault("unbound", format!("unknown function `{name}`")))?;
     let runtime: BTreeSet<String> = decl.inputs.iter().cloned().collect();
     let mut residuals = BTreeMap::new();
+    // Definitions whose folded code has runtime residuals spliced in
+    // (`quote.substitute(t, "c", k)` with `k` an input): the splice
+    // holds the input's NAME where the VM holds its value, so the code
+    // agrees with the VM only when it is evaluated or substituted
+    // further. Any other use abandons the fold for native lowering.
+    let mut staged = BTreeSet::new();
     for (def_name, expr) in &decl.defs {
+        if observes_staged(expr, &staged) {
+            return Err(fault(
+                "unresolved",
+                format!("`{def_name}` inspects code staged over runtime inputs"),
+            ));
+        }
         match fold_expr(&mut engine, expr, &runtime, &residuals)? {
             Folded::Value(value) => {
+                if matches!(value, CValue::Code(_))
+                    && mentions_any(expr, |name| {
+                        runtime.contains(name)
+                            || residuals.contains_key(name)
+                            || staged.contains(name)
+                    })
+                {
+                    staged.insert(def_name.clone());
+                }
                 engine.env.insert(def_name.clone(), value);
             }
             Folded::Residual(residual) => {
@@ -59,6 +80,33 @@ pub fn residual_output_exprs(
         outputs.push((output, value_to_expr(value)));
     }
     Ok(outputs)
+}
+
+fn mentions_any(expr: &Expr, hit: impl Fn(&str) -> bool) -> bool {
+    let mut free = BTreeSet::new();
+    super::identity::free_path_names(expr, &mut Vec::new(), &mut free);
+    free.iter()
+        .any(|name| hit(name.split('.').next().unwrap_or(name)))
+}
+
+/// Whether `expr` uses a staged definition anywhere other than as the
+/// code operand of `quote.evaluate` or `quote.substitute`.
+fn observes_staged(expr: &Expr, staged: &BTreeSet<String>) -> bool {
+    if staged.is_empty() {
+        return false;
+    }
+    if let Some(name) = call_path(expr)
+        && (name == "quote.evaluate" || name == "quote.substitute")
+        && let ExprKind::Call { args, .. } = &expr.kind
+    {
+        return args.iter().enumerate().any(|(position, arg)| {
+            let staged_operand = position == 0
+                && matches!(&arg.kind, ExprKind::Path { segments, .. }
+                    if segments.len() == 1 && staged.contains(&segments[0]));
+            !staged_operand && observes_staged(arg, staged)
+        });
+    }
+    mentions_any(expr, |name| staged.contains(name))
 }
 
 pub(super) fn cvalue_emittable(value: &CValue) -> bool {
@@ -105,6 +153,10 @@ pub(super) fn fold_expr(
                 }
             };
             let reference = substitute_reference(engine, call_arg(expr, 1)?, runtime, residuals)?;
+            // A runtime replacement substitutes at runtime too: splicing
+            // its residual expression would leave the input's NAME in
+            // the code where the VM puts its value, which every later
+            // view, make, or identity of that code observes.
             let replacement = match fold_expr(engine, call_arg(expr, 2)?, runtime, residuals)? {
                 Folded::Value(value) => value_to_expr(&value),
                 Folded::Residual(inner) => inner,

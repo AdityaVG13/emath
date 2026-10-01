@@ -575,17 +575,17 @@ fn probe() {
                 );
             }
         }
-        // `Recur` is a node kind the VM rebuilds but the artifact tree
-        // does not carry (Closure was the representative kind until
-        // eb50799 brought it into the emitted subset).
-        match rebuild_node(&node_tag("Recur")) {
+        // `Match` is a node kind the VM rebuilds but the artifact tree
+        // does not carry (Closure, then Recur, were the representative
+        // kinds until they joined the emitted subset).
+        match rebuild_node(&node_tag("Match")) {
             Ok(_) => {
-                p.fail("recur-refuses", "a Recur node must refuse in this cut");
+                p.fail("match-refuses", "a Match node must refuse in this cut");
             }
             Err(fault) => {
                 p.demand(
                     "named-not-yet-emitted",
-                    fault == "node `Recur` is not yet emitted in artifact trees",
+                    fault == "node `Match` is not yet emitted in artifact trees",
                     &format!("the boundary refusal must be named: {fault}"),
                 );
             }

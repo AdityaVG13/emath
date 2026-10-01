@@ -107,6 +107,10 @@ pub(crate) fn distill_tree(expr: &Expr) -> Result<CodeTree, String> {
             }
             Ok(CodeTree::Tuple(trees))
         }
+        ExprKind::Index { value, indices } => Ok(CodeTree::Index {
+            container: Box::new(distill_tree(value)?),
+            indices: indices.iter().map(distill_tree).collect::<Result<_, _>>()?,
+        }),
         ExprKind::If {
             condition,
             then_value,

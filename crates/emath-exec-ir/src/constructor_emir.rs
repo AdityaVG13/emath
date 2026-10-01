@@ -1601,6 +1601,7 @@ impl Lowerer {
                 if let ExprKind::FunctionAbs {
                     param, body: inner, ..
                 } = &body.kind
+                    && carrier != "Union"
                 {
                     let mut free = BTreeSet::new();
                     collect_free_names(inner, param, &mut free);
@@ -1980,6 +1981,13 @@ fn emitted_quote_carrier(body: &Expr) -> Option<&'static str> {
     let ExprKind::FunctionAbs { domain, .. } = &body.kind else {
         return None;
     };
+    // A function over sequences has no scalar-carrier factory; it is
+    // carried as its tree alone, through the expression lane.
+    if let ExprKind::Call { function, .. } = &domain.kind
+        && matches!(&function.kind, ExprKind::Path { segments, .. } if segments.len() == 1 && segments[0] == "sequence")
+    {
+        return Some("Union");
+    }
     let ExprKind::Path { segments, .. } = &domain.kind else {
         return None;
     };

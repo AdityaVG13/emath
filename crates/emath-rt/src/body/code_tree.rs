@@ -209,6 +209,11 @@ pub enum CodeTree {
         body: Box<CodeTree>,
     },
     Tuple(Vec<CodeTree>),
+    /// Indexing (the VM's `Index`): `container[i, ..]`.
+    Index {
+        container: Box<CodeTree>,
+        indices: Vec<CodeTree>,
+    },
     If {
         condition: Box<CodeTree>,
         then_value: Box<CodeTree>,
@@ -873,6 +878,30 @@ pub fn view_tree(tree: &CodeTree, module: &ModuleTable) -> NodeValue {
                 ],
             )
         }),
+        // Mint order is the VM's: the index packages, then the
+        // container's scrutinee package.
+        CodeTree::Index { container, indices } => with_mint(|mint| {
+            let children = indices
+                .iter()
+                .map(|index| fragment_package(mint, index, None))
+                .collect();
+            let scrutinee = fragment_package(mint, container, None);
+            let mut fields = vec![
+                ("container", code_of((**container).clone())),
+                (
+                    "indices",
+                    NodeValue::Sequence(
+                        indices.iter().map(|index| code_of(index.clone())).collect(),
+                    ),
+                ),
+                ("children", NodeValue::Sequence(children)),
+                ("scrutinee", scrutinee),
+            ];
+            if let Some(index) = indices.first() {
+                fields.push(("index", code_of(index.clone())));
+            }
+            view_record("Index", fields)
+        }),
         CodeTree::If {
             condition,
             then_value,
@@ -1122,6 +1151,13 @@ fn canonical_tree_bytes(
                 canonical_tree_bytes(item, binders, out)?;
             }
         }
+        CodeTree::Index { container, indices } => {
+            out.push(b'N');
+            canonical_tree_bytes(container, binders, out)?;
+            for index in indices {
+                canonical_tree_bytes(index, binders, out)?;
+            }
+        }
         CodeTree::If {
             condition,
             then_value,
@@ -1304,6 +1340,27 @@ pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
                         body: Box::new(body),
                     })
                 }
+                "Index" => {
+                    let container = rebuild_node(
+                        fields
+                            .get("container")
+                            .ok_or_else(|| String::from("Index missing container"))?,
+                    )?;
+                    let indices = match fields.get("indices") {
+                        Some(NodeValue::Sequence(items)) => items
+                            .iter()
+                            .map(rebuild_node)
+                            .collect::<Result<Vec<_>, _>>()?,
+                        _ => match fields.get("index") {
+                            Some(index) => vec![rebuild_node(index)?],
+                            None => return Err(String::from("Index missing index")),
+                        },
+                    };
+                    Ok(CodeTree::Index {
+                        container: Box::new(container),
+                        indices,
+                    })
+                }
                 "Fragment" => fields
                     .get("term")
                     .ok_or_else(|| String::from("Fragment missing term"))
@@ -1476,6 +1533,13 @@ pub fn substitute_tree(tree: &CodeTree, reference: &str, replacement: &CodeTree)
                 .map(|item| substitute_tree(item, reference, replacement))
                 .collect(),
         ),
+        CodeTree::Index { container, indices } => CodeTree::Index {
+            container: Box::new(substitute_tree(container, reference, replacement)),
+            indices: indices
+                .iter()
+                .map(|index| substitute_tree(index, reference, replacement))
+                .collect(),
+        },
         CodeTree::If {
             condition,
             then_value,
@@ -1527,6 +1591,12 @@ fn collect_free_names(tree: &CodeTree, free: &mut BTreeSet<String>) {
             free.extend(inner);
         }
         CodeTree::Tuple(items) => items.iter().for_each(|item| collect_free_names(item, free)),
+        CodeTree::Index { container, indices } => {
+            collect_free_names(container, free);
+            indices
+                .iter()
+                .for_each(|index| collect_free_names(index, free));
+        }
         CodeTree::If {
             condition,
             then_value,
@@ -1667,7 +1737,7 @@ pub fn evaluate_tree(
                 TreeUnary::Pos => Ok(value),
             }
         }
-        CodeTree::Tuple(_) => Err(String::from(
+        CodeTree::Tuple(_) | CodeTree::Index { .. } => Err(String::from(
             "tree: structured values are not emitted in the scalar tree evaluator",
         )),
         CodeTree::If {

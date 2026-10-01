@@ -272,6 +272,11 @@ pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
             "emath_rt::code_tree::CodeTree::Tuple(vec![{}])",
             items.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
         ),
+        CodeTree::Index { container, indices } => format!(
+            "emath_rt::code_tree::CodeTree::Index {{ container: Box::new({}), indices: vec![{}] }}",
+            tree_expr(container),
+            indices.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
+        ),
         CodeTree::If {
             condition,
             then_value,
@@ -1421,8 +1426,11 @@ pub(crate) fn op_expr(
                                 render_expr(&node)
                             )))
                         }
+                        // An exact integer narrows checked onto the
+                        // union's Int (`to_code_value`).
                         value_kind
-                            if union_promotable(&value_kind)
+                            if (union_promotable(&value_kind)
+                                || value_kind == ValueKind::ExactInt)
                                 && value_kind != ValueKind::CodeValue =>
                         {
                             let converted = to_code_value(operand(program, *value), &value_kind);

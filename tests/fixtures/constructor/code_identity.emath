@@ -182,3 +182,40 @@ emath function joined_tag:
         example <tag_joins>:
             given k = 1
             expect result == true
+
+emath function index_identity:
+    # a function over a window whose body indexes it at an input, rebuilt from the view
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        v = quote.view(quote(function h in sequence(Int): h))
+        h = quote.make(Local: {name: v.param, token: v.param})
+        e = quote.substitute(quote.substitute(quote(xs[ii] * xs[0]), "xs", h), "ii", k)
+        result = quote.identity(quote.make(Closure: {param: v.param, domain: v.domain, body: e}))
+
+emath function index_round_trip:
+    # an index node viewed, then rebuilt with the next index
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        v = quote.view(quote.substitute(quote(ys[ii]), "ii", k))
+        back = quote.make(Index: {container: v.container, index: quote.make(Literal: {value: k + 1})})
+        result = v.kind == Index and quote.identity(back) == quote.identity(quote.substitute(quote(ys[ii]), "ii", k + 1)) and quote.identity(v.index) == quote.identity(quote.substitute(quote(ii), "ii", k))
+    tests:
+        example <next_index>:
+            given k = 2
+            expect result == true
+
+emath function exact_substitute:
+    # a ratio's numerator (an exact integer) substituted into code
+    inputs:
+        k: Int
+    outputs:
+        result: Int
+    definitions:
+        r = (k * 3) / 2
+        result = quote.identity(quote.substitute(quote(u * 2), "u", r.numer))

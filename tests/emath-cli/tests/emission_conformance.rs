@@ -1558,14 +1558,19 @@ const CODE_IDENTITY_DRIVER: &str = r#"
 //! quote.identity in the emitted crate: the VM's exact numbers (FNV-1a
 //! over the canonical bytes) and the equalities the search modules use.
 use code_identity::{
-    body_identity, child_matches_template, different_code_differs, joined_name, joined_tag,
-    recur_identity,
+    body_identity, child_matches_template, different_code_differs, exact_substitute,
+    index_identity,
+    index_round_trip, joined_name, joined_tag, recur_identity,
     recur_over_sequence, recur_renamed_agree, recur_round_trip, recur_shadows,
     renamed_binders_agree, substituted_identity, template_identity,
 };
 fn main() {
     let mut failures = 0usize;
-    let pins: [(&str, Result<i64, String>, i64); 9] = [
+    let pins: [(&str, Result<i64, String>, i64); 13] = [
+        ("exact_three", exact_substitute(3), 7734061378284101075),
+        ("exact_minus_four", exact_substitute(-4), 3757166404498068685),
+        ("index_two", index_identity(2), -789755635920280717),
+        ("index_minus_one", index_identity(-1), -8317634363300468623),
         ("joined_twelve", joined_name(12), -4213184102754636739),
         ("joined_zero", joined_name(0), -2904622620705799990),
         ("template", template_identity(1), 1083551230141008259),
@@ -1591,6 +1596,8 @@ fn main() {
         ("recur_view_make", recur_round_trip(2)),
         ("tag_joins", joined_tag(1)),
         ("tag_joins_other", joined_tag(0)),
+        ("index_round_trip", index_round_trip(2)),
+        ("index_round_trip_negative", index_round_trip(-1)),
     ];
     for (name, got) in bools {
         if got != Ok(true) {
