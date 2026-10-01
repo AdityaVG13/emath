@@ -33,12 +33,18 @@ fn compare(function: &str, set: &str) -> String {
 }
 
 fn compare_in(function: &str, set: &str, worlds: &[&str]) -> String {
+    let mut args = vec!["--set", set];
+    args.extend(worlds.iter().flat_map(|world| ["--world", world]));
+    compare_args(function, &args)
+}
+
+fn compare_args(function: &str, args: &[&str]) -> String {
     let fixture = workspace().join("tests/fixtures/compare/worlds.emath");
     let out = Command::new(emath_bin())
         .arg("compare")
         .arg(&fixture)
-        .args(["--function", function, "--set", set, "--json"])
-        .args(worlds.iter().flat_map(|world| ["--world", world]))
+        .args(["--function", function, "--json"])
+        .args(args)
         .env("EMATH_ROOT", workspace())
         .output()
         .expect("run emath compare");
@@ -315,4 +321,65 @@ fn compare_cmd() {
         world_row(&out, "interval").contains("\"code\":\"undecided_comparison\""),
         "{out}"
     );
+
+    // A grid evaluates every point in every world and maps where they
+    // diverge. 1/n + 1/n + 1/n == 3/n fails in binary64 exactly at n = 5
+    // and n = 10 among 1..=12.
+    let out = compare_args(
+        "thirds_add_up",
+        &[
+            "--grid", "n=1..12", "--world", "exact", "--world", "float64",
+        ],
+    );
+    let compact: String = out.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        compact.contains("\"schema_version\":\"emath.compare.grid.v1\""),
+        "{out}"
+    );
+    assert!(compact.contains("\"points\":12"), "{out}");
+    assert!(compact.contains("\"agree\":10"), "{out}");
+    assert!(compact.contains("\"disagree\":2"), "{out}");
+    assert_eq!(divergent_inputs(&compact, "n"), ["5", "10"], "{out}");
+    // `LO..HI/N` steps exactly: x = 1/10, 2/10, ..., 1 read as exact
+    // decimals, so the reference world's answer is exactly 0 everywhere
+    // and float64 leaves a residue at six of the ten points.
+    let out = compare_args(
+        "cancellation",
+        &[
+            "--grid",
+            "x=0.1..1/9",
+            "--world",
+            "reference",
+            "--world",
+            "float64",
+        ],
+    );
+    let compact: String = out.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(compact.contains("\"points\":10"), "{out}");
+    assert_eq!(
+        divergent_inputs(&compact, "x"),
+        ["0.1", "0.2", "0.3", "0.4", "0.6", "0.9"],
+        "{out}"
+    );
+    let worst = &compact[compact.find("\"worst\":").expect("worst point")..];
+    assert!(worst.contains("\"max_gap_world\":\"float64\""), "{out}");
+    // The largest residue, 2^-53, first appears at x = 0.4 (ties at 0.6
+    // and 0.9 keep the earliest point).
+    assert!(worst.contains("\"inputs\":{\"x\":\"0.4\"}"), "{out}");
+}
+
+/// The values of input `name` at the divergent points, in grid order.
+fn divergent_inputs(compact: &str, name: &str) -> Vec<String> {
+    let start = compact.find("\"divergent\":[").expect("divergent list");
+    let end = compact[start..]
+        .find("\"worst\":")
+        .map_or(compact.len(), |i| start + i);
+    let key = format!("\"inputs\":{{\"{name}\":\"");
+    compact[start..end]
+        .match_indices(&key)
+        .map(|(at, _)| {
+            let value = &compact[start + at + key.len()..];
+            value[..value.find('"').expect("closing quote")].to_string()
+        })
+        .collect()
 }

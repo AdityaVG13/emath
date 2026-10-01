@@ -181,7 +181,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
         "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--detach] | dream watch|resume|fork|export <run> | dream list",
         "keep" => "keep <file.emath> --function F [--name NAME] --to <library.emath> [--set name=value] [--work N] [--overwrite]",
-        "compare" => "compare <file.emath> --function F [--set name=value] [--world reference|exact|float64|float32|bfloat16|int64|interval] [--work N] [--json]",
+        "compare" => "compare <file.emath> --function F [--set name=value] [--grid name=v1,v2,... | name=LO..HI | name=LO..HI/N] [--world reference|exact|float64|float32|bfloat16|int64|interval] [--work N] [--json]",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
             "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
@@ -430,7 +430,7 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--no-open" => "do not automatically open web browser",
         "--dist" => "path to custom web distribution assets",
         "--emit" => "emission format",
-        "--grid" => "parameter sweep grid (name=v1,v2,...)",
+        "--grid" => "parameter grid (name=v1,v2,...; compare also takes name=LO..HI[/N])",
         "--expect" => "expected outcome specification",
         "--apply" => "apply labeled completion to goal",
         "--raise" => "raise meaning dimension",
@@ -795,7 +795,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         ],
         "loop" => &["--target", "--budget", "--script", "--help", "-h"],
         "keep" => &["--function", "--name", "--to", "--set", "--work", "--overwrite", "--help", "-h"],
-        "compare" => &["--function", "--set", "--world", "--work", "--json", "--help", "-h"],
+        "compare" => &["--function", "--set", "--grid", "--world", "--work", "--json", "--help", "-h"],
         "dream" => &[
             "--target",
             "--run",
