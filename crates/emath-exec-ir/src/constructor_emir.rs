@@ -12,9 +12,9 @@ use emath_core::tree::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{CodeApplication, CodeSubRef, DomainObligation, EmirOp, EmirProgram, EmirValue};
 use crate::constructor_layer::{machine_buffer_basename, machine_int_basename};
 use crate::exact_int::ExactInt;
+use crate::{CodeApplication, CodeSubRef, DomainObligation, EmirOp, EmirProgram, EmirValue};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LoweredFunction {
@@ -87,9 +87,7 @@ fn call_binds_closure(tree: &SyntaxTree, function: &Expr) -> bool {
         return false;
     }
     tree.items.iter().any(|item| match item {
-        Item::Declaration(decl)
-            if decl.as_kind == "function" && decl.name == segments[0] =>
-        {
+        Item::Declaration(decl) if decl.as_kind == "function" && decl.name == segments[0] => {
             let outputs = section_typed_fields(decl, "outputs");
             outputs.len() == 1
                 && outputs
@@ -116,7 +114,11 @@ fn authored_signatures(
     let Some(decl) = decl else {
         return (Vec::new(), String::new());
     };
-    let vars: Vec<String> = decl.generics.iter().map(|generic| generic.name.clone()).collect();
+    let vars: Vec<String> = decl
+        .generics
+        .iter()
+        .map(|generic| generic.name.clone())
+        .collect();
     let declared = section_typed_fields(decl, "inputs")
         .iter()
         .map(|(_, ty)| type_signature(ty, object_names, &vars).unwrap_or_default())
@@ -267,7 +269,11 @@ fn lower_named(
             .into_iter()
             .map(|(callable, _, stamp)| (callable, stamp))
             .collect(),
-        type_vars: decl.generics.iter().map(|generic| generic.name.clone()).collect(),
+        type_vars: decl
+            .generics
+            .iter()
+            .map(|generic| generic.name.clone())
+            .collect(),
     };
     if !unresolved.is_empty() {
         visiting.remove(name);
@@ -364,8 +370,7 @@ fn lower_named(
                             segments.len() == 1 && lowerer.arrow_names.contains(&segments[0])
                         }
                         ExprKind::Call { function, .. } => {
-                            call_binds_closure(tree, function)
-                                || is_quote_evaluate_call(function)
+                            call_binds_closure(tree, function) || is_quote_evaluate_call(function)
                         }
                         _ => false,
                     };
@@ -513,11 +518,7 @@ fn evaluate_application(
     if !declared.is_empty() {
         return None;
     }
-    let arities: BTreeSet<usize> = call_sites
-        .get(def_name)?
-        .iter()
-        .map(Vec::len)
-        .collect();
+    let arities: BTreeSet<usize> = call_sites.get(def_name)?.iter().map(Vec::len).collect();
     let [arity] = arities.into_iter().collect::<Vec<_>>()[..] else {
         return None;
     };
@@ -709,11 +710,7 @@ impl Lowerer {
         Ok((program, values))
     }
 
-    fn lower_cases(
-        &mut self,
-        arms: &[(Expr, Expr)],
-        else_arm: &Expr,
-    ) -> Result<EmirValue, String> {
+    fn lower_cases(&mut self, arms: &[(Expr, Expr)], else_arm: &Expr) -> Result<EmirValue, String> {
         let Some((condition, then_value)) = arms.first() else {
             return self.expr(else_arm);
         };
@@ -852,7 +849,11 @@ impl Lowerer {
         }))
     }
 
-    fn lower_named_call(&mut self, segments: &[String], args: &[Expr]) -> Result<EmirValue, String> {
+    fn lower_named_call(
+        &mut self,
+        segments: &[String],
+        args: &[Expr],
+    ) -> Result<EmirValue, String> {
         let called = segments.join(".");
         if called == "length" && args.len() == 1 {
             let value = self.expr(&args[0])?;
@@ -918,9 +919,7 @@ impl Lowerer {
                     // tag records whose type name IS the name (the
                     // VM's dynamic reference law).
                     let reference = match &args[1].kind {
-                        ExprKind::Str(reference) => {
-                            CodeSubRef::Static(reference.clone())
-                        }
+                        ExprKind::Str(reference) => CodeSubRef::Static(reference.clone()),
                         ExprKind::Path { segments, .. } if segments.len() == 1 => {
                             CodeSubRef::Static(segments[0].clone())
                         }
@@ -936,7 +935,10 @@ impl Lowerer {
                 }
                 ("quote.evaluate", 1) => {
                     let code = self.expr(&args[0])?;
-                    Ok(self.push(EmirOp::CodeEvaluate { code, applied: None }))
+                    Ok(self.push(EmirOp::CodeEvaluate {
+                        code,
+                        applied: None,
+                    }))
                 }
                 // The shared-tree pair (bead
                 // emath-shared-tree-view-make-bp8nu): view opens a
@@ -1027,11 +1029,12 @@ impl Lowerer {
         // literal defs, arrow-domain params) take this arm.
         if self.arrow_names.contains(&called)
             && let Some(program) = self.locals.get(&called).copied().or_else(|| {
-            self.inputs
-                .iter()
-                .position(|input| input == &called)
-                .map(|index| self.push(EmirOp::LoadInput(index as u16)))
-        }) {
+                self.inputs
+                    .iter()
+                    .position(|input| input == &called)
+                    .map(|index| self.push(EmirOp::LoadInput(index as u16)))
+            })
+        {
             let mut inputs = Vec::new();
             for arg in args {
                 inputs.push(self.expr(arg)?);
@@ -1045,8 +1048,7 @@ impl Lowerer {
         // one-argument call on a name that is not closure-valued is
         // record projection. (A bound non-arrow callee cannot be a
         // call: the engine faults calling a non-function.)
-        if segments.len() == 1 && args.len() == 1 && !self.arrow_names.contains(&called)
-        {
+        if segments.len() == 1 && args.len() == 1 && !self.arrow_names.contains(&called) {
             let record = self.expr(&args[0])?;
             return Ok(self.push(EmirOp::RecordField {
                 record,
@@ -1093,9 +1095,7 @@ impl Lowerer {
                 }
                 if let (Some(want), Some(got)) = (static_int(&args[0]), static_list_len(&args[1])) {
                     if want != got {
-                        return Err(format!(
-                            "invalid_index: T[n] pack length {got} != {want}"
-                        ));
+                        return Err(format!("invalid_index: T[n] pack length {got} != {want}"));
                     }
                 }
                 let n = self.expr(&args[0])?;
@@ -1236,7 +1236,11 @@ impl Lowerer {
             }
             ExprKind::Call { function, args } => match &function.kind {
                 ExprKind::Recur { name, body, .. } => self.lower_recur_apply(name, body, args),
-                ExprKind::FunctionAbs { param, domain, body } => {
+                ExprKind::FunctionAbs {
+                    param,
+                    domain,
+                    body,
+                } => {
                     let (nested, captures) = self.lower_function_abs(param, domain, body)?;
                     let mut inputs = Vec::new();
                     for arg in args {
@@ -1250,7 +1254,8 @@ impl Lowerer {
                     // first frame input; captures carry their own
                     // parent-frame kinds.
                     let mut declared = vec![
-                        domain_signature(domain, &self.objects, &self.type_vars).unwrap_or_default(),
+                        domain_signature(domain, &self.objects, &self.type_vars)
+                            .unwrap_or_default(),
                     ];
                     declared.extend(std::iter::repeat_n(String::new(), capture_count));
                     Ok(self.push(EmirOp::CallFrame {
@@ -1287,7 +1292,10 @@ impl Lowerer {
                             let arity = u16::try_from(args.len()).map_err(|_| {
                                 String::from("quote.evaluate applied to too many arguments")
                             })?;
-                            self.lower_applied_evaluate(&inner_args[0], CodeApplication::Union(arity))?
+                            self.lower_applied_evaluate(
+                                &inner_args[0],
+                                CodeApplication::Union(arity),
+                            )?
                         }
                         _ => self.expr(function)?,
                     };
@@ -1296,19 +1304,22 @@ impl Lowerer {
                         inputs.push(self.expr(arg)?);
                     }
                     if inputs.is_empty() {
-                        return Err(format!(
-                            "call is not yet emitted: {other:?}"
-                        ));
+                        return Err(format!("call is not yet emitted: {other:?}"));
                     }
                     Ok(self.push(EmirOp::CallValue { program, inputs }))
                 }
             },
-            ExprKind::FunctionAbs { param, domain, body } => {
+            ExprKind::FunctionAbs {
+                param,
+                domain,
+                body,
+            } => {
                 let (nested, captures) = self.lower_function_abs(param, domain, body)?;
                 // An unmapped domain keeps the empty numeric-lane
                 // signature (interp-verified carrier), matching the
                 // pre-typed-ABI behavior instead of refusing lowering.
-                let signature = domain_signature(domain, &self.objects, &self.type_vars).unwrap_or_default();
+                let signature =
+                    domain_signature(domain, &self.objects, &self.type_vars).unwrap_or_default();
                 Ok(self.push(EmirOp::ProgramLiteral {
                     body: nested,
                     captures,
@@ -1344,7 +1355,10 @@ impl Lowerer {
                             .into(),
                     );
                 };
-                if let ExprKind::FunctionAbs { param, body: inner, .. } = &body.kind {
+                if let ExprKind::FunctionAbs {
+                    param, body: inner, ..
+                } = &body.kind
+                {
                     let mut free = BTreeSet::new();
                     collect_free_names(inner, param, &mut free);
                     // A module function CALLED in the body is a
@@ -1365,7 +1379,7 @@ impl Lowerer {
                         inputs,
                         locals: BTreeMap::new(),
                         siblings: self.siblings.clone(),
-            entry_siblings: self.entry_siblings.clone(),
+                        entry_siblings: self.entry_siblings.clone(),
                         objects: self.objects.clone(),
                         ops: Vec::new(),
                         obligations: Vec::new(),
@@ -1376,7 +1390,7 @@ impl Lowerer {
                         // parameter is the template's only binder.
                         arrow_names: BTreeSet::new(),
                         module_stamps: self.module_stamps.clone(),
-            type_vars: self.type_vars.clone(),
+                        type_vars: self.type_vars.clone(),
                     };
                     let lowered = child.expr(inner)?;
                     let program = child.finish(lowered);
@@ -1412,14 +1426,16 @@ impl Lowerer {
                     let deps: BTreeMap<String, u64> = free
                         .iter()
                         .filter_map(|name| {
-                            self.module_stamps.get(name).map(|stamp| (name.clone(), *stamp))
+                            self.module_stamps
+                                .get(name)
+                                .map(|stamp| (name.clone(), *stamp))
                         })
                         .collect();
                     let mut child = Lowerer {
                         inputs: free.clone(),
                         locals: BTreeMap::new(),
                         siblings: self.siblings.clone(),
-            entry_siblings: self.entry_siblings.clone(),
+                        entry_siblings: self.entry_siblings.clone(),
                         objects: self.objects.clone(),
                         ops: Vec::new(),
                         obligations: Vec::new(),
@@ -1427,7 +1443,7 @@ impl Lowerer {
                         self_result: String::new(),
                         arrow_names: BTreeSet::new(),
                         module_stamps: self.module_stamps.clone(),
-            type_vars: self.type_vars.clone(),
+                        type_vars: self.type_vars.clone(),
                     };
                     let lowered = child.expr(body)?;
                     let program = child.finish(lowered);
@@ -1465,9 +1481,10 @@ impl Lowerer {
                 // record the structural walk constructs - the same
                 // names the VM's `finish_record` accepts as plain
                 // records. Anything else refuses by name.
-                let type_name = type_path.last().cloned().ok_or_else(|| {
-                    "record literal requires a type path".to_string()
-                })?;
+                let type_name = type_path
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| "record literal requires a type path".to_string())?;
                 if !self.objects.contains_key(&type_name)
                     && !crate::constructor_layer::is_node_tag(&type_name)
                 {
@@ -1524,9 +1541,7 @@ impl Lowerer {
                 // parameter for the body, mirroring lower_open's
                 // local-binding shape.
                 ExprKind::Path { segments, .. }
-                    if segments.len() == 2
-                        && segments[0] == "quote"
-                        && segments[1] == "open" =>
+                    if segments.len() == 2 && segments[0] == "quote" && segments[1] == "open" =>
                 {
                     let package = self.expr(domain)?;
                     let opened = self.push(EmirOp::CodeOpen { package });
@@ -1549,17 +1564,13 @@ impl Lowerer {
                 // the full algorithm; the artifact tree carries no
                 // binder nodes).
                 ExprKind::Path { segments, .. }
-                    if segments.len() == 2
-                        && segments[0] == "quote"
-                        && segments[1] == "bind" =>
+                    if segments.len() == 2 && segments[0] == "quote" && segments[1] == "bind" =>
                 {
                     Err(String::from(
                         "quote.bind binder form is not emitted in artifact trees: a fresh-tokened function literal is outside the distilled subset",
                     ))
                 }
-                ExprKind::Path { segments, .. }
-                    if segments.len() == 2 && segments[1] == "open" =>
-                {
+                ExprKind::Path { segments, .. } if segments.len() == 2 && segments[1] == "open" => {
                     self.lower_open(&segments[0], param, domain, body)
                 }
                 _ => Err(format!(
@@ -1569,7 +1580,10 @@ impl Lowerer {
             },
             ExprKind::Cases { arms, else_arm, .. } => self.lower_cases(arms, else_arm),
             ExprKind::Recur { name, body, .. } => {
-                if let ExprKind::FunctionAbs { param, body: inner, .. } = &body.kind {
+                if let ExprKind::FunctionAbs {
+                    param, body: inner, ..
+                } = &body.kind
+                {
                     if let Some(program) = lower_int_primitive_recur(name, param, inner) {
                         return Ok(self.push(EmirOp::program_literal(program)));
                     }
@@ -1583,9 +1597,7 @@ impl Lowerer {
                 }
                 self.expr(body)
             }
-            other => Err(format!(
-                "expression form is not yet emitted: {other:?}"
-            )),
+            other => Err(format!("expression form is not yet emitted: {other:?}")),
         }
     }
 }
@@ -1655,22 +1667,23 @@ fn expr_uses_quote(expr: &Expr) -> bool {
             then_value,
             else_value,
         } => {
-            expr_uses_quote(condition)
-                || expr_uses_quote(then_value)
-                || expr_uses_quote(else_value)
+            expr_uses_quote(condition) || expr_uses_quote(then_value) || expr_uses_quote(else_value)
         }
-        ExprKind::FunctionAbs { body, domain, .. } | ExprKind::Recur { body, ty: domain, .. } => {
-            expr_uses_quote(domain) || expr_uses_quote(body)
-        }
+        ExprKind::FunctionAbs { body, domain, .. }
+        | ExprKind::Recur {
+            body, ty: domain, ..
+        } => expr_uses_quote(domain) || expr_uses_quote(body),
         ExprKind::Cases {
             subject,
             arms,
             else_arm,
         } => {
-            subject.as_ref().is_some_and(|subject| expr_uses_quote(subject))
-                || arms.iter().any(|(cond, value)| {
-                    expr_uses_quote(cond) || expr_uses_quote(value)
-                })
+            subject
+                .as_ref()
+                .is_some_and(|subject| expr_uses_quote(subject))
+                || arms
+                    .iter()
+                    .any(|(cond, value)| expr_uses_quote(cond) || expr_uses_quote(value))
                 || expr_uses_quote(else_arm)
         }
         ExprKind::List(items) | ExprKind::Tuple(items) => items.iter().any(expr_uses_quote),
@@ -1744,7 +1757,11 @@ fn is_refuse_quote_call(function: &Expr, args: &[Expr]) -> bool {
 /// an object name -> `Record<Name>`, `sequence(T)` -> `Vector<T>`, and
 /// the arrow bridge `A -> B` (parsed as `Call { Path[Fn], [A, B] }`)
 /// -> `Fn<A,B>`. None means the domain has no native carrier.
-fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>, vars: &[String]) -> Option<String> {
+fn domain_signature(
+    domain: &Expr,
+    objects: &BTreeMap<String, String>,
+    vars: &[String],
+) -> Option<String> {
     match &domain.kind {
         ExprKind::Path { segments, .. } => {
             let name = segments.last()?;
@@ -1753,7 +1770,9 @@ fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>, vars: &[S
             }
             match name.as_str() {
                 "Int" | "Rat" | "Bool" | "Text" | "Float64" => Some(name.clone()),
-                _ => objects.contains_key(name).then(|| format!("Record<{name}>")),
+                _ => objects
+                    .contains_key(name)
+                    .then(|| format!("Record<{name}>")),
             }
         }
         // The bracket spelling `sequence[T]` (a type in expression
@@ -1786,8 +1805,13 @@ fn domain_signature(domain: &Expr, objects: &BTreeMap<String, String>, vars: &[S
                     Some(format!("Fn<{},{}>", domains.join(","), result))
                 }
                 "sequence" => {
-                    let [element] = args.as_slice() else { return None };
-                    Some(format!("Vector<{}>", domain_signature(element, objects, vars)?))
+                    let [element] = args.as_slice() else {
+                        return None;
+                    };
+                    Some(format!(
+                        "Vector<{}>",
+                        domain_signature(element, objects, vars)?
+                    ))
                 }
                 _ => None,
             }
@@ -1819,11 +1843,7 @@ fn collect_free_names(expr: &Expr, param: &str, out: &mut BTreeSet<String>) {
     collect_free_names_bound(expr, &mut bound, out);
 }
 
-fn collect_free_names_bound(
-    expr: &Expr,
-    bound: &mut BTreeSet<String>,
-    out: &mut BTreeSet<String>,
-) {
+fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut BTreeSet<String>) {
     match &expr.kind {
         ExprKind::Path { segments, .. } => {
             if let Some(head) = segments.first() {
@@ -2193,7 +2213,10 @@ pub fn generic_type_signature(
 /// `Var<name>` so a caller can bind it from the arguments it passes.
 fn type_signature(ty: &TypeExpr, objects: &BTreeSet<String>, vars: &[String]) -> Option<String> {
     match &ty.kind {
-        TypeKind::Path { segments, generic_args } => {
+        TypeKind::Path {
+            segments,
+            generic_args,
+        } => {
             let last = segments.last()?;
             if segments.len() == 1 && generic_args.is_empty() && vars.contains(last) {
                 return Some(format!("Var<{last}>"));
@@ -2216,10 +2239,9 @@ fn type_signature(ty: &TypeExpr, objects: &BTreeSet<String>, vars: &[String]) ->
                 // specialized T -> T closure) - the backend's kind
                 // parser splits the two on exactly this spelling.
                 "Code" => match generic_args.first() {
-                    Some(GenericArg::Type(carrier)) => Some(format!(
-                        "Code<{}>",
-                        type_signature(carrier, objects, vars)?
-                    )),
+                    Some(GenericArg::Type(carrier)) => {
+                        Some(format!("Code<{}>", type_signature(carrier, objects, vars)?))
+                    }
                     _ => Some("Code".into()),
                 },
                 // An unparameterized `sequence` is the VM's
@@ -2328,7 +2350,9 @@ fn section_assigns(decl: &Declaration, name: &str) -> Vec<(String, Expr)> {
     assigns
 }
 
-pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate::interp::Value, String> {
+pub fn cvalue_to_emir(
+    value: &crate::constructor_layer::CValue,
+) -> Result<crate::interp::Value, String> {
     use crate::constructor_layer::CValue;
     use crate::interp::Value;
     match value {
@@ -2382,8 +2406,7 @@ pub fn cvalue_to_emir(value: &crate::constructor_layer::CValue) -> Result<crate:
             }))
         }
         CValue::Buffer(_) => Err(
-            "buffer carrier values are not emitted in this cut; run in the constructor VM"
-                .into(),
+            "buffer carrier values are not emitted in this cut; run in the constructor VM".into(),
         ),
         other => Err(format!("no EMIR carrier for {other}")),
     }
@@ -2433,9 +2456,9 @@ fn emir_values_equal(left: &crate::interp::Value, right: &crate::interp::Value) 
         (
             crate::interp::Value::ExactRat { num: an, den: ad },
             crate::interp::Value::ExactRat { num: bn, den: bd },
-        ) => an.mul(bd).is_ok_and(|left| {
-            bn.mul(ad).is_ok_and(|right| left == right)
-        }),
+        ) => an
+            .mul(bd)
+            .is_ok_and(|left| bn.mul(ad).is_ok_and(|right| left == right)),
         (
             crate::interp::Value::ExactRat { num: an, den: ad },
             crate::interp::Value::Rat { num: bn, den: bd },
@@ -2444,26 +2467,23 @@ fn emir_values_equal(left: &crate::interp::Value, right: &crate::interp::Value) 
             crate::interp::Value::Rat { num: bn, den: bd },
             crate::interp::Value::ExactRat { num: an, den: ad },
         ) => an
-            .mul(&ExactInt::from(*bd)).is_ok_and(|left| ExactInt::from(*bn).mul(ad).is_ok_and(|right| left == right)),
-        (crate::interp::Value::Rat { num: a, den: ad }, crate::interp::Value::Rat { num: b, den: bd }) => {
-            a * bd == b * ad
-        }
+            .mul(&ExactInt::from(*bd))
+            .is_ok_and(|left| ExactInt::from(*bn).mul(ad).is_ok_and(|right| left == right)),
+        (
+            crate::interp::Value::Rat { num: a, den: ad },
+            crate::interp::Value::Rat { num: b, den: bd },
+        ) => a * bd == b * ad,
         (crate::interp::Value::ExactInt(a), crate::interp::Value::Rat { num, den })
         | (crate::interp::Value::Rat { num, den }, crate::interp::Value::ExactInt(a)) => a
-            .mul(&ExactInt::from(*den)).is_ok_and(|left| left == ExactInt::from(*num)),
-        (
-            crate::interp::Value::ExactInt(a),
-            crate::interp::Value::ExactRat { num, den },
-        )
-        | (
-            crate::interp::Value::ExactRat { num, den },
-            crate::interp::Value::ExactInt(a),
-        ) => a
-            .mul(den).is_ok_and(|left| left == *num),
+            .mul(&ExactInt::from(*den))
+            .is_ok_and(|left| left == ExactInt::from(*num)),
+        (crate::interp::Value::ExactInt(a), crate::interp::Value::ExactRat { num, den })
+        | (crate::interp::Value::ExactRat { num, den }, crate::interp::Value::ExactInt(a)) => {
+            a.mul(den).is_ok_and(|left| left == *num)
+        }
         (crate::interp::Value::I64(a), crate::interp::Value::ExactRat { num, den })
         | (crate::interp::Value::ExactRat { num, den }, crate::interp::Value::I64(a)) => {
-            ExactInt::from(*a)
-                .mul(den).is_ok_and(|left| left == *num)
+            ExactInt::from(*a).mul(den).is_ok_and(|left| left == *num)
         }
         (crate::interp::Value::I64(a), crate::interp::Value::Rat { num, den }) => {
             i128::from(*a) * *den == *num
@@ -2526,16 +2546,36 @@ fn ops_equal(left: &EmirOp, right: &EmirOp) -> bool {
     // same body with different `init` are different folds.
     match (left, right) {
         (
-            EmirOp::ProgramLiteral { body: left_body, captures: left_captures, vector_input: left_vector, .. },
-            EmirOp::ProgramLiteral { body: right_body, captures: right_captures, vector_input: right_vector, .. },
+            EmirOp::ProgramLiteral {
+                body: left_body,
+                captures: left_captures,
+                vector_input: left_vector,
+                ..
+            },
+            EmirOp::ProgramLiteral {
+                body: right_body,
+                captures: right_captures,
+                vector_input: right_vector,
+                ..
+            },
         ) => {
             left_vector == right_vector
                 && left_captures == right_captures
                 && programs_equal(left_body, right_body)
         }
         (
-            EmirOp::CallFrame { body: left_body, inputs: left_inputs, state: left_state, .. },
-            EmirOp::CallFrame { body: right_body, inputs: right_inputs, state: right_state, .. },
+            EmirOp::CallFrame {
+                body: left_body,
+                inputs: left_inputs,
+                state: left_state,
+                ..
+            },
+            EmirOp::CallFrame {
+                body: right_body,
+                inputs: right_inputs,
+                state: right_state,
+                ..
+            },
         ) => {
             left_inputs == right_inputs
                 && left_state == right_state
@@ -2567,16 +2607,34 @@ fn ops_equal(left: &EmirOp, right: &EmirOp) -> bool {
                 && programs_equal(left_body, right_body)
         }
         (
-            EmirOp::Collect { count: left_count, args: left_args, body: left_body },
-            EmirOp::Collect { count: right_count, args: right_args, body: right_body },
+            EmirOp::Collect {
+                count: left_count,
+                args: left_args,
+                body: left_body,
+            },
+            EmirOp::Collect {
+                count: right_count,
+                args: right_args,
+                body: right_body,
+            },
         ) => {
             left_count == right_count
                 && left_args == right_args
                 && programs_equal(left_body, right_body)
         }
         (
-            EmirOp::Branch { condition: left_condition, args: left_args, then_body: left_then, else_body: left_else },
-            EmirOp::Branch { condition: right_condition, args: right_args, then_body: right_then, else_body: right_else },
+            EmirOp::Branch {
+                condition: left_condition,
+                args: left_args,
+                then_body: left_then,
+                else_body: left_else,
+            },
+            EmirOp::Branch {
+                condition: right_condition,
+                args: right_args,
+                then_body: right_then,
+                else_body: right_else,
+            },
         ) => {
             left_condition == right_condition
                 && left_args == right_args
@@ -2584,8 +2642,20 @@ fn ops_equal(left: &EmirOp, right: &EmirOp) -> bool {
                 && programs_equal(left_else, right_else)
         }
         (
-            EmirOp::Iterate { body: left_body, stop: left_stop, count: left_count, init: left_init, args: left_args },
-            EmirOp::Iterate { body: right_body, stop: right_stop, count: right_count, init: right_init, args: right_args },
+            EmirOp::Iterate {
+                body: left_body,
+                stop: left_stop,
+                count: left_count,
+                init: left_init,
+                args: left_args,
+            },
+            EmirOp::Iterate {
+                body: right_body,
+                stop: right_stop,
+                count: right_count,
+                init: right_init,
+                args: right_args,
+            },
         ) => {
             left_count == right_count
                 && left_init == right_init
@@ -2769,7 +2839,9 @@ fn is_self_pred(expr: &Expr, name: &str, param: &str) -> bool {
     let ExprKind::Path { segments, .. } = &function.kind else {
         return false;
     };
-    segments.join(".") == name && args.len() == 1 && args.first().is_some_and(|arg| is_pred_arg(arg, param))
+    segments.join(".") == name
+        && args.len() == 1
+        && args.first().is_some_and(|arg| is_pred_arg(arg, param))
 }
 
 fn plus_self_pred<'a>(expr: &'a Expr, name: &str, param: &str) -> Option<(BinaryOp, &'a Expr)> {
@@ -2796,7 +2868,8 @@ fn contains_self_call(expr: &Expr, name: &str) -> bool {
                     return true;
                 }
             }
-            contains_self_call(function, name) || args.iter().any(|arg| contains_self_call(arg, name))
+            contains_self_call(function, name)
+                || args.iter().any(|arg| contains_self_call(arg, name))
         }
         ExprKind::FunctionAbs { body, domain, .. } => {
             contains_self_call(body, name) || contains_self_call(domain, name)
@@ -2820,7 +2893,11 @@ fn contains_self_call(expr: &Expr, name: &str) -> bool {
         ExprKind::List(items) | ExprKind::Tuple(items) => {
             items.iter().any(|item| contains_self_call(item, name))
         }
-        ExprKind::Cases { subject, arms, else_arm } => {
+        ExprKind::Cases {
+            subject,
+            arms,
+            else_arm,
+        } => {
             subject
                 .as_ref()
                 .is_some_and(|subject| contains_self_call(subject, name))
@@ -2832,4 +2909,3 @@ fn contains_self_call(expr: &Expr, name: &str) -> bool {
         _ => false,
     }
 }
-

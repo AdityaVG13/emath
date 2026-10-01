@@ -1488,7 +1488,10 @@ fn main() {
 
 #[test]
 fn emission_conformance_long_walk() {
-    let diffs = run_lane("tests/fixtures/constructor/long_walk.emath", LONG_WALK_DRIVER);
+    let diffs = run_lane(
+        "tests/fixtures/constructor/long_walk.emath",
+        LONG_WALK_DRIVER,
+    );
     assert!(
         diffs.is_empty(),
         "emitted long_walk disagrees with the VM on:\n{}",
@@ -1589,7 +1592,10 @@ fn main() {
 "#;
 #[test]
 fn emission_conformance_generic_record() {
-    let diffs = run_lane("tests/fixtures/constructor/generic_record.emath", GENERIC_RECORD_DRIVER);
+    let diffs = run_lane(
+        "tests/fixtures/constructor/generic_record.emath",
+        GENERIC_RECORD_DRIVER,
+    );
     assert!(
         diffs.is_empty(),
         "emitted generic_record disagrees with the VM on:\n{}",
@@ -2107,7 +2113,10 @@ fn main() {
 
 #[test]
 fn emission_conformance_ciphers() {
-    let diffs = run_lane("language/domains/cryptology/roundtrip.emath", ROUNDTRIP_DRIVER);
+    let diffs = run_lane(
+        "language/domains/cryptology/roundtrip.emath",
+        ROUNDTRIP_DRIVER,
+    );
     assert!(
         diffs.is_empty(),
         "emitted ciphers disagree with the VM on:\n{}",
@@ -3885,7 +3894,10 @@ fn main() {
 
 #[test]
 fn emission_conformance_stiff() {
-    let diffs = run_lane("language/modules/analysis/evolution/stiff.emath", STIFF_DRIVER);
+    let diffs = run_lane(
+        "language/modules/analysis/evolution/stiff.emath",
+        STIFF_DRIVER,
+    );
     assert!(
         diffs.is_empty(),
         "emitted stiff disagrees with the VM on:\n{}",
@@ -5304,7 +5316,10 @@ fn main() {
 
 #[test]
 fn emission_conformance_levenberg() {
-    let diffs = run_lane("language/modules/numerics/levenberg.emath", LEVENBERG_DRIVER);
+    let diffs = run_lane(
+        "language/modules/numerics/levenberg.emath",
+        LEVENBERG_DRIVER,
+    );
     assert!(
         diffs.is_empty(),
         "emitted levenberg disagrees with the VM on:\n{}",
@@ -5894,7 +5909,10 @@ fn main() {
 
 #[test]
 fn emission_conformance_derivative() {
-    let diffs = run_lane("language/modules/analysis/derivative.emath", DERIVATIVE_DRIVER);
+    let diffs = run_lane(
+        "language/modules/analysis/derivative.emath",
+        DERIVATIVE_DRIVER,
+    );
     assert!(
         diffs.is_empty(),
         "emitted derivative disagrees with the VM on:\n{}",
