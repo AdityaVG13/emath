@@ -534,32 +534,21 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             ));
         }
     };
-    if let Err(err) = std::fs::create_dir_all(out.join("src")) {
-        return Some(refuse_coded(
-            "build",
-            json,
-            EXIT_FAULT,
-            "E-IO",
-            &err.to_string(),
-        ));
-    }
-    if let Err(err) = emath_build::write_generated_file(out.join("src/lib.rs"), emission.lib) {
-        return Some(refuse_coded(
-            "build",
-            json,
-            EXIT_FAULT,
-            "E-IO",
-            &err.to_string(),
-        ));
-    }
-    if let Err(err) = emath_build::write_generated_file(out.join("Cargo.toml"), emission.manifest) {
-        return Some(refuse_coded(
-            "build",
-            json,
-            EXIT_FAULT,
-            "E-IO",
-            &err.to_string(),
-        ));
+    for (relative, contents) in emission.files() {
+        let path = out.join(relative);
+        let written = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| emath_build::write_generated_file(&path, contents.as_bytes()));
+        if let Err(err) = written {
+            return Some(refuse_coded(
+                "build",
+                json,
+                EXIT_FAULT,
+                "E-IO",
+                &format!("cannot write {}: {err}", path.display()),
+            ));
+        }
     }
     let runnable = emission.runnable;
     let functions = emission.functions;

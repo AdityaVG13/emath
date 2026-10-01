@@ -2954,6 +2954,37 @@ fn emission_conformance_quote_cost() {
         "the artifact must not read imports from disk\n{}",
         String::from_utf8_lossy(&run.stdout)
     );
+
+    // The artifact carries the engine it links: built straight into a
+    // fresh directory outside the repository, its manifest names no path
+    // outside itself and it builds and answers on its own.
+    let moved = std::env::temp_dir().join(format!("emath-moved-artifact-{}", std::process::id()));
+    let (text, code) = cli(&["build", &repo_root().join(module_rel).to_string_lossy(), "--out", &moved.to_string_lossy()]);
+    assert_eq!(code, 0, "emath build failed\n{text}");
+    let manifest = std::fs::read_to_string(moved.join("Cargo.toml")).expect("read manifest");
+    for path in manifest.split("path = \"").skip(1).filter_map(|rest| rest.split('"').next()) {
+        assert!(
+            !path.starts_with('/') && !path.starts_with(".."),
+            "the artifact must not depend on a path outside itself: {path}\n{manifest}"
+        );
+    }
+    std::fs::create_dir_all(moved.join("src/bin")).expect("create src/bin");
+    common::write_if_changed(&moved.join("src/bin/conf_driver.rs"), QUOTE_COST_DRIVER);
+    let status = common::cargo_build_emitted(&moved, &["--bin", "conf_driver"]);
+    assert!(
+        status.status.success(),
+        "the moved artifact must build on its own: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+    let run = Command::new(moved.join("target").join("debug").join("conf_driver"))
+        .current_dir(&moved)
+        .output()
+        .expect("run moved conformance driver");
+    assert!(
+        run.status.success(),
+        "the moved artifact must answer as the VM does\n{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
 }
 
 const ENGINE_WORLDS_DRIVER: &str = r#"

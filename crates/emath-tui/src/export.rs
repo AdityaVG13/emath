@@ -358,36 +358,18 @@ pub fn export_native(host: &LoopHost, out_dir: &Path) -> Result<ExportReport, Ho
         ));
     }
     let artifact_dir = out_dir.join("artifact");
-    std::fs::create_dir_all(artifact_dir.join("src")).map_err(|error| {
-        HostFault::fault(
-            "loop_export_compile",
-            format!(
-                "cannot create {}: {error}",
-                artifact_dir.join("src").display()
-            ),
-        )
-    })?;
-    emath_build::write_generated_file(artifact_dir.join("src/lib.rs"), &emission.lib).map_err(
-        |error| {
-            HostFault::fault(
-                "loop_export_compile",
-                format!(
-                    "cannot write {}: {error}",
-                    artifact_dir.join("src/lib.rs").display()
-                ),
-            )
-        },
-    )?;
-    emath_build::write_generated_file(artifact_dir.join("Cargo.toml"), &emission.manifest)
-        .map_err(|error| {
-            HostFault::fault(
-                "loop_export_compile",
-                format!(
-                    "cannot write {}: {error}",
-                    artifact_dir.join("Cargo.toml").display()
-                ),
-            )
-        })?;
+    for (relative, contents) in emission.files() {
+        let path = artifact_dir.join(relative);
+        path.parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| emath_build::write_generated_file(&path, contents.as_bytes()))
+            .map_err(|error| {
+                HostFault::fault(
+                    "loop_export_compile",
+                    format!("cannot write {}: {error}", path.display()),
+                )
+            })?;
+    }
     let lib = emission.lib.clone();
     let crate_name = emission.package_name.clone();
     let state_type = host.surface().state_type.clone();
