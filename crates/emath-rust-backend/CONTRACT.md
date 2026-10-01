@@ -43,8 +43,8 @@ predicts the rendered Rust type:
   the law.
 - Mixed exact/float arithmetic (`hr * 1.0f64`, the labeled Float64 tier) meets
   on the float carrier when exactly one operand is `Float64` and the other is
-  `Int`/`ExactInt`/`Rat`: the exact operand widens through the as-f64 coercion
-  (`numerator as f64 / denominator as f64`, the ratio carrier is normalized).
+  `Int`/`ExactInt`/`Rat`: the exact operand widens by one rounding to the
+  nearest binary64 (`emath_rt::exact_ratio_f64`, the VM's own conversion).
   Pure int/int, rat/rat, and float/float pairs keep their own lanes.
 - An exact-integer machine operand over a `Rat`-kinded register (an `Int` datum
   routed through a Rat-declared record field, which projects the layout's ratio

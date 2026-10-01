@@ -2840,6 +2840,29 @@ fn emission_conformance_surfaces() {
     );
 }
 
+/// A Rat widening to Float64 rounds its exact value once, as the VM
+/// does; widening numerator and denominator separately double-rounds.
+const RATIO_WIDEN_DRIVER: &str = r#"
+use ratio_widen::widen;
+
+fn main() {
+    // VM: emath run ratio_widen.emath --set r=1/9007199254740995
+    let got = widen((1, 9007199254740995));
+    if !matches!(&got, Ok(v) if *v == 1.1102230246251562e-16) {
+        println!("DIFF widen EMITTED {:?}; VM = 1.1102230246251562e-16", got);
+        println!("SUMMARY 1 conformance diffs");
+        std::process::exit(1);
+    }
+    println!("SUMMARY all ratio_widen pins conform");
+}
+"#;
+
+#[test]
+fn emission_conformance_ratio_widen() {
+    let diffs = run_lane("tests/fixtures/constructor/ratio_widen.emath", RATIO_WIDEN_DRIVER);
+    assert!(diffs.is_empty(), "emitted widen disagrees with the VM on:\n{}", diffs.join("\n"));
+}
+
 /// Oscillations seam pin: the generic self-recursion instantiation
 /// (tabulate_at at an `Int -> sequence(Rat)` closure — the CallSelf
 /// result kind mirrors the render's crossing decision) through the

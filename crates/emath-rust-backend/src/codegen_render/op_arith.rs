@@ -141,11 +141,10 @@ pub(super) fn op_arith_exprs(
         }
         // Mixed Rational/Float64 (and Int/Float64) arithmetic - the
         // labeled Float64 tier (`hr * 1.0f64`): the exact operand
-        // widens through the same as-f64 coercion the VM's
-        // Rat-to-Float / Int-to-Float join uses (`numerator as f64 /
-        // denominator as f64`, the ratio carrier is normalized so the
-        // denominator is positive); the float operand locks the
-        // carrier and the result stays F64.
+        // widens through the same single rounding the VM's
+        // Rat-to-Float join uses (`exact_ratio_f64`: nearest binary64,
+        // ties to even, so wide i128 ratios do not double-round); the
+        // float operand locks the carrier and the result stays F64.
         let float_of = |value: EmirValue| -> Option<Expr> {
             match kind_at(kinds, value) {
                 ValueKind::F64 => Some(operand(program, value)),
@@ -156,7 +155,7 @@ pub(super) fn op_arith_exprs(
                 ValueKind::Rational => {
                     let ratio = render_expr(&operand(program, value));
                     Some(Expr::Raw(format!(
-                        "(((({ratio}).0) as f64) / ((({ratio}).1) as f64))"
+                        "emath_rt::exact_ratio_f64(&emath_rt::ExactInt::from(({ratio}).0), &emath_rt::ExactInt::from(({ratio}).1))"
                     )))
                 }
                 _ => None,

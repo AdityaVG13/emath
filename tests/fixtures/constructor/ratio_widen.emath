@@ -1,0 +1,10 @@
+# A Rat meets a Float64 by rounding its exact value once. The ratio
+# 1 / (2^53 + 3) double-rounds when each side widens on its own.
+
+emath function widen:
+    inputs:
+        r: Rat
+    outputs:
+        result: Float64
+    definitions:
+        result = r * 1.0

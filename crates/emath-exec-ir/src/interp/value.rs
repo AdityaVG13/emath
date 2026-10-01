@@ -322,7 +322,7 @@ impl Value {
             Self::F64(v) => Some(*v),
             Self::I64(v) => Some(*v as f64),
             Self::ExactInt(v) => Some(v.to_f64()),
-            Self::ExactRat { num, den } => Some(num.to_f64() / den.to_f64()),
+            Self::ExactRat { num, den } => Some(crate::exact_int::exact_ratio_f64(num, den)),
             _ => None,
         }
     }

@@ -15,7 +15,7 @@ include!("body/exact.rs");
 pub mod exact_int {
     include!("body/exact_int.rs");
 }
-pub use exact_int::{ExactError, ExactInt, exact_int_prod, exact_int_sum, exact_ratio};
+pub use exact_int::{ExactError, ExactInt, exact_int_prod, exact_int_sum, exact_ratio, exact_ratio_f64};
 pub mod code {
     include!("body/code.rs");
 }

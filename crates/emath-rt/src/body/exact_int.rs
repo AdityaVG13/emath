@@ -188,31 +188,23 @@ impl ExactInt {
         self.to_i128().and_then(|n| i64::try_from(n).ok())
     }
 
+    /// Significant bits of the magnitude (0 for zero).
+    pub fn bit_len(&self) -> usize {
+        match self {
+            Self::Small(n) => 128 - n.unsigned_abs().leading_zeros() as usize,
+            Self::Big { limbs, .. } => limb_bits(limbs),
+        }
+    }
+
     pub fn to_usize(&self) -> Option<usize> {
         self.to_i128().and_then(|n| usize::try_from(n).ok())
     }
 
     pub fn to_f64(&self) -> f64 {
         match self {
+            // Integer-to-float `as` rounds to nearest, ties to even.
             Self::Small(n) => *n as f64,
-            Self::Big { neg, limbs } => {
-                let bits = limb_bits(limbs);
-                if bits == 0 {
-                    return 0.0;
-                }
-                if bits > 1023 {
-                    return if *neg {
-                        f64::NEG_INFINITY
-                    } else {
-                        f64::INFINITY
-                    };
-                }
-                let mut acc = 0.0f64;
-                for (i, limb) in limbs.iter().enumerate() {
-                    acc += f64::from(*limb) * 2.0f64.powi((i as i32) * 32);
-                }
-                if *neg { -acc } else { acc }
-            }
+            Self::Big { .. } => exact_ratio_f64(self, &Self::one()),
         }
     }
 
@@ -440,6 +432,77 @@ pub fn exact_ratio(num: ExactInt, den: ExactInt) -> Result<(ExactInt, ExactInt),
         d = d.checked_neg()?;
     }
     Ok((n, d))
+}
+
+/// `num / den` rounded once to the nearest binary64, ties to even
+/// (overflow to infinity, gradual underflow, `den == 0` gives NaN).
+/// Dividing two separately converted halves overflows for operands past
+/// 2^1024 and double-rounds for operands past 2^53.
+pub fn exact_ratio_f64(num: &ExactInt, den: &ExactInt) -> f64 {
+    if den.is_zero() {
+        return f64::NAN;
+    }
+    if num.is_zero() {
+        return 0.0;
+    }
+    if let (ExactInt::Small(n), ExactInt::Small(d)) = (num, den) {
+        const EXACT: u128 = 1 << 53;
+        if n.unsigned_abs() <= EXACT && d.unsigned_abs() <= EXACT {
+            // Both operands are exact binary64 values; IEEE division
+            // rounds the quotient once.
+            return *n as f64 / *d as f64;
+        }
+    }
+    let negative = num.is_negative() != den.is_negative();
+    let a = num.abs();
+    let b = den.abs();
+    let shift = |x: &ExactInt, k: i64| {
+        x.mul(&ExactInt::Small(2).pow(&ExactInt::from(k)).expect("shift fits"))
+            .expect("shift fits")
+    };
+    // Scale so the integer quotient carries 55 or 56 significant bits:
+    // q = floor(a * 2^s / b), the value is (q + rest) * 2^-s.
+    let s = 55 - (a.bit_len() as i64 - b.bit_len() as i64);
+    let (scaled_a, scaled_b) = if s >= 0 { (shift(&a, s), b) } else { (a, shift(&b, -s)) };
+    let (q, r) = scaled_a.div_rem(&scaled_b).expect("nonzero divisor");
+    let q = q.to_i128().expect("quotient has at most 56 bits") as u128;
+    let sticky = !r.is_zero();
+    let q_bits = 128 - i64::from(q.leading_zeros());
+    // The value lies in [2^k, 2^(k+1)); binary64 keeps 53 bits from
+    // 2^-1022 up and a fixed 2^-1074 quantum below it.
+    let k = q_bits - 1 - s;
+    if k > 1023 {
+        return if negative { f64::NEG_INFINITY } else { f64::INFINITY };
+    }
+    let precision = if k >= -1022 { 53 } else { 53 - (-1022 - k) };
+    let drop = q_bits - precision;
+    let m = if drop <= 0 {
+        q << (-drop)
+    } else if drop >= 128 {
+        // Below half the smallest subnormal.
+        0
+    } else {
+        let kept = q >> drop;
+        let half = 1u128 << (drop - 1);
+        let rest = q & ((1u128 << drop) - 1);
+        let up = rest > half || (rest == half && (sticky || kept & 1 == 1));
+        kept + u128::from(up)
+    };
+    let mut x = m as f64;
+    // m * 2^e is representable (or overflows to infinity), so scaling by
+    // exact powers of two in bounded steps adds no rounding.
+    let mut e = drop - s;
+    while e > 0 {
+        let step = e.min(1000);
+        x *= f64::from_bits(((step + 1023) as u64) << 52);
+        e -= step;
+    }
+    while e < 0 {
+        let step = (-e).min(1000);
+        x *= f64::from_bits(((1023 - step) as u64) << 52);
+        e += step;
+    }
+    if negative { -x } else { x }
 }
 
 pub fn exact_int_sum(items: &[ExactInt]) -> Result<ExactInt, ExactError> {

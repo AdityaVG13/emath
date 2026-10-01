@@ -282,7 +282,7 @@ pub(super) fn float_of(value: &CValue) -> Result<f64, ConstructorError> {
     match value {
         CValue::Float64(x) => Ok(*x),
         CValue::Int(n) => Ok(n.to_f64()),
-        CValue::Rat { num, den } => Ok(num.to_f64() / den.to_f64()),
+        CValue::Rat { num, den } => Ok(crate::exact_int::exact_ratio_f64(num, den)),
         other => Err(fault("type", format!("not Float64: {other}"))),
     }
 }

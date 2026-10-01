@@ -408,6 +408,16 @@ fn compare_cmd() {
     assert!(code == Some(0) && text.trim() == "[exact, float64]", "{code:?} {text}");
     let (code, text) = run(&["--worlds", "exact,float65"]);
     assert!(code != Some(0) && text.contains("float65"), "{code:?} {text}");
+    // A Rat past binary64 range on both sides still widens to its value.
+    let out = Command::new(emath_bin())
+        .arg("run")
+        .arg(workspace().join("tests/fixtures/compare/worlds.emath"))
+        .args(["--function", "huge_ratio", "--set", "n=400"])
+        .env("EMATH_ROOT", workspace())
+        .output()
+        .expect("run emath run");
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    assert!(out.status.code() == Some(0) && text.trim() == "3", "{text}");
 }
 
 /// The values of input `name` at the divergent points, in grid order.

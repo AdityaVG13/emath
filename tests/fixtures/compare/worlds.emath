@@ -124,3 +124,14 @@ emath function configured:
         result: sequence(Str)
     definitions:
         result = quote.worlds()
+
+# A ratio whose numerator and denominator are far past binary64 range
+# still widens to Float64 as its value: (3 * 10^n + 1) / 10^n is 3.
+emath function huge_ratio:
+    inputs:
+        n: Int
+    outputs:
+        result: Float64
+    definitions:
+        big = int_pow(10, n)
+        result = (3 * big + 1) / big * 1.0

@@ -64,7 +64,7 @@ pub(super) fn enclose_rational(
         num: num.clone(),
         den: den.clone(),
     };
-    let x = num.to_f64() / den.to_f64();
+    let x = crate::exact_int::exact_ratio_f64(num, den);
     if !x.is_finite() {
         return Err(fault(
             "non_finite_scalar",
@@ -72,7 +72,7 @@ pub(super) fn enclose_rational(
         ));
     }
     let order = |y: f64| cmp_numeric(&exact, &CValue::Float64(y));
-    // `x` is within a few ulps of the exact value: walk to the floats
+    // `x` is the nearest binary64 to the exact value: walk to the floats
     // that bracket it.
     let mut lo = x;
     while order(lo)?.is_lt() {

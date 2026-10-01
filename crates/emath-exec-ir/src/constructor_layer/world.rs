@@ -126,7 +126,7 @@ impl CarrierWorld {
     /// exactly on a midpoint of the narrow format, the exact value
     /// decides the side, so the result is the correctly rounded one.
     pub(super) fn round_rational(self, num: &ExactInt, den: &ExactInt) -> f64 {
-        let mut x = num.to_f64() / den.to_f64();
+        let mut x = crate::exact_int::exact_ratio_f64(num, den);
         if let Some((precision, emin, _)) = self.narrow_format() {
             if x != 0.0 && x.is_finite() && (x / quantum(x, precision, emin)).fract().abs() == 0.5 {
                 let exact = CValue::Rat {
@@ -520,7 +520,7 @@ pub fn answer_gap(left: &CValue, right: &CValue) -> Option<f64> {
     let (rn, rd) = exact(right)?;
     let num = ln.mul(&rd).ok()?.sub(&rn.mul(&ld).ok()?).ok()?;
     let den = ld.mul(&rd).ok()?;
-    let gap = num.to_f64() / den.to_f64();
+    let gap = crate::exact_int::exact_ratio_f64(&num, &den);
     if gap.is_finite() {
         Some(gap)
     } else {
