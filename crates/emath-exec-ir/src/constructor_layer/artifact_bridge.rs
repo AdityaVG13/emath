@@ -7,7 +7,9 @@
 //!
 //! The crossing covers the declared carriers an entry signature can name
 //! natively: `Int` (`i64`), `Rat` (`(i128, i128)`), `Bool`, `Float64`,
-//! `Str`, and sequences (a native tuple is a sequence). A value that does not fit its native
+//! `Str`, sequences (a native tuple is a sequence), and authored objects
+//! whose fields cross (the artifact implements the traits for their
+//! record structs). A value that does not fit its native
 //! carrier refuses by name (`type: ...`), never truncates.
 
 use std::cell::RefCell;
@@ -155,6 +157,20 @@ impl<T: FromCValue> FromCValue for Vec<T> {
             CValue::Tuple(items) => items.iter().map(T::from_cvalue).collect(),
             other => mismatch("sequence", other),
         }
+    }
+}
+
+/// An authored object value, built field by field by the artifact's
+/// generated `ToCValue` impl for its record struct.
+pub fn record(type_name: &str, fields: Vec<(&str, CValue)>) -> CValue {
+    CValue::Record {
+        type_name: Arc::from(type_name),
+        fields: Arc::new(
+            fields
+                .into_iter()
+                .map(|(name, value)| (name.to_string(), value))
+                .collect(),
+        ),
     }
 }
 

@@ -2943,7 +2943,8 @@ fn emission_conformance_quote_cost() {
 }
 
 const ENGINE_WORLDS_DRIVER: &str = r#"
-use engine_worlds::{configured, disagreements, inner_fault, judge, narrowed};
+use engine_worlds::{configured, disagreements, first_done, inner_fault, judge, narrowed, new_work, probe, probe_work};
+use engine_worlds::{EmathRecord_Probe as Probe, EmathRecord_Verdict as Verdict};
 
 fn main() {
     let mut failures = 0usize;
@@ -2963,6 +2964,26 @@ fn main() {
     if disagreements(10) != Ok(2) {
         failures += 1;
         println!("DIFF disagreements EMITTED {:?}; VM = 2", disagreements(10));
+    }
+    // Authored objects cross both ways, alone and inside a sequence.
+    let p = |limit| Probe { world: "float64".into(), at: (1, 3), limit };
+    let want_done = Verdict { world: "float64".into(), done: true, work: 9 };
+    if probe(p(1000)) != Ok(want_done.clone()) {
+        failures += 1;
+        println!("DIFF probe EMITTED {:?}; VM = float64 true 9", probe(p(1000)));
+    }
+    let stopped = Verdict { world: "float64".into(), done: false, work: 2 };
+    if first_done(vec![p(2), p(1000)]) != Ok(stopped) {
+        failures += 1;
+        println!("DIFF first_done EMITTED {:?}; VM = float64 false 2", first_done(vec![p(2)]));
+    }
+    if new_work(p(1000)) != Ok(0) || new_work(p(2)) != Ok(2) {
+        failures += 1;
+        println!("DIFF new_work EMITTED {:?} {:?}; VM = 0 2", new_work(p(1000)), new_work(p(2)));
+    }
+    if probe_work(1000) != Ok(9) {
+        failures += 1;
+        println!("DIFF probe_work EMITTED {:?}; VM = 9", probe_work(1000));
     }
     let want = std::env::var("EXPECT_WORLDS")
         .unwrap_or_else(|_| "reference,exact,float64,float32,bfloat16,int64,interval".into());

@@ -604,13 +604,52 @@ pub fn emit_constructor_crate(
                     .collect::<Vec<_>>()
                     .join(", ");
                 rust.push_str(&format!(
-                    "static __EMATH_SOURCE: &str = {source:?};
-static __EMATH_SOURCE_PATH: &str = {:?};
-static __EMATH_WORLDS: &[&str] = &[{worlds}];
-
-",
+                    "static __EMATH_SOURCE: &str = {source:?};\nstatic __EMATH_SOURCE_PATH: &str = {:?};\nstatic __EMATH_WORLDS: &[&str] = &[{worlds}];\n\n",
                     path.display().to_string()
                 ));
+                // Authored objects cross the engine boundary through
+                // the bridge traits, implemented here for every record
+                // struct whose fields all cross.
+                const BRIDGE: &str = "emath_exec_ir::constructor_layer::artifact_bridge";
+                let _layouts = crate::codegen_render::AuthoredRecordScope::enter(
+                    records
+                        .iter()
+                        .map(|record| (record.name.clone(), record.fields.clone()))
+                        .collect(),
+                );
+                for record in &records {
+                    let kind = ValueKind::Record(record.name.clone());
+                    if !crate::codegen_render::engine_crosses(&kind) {
+                        continue;
+                    }
+                    let ident = crate::codegen_render::record_ident(&record.name);
+                    let to_fields = record
+                        .fields
+                        .iter()
+                        .map(|(field, _)| {
+                            format!(
+                                "({field:?}, {BRIDGE}::ToCValue::to_cvalue(&self.{}))",
+                                crate::rust_ir::ast::escape_ident(field)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let from_fields = record
+                        .fields
+                        .iter()
+                        .map(|(field, _)| {
+                            format!(
+                                "{}: {BRIDGE}::field(value, {field:?})?",
+                                crate::rust_ir::ast::escape_ident(field)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    rust.push_str(&format!(
+                        "impl {BRIDGE}::ToCValue for EmathRecord_{ident} {{\n    fn to_cvalue(&self) -> emath_exec_ir::constructor_layer::CValue {{\n        {BRIDGE}::record({:?}, vec![{to_fields}])\n    }}\n}}\n\nimpl {BRIDGE}::FromCValue for EmathRecord_{ident} {{\n    fn from_cvalue(value: &emath_exec_ir::constructor_layer::CValue) -> Result<Self, String> {{\n        Ok(EmathRecord_{ident} {{ {from_fields} }})\n    }}\n}}\n\n",
+                        record.name
+                    ));
+                }
                 let engine = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../emath-exec-ir");
                 let engine = std::fs::canonicalize(&engine).unwrap_or(engine);

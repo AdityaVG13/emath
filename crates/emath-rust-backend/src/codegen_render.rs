@@ -96,6 +96,31 @@ pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
     }
 }
 
+/// Whether a value of this kind crosses into and out of the reference
+/// engine an artifact links (`artifact_bridge`). An authored record
+/// crosses when every field does; the constructor crate then emits the
+/// bridge impls for its struct. A self-referencing layout stops at the
+/// depth bound and does not cross.
+pub(crate) fn engine_crosses(kind: &ValueKind) -> bool {
+    fn crosses(kind: &ValueKind, depth: usize) -> bool {
+        match kind {
+            ValueKind::I64
+            | ValueKind::Rational
+            | ValueKind::Bool
+            | ValueKind::F64
+            | ValueKind::Text => true,
+            ValueKind::Vector(element) => crosses(element, depth),
+            ValueKind::Record(name) if depth < 8 => record_layout(name).is_some_and(|layout| {
+                layout
+                    .iter()
+                    .all(|(_, signature)| crosses(&ValueKind::from_signature(signature), depth + 1))
+            }),
+            _ => false,
+        }
+    }
+    crosses(kind, 0)
+}
+
 /// The node-record family is closed under sequences: a family-joinable
 /// element, or a nested sequence of one, folds inductively (the walk's
 /// lists of all-made argument lists are `sequence(sequence(Code))`).
@@ -1700,17 +1725,7 @@ pub(crate) fn op_expr(
             // The artifact runs this function in the reference engine:
             // the crate links `emath-exec-ir` and embeds the module
             // source (see `constructor_crate`).
-            fn crosses(kind: &ValueKind) -> bool {
-                match kind {
-                    ValueKind::I64
-                    | ValueKind::Rational
-                    | ValueKind::Bool
-                    | ValueKind::F64
-                    | ValueKind::Text => true,
-                    ValueKind::Vector(element) => crosses(element),
-                    _ => false,
-                }
-            }
+            let crosses = engine_crosses;
             const BRIDGE: &str = "emath_exec_ir::constructor_layer::artifact_bridge";
             let mut args = Vec::with_capacity(inputs.len());
             for (input, value) in inputs {
@@ -1735,20 +1750,7 @@ pub(crate) fn op_expr(
                     "`{function}` runs in the reference engine; its declared result `{result}` does not cross back"
                 ))
             };
-            let read = if let ValueKind::Record(name) = &kind {
-                let layout = record_layout(name).ok_or_else(refuse)?;
-                let mut fields = Vec::with_capacity(layout.len());
-                for (field, signature) in &layout {
-                    if !crosses(&ValueKind::from_signature(signature)) {
-                        return Err(refuse());
-                    }
-                    fields.push(format!(
-                        "{}: {BRIDGE}::field(&__answer, {field:?})?",
-                        escape_ident(field)
-                    ));
-                }
-                format!("EmathRecord_{} {{ {} }}", record_ident(name), fields.join(", "))
-            } else if crosses(&kind) {
+            let read = if crosses(&kind) {
                 let ty = kind.rust_ty().map_err(|_| refuse())?;
                 format!(
                     "{BRIDGE}::read::<{}>(&__answer)?",

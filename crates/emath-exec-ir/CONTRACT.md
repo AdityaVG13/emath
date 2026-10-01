@@ -32,8 +32,9 @@ non-scalar call is free under the all-calls memo), which is why
 
 `constructor_layer::artifact_bridge` is the seam a built artifact links
 to run one function in this engine (`run_entry`, with the
-`ToCValue`/`FromCValue` crossings for Int, Rat, Bool, Float64, Str, and
-sequences). `emath build` routes a function using `quote.cost`,
+`ToCValue`/`FromCValue` crossings for Int, Rat, Bool, Float64, Str,
+sequences, and authored objects - the artifact implements the traits
+for each record struct whose fields cross, through `record`/`field`). `emath build` routes a function using `quote.cost`,
 `quote.world`, or `quote.worlds` through it, so artifact answers and work
 counts are this engine's; a value that does not fit its native carrier
 refuses by name.
