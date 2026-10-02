@@ -33,13 +33,27 @@ pub struct ModuleExport {
 }
 
 impl ModuleExport {
-    /// Case-insensitive match on name, import path, or summary.
+    /// Relevance to a search, or `None` when it does not match. Every
+    /// whitespace-separated word must occur (case-insensitive) in the
+    /// name, import path, or summary; a word in the name scores 4, in
+    /// the import path 2, in the summary 1, so a tool named for the
+    /// word outranks one that only mentions it. The empty search
+    /// matches everything with score 0.
     #[must_use]
-    pub fn matches(&self, search: &str) -> bool {
-        let needle = search.to_lowercase();
-        [&self.name, &self.module, &self.summary]
-            .iter()
-            .any(|text| text.to_lowercase().contains(&needle))
+    pub fn rank(&self, search: &str) -> Option<u32> {
+        let fields = [
+            (self.name.to_lowercase(), 4),
+            (self.module.to_lowercase(), 2),
+            (self.summary.to_lowercase(), 1),
+        ];
+        search.to_lowercase().split_whitespace().try_fold(0, |total, word| {
+            let score: u32 = fields
+                .iter()
+                .filter(|(text, _)| text.contains(word))
+                .map(|(_, weight)| weight)
+                .sum();
+            (score > 0).then_some(total + score)
+        })
     }
 }
 

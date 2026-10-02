@@ -316,10 +316,13 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
         features.push(row.finish());
     }
     let roots = emath_exec_ir::constructor_layer::module_roots_for(request.source.as_deref());
-    let module_matches: Vec<_> = emath_exec_ir::module_index::module_exports(&roots)
+    let mut ranked: Vec<_> = emath_exec_ir::module_index::module_exports(&roots)
         .into_iter()
-        .filter(|export| export.matches(&request.search))
+        .filter_map(|export| export.rank(&request.search).map(|rank| (rank, export)))
         .collect();
+    // Stable: equal ranks keep root and path order, so paging is deterministic.
+    ranked.sort_by_key(|(rank, _)| std::cmp::Reverse(*rank));
+    let module_matches: Vec<_> = ranked.into_iter().map(|(_, export)| export).collect();
     let mut module_rows = Vec::new();
     for export in module_matches.iter().skip(request.offset).take(request.limit) {
         let mut row = emath_artifact::JsonWriter::object();

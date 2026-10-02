@@ -44,7 +44,16 @@ emath function hidden_probe:
         result = n
 ";
 
-const DOMAIN: &str = "exports: env_domain_marker
+const DOMAIN: &str = "exports: env_domain_marker, double_marker
+
+emath function double_marker:
+    # Marker whose name carries the word.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n
 
 emath function env_domain_marker:
     # Domain marker for the api index.
@@ -148,6 +157,18 @@ fn api_indexes_module_exports() {
             field(marker, "signature"),
             "env_domain_marker(n: Int, m: Int) -> (q: Int, r: Int)".to_string(),
         );
+    });
+
+    p.case("every-word-must-match-anywhere", |p| {
+        let rows = api(&root, "halve rational");
+        p.demand("words split", named(&rows, "halve_probe").is_some(), "halve in name, rational in summary");
+        p.demand("all words required", named(&rows, "twice_probe").is_none(), "twice_probe lacks halve");
+    });
+
+    p.case("name-matches-rank-before-summary-matches", |p| {
+        let rows = api(&root, "double");
+        let order: Vec<String> = rows.iter().map(|row| field(Some(row), "name")).collect();
+        p.eq("order", order, vec!["double_marker".to_string(), "twice_probe".to_string()]);
     });
 
     let _ = std::fs::remove_dir_all(&root);

@@ -213,7 +213,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
     let resolved = resolve_alias(command).unwrap_or(command);
     Some(match resolved {
         "api" => {
-            "discover commands, source syntax, active Language Image features, and module exports (name, import path, signature, summary, file:line; --search matches name, module, or summary); executable status comes from installed reference/native implementations"
+            "discover commands, source syntax, active Language Image features, and module exports (name, import path, signature, summary, file:line; --search needs every word in the name, module, or summary and lists name matches first); executable status comes from installed reference/native implementations"
         }
         "check" => {
             "parse + admit, no codegen; `-` reads source from stdin (pipelines); `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission"
