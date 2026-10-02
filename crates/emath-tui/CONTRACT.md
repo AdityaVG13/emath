@@ -281,7 +281,7 @@ adds no loop policy and the viewer computes no mathematics.
   `<run>/world/kept.emath` (beside the level sources, so it can `use`
   their local modules) (exec-ir `place_definition`, replacing an
   earlier definition of the name, with the `use` lines `needed_uses`
-  finds in the level source and the item's `note` in the summary line;
+  finds from the level source's imports, transitively and the item's `note` in the summary line;
   a library that would not load faults before it is written) and
   journaled as `kept {batch, name, content, file}`. A loop that
   improves a program under one name thus keeps its best. Resume

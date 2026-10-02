@@ -91,6 +91,30 @@ fn keep_cmd() {
     .expect("write cat_uses");
     let (text, code) = emath(&dir, &["test", "cat_uses.emath"]);
     probe.demand("kept-library-admits", code == EXIT_OK as i32, format!("exit {code}\n{text}"));
+    // A program built inside an imported module may call what that
+    // module imports; the library needs that `use` although the keeping
+    // file never wrote it.
+    std::fs::write(
+        dir.join("builder.emath"),
+        "exports: Squarer\n\nuse analysis.powers\n\nemath function Squarer:\n    inputs:\n        unused: Int\n    outputs:\n        result: Code\n    definitions:\n        result = quote(recur f in Rat -> Rat: function x in Rat: rat_pow(x, 2))\n",
+    )
+    .expect("write builder");
+    std::fs::write(
+        dir.join("built.emath"),
+        "use builder\n\nemath function Built:\n    inputs:\n        unused: Int\n    outputs:\n        result: Code\n    definitions:\n        result = Squarer(0)\n",
+    )
+    .expect("write built");
+    let (text, code) = emath(
+        &dir,
+        &["keep", "built.emath", "--function", "Built", "--name", "square", "--to", "lib/square.emath", "--set", "unused=0"],
+    );
+    let square = std::fs::read_to_string(dir.join("lib/square.emath")).unwrap_or_default();
+    let (check, checked) = emath(&dir, &["check", "lib/square.emath"]);
+    probe.demand(
+        "keep-carries-transitive-use",
+        code == EXIT_OK as i32 && square.lines().any(|l| l == "use analysis.powers") && !square.contains("use builder") && checked == EXIT_OK as i32,
+        format!("exit {code}\n{text}\n{square}\ncheck exit {checked}\n{check}"),
+    );
     // Kept under a name its own `use` exports, the library would not
     // load: refused before anything is written.
     let (text, code) = emath(

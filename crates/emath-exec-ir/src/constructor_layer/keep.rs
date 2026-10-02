@@ -6,8 +6,8 @@
 //! definition takes `x: A`, returns `result: B`, and every free `f` in
 //! the body becomes a call to the definition's own name.
 
-use std::collections::BTreeSet;
-use std::path::Path;
+use std::collections::{BTreeSet, VecDeque};
+use std::path::{Path, PathBuf};
 
 use super::expr::{path_expr, substitute_path};
 use super::identity::mentioned_names;
@@ -91,8 +91,9 @@ fn same_file(a: &Path, b: &Path) -> bool {
 }
 
 /// The `use` lines the library at `library` needs for `program`: each
-/// `use` of the `source` file whose module exports a name the program
-/// calls, spelled as the library must write it (a shipped module keeps
+/// module the `source` file imports, directly or through its imports,
+/// that is the nearest to export a name the program calls, spelled as
+/// the library must write it (a shipped module keeps
 /// its path; a local file is spelled relative to the library's
 /// directory). The library itself is never imported; a local module
 /// outside the library's directory refuses `E-KEEP-USE`.
@@ -110,14 +111,31 @@ pub fn needed_uses(program: &CValue, source: &Path, library: &Path) -> Result<Ve
     let tree = read(source)?;
     let roots = module_roots_for(Some(source));
     let library_dir = library.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let imports_of = |tree: &emath_core::tree::SyntaxTree, from: &Path| -> Result<Vec<(Vec<String>, PathBuf)>, ConstructorError> {
+        tree.items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Use { path, .. } => Some(path),
+                _ => None,
+            })
+            .map(|path| Ok((path.clone(), resolve_import(path, &roots, Some(from), package_of(tree))?)))
+            .collect()
+    };
+    // Breadth first from the source's own imports: a program built
+    // inside an imported module can call what that module imports, and
+    // the nearest module exporting a name is the one in scope.
+    let mut queue: VecDeque<(Vec<String>, PathBuf)> = imports_of(&tree, source)?.into();
+    let mut seen: Vec<PathBuf> = Vec::new();
+    let mut covered: BTreeSet<String> = BTreeSet::new();
     let mut uses = Vec::new();
-    for item in &tree.items {
-        let Item::Use { path, .. } = item else { continue };
-        let file = resolve_import(path, &roots, Some(source), package_of(&tree))?;
-        if same_file(&file, library) {
+    while let Some((path, file)) = queue.pop_front() {
+        let path = &path;
+        if same_file(&file, library) || seen.iter().any(|s| same_file(s, &file)) {
             continue;
         }
+        seen.push(file.clone());
         let module = read(&file)?;
+        queue.extend(imports_of(&module, &file)?);
         let exports: Vec<&String> = module
             .items
             .iter()
@@ -144,9 +162,15 @@ pub fn needed_uses(program: &CValue, source: &Path, library: &Path) -> Result<Ve
                 }));
             }
         }
-        if !exports.iter().any(|name| mentioned.contains(name.as_str())) {
+        let provides: Vec<String> = exports
+            .iter()
+            .filter(|name| mentioned.contains(name.as_str()) && !covered.contains(name.as_str()))
+            .map(|name| name.to_string())
+            .collect();
+        if provides.is_empty() {
             continue;
         }
+        covered.extend(provides);
         let spelled = if resolve_module_path(path, &roots).is_ok() {
             path.join(".")
         } else {
