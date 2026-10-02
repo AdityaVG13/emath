@@ -5,9 +5,9 @@
 //!   semantic VM through `genesis_cmd::analyze` + `emath_genesis::run`
 //!   under `--world` (default `free_symbolic`).
 //! - Standard function-spec `.emath` files execute an admitted `emath
-//!   function` declaration through the GENERIC stack — sema admission,
+//!   function` declaration through the GENERIC stack (sema admission,
 //!   `definition_order` / `lower_definition` EMIR lowering, reference-VM
-//!   evaluation — and return a deterministic `emath.eval-function`
+//!   evaluation) and return a deterministic `emath.eval-function`
 //!   receipt (or a typed E-EVAL-* refusal). No genesis-only fallback, no
 //!   second evaluator, no domain branch.
 

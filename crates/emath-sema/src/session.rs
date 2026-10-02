@@ -178,13 +178,13 @@ impl CompilerSession {
     }
 
     /// `check` over a multi-file package: the main file's in-package
-    /// module imports — `use <package>.<module>` where the path prefix
-    /// matches the file's own `package` line — resolve against the
+    /// module imports (`use <package>.<module>` where the path prefix
+    /// matches the file's own `package` line) resolve against the
     /// session's loaded `<module>.emath` sources, the siblings'
     /// declarations merge under the main file's package identity, and
     /// the merged tree goes through the normal admission lane
     /// (cross-file duplicate names refuse `E-NAME-022` there). An
-    /// unresolved in-package module import refuses `E-PKG-050` — never
+    /// unresolved in-package module import refuses `E-PKG-050`, never
     /// a silent inert entry. Consumed in-package `use` items are
     /// stripped from the merged tree so admission does not re-resolve
     /// them from disk. The plain single-file [`Self::check`]
@@ -229,7 +229,7 @@ impl CompilerSession {
         let mut pre_diagnostics = Diagnostics::new();
         // In-package `use` items are this lane's authority: each either
         // merges its sibling's declarations or refuses `E-PKG-050`, and
-        // the item is consumed rather than kept in the merged tree —
+        // the item is consumed rather than kept in the merged tree:
         // the constructor admission must not re-resolve it from disk
         // (the session store, not the filesystem, is the source of
         // truth for this lane).

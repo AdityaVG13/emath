@@ -358,7 +358,7 @@ pub fn infer_signature_named(
 
     let mut signature = Signature::default();
     for (symbol, arity) in &arities {
-        // ubs:ignore — insert keys come from a BTreeMap, so arity conflicts are impossible.
+        // ubs:ignore, insert keys come from a BTreeMap, so arity conflicts are impossible.
         let _ = signature.insert(symbol.clone(), *arity);
     }
     // Deterministic fixity-hypothesis priority: infix > prefix > postfix >

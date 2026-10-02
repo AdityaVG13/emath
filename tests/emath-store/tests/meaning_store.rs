@@ -1,4 +1,4 @@
-//! — CAPSTONE: the executable identity gate.
+//! CAPSTONE: the executable identity gate.
 
 use emath_core::{MeaningId, SourceId};
 use emath_store::EvidencePlane;

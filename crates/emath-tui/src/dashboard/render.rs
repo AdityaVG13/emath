@@ -348,7 +348,7 @@ fn tile(
 }
 
 fn measure(value: Option<String>) -> (String, Tok, bool) {
-    (value.unwrap_or_else(|| "—".into()), Tok::Dim, false)
+    (value.unwrap_or_else(|| "-".into()), Tok::Dim, false)
 }
 
 fn kpi_strip(c: &mut Canvas, model: &RunModel, ctx: &Ctx) {
@@ -434,7 +434,7 @@ fn kpi_strip(c: &mut Canvas, model: &RunModel, ctx: &Ctx) {
             ],
             vec![(format!("#{k}"), Tok::Accent, true)],
         ),
-        _ => (vec![("—".to_string(), Tok::Dim, false)], Vec::new()),
+        _ => (vec![("-".to_string(), Tok::Dim, false)], Vec::new()),
     };
     tile(c, rects[2], "INCUMBENT", gain, &left, &right);
     let pct = (used.max(0) as f64 / wm as f64 * 100.0).round() as i64;
@@ -462,7 +462,7 @@ fn kpi_strip(c: &mut Canvas, model: &RunModel, ctx: &Ctx) {
             "THROUGHPUT",
             None,
             &[measure(bps)],
-            &[("cache —".to_string(), Tok::Dim, false)],
+            &[("cache -".to_string(), Tok::Dim, false)],
         );
     }
     if count >= 6 {
@@ -472,7 +472,7 @@ fn kpi_strip(c: &mut Canvas, model: &RunModel, ctx: &Ctx) {
             .map(|(b, ids, _)| format!("+{} b{b}", ids.len()));
         let right = match last {
             Some(text) => (text, Tok::Info, false),
-            None => ("—".to_string(), Tok::Dim, false),
+            None => ("-".to_string(), Tok::Dim, false),
         };
         tile(
             c,
@@ -505,7 +505,7 @@ fn panel_subtitle(model: &RunModel, view: &View, panel: PanelId) -> String {
             ids.sort_unstable();
             match (ids.first(), ids.last()) {
                 (Some(a), Some(b)) if a == b => format!("c{a}"),
-                (Some(a), Some(b)) => format!("c{a}–c{b}"),
+                (Some(a), Some(b)) => format!("c{a}-c{b}"),
                 _ => "no cases".into(),
             }
         }
@@ -703,7 +703,7 @@ fn status_bar(
     let journal = format!(" journal #{}", model.last_seq);
     let frame = match ctx.frame_ms {
         Some(ms) => format!("    frame {ms:.1} ms"),
-        None => "    frame —".to_string(),
+        None => "    frame -".to_string(),
     };
     let right_w = 1 + journal.chars().count() as u16 + frame.chars().count() as u16;
     let rx = w.saturating_sub(2 + right_w);
@@ -774,7 +774,7 @@ fn text_mode(c: &mut Canvas, model: &RunModel, ctx: &Ctx) {
                 model.incumbent,
             ) {
                 (Some(s), Some(k)) => format!("incumbent #{k}  {}  {}", dec4(s), rat_text(s)),
-                _ => "incumbent —".to_string(),
+                _ => "incumbent -".to_string(),
             },
             Tok::Good,
         ),
@@ -942,7 +942,7 @@ fn overlay(c: &mut Canvas, hits: &mut Vec<Hit>, model: &RunModel, view: &View, c
             let rect = modal(c, hits, "Keys", 76, 24);
             let content = rect.content();
             let rows: &[(&str, &str)] = &[
-                ("1–4  ← →", "switch tab"),
+                ("1-4  ← →", "switch tab"),
                 ("⇥  ⇧⇥", "focus next / previous panel"),
                 ("⏎  double-click", "expand / close the focused panel"),
                 ("esc", "close overlay or expanded panel"),

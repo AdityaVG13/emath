@@ -12,7 +12,7 @@ TokenKind::Str(_) | TokenKind::Question |
 TokenKind::Keyword(Keyword::True | Keyword::False) | TokenKind::LParen |
 TokenKind::LBracket => self.parse_primary_literal(start, depth),
             TokenKind::Pipe => {
-                // `|0⟩` — a pipe followed by an integer label and
+                // `|0⟩`: a pipe followed by an integer label and
                 // `⟩` is a braket ket (checked BEFORE the table
                 // reading, whose headers are identifiers). Glyphs are
                 // opt-in: unmounted, the refusal names the pack.
@@ -36,7 +36,7 @@ TokenKind::LBracket => self.parse_primary_literal(start, depth),
                         self.error_here("E-SYN-101", "expected `⟩` to close the ket");
                         return None;
                     }
-                    // `|i⟩⟨j|` — the juxtaposed bra is the outer
+                    // `|i⟩⟨j|`: the juxtaposed bra is the outer
                     // product (projector), a constant matrix on the
                     // real 2-level carrier.
                     if matches!(self.peek(), TokenKind::LAngle)
@@ -89,7 +89,7 @@ TokenKind::LBracket => self.parse_primary_literal(start, depth),
                 // `{a, b, c}` set literal, `{n in d if g}`
                 // comprehension, `{}` empty set. Bare `{name: value}`
                 // (record spelling without a path prefix) is ambiguous
-                // between records and sets — refuse E-SYN-154 (one
+                // between records and sets; refuse E-SYN-154 (one
                 // ELP scan covers both `{}` forms).
                 self.advance(); // `{`
                 if self.eat(&TokenKind::RBrace) {
@@ -135,7 +135,7 @@ TokenKind::LBracket => self.parse_primary_literal(start, depth),
                             source: start.cover(self.last_span()),
                         })
                     }
-                    // Comprehension: `{element in domain if guard}` — the
+                    // Comprehension: `{element in domain if guard}`: the
                     // element parse consumed `in` as a membership binary
                     // (single ambiguity scan); brace position re-reads
                     // it as the comprehension binding. A non-membership
@@ -292,7 +292,7 @@ TokenKind::LBracket => self.parse_primary_literal(start, depth),
                 self.parse_match_body(start, Box::new(subject), depth)
             }
             TokenKind::Ident(_) | TokenKind::Keyword(Keyword::SelfKw) => {
-                // `limit x -> 0: f(x)` — contextual keyword for limit
+                // `limit x -> 0: f(x)`, contextual keyword for limit
                 // claim. Activates only when `limit` is followed by an
                 // identifier and then `->`. Otherwise `limit` is a regular
                 // user identifier.
@@ -400,7 +400,7 @@ TokenKind::LBracket => self.parse_primary_literal(start, depth),
                             });
                         }
                     }
-                    // `series n in 0..inf: a[n]` — contextual keyword
+                    // `series n in 0..inf: a[n]`, contextual keyword
                     // for series binder. Activates only when `series` is
                     // followed by an identifier and then `in`.
                     if name == "series"
@@ -448,8 +448,8 @@ TokenKind::LBracket => self.parse_primary_literal(start, depth),
                             source: start.cover(self.last_span()),
                         });
                     }
-                    // `graph { nodes; edges }`
-                    // — contextual only before a brace; `graph` elsewhere
+                    // `graph { nodes; edges }` is
+                    // contextual only before a brace; `graph` elsewhere
                     // is a regular identifier. Desugars to the plain List
                     // shape the graph world consumes (no tree variant):
                     // [nodes…, edges…] with edges
@@ -545,7 +545,7 @@ TokenKind::LBracket => self.parse_primary_literal(start, depth),
                         self.pos = save;
                     }
                 }
-                // `Point:{x: 1.0, y: 2.0}` — path-prefixed braces are an
+                // `Point:{x: 1.0, y: 2.0}`: path-prefixed braces are an
                 // inline record literal. The path prefix is what makes the
                 // brace unambiguous under the one-ELP scan; the bare
                 // form refuses E-SYN-154 in the LBrace arm above.

@@ -1,25 +1,25 @@
 //! Field-pack install tooling: add a toy pack, `use` it, no
 //! core branches.
 //!
-//! This module is the TOOLING half of the field-pack capstone — the
+//! This module is the TOOLING half of the field-pack capstone; the
 //! language kind (`emath field_pack`) is admission; here
 //! an admitted [`emath_ir::FieldPackEntry`] becomes an INSTALLED
 //! artifact:
 //!
 //! 1. **Layout** is a fixed directory set ([`LAYOUT_DIRS`], the
 //!    fixed `pack.emath.toml` + `src/ worlds/ methods/ examples/
-//!    providers/ migrations/` shape). A directory outside the set —
-//!    e.g. a `keywords/` injection — refuses typed; packs cannot add
+//!    providers/ migrations/` shape). A directory outside the set
+//!    (e.g. a `keywords/` injection) refuses typed; packs cannot add
 //!    parser surface through layout.
 //! 2. **Install** resolves the pack's declared exports against the
 //!    EXISTING std cell registry (exact canonical match first, then a
 //!    unique leaf match) and compiles the resolved cells into the
-//!    [`SemanticImage`] — the same data-driven builder, no new core
+//!    [`SemanticImage`]: the same data-driven builder, no new core
 //!    branches, no compiler rebuild. Install never fabricates: an
 //!    export nobody provides refuses typed, and a pack with no
 //!    exportable cells has nothing to install (the image law requires
 //!    non-empty pages).
-//! 3. **Use** — `use <package>.<pack>` resolves against the installed
+//! 3. **Use**: `use <package>.<pack>` resolves against the installed
 //!    pack registry ([`PackRegistry::resolve_use`]); an uninstalled
 //!    path refuses typed. This is the data-level form of the language
 //!    `use` admission.
@@ -46,29 +46,29 @@ pub const LAYOUT_DIRS: &[&str] = &[
 /// Install-tooling refusal. Closed set; every variant names the cause.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PackError {
-    /// `E-PACK-001` — a layout directory outside the closed set.
+    /// `E-PACK-001`: a layout directory outside the closed set.
     UnknownLayoutDir {
         /// The injected directory name.
         dir: String,
     },
-    /// `E-PACK-002` — an export the registry does not provide (install
+    /// `E-PACK-002`: an export the registry does not provide (install
     /// never fabricates a cell).
     UnknownExport {
         /// The unresolvable export name.
         export: String,
     },
-    /// `E-PACK-003` — a `use` path with no installed pack.
+    /// `E-PACK-003`: a `use` path with no installed pack.
     UnknownPack {
         /// The dotted use path.
         use_path: String,
     },
-    /// `E-PACK-004` — an export name matching several registry cells
+    /// `E-PACK-004`: an export name matching several registry cells
     /// (not uniquely resolvable; packs must name cells precisely).
     AmbiguousExport {
         /// The ambiguous export name.
         export: String,
     },
-    /// `E-PACK-005` — the pack exports no cells (a metadata-only pack
+    /// `E-PACK-005`: the pack exports no cells (a metadata-only pack
     /// has nothing installable: the image law requires non-empty pages).
     NothingToInstall {
         /// The pack declaration name.
@@ -96,13 +96,13 @@ impl std::fmt::Display for PackError {
             Self::UnknownLayoutDir { dir } => write!(
                 formatter,
                 "{code}: layout directory `{dir}` is outside the closed field-pack \
-                 layout ({dirs}) — packs cannot add parser surface through layout",
+                 layout ({dirs}); packs cannot add parser surface through layout",
                 code = self.code(),
                 dirs = LAYOUT_DIRS.join(", ")
             ),
             Self::UnknownExport { export } => write!(
                 formatter,
-                "{code}: export `{export}` is not provided by the cell registry — \
+                "{code}: export `{export}` is not provided by the cell registry; \
                  install never fabricates a cell",
                 code = self.code()
             ),
@@ -113,13 +113,13 @@ impl std::fmt::Display for PackError {
             ),
             Self::AmbiguousExport { export } => write!(
                 formatter,
-                "{code}: export `{export}` matches several registry cells — name \
+                "{code}: export `{export}` matches several registry cells; name \
                  the cell precisely",
                 code = self.code()
             ),
             Self::NothingToInstall { pack } => write!(
                 formatter,
-                "{code}: pack `{pack}` exports no cells — nothing installable",
+                "{code}: pack `{pack}` exports no cells; nothing installable",
                 code = self.code()
             ),
         }
@@ -141,7 +141,7 @@ pub fn validate_layout(dirs: &[&str]) -> Result<(), PackError> {
 }
 
 /// One installed field pack: the admitted pack data plus its compiled
-/// semantic image (the `.emlib` shape — self-validating image).
+/// semantic image (the `.emlib` shape: self-validating image).
 #[derive(Clone, Debug)]
 pub struct InstalledPack {
     /// The `package <dotted>` identity the pack was declared under.
@@ -227,7 +227,7 @@ fn install_composing_locked(
     for (export_kind, export) in &entry.exports {
         if export_kind != "cell" {
             // The registry slice installs CELLS; theory/method/world
-            // exports are metadata records for their own epics — listed
+            // exports are metadata records for their own epics, listed
             // verbatim, not compiled.
             continue;
         }

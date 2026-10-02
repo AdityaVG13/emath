@@ -208,7 +208,7 @@ pub enum EmirOp {
 
     /// Universal program-as-value artifact: a nested program literal that
     /// evaluates to [`crate::interp::Value::Program`]. Domain-neutral
-    /// carrier machinery — the literal names no `FeatureID` and dispatches
+    /// carrier machinery: the literal names no `FeatureID` and dispatches
     /// nothing; like any value it can flow into an `ApplyCapability`
     /// argument register.
     /// Evaluate a literal program with explicit typed input and state frames.

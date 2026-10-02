@@ -186,7 +186,7 @@ impl Probe {
     pub fn finish(mut self) {
         self.finished = true;
         assert!(self.checks != 0, 
-            "PROBE `{}` recorded zero checks — that is fluff, not a test",
+            "PROBE `{}` recorded zero checks; that is fluff, not a test",
             self.intent
         );
         if self.failures.is_empty() {
@@ -217,7 +217,7 @@ impl Drop for Probe {
             return;
         }
         assert!(self.failures.is_empty(), 
-            "PROBE `{}` dropped with {} unreported failures — call finish()",
+            "PROBE `{}` dropped with {} unreported failures; call finish()",
             self.intent,
             self.failures.len()
         );

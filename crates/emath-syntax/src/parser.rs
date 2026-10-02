@@ -73,7 +73,7 @@ struct Parser {
     notations: BTreeMap<String, NotOp>,
     /// Notation packs mounted through `use sci::physics::notation::<pack>`
     /// lines (nabla pack), collected by the same pre-scan. Pack
-    /// glyphs desugar only when their pack is mounted — opt-in, never
+    /// glyphs desugar only when their pack is mounted: opt-in, never
     /// ambient.
     mounted_packs: BTreeSet<String>,
     /// Pack mount parameters (`use sci::physics::notation::braket(
@@ -207,7 +207,7 @@ impl Parser {
 
     /// Token-level scan for a notation-pack mount starting at a `use`
     /// token: `use sci::physics::notation::<pack>` (optionally with a
-    /// trailing `::*`, and — for packs that declare one — a mount
+    /// trailing `::*`, and, for packs that declare one, a mount
     /// parameter `(<name> = <value>)`). Returns the pack leaf name
     /// plus its optional parameter when the path names a known notation
     /// pack, else `None` (ordinary import, main pass owns it).

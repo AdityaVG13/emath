@@ -41,7 +41,7 @@ pub enum CValue {
     /// world, see `affine`.
     Affine(Arc<affine::AffineForm>),
     /// Text payload carrier (fbpb6 successor bead e6gvs): a Str literal
-    /// evaluates as a first-class value. Structural equality only —
+    /// evaluates as a first-class value. Structural equality only:
     /// the carrier exists without the string LIBRARY (no ordering,
     /// concatenation, length, or indexing in this cut; the recorded
     /// stance is that the carrier comes first and the library is a
@@ -50,7 +50,7 @@ pub enum CValue {
     /// Dense sequence carrier. Copy-on-write: `Clone` shares the
     /// backing storage (the CPS kont bookkeeping clones argument
     /// values at every engine step, so a deep-copy clone made every
-    /// big-sequence call O(len) per step — 17.4s wall for ~13k indexed
+    /// big-sequence call O(len) per step: 17.4s wall for ~13k indexed
     /// reads in the pre-repair carrier); mutation goes through
     /// `Arc::make_mut`, which copies only when shared. `Arc` (not
     /// `Rc`) keeps the carrier `Send` for lanes that move values
@@ -93,7 +93,7 @@ pub enum CValue {
 
 /// Structural equality, unchanged by sequence sharing (bead
 /// emath-g9rpo). Buffers compare by cell identity only: mutable state
-/// has no total value equality — the language
+/// has no total value equality; the language
 /// surface refuses `==`/`!=` on buffers; this identity fallback
 /// exists so internal comparisons stay total, never as a user-facing
 /// value equality.
@@ -145,7 +145,7 @@ impl PartialEq for CValue {
 /// Declared domain shape of a closure value, extracted from the
 /// `function x in <domain>` spelling (or the recur binder's arrow type)
 /// at construction. Carries element information only where the tag
-/// spells it; every other form stays [`DomainShape::Unknown`] — nothing
+/// spells it; every other form stays [`DomainShape::Unknown`]; nothing
 /// is reconstructed that the tag does not carry (the `infer_path`
 /// discipline).
 #[derive(Clone, Debug, PartialEq)]
@@ -177,7 +177,7 @@ pub struct Closure {
     pub param: String,
     /// The declared domain of the binder, recorded at construction so
     /// the admission lane (`admit_input_type`) and the runtime lane
-    /// (`apply_closure_chain`) check the SAME shape — the two lanes can
+    /// (`apply_closure_chain`) check the SAME shape; the two lanes can
     /// never disagree about what the closure demands of its argument.
     pub domain: DomainShape,
     pub body: Expr,
@@ -327,12 +327,12 @@ impl fmt::Display for ConstructorError {
 /// The mapping follows the diagnostics contract: unbound names are
 /// `E-TYPE-002`; faults where no method, implementation, transform, or
 /// dependency resolves are `E-TYPE-003` (unknown function); and the
-/// carrier/arity/value family — `type`, `arity`, `division_by_zero`,
+/// carrier/arity/value family (`type`, `arity`, `division_by_zero`,
 /// `overflow`, `non_finite_scalar`, `invalid_index`, `invalid_literal`,
 /// `nonexhaustive_match`, `invalid_code_construction`,
 /// `object_invariant_failed`, `unguarded_recursive_binding`,
 /// `recursion_depth_exceeded`, `incompatible_checkpoint`, and any future
-/// fault — is the documented "carrier or condition does not match"
+/// fault) is the documented "carrier or condition does not match"
 /// `E-TYPE-012`. Faults that already carry a language diagnostic code
 /// pass through unchanged (the closed set is enumerated because the
 /// return is a `&'static str`).

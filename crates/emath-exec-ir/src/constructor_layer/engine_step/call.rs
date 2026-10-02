@@ -91,7 +91,7 @@ impl Engine {
             return self.eval_fn(name, decl, args).map(Some);
         }
         // Postfix `.field` on a non-path receiver is parsed as
-        // `field(recv)` — indistinguishable from a call — so the field
+        // `field(recv)` (indistinguishable from a call), so the field
         // projection is tried BEFORE the leftover-name refusal below: a
         // record field named like a reserved ordinary-method name
         // (`total`, `sum`, ...) is a field access, never a method call.
@@ -110,7 +110,7 @@ impl Engine {
         if is_refused_recipe(name) && !self.env.contains_key(name) {
             return Err(fault(
                 "method_unavailable",
-                format!("`{name}` is an ordinary module method, not a constructor operation — import it with `use`, or rename the record field: a field access `recv.{name}` resolves only when the receiver carries a field named `{name}`"),
+                format!("`{name}` is an ordinary module method, not a constructor operation; import it with `use`, or rename the record field: a field access `recv.{name}` resolves only when the receiver carries a field named `{name}`"),
             ));
         }
         if name == "length" {
@@ -325,7 +325,7 @@ impl Engine {
         // Redline 1 MiB: one authored call costs ~50-100 KiB of NATIVE
         // stack (K-machine frames between growth points), so a 64 KiB
         // redline lets a level jump past it into the guard page before
-        // the next check — a library caller on a default-sized thread
+        // the next check: a library caller on a default-sized thread
         // crashed at ~40 levels. Growth engages with ten levels of
         // headroom instead.
         stacker::maybe_grow(1024 * 1024, 4 * 1024 * 1024, || {
@@ -479,7 +479,7 @@ impl Engine {
                 return Ok(value);
             }
             // A tail call swapped in with the wrong arity must refuse
-            // `arity` — the input binding below zip-binds, which would
+            // `arity`: the input binding below zip-binds, which would
             // truncate and fault `unbound` on the missing input.
             if decl.inputs.len() != vals.len() {
                 return Err(fault(

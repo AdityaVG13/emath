@@ -3,8 +3,8 @@
 //!
 //! Sweep is `emath eval --function` iterated over a grid with a
 //! deterministic evidence artifact. Every cell runs through the SAME
-//! generic stack as eval — sema admission, `definition_order` /
-//! `lower_definition` EMIR lowering, reference-VM evaluation — and the
+//! generic stack as eval (sema admission, `definition_order` /
+//! `lower_definition` EMIR lowering, reference-VM evaluation), and the
 //! artifact (`emath.sweep.v1`) carries `meaning_id`, the grid, and
 //! per-cell results with no wall-clock field, so byte-identical
 //! invocations produce byte-identical output.

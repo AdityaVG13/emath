@@ -194,7 +194,7 @@ impl RunBadge {
 }
 
 /// Everything the renderer reads that is not a journal fact: the run's
-/// context and the viewer's measurements (`None` renders `—`).
+/// context and the viewer's measurements (`None` renders `-`).
 #[derive(Clone, Debug)]
 pub struct Ctx {
     pub run_name: String,

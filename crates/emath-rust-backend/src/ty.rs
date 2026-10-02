@@ -65,7 +65,7 @@ impl BackendInput<'_> {
             // Prime field `Field<p>` / `GF<p>`: the node's own contract
             // (types.rs) is "values are exact i64 integers; modular
             // reduction and inversion remain operational concerns of the
-            // builtins" — the carrier is i64, the modularity rides the
+            // builtins": the carrier is i64; the modularity rides the
             // registered exact-int kernels (int_rem/field_inv/...).
             TypeNode::FieldPrime { .. } => Ok(Ty::I64),
             TypeNode::Vector { element, .. } => match element.as_ref() {
@@ -109,7 +109,7 @@ impl BackendInput<'_> {
     }
 
     /// Rust type for an OUTPUT field. Unlike `rust_node` (which refuses
-    /// carrier types — see `carrier_field_decl_refuses_typed`, the input
+    /// carrier types; see `carrier_field_decl_refuses_typed`, the input
     /// boundary), outputs may NAME a carrier: a declaration returning an
     /// `Option<T>`/`Result<T,E>` field maps to the native Rust carrier
     /// type (`Option<i64>`, `Option<Option<i64>>`, …). The runtime value

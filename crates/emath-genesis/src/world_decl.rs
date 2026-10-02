@@ -4,12 +4,12 @@
 //! DATA through this module: a [`WorldDecl`] (finite carrier, constants,
 //! total operation tables) is validated into a [`UserDefinedWorld`]
 //! (origin `user-defined`), or synthesized from a law over a toy-size
-//! carrier (origin `synthesized` — never claimed as Real meaning). Every
+//! carrier (origin `synthesized`, never claimed as Real meaning). Every
 //! world is labeled: the evidence record rides into every result bundle.
 //! False model claims are checked against the world's own
 //! tables and rejected typed. The strict source lane refuses world
 //! attachments typed (E-WORLD-006): the strict vs Genesis/custom
-//! firewall holds — a strict Gaussian file never runs a Mod17 world.
+//! firewall holds: a strict Gaussian file never runs a Mod17 world.
 //!
 //! Zero core delta: a new world is data validated at this seam; the
 //! evaluator gains no match arm for it (the trait contract).
@@ -357,7 +357,7 @@ pub struct ModelClaim {
 /// Checks: non-empty carrier within the toy bound, constants in the
 /// carrier, total operation tables (`|domain|^arity` rows, all elements
 /// in the carrier), arity ≥ 1 for operations (nullary symbols are
-/// constants). A declaration that fails is refused typed — never
+/// constants). A declaration that fails is refused typed, never
 /// silently repaired.
 pub fn user_defined_world(decl: WorldDecl) -> Result<UserDefinedWorld, WorldDeclError> {
     validate_decl(&decl, decl.origin)?;
@@ -515,12 +515,12 @@ impl std::error::Error for SynthesisError {}
 /// Synthesizes the canonical model of `law` over `domain` as a
 /// world-labeled [`UserDefinedWorld`] (origin `synthesized`).
 ///
-/// Deterministic constructive synthesis — the canonical model per law
+/// Deterministic constructive synthesis: the canonical model per law
 /// (carrier order, no search): commutative `t(i, j) = d[min(i, j)]`,
 /// idempotent `t(i, j) = d[i]`, identity `t(i, j) = d[j]` unless `j = e`
 /// (two-sided identity by construction). The law holds over the whole
 /// carrier by construction; the test suite verifies it independently.
-/// A synthesized world is LABELED as such — it is a model of the law,
+/// A synthesized world is LABELED as such; it is a model of the law,
 /// never claimed Real meaning.
 pub fn synthesize_world(
     name: &str,

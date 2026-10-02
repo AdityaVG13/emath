@@ -1,7 +1,7 @@
 //! Artifact corpus search: doc-id codec and errors.
 //!
 //! The frankensearch engine adapter (feature `search`) was removed with the
-//! never-compilable engine — the pinned fork lives in `forks/franken` and the
+//! never-compilable engine; the pinned fork lives in `forks/franken` and the
 //! pre-cut engine is recoverable from git history. Default build is
 //! std-only, first-party-only.
 

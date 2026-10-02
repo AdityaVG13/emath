@@ -61,7 +61,7 @@ impl Engine {
 
     /// The tail-call seam for CLOSURE applications: one pushed frame
     /// per application chain. A body whose tail position is a call to
-    /// another closure value reuses the frame — the call depth stays
+    /// another closure value reuses the frame: the call depth stays
     /// at the entry value, and WORK is the only bound (the closure
     /// analogue of the named lane's frame-reuse loop). A tail call
     /// into a NAMED function delegates to that loop in this same
@@ -101,7 +101,7 @@ impl Engine {
             self.env.extend(clos.env.iter().map(|(name, value)| (name.clone(), value.clone())));
             // The runtime lane of the closure discipline (fbpb6): the
             // argument is checked against the closure's recorded
-            // domain BEFORE it binds — the same check-then-bind
+            // domain BEFORE it binds: the same check-then-bind
             // ordering the named lane's admit_input_type applies.
             // Both lanes share the DomainShape conformance relation,
             // so they cannot disagree about what the closure demands.
@@ -199,8 +199,8 @@ impl Engine {
     }
 
     /// `quote.evaluate` (L1): guarded closed-code evaluation. Closed
-    /// code evaluates as before; OPEN code — free names that are
-    /// neither quoted dependencies nor current callables — refuses
+    /// code evaluates as before; OPEN code (free names that are
+    /// neither quoted dependencies nor current callables) refuses
     /// `unbound_code` instead of silently resolving against the ambient
     /// environment (dynamic-scope leak). Stamped dependencies that
     /// resolve differently refuse `stale_dependency`.
@@ -285,7 +285,7 @@ impl Engine {
 
     /// The L1 closed-code service: evaluate a quoted program with an
     /// EXPLICIT input environment. Free names resolve only from the
-    /// input environment and pinned dependencies — never the ambient
+    /// input environment and pinned dependencies, never the ambient
     /// environment. A function-valued result consumes the ordered
     /// inputs not already consumed as environment bindings (the
     /// generic program-application seam).

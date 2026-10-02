@@ -23,7 +23,7 @@ pub fn evaluate_query_at(
 /// L1 closed-code evaluation as a compiler service: evaluate a quoted
 /// program against a tree with an explicit input environment (ordered
 /// by `order`). This is the engine seam for callers holding a captured
-/// `Code` value — stale-dependency verification and fuel bounding are
+/// `Code` value; stale-dependency verification and fuel bounding are
 /// exercised through it directly.
 pub fn evaluate_code_at(
     tree: &SyntaxTree,

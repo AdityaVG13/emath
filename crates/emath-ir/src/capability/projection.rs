@@ -25,10 +25,10 @@ pub enum ProjectionKind {
     Reference,
     /// Compilation projection (required for pure cells).
     Compilation,
-    /// Specification side of a biform cell: laws, types, units — what
+    /// Specification side of a biform cell (laws, types, units): what
     /// the cell claims (required for biform cells).
     Specification,
-    /// Algorithm side of a biform cell: reference semantics / bytecode —
+    /// Algorithm side of a biform cell (reference semantics / bytecode):
     /// how the claim is computed (required for biform cells).
     Algorithm,
 }
@@ -116,12 +116,12 @@ pub fn required_projections(class: CellClass) -> Vec<ProjectionKind> {
 /// stable code; a missing required projection blocks stable visibly.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClosureRefusal {
-    /// `E-CELL-007` — a required projection is missing from the closure.
+    /// `E-CELL-007`: a required projection is missing from the closure.
     MissingRequired {
         name: String,
         projection: ProjectionKind,
     },
-    /// `E-CELL-008` — docs are not bound to the cell's current identity.
+    /// `E-CELL-008`: docs are not bound to the cell's current identity.
     DocsDrift {
         name: String,
         expected: String,

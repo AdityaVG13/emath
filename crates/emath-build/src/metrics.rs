@@ -2,8 +2,8 @@
 //!
 //! Collectors record what actually happened on the production build path
 //! (phase durations, counters); the receipt is the durable JSON form.
-//! The receipt *format* is deterministic — fixed schema id, version and
-//! sorted keys — while the recorded durations are measurements and vary
+//! The receipt *format* is deterministic (fixed schema id, version and
+//! sorted keys), while the recorded durations are measurements and vary
 //! run to run. Receipts are evidence objects: they never escalate
 //! authority and claim nothing beyond the recorded run.
 

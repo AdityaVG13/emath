@@ -66,7 +66,7 @@ emath function ComparesBuffers:
 // several live frames: Outer's env binds `flags`, Inner's guard frame
 // binds it again, Step's write frame binds it a third time. The write
 // lives in Step (below the guard), so no level ever writes at
-// i == limit — an unguarded `buffer_set` would fault `invalid_index`
+// i == limit; an unguarded `buffer_set` would fault `invalid_index`
 // by contract. Suspension lands inside the write loop.
 const SUSPEND_ALIASED: &str = "\
 emath function Step:
@@ -167,7 +167,7 @@ fn probe() {
         };
         p.eq("suspension-reason", err.code, "budget_exhausted");
         // Round-trip: encode then decode; aliasing must survive (the
-        // user's encode decision, and the honesty floor — decoding two
+        // user's encode decision, and the honesty floor: decoding two
         // independent buffers would silently diverge writes).
         let decoded = emath_exec_ir::constructor_layer::Checkpoint::decode(&checkpoint.encode())
             .expect("checkpoint decodes");

@@ -379,7 +379,7 @@ pub fn canonical_meaning_bytes(
     // Package integrity, fail-closed: every interned capability
     // application must reference an interned cell.
     // Admission never produces a dangling reference, so a package that
-    // carries one is malformed and cannot be assigned a MeaningID —
+    // carries one is malformed and cannot be assigned a MeaningID:
     // the orphan exprs are not walked by the declaration encoder, so
     // the validation is explicit here rather than emergent.
     for expr in &package.exprs {

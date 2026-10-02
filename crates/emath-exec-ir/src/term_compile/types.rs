@@ -73,7 +73,7 @@ pub enum TermCompileError {
         second: usize,
     },
     /// An operator outside the closed generic vocabulary (no per-op Rust
-    /// function is minted on the fly — that is the law).
+    /// function is minted on the fly; that is the law).
     UnknownOperator {
         /// The out-of-vocabulary operator.
         symbol: String,
@@ -180,7 +180,7 @@ impl std::error::Error for TermCompileError {}
 /// Run declared contract guards over the argument values (one shared
 /// implementation for the VM seam and the specializer's residual entry).
 /// A violation is the capability layer's typed refusal (`E-CELL-006`);
-/// a non-vector argument is a typed confusion — never a coercion.
+/// a non-vector argument is a typed confusion, never a coercion.
 pub(crate) fn run_guards(
     capability: &str,
     guards: &[ArgGuard],
@@ -201,7 +201,7 @@ pub(crate) fn run_guards(
             Value::Vector(elements) => elements,
             // Matrix carriers: the guard
             // semantics ("every entry finite" / "non-empty") apply to
-            // the flat storage — the adjacency carrier is guarded like
+            // the flat storage; the adjacency carrier is guarded like
             // any numeric argument.
             Value::Matrix { data, .. } => data,
             _ => {

@@ -4,7 +4,7 @@
 //!
 //! An underconstrained construct is a meaning hole: deterministic hole
 //! graph (stable ids, states, dependencies, budget) plus finite
-//! synthesis of operator tables — deterministic `carrier^(n²)`
+//! synthesis of operator tables: deterministic `carrier^(n²)`
 //! enumeration validated by the independent law checker. Continuations
 //! yield an immutable next graph + receipt; failed proposals never
 //! mutate the authoritative graph.

@@ -16,7 +16,7 @@ pub use emath_ir::world::{
 // Facade fence: the morphism/preservation vocabulary callers
 // consume deep (`translation::{...}`) is root-exported; the module path
 // stays public for the rest of the translation surface. Homonym watch
-// `emath_provider_api::runtime::EvidenceHandle` is a DIFFERENT type — no
+// `emath_provider_api::runtime::EvidenceHandle` is a DIFFERENT type: no
 // collision, different crates and paths.
 pub use translation::{EvidenceHandle, PreservationRelation, WorldMorphism};
 pub use emath_core::fnv1a64_bytes as fnv1a64;

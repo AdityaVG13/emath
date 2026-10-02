@@ -694,7 +694,7 @@ impl super::Parser {
         loop {
             match self.peek() {
                 TokenKind::Ident(name) => {
-                    // Don't consume `alias` as a path segment — it starts
+                    // Don't consume `alias` as a path segment; it starts
                     // the optional alias clause.
                     if name == "alias" && matches!(self.peek_at(1), TokenKind::Str(_)) {
                         break;

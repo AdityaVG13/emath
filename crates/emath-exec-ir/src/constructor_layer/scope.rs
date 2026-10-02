@@ -495,7 +495,7 @@ impl ImportGraph {
                     "E-NAME-022",
                     format!(
                         "import of `{}` installs `{name}`, but a local declaration `{name}` already exists in {at}: \
-                         an import may not replace a local name — rename one or import under an alias",
+                         an import may not replace a local name; rename one or import under an alias",
                         module.file.display()
                     ),
                 ));

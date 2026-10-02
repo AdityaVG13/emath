@@ -24,7 +24,7 @@ impl super::Parser {
             let expr = self.parse_additive(0)?;
             return Some(GenericArg::Value(expr));
         }
-        // Bracket-list extent: `[N, N]` — parse as a list expression
+        // Bracket-list extent: `[N, N]`; parse as a list expression
         if matches!(self.peek(), TokenKind::LBracket) {
             let expr = self.parse_additive(0)?;
             return Some(GenericArg::Value(expr));

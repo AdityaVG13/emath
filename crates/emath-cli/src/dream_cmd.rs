@@ -242,7 +242,7 @@ fn snapshot(run: RunDir) -> CliExit {
     println!("L{} · batch {}", model.level, model.last_batch());
     match (model.incumbent_rec().and_then(|r| r.score()), model.incumbent) {
         (Some(score), Some(key)) => println!("incumbent #{key}  {}", dec4(score)),
-        _ => println!("incumbent —"),
+        _ => println!("incumbent -"),
     }
     println!("budget {} / {} u", units(model.used()), units(model.watermark()));
     for line in model.log.iter().rev().take(5).collect::<Vec<_>>().into_iter().rev() {
@@ -271,7 +271,7 @@ pub(crate) fn run(request: DreamRequest) -> CliExit {
         },
         DreamRequest::List { root } => {
             for run in list_runs(&root) {
-                let score = run.incumbent_score.unwrap_or_else(|| "—".into());
+                let score = run.incumbent_score.unwrap_or_else(|| "-".into());
                 println!("{}  {}  {}  b{}  {}", run.name, run.target, run.status, run.last_batch, score);
             }
             EXIT_OK

@@ -142,7 +142,7 @@ pub fn workspace_path(relative: &str) -> PathBuf {
 /// Whole contents of a workspace-relative file.
 ///
 /// # Panics
-/// When the file does not exist — a missing fixture is a test-authoring error.
+/// When the file does not exist; a missing fixture is a test-authoring error.
 #[must_use]
 pub fn workspace_file(relative: &str) -> String {
     let path = workspace_path(relative);

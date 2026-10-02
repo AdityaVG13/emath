@@ -1,7 +1,7 @@
 //! Core EMIR value and configuration types.
 
 /// Evaluation resource budget. Resource exhaustion is a typed refusal
-/// (`EvalFault::BudgetExhausted`) — never partial authority.
+/// (`EvalFault::BudgetExhausted`), never partial authority.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EvalBudget {
     /// Maximum interpreted op steps.
@@ -56,11 +56,11 @@ pub enum EdgePolicy {
 /// renders it; the rt wrappers decode it).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProbKind {
-    /// Normal(μ, σ) — Box–Muller sampling, exact density.
+    /// Normal(μ, σ): Box-Muller sampling, exact density.
     Normal,
-    /// Uniform(a, b) — affine map of [0, 1), exact density.
+    /// Uniform(a, b): affine map of [0, 1), exact density.
     Uniform,
-    /// Bernoulli(p) — threshold sampling (p ∈ {0, 1} exact), PMF.
+    /// Bernoulli(p): threshold sampling (p ∈ {0, 1} exact), PMF.
     Bernoulli,
 }
 

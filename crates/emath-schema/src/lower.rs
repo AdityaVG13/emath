@@ -199,7 +199,7 @@ impl LowerExt for KindSchema {
         // Migrate admission/bind provenance with the section. A bare
         // `admission.{to}=from` would orphan prior hoist aliases under
         // `admission.{from}` and leave `bind.{from}` pointing at a removed
-        // section — both corrupt identity and `is_bound` after rename.
+        // section; both corrupt identity and `is_bound` after rename.
         let old_admission = format!("admission.{from}");
         let new_admission = format!("admission.{to}");
         let mut aliases = Vec::new();

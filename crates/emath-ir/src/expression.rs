@@ -91,8 +91,8 @@ pub enum ExprNode {
     },
     /// Time-series data constant ,
     /// slice 1): SI-scaled `(time, value)` pairs plus the DECLARED
-    /// interpretation policy. The policy is identity-bearing — it
-    /// changes every downstream number — so it encodes into meaning.
+    /// interpretation policy. The policy is identity-bearing (it
+    /// changes every downstream number), so it encodes into meaning.
     /// Evaluation (interpolation/extrapolation) is the named next slice;
     /// admitting a series never claims it computes.
     Series {
@@ -179,9 +179,9 @@ pub enum BinaryOp {
     GreaterEqual,
     And,
     Or,
-    /// `==>` — logical implication: `!a || b`.
+    /// `==>` (logical implication): `!a || b`.
     Imply,
-    /// `<==>` — logical biconditional: `a == b` for Bool.
+    /// `<==>` (logical biconditional): `a == b` for Bool.
     Iff,
     SetContains,
     Min,
@@ -249,7 +249,7 @@ pub enum BinderKind {
     Integral,
     ForAll,
     Exists,
-    /// `series n in 0..inf: a[n]` — series convergence claim.
+    /// `series n in 0..inf: a[n]`: series convergence claim.
     Series,
 }
 

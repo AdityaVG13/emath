@@ -11,7 +11,7 @@ pub const SCHEMAS_VERSION: &str = "1.0.0";
 /// Crate-level version alias.
 pub const VERSION: &str = "1.0.0";
 
-/// Fixed registry order — thirteen stable `$id` names; must not change.
+/// Fixed registry order: thirteen stable `$id` names; must not change.
 pub const SCHEMA_NAMES: [&str; 13] = [
     "emath.source-artifact",
     "emath.parse-forest",
@@ -65,7 +65,7 @@ impl std::fmt::Display for SchemaError {
 
 impl std::error::Error for SchemaError {}
 
-/// Alias required by assignment — typed unknown-name refusal.
+/// Alias required by assignment: typed unknown-name refusal.
 pub type UnknownSchemaError = SchemaError;
 
 #[must_use]

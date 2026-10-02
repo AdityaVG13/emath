@@ -99,7 +99,7 @@ pub struct EventDecl {
 }
 
 /// One event action: an assignment to a declared `inputs:` or `state:`
-/// slot. Algebraic unknowns are refused as targets at admission — the
+/// slot. Algebraic unknowns are refused as targets at admission; the
 /// Newton projection owns them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EventAction {
@@ -225,7 +225,7 @@ pub struct LawMetadata {
 
 /// One admitted `emath field_pack` declaration: the
 /// pack's exports as artifact data. Packs compile to a semantic image /
-/// `.emlib` consumed by layout/install tooling — admission never lowers
+/// `.emlib` consumed by layout/install tooling; admission never lowers
 /// a pack into runnable meaning, and the exports carry no parser
 /// surface (the section table is closed at admission).
 #[derive(Clone, Debug, PartialEq, Eq)]

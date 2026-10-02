@@ -274,7 +274,7 @@ pub(crate) fn assumptions_cmd(path: &Path, json: bool) -> CliExit {
         println!("{}", out.finish());
     } else {
         for note in &notes {
-            println!("{} — {}", note.inferred, note.rationale);
+            println!("{}: {}", note.inferred, note.rationale);
         }
     }
     EXIT_OK

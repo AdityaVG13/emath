@@ -78,7 +78,7 @@ pub(super) fn admit_declaration_setup<'a>(
     // the case nothing else catches: a `definitions:` name shadowing an
     // `inputs:` name.
     // R6 (E-SEC-130): `outputs:` without `inputs:` leaves the I/O surface
-    // unnamed — refuse. `goals:` is not a constructor section (E-SEC-101).
+    // unnamed; refuse. `goals:` is not a constructor section (E-SEC-101).
     if by_name.contains_key("inputs")
         || by_name.contains_key("outputs")
         || by_name.contains_key("definitions")
@@ -100,7 +100,7 @@ pub(super) fn admit_declaration_setup<'a>(
             .unwrap_or_default();
         // R5 (continued): a `definitions:` name that shadows an `inputs:`
         // name silently overwrites the declared input inside the component
-        // body — same identity fork as inputs/outputs, same refusal.
+        // body: same identity fork as inputs/outputs, same refusal.
         if let Some(definitions) = by_name.get("definitions") {
             for stmt in &definitions.suite.statements {
                 if let StmtKind::Assign { target, .. } = &stmt.kind
@@ -111,7 +111,7 @@ pub(super) fn admit_declaration_setup<'a>(
                     admitter.error(
                         "E-NAME-020",
                         format!(
-                            "definition `{name}` shadows the `inputs:` name `{name}` — \
+                            "definition `{name}` shadows the `inputs:` name `{name}`; \
                              a definition cannot overwrite a declared input"
                         ),
                         stmt.source,
@@ -120,7 +120,7 @@ pub(super) fn admit_declaration_setup<'a>(
             }
         }
         let has_inputs = by_name.contains_key("inputs");
-        // A declared hole (`name = ?`) IS the named unknown — the contract
+        // A declared hole (`name = ?`) IS the named unknown; the contract
         // may leave the I/O surface implicit when the hole names it.
         let declares_hole = decl
             .body
@@ -144,7 +144,7 @@ pub(super) fn admit_declaration_setup<'a>(
             admitter.error(
                 "E-SEC-130",
                 "declaration has `outputs:` but no `inputs:` \
-                 section — add `inputs:` to name the I/O surface",
+                 section; add `inputs:` to name the I/O surface",
                 decl.head_source,
             );
         }

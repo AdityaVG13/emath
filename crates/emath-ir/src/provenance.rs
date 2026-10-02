@@ -45,7 +45,7 @@ pub enum Provenance {
     /// Instrument output plus the processing description applied to it.
     /// `sha256` is the declared digest of the raw data file ,
     /// ): `emath check --verify-data` re-hashes
-    /// the file and refuses drift as `E-OBS-HASH` — changed data under an
+    /// the file and refuses drift as `E-OBS-HASH`: changed data under an
     /// unchanged model is a different artifact identity.
     InstrumentRun {
         file: String,

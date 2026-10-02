@@ -74,7 +74,7 @@ impl super::Parser {
                 ))
             }
             TokenKind::Keyword(Keyword::On) => {
-                // `on <Name>:` is a two-word section head — transition
+                // `on <Name>:` is a two-word section head: transition
                 // rules (ch7, transitions slice): the
                 // section carries the trigger event as its generic and an
                 // assignment suite as the rule body. Only when the token

@@ -512,7 +512,7 @@ pub(super) fn refuse_duplicate_fields(decl: &Declaration, section: &str) -> Resu
             return Err(fault(
                 "E-NAME-020",
                 format!(
-                    "duplicate field `{name}` in `{section}:` — the second declaration would silently overwrite the first"
+                    "duplicate field `{name}` in `{section}:`; the second declaration would silently overwrite the first"
                 ),
             ));
         }
@@ -717,7 +717,7 @@ pub(super) fn type_admits(ty: &TypeExpr, value: &CValue) -> bool {
         // A closure value satisfies an arrow type only when its
         // RECORDED domain conforms to the declared domain, element
         // semantics included. Unknown recorded shapes admit with no
-        // claim — the carrier-only discipline this arm replaced.
+        // claim: the carrier-only discipline this arm replaced.
         TypeKind::Fn { domain, .. } => match value {
             CValue::Closure(clos) => {
                 domain_shape_conforms(&clos.domain, &domain_shape_of_type(domain))

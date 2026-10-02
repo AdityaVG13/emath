@@ -4,7 +4,7 @@ use super::{Expr, Span, TokenKind, Keyword, SeriesInterpolation, SeriesExtrapola
 
 impl super::super::Parser {
     /// optional series-policy suffix
-    /// on a definition/observation value — `with interpolation: <mode>
+    /// on a definition/observation value: `with interpolation: <mode>
     /// [, extrapolation: <mode>]`. The policy is part of the value's
     /// identity; an absent part means the language default (`refuse` for
     /// extrapolation, declared-required interpolation handled by
@@ -129,7 +129,7 @@ impl super::super::Parser {
             let opened = self.skip_assignment_layout();
             // the action
             // integral binder on the RHS of a definition
-            // (`S = action integral t in t0..t1: L(...)`) — refuse at
+            // (`S = action integral t in t0..t1: L(...)`); refuse at
             // the grammar naming the design follow-up (previously the
             // row half-parsed: `unknown variable action` plus a generic
             // row-shape error that named nothing).
@@ -146,7 +146,7 @@ impl super::super::Parser {
                 }
                 self.error_here(
                     "E-SYN-101",
-                    "`action integral t in t0..t1: L(...)` is outside the current subset — the action/variation design follow-up must first settle the design of record: the action is a Functional (admits only variation/evaluation goals, never scalar composition), the `variation <S> wrt q:` goal lowers to core goals via the Euler-Lagrange operator built from the admitted partial/total derivatives, and the boundary condition (`fixed_endpoints`) is part of the goal identity hash; evidence must use admitted surface `derivative(derivative(q) wrt t) wrt t`, never `d²q/dt²`",
+                    "`action integral t in t0..t1: L(...)` is outside the current subset; the action/variation design follow-up must first settle the design of record: the action is a Functional (admits only variation/evaluation goals, never scalar composition), the `variation <S> wrt q:` goal lowers to core goals via the Euler-Lagrange operator built from the admitted partial/total derivatives, and the boundary condition (`fixed_endpoints`) is part of the goal identity hash; evidence must use admitted surface `derivative(derivative(q) wrt t) wrt t`, never `d²q/dt²`",
                 );
                 return None;
             }

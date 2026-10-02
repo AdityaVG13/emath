@@ -480,7 +480,7 @@ pub fn run_cargo_timed(
                 std::thread::sleep(remaining.min(std::time::Duration::from_millis(5)));
             }
             Err(error) => {
-                // try_wait failed: still own the child and pipe readers — kill,
+                // try_wait failed: still own the child and pipe readers: kill,
                 // reap, and join so we never detach live threads or leave cargo
                 // holding CARGO_TARGET_DIR.
                 kill_timed_child(&mut child);

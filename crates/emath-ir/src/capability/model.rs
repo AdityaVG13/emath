@@ -28,7 +28,7 @@ pub enum CellClass {
     /// Method card: algorithm plus falsifier, proposal-only authority.
     Method,
     /// Biform cell: a specification side and an algorithm side whose
-    /// evidence objects are independent — satisfying tests of the
+    /// evidence objects are independent: satisfying tests of the
     /// algorithm do not prove the spec, and a spec proof does not
     /// certify a particular backend.
     Biform,
@@ -154,22 +154,22 @@ pub const MAX_CELL_ARITY: u16 = 64;
 /// a stable code; nothing is silent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AdmissionRefusal {
-    /// `E-CELL-001` — class token outside the closed taxonomy.
+    /// `E-CELL-001`: class token outside the closed taxonomy.
     UnknownCellClass { class: String },
-    /// `E-CELL-002` — missing or empty schema version on a stable cell.
+    /// `E-CELL-002`: missing or empty schema version on a stable cell.
     MissingVersion { name: String },
-    /// `E-CELL-003` — identity-affecting mutation without an admitted
+    /// `E-CELL-003`: identity-affecting mutation without an admitted
     /// migration policy (frozen cell, or `bump-and-note` with no note).
     IdentityMutationRefused {
         name: String,
         from_version: String,
         to_version: String,
     },
-    /// `E-CELL-004` — declared arity exceeds [`MAX_CELL_ARITY`].
+    /// `E-CELL-004`: declared arity exceeds [`MAX_CELL_ARITY`].
     ArityExceeded { name: String, arity: u16 },
-    /// `E-CELL-005` — malformed canonical name (empty or no path segments).
+    /// `E-CELL-005`: malformed canonical name (empty or no path segments).
     MalformedName { name: String },
-    /// `E-CELL-006` — a pure-cell evaluation ran without the required
+    /// `E-CELL-006`: a pure-cell evaluation ran without the required
     /// explicit numeric policy (missing/empty policy is a refusal, never a
     /// silent default), or the input admits no finite normalization.
     NumericPolicyMissing { name: String },
@@ -362,7 +362,7 @@ pub fn admit_cell_mutation(
 /// Refusals: an empty input means no numeric policy was declared for the
 /// evaluation (`E-CELL-006`, never a silent empty distribution); a
 /// non-finite logit refuses under the strict-f64 finite policy
-/// (`E-CELL-006`, same code family — the policy declares what is refused).
+/// (`E-CELL-006`, same code family; the policy declares what is refused).
 ///
 /// Zero core delta: this lives in the capability layer; no core enum grows.
 pub fn softmax_reference_strict_f64(logits: &[f64]) -> Result<Vec<f64>, AdmissionRefusal> {

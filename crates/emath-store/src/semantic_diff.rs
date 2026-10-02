@@ -1,24 +1,24 @@
 //! Semantic diff and early cutoff.
 //!
 //! The diff classifies a change between two [`SemanticSnapshot`]s as one
-//! of the closed classes — presentation / meaning / evidence / provider
-//! — and drives rebuilds:
+//! of the closed classes, presentation / meaning / evidence / provider,
+//! and drives rebuilds:
 //!
 //! - **Presentation-only** (`SourceID` changed, `MeaningID` stable) is
 //!   NEVER labeled semantic: `decide` returns a cutoff whose receipt
 //!   names the stable meaning. A formatter pass or a comment edit never
 //!   rebuilds semantics.
-//! - **Meaning** changes rebuild dependents — never a silent cutoff
+//! - **Meaning** changes rebuild dependents, never a silent cutoff
 //!   (the fail-safe rule: an unclassified semantic change must not cut
 //!   off, so a meaning change always wins the classification, even over
 //!   a simultaneous source change).
 //! - **Provider** changes (generator/toolchain identity) invalidate
-//!   only the recipes dependent on that provider — the materialization
+//!   only the recipes dependent on that provider; the materialization
 //!   bookkeeping of any other toolchain survives untouched.
 //! - **Evidence** changes are additive: no rebuild, a cutoff receipt.
 //!
 //! Cutoff receipts are deterministic values that explain the skipped
-//! work — an early cutoff is evidence, not prose that drifts.
+//! work: an early cutoff is evidence, not prose that drifts.
 //!
 //! Determinism class: pure sequence. No wall-clock, no randomness; the
 //! classification is a pure function of the two snapshots, and no math
@@ -33,7 +33,7 @@ use crate::materialization::MaterializationRecipe;
 
 /// One side of a semantic diff: the identity inputs the meaning store
 /// tracks. `evidence` carries the attached evidence ids (canonical id
-/// strings) — additive receipts do not change meaning.
+/// strings); additive receipts do not change meaning.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SemanticSnapshot {
     source: SourceId,
@@ -75,16 +75,16 @@ impl SemanticSnapshot {
 }
 
 /// The closed change-class set. Every snapshot comparison lands in
-/// exactly one class — the diff never returns an unclassified state.
+/// exactly one class; the diff never returns an unclassified state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChangeClass {
     /// Nothing changed: skip all work.
     Unchanged,
-    /// Source spelling changed; `MeaningID` stable — not semantic.
+    /// Source spelling changed; `MeaningID` stable, not semantic.
     Presentation,
-    /// `MeaningID` changed — dependents rebuild, never a silent cutoff.
+    /// `MeaningID` changed: dependents rebuild, never a silent cutoff.
     Meaning,
-    /// Generator/toolchain identity changed — dependent recipes
+    /// Generator/toolchain identity changed: dependent recipes
     /// invalidated.
     Provider,
     /// Attached evidence changed additively; meaning and source stable.
@@ -158,7 +158,7 @@ pub fn classify(before: &SemanticSnapshot, after: &SemanticSnapshot) -> ChangeCl
 /// Decide the rebuild outcome for a diff over the given recipes. A
 /// provider change invalidates exactly the recipes whose toolchain is
 /// the OLD provider (their identity is pinned to it); recipes under
-/// other toolchains — including the new one — survive.
+/// other toolchains, including the new one, survive.
 pub fn decide(
     before: &SemanticSnapshot,
     after: &SemanticSnapshot,

@@ -1,6 +1,6 @@
 //! `emath fit`: the honest refusal. Least-squares fitting is ordinary
-//! authored mathematics — `use numerics.levenberg` and call
-//! `levenberg_fit` from an `emath function` — not a per-method
+//! authored mathematics (`use numerics.levenberg` and call
+//! `levenberg_fit` from an `emath function`), not a per-method
 //! compiler lane (`language/modules/numerics/levenberg.emath`).
 
 use super::{CliExit, EXIT_REFUSED, json_diagnostic_entry, split_error_code};

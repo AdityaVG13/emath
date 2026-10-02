@@ -7,7 +7,7 @@ use super::{
 
 /// Register-inlined SSA body renderer: single-use, provably-total
 /// registers inline into their consumer; multi-use/fault-capable ops stay
-/// bound as lets, preserving eager fault timing — except the right arms
+/// bound as lets, preserving eager fault timing, except the right arms
 /// of `and`/`or`/`==>`, whose exclusively-fed registers defer into a
 /// block (the engine short-circuits those arms; see
 /// [`defer_boolean_rights`]).
@@ -268,7 +268,7 @@ fn defer_boolean_rights(
         };
         let right_idx = right.0 as usize;
         if right_idx >= n || left == right {
-            // Not a body register, or `x and x` — one token, no deferral.
+            // Not a body register, or `x and x`: one token, no deferral.
             continue;
         }
         // Transitive feed closure of the right operand (the authored

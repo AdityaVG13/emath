@@ -584,7 +584,7 @@ pub fn validate_maturity_transition(from: Maturity, to: Maturity) -> Result<(), 
 
 /// Validate an executable pure reference body: a canonical first-order term
 /// with a declared operator signature and parameter list. The body is data
-/// for the generic term compiler — never a Rust feature-name dispatch.
+/// for the generic term compiler, never a Rust feature-name dispatch.
 fn validate_executable_reference(capsule: &FeatureCapsule, issues: &mut Vec<CapsuleIssue>) {
     let slot_text = |name: &str| match capsule.slots.get(name) {
         Some(CapsuleSlot::Value(value)) => Some(value.as_str()),

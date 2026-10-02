@@ -29,7 +29,7 @@
 //! 6pw20 batch (the same soundness class, surfaced by the emission
 //! conformance lanes on analysis/powers and probability/distributions):
 //! (4) `not` over an order comparison lowered as
-//!     `!x.cmp(&y) == Ordering::Less` — unary `!` bound the
+//!     `!x.cmp(&y) == Ordering::Less`: unary `!` bound the
 //!     `Ordering` (E0600); the negation now parenthesizes the whole
 //!     comparison.
 //! (5) branch arms in mixed representations (an i64 literal arm

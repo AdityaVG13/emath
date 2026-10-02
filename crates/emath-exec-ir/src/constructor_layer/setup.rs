@@ -149,7 +149,7 @@ pub(super) fn install_declaration(
     // E-NAME-022: an import may not replace a name a different
     // origin installed. Origins: the local tree (empty path) and the
     // resolved import file. A re-install from the SAME origin is
-    // idempotent — the transitive diamond (`use numerics.experiment`
+    // idempotent, the transitive diamond (`use numerics.experiment`
     // pulls exact.integers via both bounds and powers) installs one
     // file twice under the same bare name and must keep admitting.
     let origin = source.map(Path::to_path_buf).unwrap_or_default();
@@ -158,7 +158,7 @@ pub(super) fn install_declaration(
             let detail = if existing.as_os_str().is_empty() {
                 format!(
                     "import of `{}` installs `{}`, but a local declaration `{}` already exists: \
-                     an import may not replace a local name — rename one or import under an alias",
+                     an import may not replace a local name; rename one or import under an alias",
                     origin.display(),
                     name,
                     name
@@ -169,7 +169,7 @@ pub(super) fn install_declaration(
                 // an object type, declared by two files.
                 format!(
                     "import of `{}` installs `{}`, already installed from `{}`: \
-                     object names are global types — rename one of them",
+                     object names are global types; rename one of them",
                     origin.display(),
                     name,
                     existing.display()

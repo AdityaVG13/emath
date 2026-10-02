@@ -1,7 +1,7 @@
 // ── Counter-stream unit-interval kernel ──────────────────────────────
 //
 // ONE generator, one place: SplitMix64 (the compute-layer nucleus the
-// stream contract composes above — no second RNG namespace).
+// stream contract composes above; no second RNG namespace).
 // The seed is an f64 scalar whose to_bits() initializes the state
 // (PROVISIONAL mapping; re-mappable without
 // touching the generators). Uniform01 via the high 53 bits.
@@ -14,7 +14,7 @@
 // removed; the polynomial math now lives in the language as
 // language/modules/algebra/float64_polynomials.emath, the distribution
 // transforms and densities as language/modules/probability/*.emath.
-// This file retains only the unit-interval stream primitive — the
+// This file retains only the unit-interval stream primitive, the
 // remaining native leaf (bead emath-nwmm6): a machine seam, never
 // named mathematics.
 

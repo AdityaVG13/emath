@@ -5,7 +5,7 @@ use super::{Expr, TokenKind, ExprKind, BinaryOp, Keyword, UnitQueryKind, Span, A
 impl super::super::Parser {
     // ---- logic connectives ==> and <==>) -------------------------
 
-    /// `<==>` — biconditional (lowest precedence, left-associative).
+    /// `<==>`, biconditional (lowest precedence, left-associative).
     pub(super) fn parse_iff(&mut self, depth: usize) -> Option<Expr> {
         let mut left = self.parse_imply(depth)?;
         loop {
@@ -33,7 +33,7 @@ impl super::super::Parser {
         Some(left)
     }
 
-    /// `==>` — implication (right-associative, lower than `or`).
+    /// `==>`, implication (right-associative, lower than `or`).
     pub(super) fn parse_imply(&mut self, depth: usize) -> Option<Expr> {
         let left = self.parse_or(depth)?;
         if self.skip_continuation_lines() {
@@ -117,7 +117,7 @@ impl super::super::Parser {
         Some(left)
     }
 
-    /// `unit of E` / `dimension of E` — compile-time query operators.
+    /// `unit of E` / `dimension of E`, compile-time query operators.
     /// Precedence just above `==`; `unit`/`dimension` activate only before `of`.
     pub(super) fn parse_unit_query(&mut self, depth: usize) -> Option<Expr> {
         let start = self.current_span();
@@ -142,7 +142,7 @@ impl super::super::Parser {
                     });
                 }
         }
-        // `f ~~ g` — asymptotic equivalence at comparison precedence.
+        // `f ~~ g`, asymptotic equivalence at comparison precedence.
         // Lowers to a limit claim in sema.
         let left = self.parse_additive(depth)?;
         if matches!(self.peek(), TokenKind::TildeTilde) {
@@ -161,7 +161,7 @@ impl super::super::Parser {
         // `a ≈ b` /
         // `a ~= b` builds the Approx expr; the optional
         // `within rtol=…, atol=…` clause (either key, either order, at
-        // least one) is the DECLARED tolerance and is recorded — never
+        // least one) is the DECLARED tolerance and is recorded, never
         // dropped. The tolerance-less form still parses; refusing it is
         // admission's job (E-APPROX-TOL), keeping parse lossless.
         if matches!(self.peek(), TokenKind::TildeEq) {
@@ -189,7 +189,7 @@ impl super::super::Parser {
         })
     }
 
-    /// `within rtol=…, atol=…` — the declared tolerance clause on an
+    /// `within rtol=…, atol=…`, the declared tolerance clause on an
     /// `≈` edge. Keys may appear in either order and either may be
     /// omitted, but the clause must carry at least one key; anything
     /// else is a typed refusal, never a silent drop.

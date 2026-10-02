@@ -274,7 +274,7 @@ impl super::super::Parser {
             ) {
                 // A registered notation glyph is an operator, not a unit:
                 // leave it for `parse_notation_infix` (a precedence-law
-                // sibling — never resolved by folding it into a literal).
+                // sibling, never resolved by folding it into a literal).
                 let is_notation_glyph = self.notations.contains_key(&unit);
                 if !is_notation_glyph {
                     // Anti-proposal bonus: no juxtaposition
@@ -413,7 +413,7 @@ impl super::super::Parser {
             return None;
         }
         // `;` splits rows (`[1, 2; 3, 4]` = 2x2 matrix spelling). A
-        // comma-only list stays flat (additive — nothing reparses); rows
+        // comma-only list stays flat (additive, nothing reparses); rows
         // fold to nested `List` so admission's existing matrix path runs.
         let mut rows: Vec<Vec<Expr>> = vec![Vec::new()];
         while !matches!(self.peek(), TokenKind::RBracket | TokenKind::Eof) {

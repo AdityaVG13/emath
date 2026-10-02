@@ -143,7 +143,7 @@ pub(super) enum CType {
     /// `sequence(T)`; `Unknown` element when the element is not known.
     Sequence(Box<CType>),
     /// The mutable buffer carrier: unparameterized
-    /// in this cut — element values are checked at use, statically
+    /// in this cut; element values are checked at use, statically
     /// claimed nowhere.
     Buffer,
     Tuple,
@@ -448,8 +448,8 @@ fn admit_query_body(engine: &Engine, decl: &Declaration) -> Result<(), Construct
 /// them. The collectors admit exactly `example
 /// <label>:` blocks (with `given`/`expect` rows inside), loose `given`
 /// and `expect` rows, and the legacy `given`-headed assignment inside
-/// an example. Anything else — an invented `fault <label>:` section, an
-/// expression row, a field row — used to vanish without a diagnostic,
+/// an example. Anything else (an invented `fault <label>:` section, an
+/// expression row, a field row) used to vanish without a diagnostic,
 /// so authored intent silently did not run.
 pub(super) fn refuse_unknown_test_rows(decl: &Declaration) -> Result<(), ConstructorError> {
     for section in decl.sections().filter(|section| section.name == "tests") {
@@ -597,7 +597,7 @@ impl Engine {
                 }
                 // Str carries structural equality only (bead e6gvs): the
                 // ordering ops refuse at admission so the admit lane
-                // agrees with the runtime's `type` fault — the carrier
+                // agrees with the runtime's `type` fault; the carrier
                 // exists without the string library.
                 if matches!(op, BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge)
                     && (l == CType::Str || r == CType::Str)
@@ -891,7 +891,7 @@ CType::Unknown, _) => CType::Unknown,
                 return self.infer_named_call(types, &name, decl, args);
             }
             // Postfix `.field` on a non-path receiver is parsed as
-            // `field(recv)` — indistinguishable from a call — so the
+            // `field(recv)` (indistinguishable from a call), so the
             // field-access lane runs BEFORE the leftover-name refusal: a
             // record field named like a reserved ordinary-method name
             // (`total`, `sum`, ...) is a field access, never a method
@@ -922,7 +922,7 @@ CType::Unknown, _) => CType::Unknown,
             if is_refused_recipe(&name) && !types.contains_key(&name) {
                 return Err(fault(
                     "method_unavailable",
-                    format!("`{name}` is an ordinary module method, not a constructor operation — import it with `use`, or rename the record field: a field access `recv.{name}` resolves only when the receiver carries a field named `{name}`"),
+                    format!("`{name}` is an ordinary module method, not a constructor operation; import it with `use`, or rename the record field: a field access `recv.{name}` resolves only when the receiver carries a field named `{name}`"),
                 ));
             }
         }

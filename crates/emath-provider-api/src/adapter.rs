@@ -3,7 +3,7 @@
 //! A cell schema (`emath.capability-cell.v1`) GENERATES the
 //! adapter contract a provider must satisfy: the capability key (derived
 //! from the cell's content identity), the IR-facing trait shape (as
-//! DATA — the Rust trait stays generic), deterministic conformance
+//! DATA; the Rust trait stays generic), deterministic conformance
 //! fixtures, and the reference-oracle comparison the adapter output must
 //! pass. Providers are checked WORKERS, never the public meaning of an
 //! operation: the local oracle stays in `emath-ir`; the adapter carries
@@ -12,7 +12,7 @@
 //! IR purity gate (the neutral-IR constitution): the IR-facing signature
 //! is an ALLOWLIST of
 //! IR-owned type tokens. Provider-native types (torch/jax/ndarray, …)
-//! refuse typed (`E-PROVIDER-001`) — they cannot leak into the public
+//! refuse typed (`E-PROVIDER-001`): they cannot leak into the public
 //! IR surface, and the gate is enforced at contract generation, not
 //! left to caller discipline.
 //!
@@ -42,14 +42,14 @@ pub const IR_OWNED_TYPES: [&str; 5] = [
 /// wrong.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AdapterContractError {
-    /// `E-PROVIDER-001` — a provider-native type token in the public
+    /// `E-PROVIDER-001`: a provider-native type token in the public
     /// IR-facing signature (the gate is an allowlist; torch/jax/ndarray
     /// never pass).
     NativeTypeInIr {
         /// The rejected token.
         token: String,
     },
-    /// `E-PROVIDER-002` — the provider reported a reduction axis other
+    /// `E-PROVIDER-002`: the provider reported a reduction axis other
     /// than the one the binding declares (wrong-axis must FAIL).
     AxisMismatch {
         /// The capability the binding is for.
@@ -59,7 +59,7 @@ pub enum AdapterContractError {
         /// The axis the provider reported.
         reported: usize,
     },
-    /// `E-PROVIDER-003` — an oracle comparison was demanded for a cell
+    /// `E-PROVIDER-003`: an oracle comparison was demanded for a cell
     /// without local reference semantics (handwritten kernels only; a
     /// provider is never its own oracle).
     NoLocalOracle {
@@ -190,7 +190,7 @@ pub fn compare_outputs(native: &[f64], provider: &[f64]) -> ConformanceVerdict {
 
 /// A provider binding for one capability: which reduction axis the
 /// provider must report. Part of the generated contract, checked at the
-/// seam — a wrong axis fails typed, never silently reinterpreted.
+/// seam: a wrong axis fails typed, never silently reinterpreted.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProviderBinding {
     /// The capability the binding is for.
@@ -225,7 +225,7 @@ pub struct AdapterContract {
 }
 
 /// The IR purity gate: only [`IR_OWNED_TYPES`] pass. Provider-native
-/// types refuse typed — this is the negative-seed scenario.
+/// types refuse typed; this is the negative-seed scenario.
 pub fn ir_type_gate(token: &str) -> Result<(), AdapterContractError> {
     if IR_OWNED_TYPES.contains(&token) {
         Ok(())
@@ -247,7 +247,7 @@ pub fn gate_signature(signature: &BTreeMap<String, String>) -> Result<(), Adapte
 
 /// The local reference oracle table (closed set, data): cells with
 /// handwritten strict-f64 semantics pinned in `emath-ir`. Adding an
-/// oracle is one entry — providers are never their own meaning.
+/// oracle is one entry; providers are never their own meaning.
 fn local_oracle(cell: &str) -> Option<fn(&[f64]) -> Option<Vec<f64>>> {
     match cell {
         "std.tensor.softmax" => {
@@ -287,7 +287,7 @@ fn battery(arity: u16) -> Vec<Vec<Vec<f64>>> {
 /// battery; a cell with local reference semantics additionally pins the
 /// oracle output on every fixture. The IR-facing signature is gated
 /// through the allowlist at generation time. The generated contract
-/// carries NO provider implementation — conformance is a comparison the
+/// carries NO provider implementation; conformance is a comparison the
 /// harness runs (native oracle vs the provider's outputs).
 pub fn adapter_contract(schema: &CellSchema) -> Result<AdapterContract, AdapterContractError> {
     let identity = cell_id(schema);

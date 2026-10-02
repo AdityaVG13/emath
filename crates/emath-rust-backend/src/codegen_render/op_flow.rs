@@ -232,7 +232,7 @@ pub(super) fn authored_control_expr(
                 .collect::<Vec<_>>();
             // One representation: the kind walk (`value_kinds`) joins
             // an exact-int arm with an i64 arm to ExactInt, so the i64
-            // arm widens here through `ExactInt::from` to match — or
+            // arm widens here through `ExactInt::from` to match, or
             // the arms miscompile into E0308 if/else pairs.
             let arm_kind = |body: &EmirProgram| {
                 let names = (0..argument_kinds.len())

@@ -1,4 +1,4 @@
-//! `emath library mount` — mount a stdlib object pack.
+//! `emath library mount`: mount a stdlib object pack.
 //!
 //! The standard library is executable object packs, not catalog
 //! markdown: `emath library mount std` composes the std.core census
@@ -19,14 +19,14 @@ use emath_syntax::install_source_parser;
 
 /// The std.core theory: what the shape law claims.
 const THEORY_SOURCE: &str = "emath function shape_law:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
-/// The std.core cell: the reference algorithm — the same law computed
+/// The std.core cell: the reference algorithm: the same law computed
 /// as a distinct expression tree, so theory and algorithm carry
 /// independent `MeaningIDs`.
 const CELL_SOURCE: &str = "emath function square_ref:\n    inputs:\n        x: Float64\n    definitions:\n        y = (x * x) + 0.0\n";
 
 /// Admitted meaning identity AND canonical semantic payload for a
-/// stdlib census source. Admission failure is a typed refusal — the
-/// catalog never fabricates an identity from error text — and the
+/// stdlib census source. Admission failure is a typed refusal (the
+/// catalog never fabricates an identity from error text), and the
 /// payload is the same canonical bytes the test suite derives, so the
 /// printed object identities are the canonical census identities.
 fn meaning_of(source: &str) -> Result<(MeaningId, Vec<u8>), String> {

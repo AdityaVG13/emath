@@ -135,7 +135,7 @@ impl Term {
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut output = String::new();
-        // ubs:ignore — fmt::Write for String is infallible.
+        // ubs:ignore: fmt::Write for String is infallible.
         let _ = self.write_canonical(&mut output);
         output
     }
@@ -351,7 +351,7 @@ impl CanonicalParser<'_> {
 /// Escape a token for a canonical form: `\`, `(`, `)`, and `,` are
 /// backslash-escaped; every other character passes through unchanged.
 /// One helper serves every canonical-form writer (terms, genesis
-/// binders, world codegen) — the escape discipline is part of the
+/// binders, world codegen); the escape discipline is part of the
 /// format contract, not a per-crate detail.
 #[must_use]
 pub fn escape_canonical_token(text: &str) -> String {
@@ -368,7 +368,7 @@ pub fn escape_canonical_token(text: &str) -> String {
     out
 }
 
-/// [`escape_canonical_token`] plus `:`, newline, and carriage return —
+/// [`escape_canonical_token`] plus `:`, newline, and carriage return:
 /// the extended set layout labels need.
 #[must_use]
 pub fn escape_canonical_token_extended(text: &str) -> String {

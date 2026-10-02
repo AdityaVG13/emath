@@ -26,8 +26,8 @@ pub fn elaborate_requests(
         };
         // The default only mints goals that can exist. Carrier-typed
         // INPUTS (`Option<T>`, `Result<T, E>`) have no runtime binding
-        // story — the input boundary refuses them
-        // (`carrier_field_decl_refuses_typed`) — so a declaration whose
+        // story: the input boundary refuses them
+        // (`carrier_field_decl_refuses_typed`), so a declaration whose
         // inputs are all/any carriers is a check-only surface: minting
         // the implicit `evaluate` goal would force its codegen to refuse
         // and make every such admission unbuildable. The E-SEC-133
@@ -74,8 +74,8 @@ pub fn elaborate_requests(
                     );
                     continue;
                 }
-                // the flat-goal sugar — a
-                // heading line with no indented payload — is permanently
+                // the flat-goal sugar, a
+                // heading line with no indented payload, is permanently
                 // refused. A goal is never guessed from a heading; write
                 // the command form (`produce rust.library`).
                 if request.suite.statements.is_empty() {

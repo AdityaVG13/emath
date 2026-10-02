@@ -2,11 +2,11 @@
 //!
 //! The four `core::notation` packs formalized as catalog data: `logic`,
 //! `sets`, `calculus`, `algebra`. Every entry is a [`SymbolEntry`] at
-//! `Proposed` (quarantine) — the packs are seed data, promoted through the
+//! `Proposed` (quarantine); the packs are seed data, promoted through the
 //! SSC lifecycle (producer-distinct audit), never grandfathered.
 //!
 //! Review fixes encoded structurally:
-//! - no `\\`, `\/`, `/\` ASCII aliases — backslash is refused by
+//! - no `\\`, `\/`, `/\` ASCII aliases: backslash is refused by
 //!   the catalog alias gate (`E-SYMBOL-CATALOG-ALIAS-FORBIDDEN`); the packs
 //!   carry no such spellings.
 //! - `~` is the distribution tag, never a negation alias; logic

@@ -1,13 +1,13 @@
 //! The independent evidence plane: proofs/tests attach to
 //! stored objects as content-addressed receipts WITHOUT touching the
-//! object graph — attaching evidence never changes `ObjectID` or
+//! object graph: attaching evidence never changes `ObjectID` or
 //! `MeaningID` (evidence is not a second meaning identity; authority
 //! comes from the receipt content, never from method popularity).
 //!
 //! Receipts reuse the house content-addressing convention
 //! (`fnv1a64` over length-framed canonical bytes, schema-fenced like
 //! every store id). A receipt whose recorded `evidence_id` does not
-//! match the hash recomputed from its `(kind, payload)` is FORGED —
+//! match the hash recomputed from its `(kind, payload)` is FORGED:
 //! `E-EVID-503`, the `EvidenceStore` tamper code, refused before any
 //! view mutation. Attachment is idempotent per (object, receipt);
 //! views are derived (count/iterate), never stored separately, so the
@@ -23,7 +23,7 @@ use crate::object_graph::ObjectGraph;
 
 const EVIDENCE_PLANE_SCHEMA_V1: &str = "emath.store.evidence-attachment.v1";
 
-/// A sealed evidence receipt: an evidence kind (what checked what —
+/// A sealed evidence receipt: an evidence kind (what checked what:
 /// `test-receipt`, `proof-receipt`, …) and the canonical payload bytes
 /// that were checked. `evidence_id` is the content address of the
 /// (kind, payload) pair; `seal` computes it and `attach` re-verifies
@@ -66,7 +66,7 @@ pub enum EvidencePlaneError {
     /// Attachment target is not in the object graph.
     UnknownObject(ObjectId),
     /// Recorded evidence id does not match the recomputed content
-    /// address — tampered receipt content (`E-EVID-503`).
+    /// address: tampered receipt content (`E-EVID-503`).
     ForgedHash(String, String),
     /// An empty evidence kind is not checkable evidence.
     EmptyKind,
@@ -95,7 +95,7 @@ impl std::error::Error for EvidencePlaneError {}
 /// The independent evidence plane: receipts by content address, plus
 /// the per-object attachment index. Deliberately separate from
 /// [`crate::object_graph::ObjectGraph`]: the graph owns meaning
-/// identity, the plane owns evidence — attaching mutates neither the
+/// identity, the plane owns evidence; attaching mutates neither the
 /// graph nor any id it minted.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EvidencePlane {
@@ -136,7 +136,7 @@ impl EvidencePlane {
                 if existing_kind != &receipt.kind || existing_payload != &receipt.payload {
                     // Same id, different content: tamper even if the
                     // caller forged a *colliding* pair. The tamper MUST
-                    // be refused loudly, not silently absorbed — the
+                    // be refused loudly, not silently absorbed; the
                     // existing receipt under this address is the
                     // evidence another consumer may have already read.
                     return Err(EvidencePlaneError::ForgedHash(
@@ -160,7 +160,7 @@ impl EvidencePlane {
     /// The receipts attached to an object (ascending content order).
     /// The materialized Vec keeps lifetimes simple: ids are tiny
     /// content-address values, and the view is derived on demand.
-    /// Addresses are stored as canonical id strings and parsed back —
+    /// Addresses are stored as canonical id strings and parsed back:
     /// never re-hashed (re-hashing an id string would mint a DIFFERENT
     /// identity: the id is the content address of the receipt, not
     /// bytes to digest again).

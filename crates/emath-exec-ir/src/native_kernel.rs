@@ -1,7 +1,7 @@
 //! Immutable static native-kernel registry for PURE capability cells
 //! (approved architecture).
 //!
-//! New mathematics enters as `.emath` capability cells — this table is
+//! New mathematics enters as `.emath` capability cells; this table is
 //! the generic, domain-neutral ABI that lets a kernel-backed pure cell
 //! resolve WITHOUT a new `EmirOp`, parser branch, or backend domain
 //! switch. The registry is IMMUTABLE static data: no `register()` API,
@@ -313,8 +313,8 @@ thread_local! {
     /// Installed authored reference cells (the verified Language Image's
     /// `reference_programs`, filtered to capsule-active capabilities),
     /// keyed by capability feature id string. Installed ONLY through
-    /// [`install_language_distribution`] / [`install_reference_programs`]
-    /// — no public injection API, no static table, no feature-name
+    /// [`install_language_distribution`] / [`install_reference_programs`],
+    /// with no public injection API, no static table, no feature-name
     /// matching. The application seam consults these ONLY when no valid
     /// native binding exists.
     static REFERENCE_CELLS: RefCell<BTreeMap<String, CompiledCell>> =
@@ -322,8 +322,8 @@ thread_local! {
 }
 
 /// The capsule-active capability reference programs of a distribution,
-/// keyed by feature id string. Anything else in `reference_programs` —
-/// non-capability, non-active, or lacking an authority entry — never
+/// keyed by feature id string. Anything else in `reference_programs`
+/// (non-capability, non-active, or lacking an authority entry) never
 /// installs.
 fn capsule_active_reference_cells(
     distribution: &LanguageDistribution,
@@ -371,7 +371,7 @@ pub fn install_reference_programs(
     Ok(())
 }
 
-/// The installed authored reference cell for a capability, or `None` — on
+/// The installed authored reference cell for a capability, or `None`; on
 /// `None` the application seam's typed no-body refusal stays identical.
 pub fn installed_reference_cell(capability: &str) -> Option<CompiledCell> {
     REFERENCE_CELLS.with(|installed| installed.borrow().get(capability).cloned())
@@ -509,7 +509,7 @@ pub fn verified_kernel_binding(
 /// Look up a native kernel by capability name WITHOUT any arity check
 /// (the application seam checks arity uniformly before calling).
 ///
-/// Returns `None` for an unknown name — the caller's existing refusal
+/// Returns `None` for an unknown name; the caller's existing refusal
 /// path stays identical.
 pub fn native_kernel(capability: &str) -> Option<&'static NativeKernel> {
     let binding = LANGUAGE_BINDINGS.with(|bindings| bindings.borrow().get(capability).cloned())?;

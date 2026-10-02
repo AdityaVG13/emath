@@ -30,7 +30,7 @@ pub enum Value {
     Complex { re: f64, im: f64 },
     /// Exact rational `num/den` . Canonical
     /// form: gcd-reduced with `den > 0`, so equality is componentwise.
-    /// Built only from integer arithmetic — never from f64.
+    /// Built only from integer arithmetic, never from f64.
     Rat { num: i128, den: i128 },
     /// Signed constructor integer that does not fit `i64`.
     ExactInt(emath_rt::ExactInt),
@@ -61,13 +61,13 @@ pub enum Value {
     /// `IntervalCreate`, which refuses ill-formed bounds.
     Interval { lo: f64, hi: f64 },
     /// Option value semantics: `Some(inner)` or a
-    /// None that genuinely carries NOTHING (never a hidden zero — the
+    /// None that genuinely carries NOTHING (never a hidden zero; the
     /// honesty gate is the TOTAL `OptionUnwrapOr`, since no panicking
     /// unwrap exists at this layer).
     Option(Option<Box<Value>>),
     /// Result value semantics: the `ok` flag
     /// distinguishes Ok-payload from Err-payload on ONE carrier (a
-    /// shared Option carrier could not — Err(42) would read as
+    /// shared Option carrier could not: Err(42) would read as
     /// Ok(42)); the payload is the value when Ok, the error when Err.
     Result { ok: bool, payload: Box<Value> },
     /// Universal program-as-value artifact produced by
@@ -531,7 +531,7 @@ pub enum EvalFault {
         code: String,
     },
     /// Outstanding provider call: the cell has no local reference
-    /// semantics in this world. This is the typed continuation hole —
+    /// semantics in this world. This is the typed continuation hole:
     /// resumable by a provider run, never a silent identity.
     ProviderCallRequired {
         /// Cell the provider must fulfill.

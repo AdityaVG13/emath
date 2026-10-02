@@ -397,7 +397,7 @@ fn encode_expr(out: &mut String, package: &SemanticPackage, id: crate::ids::Expr
             extrapolation,
         } => {
             // pairs and the DECLARED policy are
-            // identity — length-framed floats (bit-exact) and the
+            // identity: length-framed floats (bit-exact) and the
             // canonical mode spellings.
             use std::fmt::Write;
             push_str(out, "series ");

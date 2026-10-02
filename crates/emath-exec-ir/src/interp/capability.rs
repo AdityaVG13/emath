@@ -42,7 +42,7 @@ pub(super) fn dispatch_capability(
         });
     }
     // Fallback: the installed authored reference cell (Language Image
-    // reference data). Nothing else matches — no feature-name lookup, no
+    // reference data). Nothing else matches: no feature-name lookup, no
     // std-cell registry.
     if let Some(cell) = crate::native_kernel::installed_reference_cell(capability) {
         return apply_reference_cell(capability, &cell, values, budget);

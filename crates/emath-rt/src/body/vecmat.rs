@@ -94,7 +94,7 @@ pub enum SliceAxis {
 }
 
 /// Finite whole `raw` in `0..len`. Negative, NaN, Inf, and fractional
-/// values are `OutOfBounds` — never `as usize` wrap/saturate.
+/// values are `OutOfBounds`, never `as usize` wrap/saturate.
 pub fn whole_index(raw: f64, len: usize) -> Result<usize, IndexError> {
     if !raw.is_finite() || raw < 0.0 || raw.fract() != 0.0 {
         return Err(IndexError::OutOfBounds {

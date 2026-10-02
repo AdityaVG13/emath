@@ -1,6 +1,6 @@
 //! Unit aliases and affine units (04 section 1.2 + 1.3):
 //!
-//! Kills the C/K bug class — the highest-frequency real-world unit error.
+//! Kills the C/K bug class: the highest-frequency real-world unit error.
 //!
 //! Alias-as-identity (1.2): an `alias` is an identity, never an
 //! approximation. `alias liter = L` makes liter and L the same unit (equal
@@ -11,7 +11,7 @@
 //! survives. Units whose names differ by more than zero are two units
 //! (`cal_th`, `cal_IT`).
 //!
-//! Affine units: the offset is ALWAYS pre-scale —
+//! Affine units: the offset is ALWAYS pre-scale:
 //! `SI = (value + offset) * scale`, so `degF` is
 //! `K = (F + 459.67) * 5/9`, never `F * 5/9 + 459.67` (which differs by
 //! 255.37 K). Conformance pinned: `32 degF == 273.15 K`.
@@ -22,7 +22,7 @@
 //! emitted by the capsules' kernels, not this registry.
 //!
 //! Determinism: f64 arithmetic, fixed conversion constants; comparisons in
-//! tests use a 1e-9 tolerance (documented — f64 cannot represent 273.15
+//! tests use a 1e-9 tolerance (documented: f64 cannot represent 273.15
 //! exactly). Deterministic for identical inputs.
 //!
 //! No-claim boundary: this module is the semantics layer in std. Surface
@@ -36,7 +36,7 @@
 //! `std.capability.units.*` capsules and their native kernels in
 //! `emath-exec-ir/src/native_kernels/domain_science.rs`. What remains here
 //! is the generic registry mechanics (alias-as-identity, affine/difference
-//! typing) — data structure, not named-domain policy.
+//! typing): data structure, not named-domain policy.
 
 #![forbid(unsafe_code)]
 

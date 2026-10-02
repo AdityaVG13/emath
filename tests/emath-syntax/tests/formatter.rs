@@ -45,7 +45,7 @@ fn formatter() {
     let mut probe = Probe::new("`emath-syntax` canonical formatter tests (migrated from `crates/emath-syntax/src/formatter.rs`).");
     probe.case("equation_renders_at_sibling_indent_without_blank_line", |p| {
     // SURF-0013: an Equation statement inside a nested section renders
-    // at sibling indent (one level, not two) with a single newline —
+    // at sibling indent (one level, not two) with a single newline:
     // no blank line right after the equation.
     let f0 = p.failures().len();
 

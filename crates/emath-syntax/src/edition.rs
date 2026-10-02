@@ -7,7 +7,7 @@
 //! edition therefore always parses.
 //!
 //! Adding an edition adds a row to [`GRAMMAR_PROFILES`] and a variant to
-//! `emath_core::Edition` — never a deletion.
+//! `emath_core::Edition`, never a deletion.
 
 #![forbid(unsafe_code)]
 

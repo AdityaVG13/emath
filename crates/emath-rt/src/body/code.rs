@@ -205,7 +205,7 @@ pub fn free_names<V: Clone + 'static>(code: &Code<V>) -> &[String] {
 // operation renders as a call to a dynamic kernel below.
 //
 // The kernels implement the constructor VM's EXACT carrier rules
-// (normative source: `constructor_layer/ops.rs` — `binary`, `neg`,
+// (normative source: `constructor_layer/ops.rs`: `binary`, `neg`,
 // `eq_values`, `cmp_numeric`; the And/Or short-circuit arm in
 // `engine_step/core.rs`):
 //   - Int x Int keeps Int for `+ - *` when the canonical denominator
@@ -376,7 +376,7 @@ pub fn code_not(value: &CodeValue) -> Result<bool, String> {
 }
 
 /// Checked projection to a declared Int output: the engine's
-/// `type_admits` law — Int admits Int only (a Rational refuses by
+/// `type_admits` law: Int admits Int only (a Rational refuses by
 /// name, never truncates).
 pub fn project_i64(value: &CodeValue, output: &str) -> Result<i64, String> {
     match value {
@@ -388,7 +388,7 @@ pub fn project_i64(value: &CodeValue, output: &str) -> Result<i64, String> {
 }
 
 /// Checked projection to a declared Rat output: the engine's
-/// Int-widening law — `n` becomes `n/1` exactly; Bool refuses.
+/// Int-widening law: `n` becomes `n/1` exactly; Bool refuses.
 pub fn project_ratio(value: &CodeValue, output: &str) -> Result<ExactRatio, String> {
     match value {
         CodeValue::Int(n) => Ok((i128::from(*n), 1)),

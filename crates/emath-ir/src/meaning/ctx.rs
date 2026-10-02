@@ -312,7 +312,7 @@ impl MeaningContext<'_> {
                 extrapolation,
             } => {
                 // the pairs and the DECLARED policy are
-                // identity — two series differing only in interpolation
+                // identity; two series differing only in interpolation
                 // mode are different artifacts.
                 out.tag(18);
                 out.usize(points.len());

@@ -1,4 +1,4 @@
-//! Text helper functions — pure rendering of expressions and types for
+//! Text helper functions: pure rendering of expressions and types for
 //! trace text.
 
 use emath_core::tree::{Expr, ExprKind, TypeExpr, TypeKind};

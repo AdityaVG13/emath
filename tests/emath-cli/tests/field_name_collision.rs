@@ -50,7 +50,7 @@ fn tally_file(dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// A module that CALLS an unbound leftover name with a non-record argument:
-/// this is a real unbound method call and must still refuse — but naming
+/// this is a real unbound method call and must still refuse, but naming
 /// the collision and the fix.
 fn unbound_file(dir: &std::path::Path) -> std::path::PathBuf {
     let path = dir.join("unbound.emath");

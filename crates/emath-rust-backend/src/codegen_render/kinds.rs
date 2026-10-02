@@ -334,7 +334,7 @@ pub(crate) enum ValueKind {
         params: Vec<ValueKind>,
         result: Box<ValueKind>,
     },
-    /// Complex scalar `(f64, f64)` — the VM's complex carrier.
+    /// Complex scalar `(f64, f64)`, the VM's complex carrier.
     Complex,
     DenseLayout(Box<ValueKind>),
     Result(Box<ValueKind>, Box<ValueKind>),
@@ -2002,7 +2002,7 @@ pub(super) fn cmp_expr(
             exact_comparison(op, program, left, right, kinds)
         }
         // One representation for mixed Rat/Int comparisons: the Int
-        // side widens to canonical ratio parts — equality compares
+        // side widens to canonical ratio parts: equality compares
         // the tuples elementwise, order cross-multiplies through
         // `ratio_lt` (denominators are canonically positive). Never
         // an f64 roundtrip: the blanket Int arms below would cast a

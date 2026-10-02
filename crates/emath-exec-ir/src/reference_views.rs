@@ -81,7 +81,7 @@ pub fn generate_reference_views(
         ));
         if capsule.class == emath_ir::FeatureClass::Diagnostic {
             diagnostics.push_str(&format!(
-                "- `{}` — {}\n",
+                "- `{}`: {}\n",
                 capsule.feature_id, capsule.summary
             ));
         }

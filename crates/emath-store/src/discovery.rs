@@ -1,18 +1,18 @@
-//! Structural discovery (`emath find`, store tier) —
+//! Structural discovery (`emath find`, store tier):
 //!.
 //!
 //! Search by mathematics over the object graph: exact filters
-//! are STRUCTURAL — object kind, outgoing relation kind, relation
+//! are STRUCTURAL: object kind, outgoing relation kind, relation
 //! toward a target meaning, relation authority. Text/embedding
 //! similarity may only RANK the compatible set: **rank cannot override
-//! compatibility** — a ranking function scores candidates, but the
+//! compatibility**: a ranking function scores candidates, but the
 //! compatible membership is decided by the exact filters alone, so an
 //! embedding-similar object that fails the filters is never returned
 //! and a ranker is never a filter. Search is not a second type checker:
 //! it queries structural metadata (kinds/relations/authority), it never
 //! re-derives semantics and never guesses math equivalence.
 //!
-//! Determinism class: pure sequence — no ranker ⇒ ascending id order;
+//! Determinism class: pure sequence: no ranker ⇒ ascending id order;
 //! with a ranker ⇒ descending rank, ties broken by id. Rank values are
 //! display metadata carried on the hit.
 
@@ -70,7 +70,7 @@ impl FindQuery {
     }
 
     /// Run with a similarity ranker. The ranker is consulted ONLY for
-    /// objects that already passed every exact filter — it orders the
+    /// objects that already passed every exact filter; it orders the
     /// compatible set and annotates hits; it can never add an
     /// incompatible object or remove a compatible one (rank is
     /// display-only).

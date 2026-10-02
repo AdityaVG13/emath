@@ -96,7 +96,7 @@ impl super::Parser {
     }
 
     /// One `reactions:` line: `name: 2H2 + O2 -> 2H2O`. Terms are
-    /// (coefficient, species) pairs — T3 section grammar, never the
+    /// (coefficient, species) pairs: T3 section grammar, never the
     /// expression grammar, so `2H2` is a term here while juxtaposition
     /// stays refused in expressions. Arrow spellings: `->`
     /// (irreversible), `<->` (reversible), `<=>` (equilibrium). Any other
@@ -107,7 +107,7 @@ impl super::Parser {
             return self.parse_statement();
         };
         if !matches!(self.peek_at(1), TokenKind::Colon) {
-            // Not a `name:` line — fall back to the ordinary statement
+            // Not a `name:` line; fall back to the ordinary statement
             // parser so its diagnostics stay in charge.
             return self.parse_statement();
         }
@@ -117,7 +117,7 @@ impl super::Parser {
         let arrow = self.parse_reaction_arrow()?;
         let rhs = self.parse_reaction_terms()?;
         // a side that is nothing
-        // must be DECLARED nothing — `∅` is the sink spelling. A
+        // must be DECLARED nothing; `∅` is the sink spelling. A
         // reaction endpoint that is empty without it is a silent
         // nothing and refuses at admission (E-BIO-SINK).
         if lhs.is_empty() && rhs.is_empty() {
@@ -156,7 +156,7 @@ impl super::Parser {
     /// declared sink `∅` is a legal side BY ITSELF
     /// (degradation/elimination: `Drug -> ∅`); a side that is neither
     /// terms nor `∅` (a bare empty side) refuses E-SYN-156 here and
-    /// E-BIO-SINK at admission — an endpoint that is nothing must be
+    /// E-BIO-SINK at admission: an endpoint that is nothing must be
     /// declared nothing, never silently empty.
     fn parse_reaction_terms(&mut self) -> Option<Vec<ReactionTerm>> {
         let mut terms = Vec::new();
@@ -204,7 +204,7 @@ impl super::Parser {
     /// `->` and `=>` share one Arrow token (notation mappings depend on
     /// that), and `<->` lexes as `<` + Arrow while `<=>` lexes as
     /// `<` + `<=` + `>`. So inside `reactions:` the admitted arrows are
-    /// Arrow (irreversible; both `->` and `=>` spellings denote it — the
+    /// Arrow (irreversible; both `->` and `=>` spellings denote it: the
     /// grammar has no lambda position for `=>` to desugar into), `<`+Arrow
     /// (reversible), `<`+`<=`+`>` (equilibrium). `<==>` is the logical
     /// Iff token and refuses, as does any other spelling.

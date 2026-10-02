@@ -1,10 +1,10 @@
 //! Proof obligations as machine records.
 //!
 //! Each verified-complete outline lowers to `emath.proof-obligation
-//! v1` records — the stable, provider-agnostic machine target. A
+//! v1` records: the stable, provider-agnostic machine target. A
 //! `ProofChecker` is a CONTRACT, not a runtime dependency: checkers
 //! implement [`ProofChecker`] and are handed the records; nothing in
-//! this module executes a checker (proofs are additive authority —
+//! this module executes a checker (proofs are additive authority:
 //! a missing checker never blocks compilation, and no verdict is
 //! fabricated).
 //!
@@ -80,7 +80,7 @@ pub trait ProofChecker {
 }
 
 /// A verdict record: which checker, which obligation hash, what
-/// outcome. Evidence, not authority — it never gates admission.
+/// outcome. Evidence, not authority: it never gates admission.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProofVerdict {
     pub checker: String,
@@ -148,7 +148,7 @@ pub fn outline_records_json(outline: &str, obligations: &[ProofObligation]) -> S
 }
 
 /// Run a checker over the lowered records and collect verdicts. The
-/// checker is fully in control of the verdict; emath records it —
+/// checker is fully in control of the verdict; emath records it:
 /// a checker that cannot decide stays silent (no fabricated
 /// verdicts, no guessed discharges), and a missing checker is an
 /// empty verdict list, never a fabricated discharge.

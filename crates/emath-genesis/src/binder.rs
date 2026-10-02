@@ -349,7 +349,7 @@ impl ScopedBinder {
 
     /// Deterministic seeded identity for `OpaqueSeeded` binders: FNV-1a64
     /// over the versioned canonical form mixed with `seed`. Refuses other
-    /// families — they carry structural or conventional claims instead.
+    /// families; they carry structural or conventional claims instead.
     pub fn opaque_identity(&self, seed: u64) -> Result<u64, BinderError> {
         if self.family != BinderFamily::OpaqueSeeded {
             return Err(BinderError::WrongFamily {

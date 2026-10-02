@@ -4,7 +4,7 @@ use super::{Analysis, WorldIr, Environment, Term, VariableId, VmBudget, vm_run, 
 
 /// Evaluate `analysis.term` in `world` with the parametric lane's fixtures.
 /// Returns `(answer, valuation_label, vm_steps)`; suspensions/unbound vars
-/// yield the structural canonical form — never a fabricated constant.
+/// yield the structural canonical form, never a fabricated constant.
 pub(super) fn evaluated_answer(
     analysis: &Analysis,
     world: &WorldIr,

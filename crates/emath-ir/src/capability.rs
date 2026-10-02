@@ -10,7 +10,7 @@
 //! moves it onto cells.
 //!
 //! Schema `emath.capability-cell.v1`: every cell declares a closed
-//! [`CellClass`], a schema version, and an explicit migration policy —
+//! [`CellClass`], a schema version, and an explicit migration policy:
 //! identity-affecting cell mutation is refused unless the migration policy
 //! admits the change. Admission is bounded and typed: the closed
 //! [`AdmissionRefusal`] set names every refusal; nothing silent passes.

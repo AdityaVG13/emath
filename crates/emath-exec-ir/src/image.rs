@@ -1,12 +1,12 @@
 //! Compiled semantic image: a field pack compiles into a
-//! compact, deterministic image — cells, bytecode, worlds, docs offsets,
-//! identities — organized in independently loadable partitions under a
+//! compact, deterministic image (cells, bytecode, worlds, docs offsets,
+//! identities) organized in independently loadable partitions under a
 //! content id, with a lock recording prelude/packs/images/toolchain.
 //!
 //! The image is DATA (canonical text partitions), never a tree of
 //! generated .rs files as source of truth, and it is not the user model.
 //! Every partition carries a content id; the loader validates each
-//! partition independently and a corrupt page refuses typed — never a
+//! partition independently and a corrupt page refuses typed, never a
 //! silent load, never partial authority.
 
 use std::collections::BTreeMap;
@@ -125,13 +125,13 @@ impl ImagePartition {
 /// Typed refusal of a corrupt or malformed image page. Closed set.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageRefusal {
-    /// `E-IMAGE-001` — a partition's body no longer matches its stamped
+    /// `E-IMAGE-001`: a partition's body no longer matches its stamped
     /// content id: a corrupt page.
     CorruptPartition {
         /// The partition that refused.
         name: String,
     },
-    /// `E-IMAGE-002` — a partition with no name or no page body.
+    /// `E-IMAGE-002`: a partition with no name or no page body.
     MalformedPartition {
         /// The partition that refused.
         name: String,
@@ -207,7 +207,7 @@ impl ImageLock {
 /// The compiled semantic image: partitions sorted by name, stamped with
 /// content ids, under a deterministic image id. Built FROM cells (the
 /// term compiler's output); the bytecode partition carries the compiled
-/// cell bytecode — not generated Rust source, and not the user model.
+/// cell bytecode, not generated Rust source, and not the user model.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SemanticImage {
     /// The pack the image was built from.

@@ -237,7 +237,7 @@ fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {
     }
     indent(out, level);
     if decl.item_kind == "extern" {
-        // `extern operator name<Generics>(params) -> Ret:` — no `emath`
+        // `extern operator name<Generics>(params) -> Ret:`, no `emath`
         // prefix; the parser dispatches on the `extern` keyword.
         out.push_str("extern ");
     } else {
@@ -285,7 +285,7 @@ fn format_declaration(out: &mut String, decl: &Declaration, level: usize) {
     out.push(':');
     out.push('\n');
     // Body statements (sections, fn-like heads, and other statements) in
-    // source order, separated by ONE blank line at declaration level —
+    // source order, separated by ONE blank line at declaration level,
     // never a trailing blank line after the last statement (SURF-0013).
     let compact = decl.signature.is_some();
     let mut first = true;
@@ -331,7 +331,7 @@ fn compact_result(section: &Section) -> Option<&Expr> {
 
 fn format_attribute(out: &mut String, attribute: &Attribute, level: usize) {
     indent(out, level);
-    // Grammar spelling: `@path(...)` — the attribute prefix is `@`, not
+    // Grammar spelling: `@path(...)`; the attribute prefix is `@`, not
     // a Rust-style `#[...]` bracket.
     out.push('@');
     out.push_str(&attribute.name);
@@ -362,8 +362,8 @@ const BARE_GENERIC_SECTIONS: [&str; 7] = [
 
 fn format_section_head(out: &mut String, section: &Section) {
     // the generic fit goal renders
-    // `fit <params> to <observable>:` — parameters in args (Expr path
-    // arguments), observable in the generic slot — never the
+    // `fit <params> to <observable>:` with parameters in args (Expr path
+    // arguments) and observable in the generic slot, never the
     // angle-bracket generic spelling.
     if section.name == "fit" {
         out.push_str("fit");

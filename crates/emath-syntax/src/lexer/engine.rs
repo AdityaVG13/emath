@@ -217,7 +217,7 @@ impl Lexer<'_> {
             _ if byte.is_ascii_alphabetic() || byte == b'_' || byte >= 0x80 => {
                 // `±` (U+00B1, UTF-8 C2 B1) is the measurement-literal
                 // separator (the measurement literal), not an identifier
-                // glyph — it must be claimed before the non-ASCII ident
+                // glyph; it must be claimed before the non-ASCII ident
                 // path sees it.
                 if byte == 0xc2 && self.peek2() == Some(0xb1) {
                     self.pos += 2;
@@ -226,7 +226,7 @@ impl Lexer<'_> {
                     && self.bytes.get(self.pos + 1) == Some(&0x89)
                     && self.bytes.get(self.pos + 2) == Some(&0x88)
                 {
-                    // `≈` (U+2248, UTF-8 E2 89 88) — approximation
+                    // `≈` (U+2248, UTF-8 E2 89 88), approximation
                     // labeling operator. Claimed before the
                     // non-ASCII ident path so the glyph never glues into
                     // one unknown name.
@@ -236,7 +236,7 @@ impl Lexer<'_> {
                     && self.bytes.get(self.pos + 1) == Some(&0x88)
                     && self.bytes.get(self.pos + 2) == Some(&0x87)
                 {
-                    // `∇` (U+2207, UTF-8 E2 88 87) — nabla family (pack). The follower byte decides the form: `·`
+                    // `∇` (U+2207, UTF-8 E2 88 87), nabla family (pack). The follower byte decides the form: `·`
                     // (C2 B7) is divergence, `×` (C3 97) is curl, `²`
                     // (C2 B2) is the stencil Laplacian; a bare ∇ is the
                     // gradient glyph. Claimed before the non-ASCII ident
@@ -262,7 +262,7 @@ impl Lexer<'_> {
                     && self.bytes.get(self.pos + 1) == Some(&0x9F)
                     && matches!(self.bytes.get(self.pos + 2), Some(&0xA8 | &0xA9))
                 {
-                    // `⟨` (U+27E8, E2 9F A8) / `⟩` (U+27E9, E2 9F A9) —
+                    // `⟨` (U+27E8, E2 9F A8) / `⟩` (U+27E9, E2 9F A9):
                     // braket pack angles. Claimed before the
                     // non-ASCII ident path so the glyphs never glue into
                     // one unknown name; only the mounted braket pack
@@ -278,7 +278,7 @@ impl Lexer<'_> {
                     && self.bytes.get(self.pos + 1) == Some(&0x88)
                     && self.bytes.get(self.pos + 2) == Some(&0x85)
                 {
-                    // `∅` (U+2205, UTF-8 E2 88 85) — the declared sink
+                    // `∅` (U+2205, UTF-8 E2 88 85), the declared sink
                     //: a
                     // reaction endpoint that is deliberately nothing
                     // (degradation/elimination), never a magic empty
@@ -294,7 +294,7 @@ impl Lexer<'_> {
                 self.pos += 1;
                 if self.peek() == Some(b'=') {
                     self.pos += 1;
-                    // `==>` — logical implication
+                    // `==>`, logical implication
                     if self.peek() == Some(b'>') {
                         self.pos += 1;
                         self.push(TokenKind::Imply, start);
@@ -321,7 +321,7 @@ impl Lexer<'_> {
                 self.pos += 1;
                 if self.peek() == Some(b'=') {
                     self.pos += 1;
-                    // `<==>` — logical biconditional
+                    // `<==>`, logical biconditional
                     if self.peek() == Some(b'=') && self.peek2() == Some(b'>') {
                         self.pos += 2;
                         self.push(TokenKind::Iff, start);
@@ -351,7 +351,7 @@ impl Lexer<'_> {
                     self.pos += 1;
                     self.push(TokenKind::Arrow, start);
                 } else if self.peek() == Some(b'-') && self.peek2() == Some(b'>') {
-                    // `-->` — directed graph edge arrow.
+                    // `-->`, directed graph edge arrow.
                     // Glued so it beats `->`; `x--y` (no `>`) stays two
                     // Minus tokens, so outside-graph arithmetic is
                     // untouched.
@@ -379,7 +379,7 @@ impl Lexer<'_> {
                     self.pos += 1;
                     self.push(TokenKind::TildeTilde, start);
                 } else if self.peek() == Some(b'=') {
-                    // `~=` — ASCII spelling of the approximation
+                    // `~=`, ASCII spelling of the approximation
                     // labeling operator; one token, same as `≈`.
                     self.pos += 1;
                     self.push(TokenKind::TildeEq, start);
@@ -612,7 +612,7 @@ impl Lexer<'_> {
         // Attached parenthetical uncertainty (
         // CODATA): `0.5012(3)` = 0.5012 ± 0.0003. Attachment is lexical:
         // immediately after the number (no space), digits only. A space
-        // before `(` or a non-digit inside leaves ordinary tokenization —
+        // before `(` or a non-digit inside leaves ordinary tokenization:
         // `f(2)` is a call (leading token is an Ident, never scanned
         // here), and `1.50 (2)` lexes as Float + group, which the parser
         // refuses where an uncertainty cannot appear.

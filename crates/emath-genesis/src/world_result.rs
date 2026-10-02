@@ -1,7 +1,7 @@
 //! `WorldResultBundle` envelope: every execution labels world,
 //! method, inputs, assumptions, answer-or-disposition, evidence, and
 //! cost. The World ABI ([`crate::evaluate_bounded`]) is the
-//! producer; this module is the envelope — a bare scalar never escapes a
+//! producer; this module is the envelope: a bare scalar never escapes a
 //! public path, dispositions are first-class, and the bundle id is a
 //! deterministic content id (replay from IDs reconstructs the labeled
 //! result).
@@ -21,7 +21,7 @@ pub const WORLD_RESULT_SCHEMA: &str = "emath.world-result";
 pub const WORLD_RESULT_VERSION: u32 = 1;
 
 /// First-class outcome of one labeled execution. An execution that did
-/// not produce an answer is still a complete, bundleable result — open,
+/// not produce an answer is still a complete, bundleable result: open,
 /// refused, and faulted runs are recorded, never dropped.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Disposition {
@@ -184,10 +184,10 @@ impl WorldResult {
 /// missing label; nothing silent passes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NakedResultRefusal {
-    /// `E-WORLD-001` — the result does not name the world that produced
+    /// `E-WORLD-001`: the result does not name the world that produced
     /// it: a naked answer.
     MissingWorld,
-    /// `E-WORLD-002` — the result does not name the producer method.
+    /// `E-WORLD-002`: the result does not name the producer method.
     MissingMethod,
 }
 

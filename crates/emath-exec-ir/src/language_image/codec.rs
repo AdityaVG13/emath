@@ -199,7 +199,7 @@ pub(super) fn note_term_arities(term: &Term, signature: &mut Signature) -> Resul
 /// Names the first capability where the installed public reference map
 /// disagrees with the decoded `language.reference` partition: a changed
 /// program, a missing capability, or an extra one. This is the mutation
-/// proof for post-compile map edits — `verify()` never trusts the map.
+/// proof for post-compile map edits; `verify()` never trusts the map.
 pub(super) fn first_installed_map_mismatch(
     installed: &BTreeMap<FeatureId, CompiledCell>,
     decoded: &BTreeMap<FeatureId, ReferenceEntry>,

@@ -30,7 +30,7 @@ impl PartitionKind {
         }
     }
 
-    /// Experiment-protocol stage (A–E) occupied by this partition.
+    /// Experiment-protocol stage (A-E) occupied by this partition.
     #[must_use]
     pub const fn stage(self) -> char {
         match self {

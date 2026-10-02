@@ -2,7 +2,7 @@
 //! `emath` from their own project directories by pointing `EMATH_ROOT` at a
 //! repository root containing `language/spec`.
 //!
-//! Failure-first: before the env seam existed, the env-set case failed —
+//! Failure-first: before the env seam existed, the env-set case failed:
 //! the resolver only walked the source path and cwd ancestors, so a
 //! foreign working directory refused with `E-LANG-IMAGE` even with the
 //! variable set. The bad-root and unset cases pin the refusal semantics.
@@ -24,7 +24,7 @@ fn scratch(tag: &str) -> std::path::PathBuf {
 }
 
 /// A consumer file that imports a LIBRARY module (`optimization.allocate`),
-/// so a green run proves the Language Image itself resolved — not just the
+/// so a green run proves the Language Image itself resolved, not just the
 /// parse lane.
 fn consumer_file(dir: &std::path::Path) -> std::path::PathBuf {
     let path = dir.join("consumer.emath");

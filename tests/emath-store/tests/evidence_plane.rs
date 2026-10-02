@@ -1,4 +1,4 @@
-//!: independent evidence plane — contract
+//! Independent evidence plane: contract
 //! tests.
 
 use emath_core::{MeaningId, ObjectId};

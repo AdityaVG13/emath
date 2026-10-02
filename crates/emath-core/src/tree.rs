@@ -56,7 +56,7 @@ pub struct NotationDecl {
     pub precedence: u32,
     pub glyph: String,
     pub target: Vec<String>,
-    /// Alias clause: `alias "*"` — alternative spelling for the same
+    /// Alias clause: `alias "*"`: alternative spelling for the same
     /// operator, resolving to one canonical path.
     pub alias: Option<String>,
     pub source: Span,
@@ -216,7 +216,7 @@ pub enum StmtKind {
     },
     /// One `reactions:` line (`r1: 2H2 + O2 -> 2H2O`, 04 section 3.1):
     /// a labeled stoichiometric multiset transformation. Reaction lines
-    /// are T3 SECTION grammar — coefficients attach to species here even
+    /// are T3 SECTION grammar: coefficients attach to species here even
     /// though expression juxtaposition stays refused.
     Reaction {
         name: String,

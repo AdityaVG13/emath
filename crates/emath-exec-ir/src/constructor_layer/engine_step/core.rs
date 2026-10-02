@@ -234,7 +234,7 @@ impl Engine {
                     // the value is `(function a: function b: f(a, b))`
                     // applied to a then b, so the full call re-binds
                     // every input identically. Each closure demands
-                    // what its input declares — the same shape the
+                    // what its input declares: the same shape the
                     // named lane's admit_input_type checks on every call.
                     let shapes: Vec<DomainShape> = decl
                         .inputs

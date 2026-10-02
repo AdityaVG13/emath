@@ -1,4 +1,4 @@
-//! `core::statistics` — descriptive statistics and estimator contracts.
+//! `core::statistics`: descriptive statistics and estimator contracts.
 //!
 //! Honesty doctrine of this package:
 //!
@@ -20,7 +20,7 @@
 //!   `is_significant() -> bool` on this module.
 //!
 //! Inference machinery (p-value computation, regression, portfolios)
-//! lives in packages, not core — this is the descriptive layer and the
+//! lives in packages, not core; this is the descriptive layer and the
 //! contract vocabulary.
 //!
 //! Leaves are selected by capsule kernel ids (`finite-average`,

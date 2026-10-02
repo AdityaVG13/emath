@@ -49,8 +49,8 @@ pub enum TypeNode {
     OptionType(Box<TypeNode>),
     /// A prime field `Field<p>` / `GF<p>`: the integers modulo a fixed
     /// prime `modulus` . The prime
-    /// is a TYPE-LEVEL constant carried by the type — `GF<7>` is a
-    /// distinct node from plain `Int` and from `GF<5>` — so field-typed
+    /// is a TYPE-LEVEL constant carried by the type (`GF<7>` is a
+    /// distinct node from plain `Int` and from `GF<5>`), so field-typed
     /// declarations keep their modulus instead of collapsing to
     /// `TypeNode::Int`. Values are exact i64 integers; modular reduction
     /// remains an operational concern of the builtins
@@ -70,7 +70,7 @@ pub enum TypeNode {
     },
     Other(QualifiedName),
     /// Time-series value type:
-    /// `Series<Real in s, Real in V>` — the sampled time axis and the
+    /// `Series<Real in s, Real in V>`: the sampled time axis and the
     /// value axis, each carrying their declared unit dimensions. The
     /// interpretation policy rides the VALUE (identity-bearing there),
     /// not the type.

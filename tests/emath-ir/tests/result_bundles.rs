@@ -1,7 +1,7 @@
-//! WorldResultBundle — no naked answers.
+//! WorldResultBundle: no naked answers.
 //!
 //! The law: every execution labels world, method, inputs,
-//! assumptions, answer-or-disposition, evidence, and cost — the envelope
+//! assumptions, answer-or-disposition, evidence, and cost: the envelope
 //! over the World ABI producer. A bare scalar never escapes a
 //! public path: dispositions (answer/open/refused/fault) are first-class,
 //! the bundle id is a deterministic content id (replay from IDs
@@ -30,12 +30,12 @@ fn label_i64(value: &i64) -> String {
 
 #[test]
 fn intent() {
-    let mut p = Probe::new("WorldResultBundle — no naked answers.");
+    let mut p = Probe::new("WorldResultBundle: no naked answers.");
     p.case("bundle_labels_every_execution", |p| {
 
     // Happy path: the World ABI producer wrapped in the envelope. The
     // bundle labels world, method, inputs, assumptions, disposition,
-    // evidence, and cost — no naked scalar anywhere.
+    // evidence, and cost; no naked scalar anywhere.
     let (_signature, term) = reference_alien_term();
     let result = evaluate_labeled(
         &term,
@@ -79,7 +79,7 @@ fn intent() {
     p.case("dispositions_are_first_class", |p| {
 
     // OPEN: an open term (missing valuation) is a first-class
-    // disposition naming the missing variables — not a missing answer.
+    // disposition naming the missing variables, not a missing answer.
     let (_signature, term) = reference_alien_term();
     let open = evaluate_labeled(
         &term,
@@ -157,7 +157,7 @@ fn intent() {
     p.case("replay_from_bundle_ids_reconstructs", |p| {
 
     // Determinism contract: the same producer + inputs + budget rebuild
-    // the SAME bundle id — replay reconstructs the labeled result from
+    // the SAME bundle id; replay reconstructs the labeled result from
     // the id alone.
     let (_signature, term) = reference_alien_term();
     let run = || {

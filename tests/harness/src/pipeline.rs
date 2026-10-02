@@ -152,7 +152,7 @@ impl Source {
                 probe.demand(
                     format!("{}:has-expect", self.name),
                     saw_expect,
-                    "source has no tests: example with expect — admission-only is fluff",
+                    "source has no tests: example with expect; admission-only is fluff",
                 );
             }
             Err(err) => {

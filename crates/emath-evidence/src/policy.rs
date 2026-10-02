@@ -1,6 +1,6 @@
 //! Evidence-level policy.
 //!
-//! Maps an E0–E5 requirement to the admissible producer/checker
+//! Maps an E0-E5 requirement to the admissible producer/checker
 //! combinations per claim class. The same claim class admits stricter
 //! combinations at higher levels; `satisfied_by` decides whether a
 //! concrete producer/checker pair meets the requirement.
@@ -38,7 +38,7 @@ pub struct EvidencePolicy {
 }
 
 impl Default for EvidencePolicy {
-    /// Default: E0–E5 bars over the claim classes emitted by the native
+    /// Default: E0-E5 bars over the claim classes emitted by the native
     /// pipeline and checker battery.
     fn default() -> Self {
         let classes = vec![
@@ -86,7 +86,7 @@ impl EvidencePolicy {
     }
 }
 
-/// The standard E0–E5 ladder; each higher bar admits a stronger
+/// The standard E0-E5 ladder; each higher bar admits a stronger
 /// producer/checker combination.
 fn standard_table() -> BTreeMap<String, Vec<EvidenceEntry>> {
     let mut table = BTreeMap::new();

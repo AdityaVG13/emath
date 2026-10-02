@@ -164,7 +164,7 @@ fn evaluate_tree_with(
                 // givens/defs are THIS case's world: restore the env after
                 // the example so nothing leaks into later declarations'
                 // examples (a leaked `diagnostic` would mask their fault
-                // records — same discipline as the function lane below).
+                // records; same discipline as the function lane below).
                 let saved = engine.env.clone();
                 let receipt = match engine.run_query(&decl.name, &givens) {
                     Ok(receipt) => receipt,

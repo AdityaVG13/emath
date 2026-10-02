@@ -40,13 +40,13 @@
 //! Fragment + dynamic-sequence node-family pins),
 //! `language/modules/search/discovery.emath` (the applied-evaluate
 //! pins), and `language/modules/analysis/derivative.emath` (the
-//! derived-derivative-into-Newton pins) — the same givens,
+//! derived-derivative-into-Newton pins): the same givens,
 //! the same expectations, executed against emitted code instead of the VM.
 //! Refusal rows (`expect diagnostic.code == <atom>`) pin the emitted
 //! `Err(<atom>)` strings exactly. Labeled transcription boundaries live
 //! in the driver headers (cross-module bracket rows, i64 ABI limits).
 //! The witness lane drives `tests/fixtures/constructor/`
-//! `operator_tag_witness.emath` — its quoted forms are built as
+//! `operator_tag_witness.emath`; its quoted forms are built as
 //! distilled trees (the same shapes `quote(...)` distills), one row
 //! per authored witness example.
 
@@ -485,7 +485,7 @@ fn main() {
         }
     }
 
-    // example <lower_brackets_the_quantile>: the crossing invariant, exact —
+    // example <lower_brackets_the_quantile>: the crossing invariant, exact:
     // itv_width(result) <= 1/64, tail(8, 10, lo) <= 1/40 <= tail(8, 10, hi).
     // The width and both tails go through the EMITTED binom_upper_tail.
     let got = ci_lower(8, 10, (1, 20), 6);
@@ -575,7 +575,7 @@ const POWERS_DRIVER: &str = r#"
 //! arbitrary precision; the emitted crate carries ExactInt (checked
 //! machine arithmetic with a Big tail). The sqrt_two_to_three_hundred
 //! row passes 2^300 as an Int INPUT, which the emitted `n: i64` ABI
-//! cannot even name — that row stays VM-only. The two_to_three_hundred
+//! cannot even name; that row stays VM-only. The two_to_three_hundred
 //! row (result too big for i64 but the INPUTS fit) is pinned here via
 //! exact decimal Display equality against the authored expectation.
 
@@ -826,7 +826,7 @@ const DISTRIBUTIONS_DRIVER: &str = r#"
 //!
 //! Transcription notes (honest, labeled): the fair-coin entropy row in
 //! the authored module overlaps its enclosure with `log2_bracket(40)`
-//! from analysis.series — that function is not an entry of THIS crate,
+//! from analysis.series; that function is not an entry of THIS crate,
 //! so the pin fences the enclosure at log 2 within 1e-6 instead
 //! (log 2 = 0.6931471805...). Row-level identity rows (sum == 1,
 //! dist_ok) go through the crate's own emitted dist_total / dist_ok.
@@ -1180,7 +1180,7 @@ fn main() {
 
     // example <one_encloses_exp_minus_one>: pmf(1; lambda=1) encloses e^-1.
     // q=20 stays inside the emitted i128 Rat carrier (the authored q=40
-    // makes 40! overflow it — pinned as the boundary row below; the
+    // makes 40! overflow it, pinned as the boundary row below; the
     // 1e-6 fences are far coarser than the q=20 bracket width).
     let got = poisson_pmf_bracket(1, (1, 1), 20);
     match &got {
@@ -1202,7 +1202,7 @@ fn main() {
     }
 
     // carrier boundary (labeled): the authored q=40 budget needs 40! in
-    // the exp series — past the emitted checked-i128 Rat carrier, which
+    // the exp series, past the emitted checked-i128 Rat carrier, which
     // refuses by name (VM computes it in arbitrary precision).
     let got = poisson_pmf_bracket(1, (1, 1), 40);
     match &got {
@@ -1987,7 +1987,7 @@ fn refused<T: std::fmt::Debug>(got: &Result<T, String>, code: &str) -> bool {
     matches!(got, Err(text) if text == code)
 }
 
-/// mod_mul(a, inv, m) == 1 — the authored composed inverse check.
+/// mod_mul(a, inv, m) == 1: the authored composed inverse check.
 fn inverse_roundtrip(a: i64, m: i64) -> Result<residues::emath_rt::ExactInt, String> {
     mod_inv(a, m).and_then(|v| match v.to_i64() {
         Some(i) => mod_mul(a, i, m),
@@ -2207,7 +2207,7 @@ fn main() {
         println!("DIFF two_passes_fifteen_fails EMITTED {:?}; VM = false", got);
     }
 
-    // example <carmichael_passes_falsely>: THE honesty pin — 561 =
+    // example <carmichael_passes_falsely>: THE honesty pin: 561 =
     // 3*11*17 passes Fermat for every coprime base: probable-prime,
     // NOT prime.
     let got = is_fermat_prime(561, vec![2, 7, 13]);
@@ -2731,7 +2731,7 @@ fn emission_conformance_quadratic() {
 }
 
 /// Bounds seam pin: the integer/rational branch join
-/// (`if measured == 0: 0 else: lower_bound / measured`) — the int arm
+/// (`if measured == 0: 0 else: lower_bound / measured`): the int arm
 /// widens to the ratio carrier exactly as the VM's Int-to-Rat join
 /// does, and the entry carries the declared Rat output.
 const BOUNDS_DRIVER: &str = r#"
@@ -2753,7 +2753,7 @@ fn main() {
         println!("DIFF exact EMITTED {:?}; VM = 3/4", got);
     }
 
-    // example <zero_measured>: the int arm joins the Rat divide — 0 / 1
+    // example <zero_measured>: the int arm joins the Rat divide: 0 / 1
     let got = frontier_efficiency(3, 0);
     if !rat_ok(&got, (0, 1)) {
         failures += 1;
@@ -2779,7 +2779,7 @@ fn emission_conformance_bounds() {
 }
 
 /// Surfaces seam pin: the labeled Float64 tier's mixed exact/float
-/// arithmetic (`hf = hr * 1.0f64`, `result = hf * sum`) — the exact
+/// arithmetic (`hf = hr * 1.0f64`, `result = hf * sum`): the exact
 /// ratio operand widens through the as-f64 coercion and the float
 /// operand locks the carrier.
 const SURFACES_DRIVER: &str = r#"
@@ -3089,7 +3089,7 @@ fn emission_conformance_engine_worlds() {
 }
 
 /// Oscillations seam pin: the generic self-recursion instantiation
-/// (tabulate_at at an `Int -> sequence(Rat)` closure — the CallSelf
+/// (tabulate_at at an `Int -> sequence(Rat)` closure; the CallSelf
 /// result kind mirrors the render's crossing decision) through the
 /// gated A = M^-1 K entry, plus the admission refusals.
 const OSCILLATIONS_DRIVER: &str = r#"
@@ -4086,7 +4086,7 @@ fn main() {
     }
 
     // example <verlet_delta_exact_nonzero> (energy_boundary: symmetry
-    // is NOT exact energy conservation — the delta is exact)
+    // is NOT exact energy conservation; the delta is exact)
     let got = energy_boundary(0);
     match &got {
         Ok(b) if eq(&b.verlet_delta, &q(0 - 15, 2048)) => {}
@@ -4223,7 +4223,7 @@ fn main() {
         println!("DIFF half_step_cn EMITTED {diff}; VM = 1/3");
     }
     // example <quarter_step_explicit> (stiff_explicit_factor: 0 at
-    // h lam = -1 — the contrast lane's zero)
+    // h lam = -1: the contrast lane's zero)
     let got = stiff_explicit_factor(q(1, 2), q(0 - 2, 1));
     if let Some(diff) = dq(&got, q(0, 1)) {
         failures += 1;
@@ -4238,7 +4238,7 @@ fn main() {
         println!("DIFF solved_step_matches_hand EMITTED {diff}; VM = 1/2");
     }
     // example <resonance_refuses> (h lam = 1: the assembled system is
-    // singular — the named refusal, exact Err string)
+    // singular: the named refusal, exact Err string)
     let got = stiff_be_step_solve(q(2, 1), q(1, 2), q(1, 1));
     if let Some(diff) = xq(&got, "singular_matrix") {
         failures += 1;
@@ -4273,7 +4273,7 @@ fn main() {
         println!("DIFF decays_everywhere_stiff EMITTED {diff}; VM = true");
     }
     // example <refuses_nonstiff_demand> (lam >= 0 is not the stiff
-    // lane — the named refusal)
+    // lane: the named refusal)
     let got = stiff_astable_ok(q(1, 2), q(3, 1));
     if let Some(diff) = xq(&got, "nonnegative_test_rate") {
         failures += 1;
@@ -4298,7 +4298,7 @@ fn main() {
         failures += 1;
         println!("DIFF dyadic_walk_decays EMITTED {diff}; VM = true");
     }
-    // example <zero_step_breaks_the_walk> (h = 0 breaks it — no
+    // example <zero_step_breaks_the_walk> (h = 0 breaks it; no
     // accept-at-entry)
     let got = stiff_astable_walk(q(0 - 2, 1), vec![q(0, 1)], 0);
     if let Some(diff) = bq(&got, false) {
@@ -4323,7 +4323,7 @@ fn main() {
     }
 
     // example <loose_tol_accepts> (stiff_embedded_step: the StiffStep
-    // record's three fields — accept)
+    // record's three fields: accept)
     let got = stiff_embedded_step(q(0 - 2, 1), q(1, 2), q(1, 4), q(1, 1));
     match &got {
         Ok(v)
@@ -4340,7 +4340,7 @@ fn main() {
             println!("DIFF loose_tol_accepts EMITTED Err({e})");
         }
     }
-    // example <tight_tol_refuses> (est 1/6 > tol 1/7: ok false — the
+    // example <tight_tol_refuses> (est 1/6 > tol 1/7: ok false: the
     // certificate, not an epsilon)
     let got = stiff_embedded_step(q(0 - 2, 1), q(1, 2), q(1, 7), q(1, 1));
     match &got {
@@ -4378,7 +4378,7 @@ fn main() {
         failures += 1;
         println!("DIFF negative_steps_refuse EMITTED {diff}; VM = Err(bad_step_budget)");
     }
-    // example <two_accepted_steps_compose> (1/3 then 1/9 — the
+    // example <two_accepted_steps_compose> (1/3 then 1/9: the
     // ok-branch recursion must CONSUME the budget)
     let got = stiff_adaptive_walk(q(0 - 2, 1), q(1, 2), q(1, 4), q(1, 1), 2, 8);
     if let Some(diff) = dq(&got, q(1, 9)) {
@@ -4395,7 +4395,7 @@ fn main() {
 
     // example <invariant_over_six_steps>
     // (stiff_symplectic_invariant_law: the modified-Hamiltonian
-    // certificate over the verlet rollout — refused by record name
+    // certificate over the verlet rollout: refused by record name
     // before the SimState import)
     let got = stiff_symplectic_invariant_law(q(1, 1), q(1, 2), 6, 0, q(1, 1), q(0, 1));
     if let Some(diff) = bq(&got, true) {

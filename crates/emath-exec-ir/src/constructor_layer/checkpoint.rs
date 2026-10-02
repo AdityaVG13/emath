@@ -4,7 +4,7 @@ use super::{BTreeMap, CValue, CHECKPOINT_SCHEMA, Checkpoint, ConstructorError, C
 /// Encode-side buffer identity table (the ENCODE
 /// checkpoint decision): the first occurrence of a distinct buffer
 /// emits its contents under a fresh id; later occurrences emit
-/// `(bufref id)` so aliasing survives the round-trip — decoding two
+/// `(bufref id)` so aliasing survives the round-trip; decoding two
 /// independent buffers would silently diverge writes.
 #[derive(Default)]
 pub(super) struct EncodeCtx {
@@ -1635,7 +1635,7 @@ pub(super) fn decode_cvalue_cur(
                 let body = decode_expr_cur(cur)?;
                 // Optional recorded domain: checkpoints written before
                 // the closure-domain recording carry no shape and
-                // decode as Unknown (no claim — the pre-seam
+                // decode as Unknown (no claim: the pre-seam
                 // discipline). The schema bump names the difference.
                 let domain = if {
                     cur.skip_ws();
@@ -2109,7 +2109,7 @@ pub(super) fn split_encoded(text: &str, count: usize) -> Result<Vec<String>, Con
             depth -= 1;
         }
         if matches!(ch, 'S' | 'T') {
-            // counts are encoded as `S n;...` — depth is handled by ';' only
+            // counts are encoded as `S n;...`; depth is handled by ';' only
         }
         current.push(ch);
         let _ = depth;

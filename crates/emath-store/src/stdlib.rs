@@ -2,7 +2,7 @@
 //!
 //! `std::{core, ...}` exports cells/theories/evidence as `.emlib` object
 //! packs: each element is an object with a `MeaningID`, canonical semantic
-//! payload, and presentation — objects, not catalog markdown. Two
+//! payload, and presentation: objects, not catalog markdown. Two
 //! workspaces mount one pack without duplicating storage or compiler
 //! branches: the pack bytes are the single source, mounting is
 //! deterministic, and every artifact is content-addressed so forgery
@@ -11,7 +11,7 @@
 //! Envelope format (stable tag-prefixed, length-framed, deterministic):
 //! entry payloads are `tag ++ <object_graph::frame fields>`. Entry ids
 //! in the pack are carried verbatim (`.emlib` discipline) and verified
-//! against the content-addressed id the graph mints — a forged payload
+//! against the content-addressed id the graph mints; a forged payload
 //! under a stale id is a typed refusal, never silent data.
 //!
 //! Determinism class: pure sequence. Canonical export (sorted ids)
@@ -216,14 +216,14 @@ pub enum StdMountError {
     Pack(PackFault),
     /// Malformed envelope structure (`E-STD-001`).
     Malformed { code: String, detail: String },
-    /// An entry id that does not re-derive from its content — a forged
+    /// An entry id that does not re-derive from its content: a forged
     /// object under a stale id (`E-STD-002`).
     ForgedObject {
         code: String,
         entry_id: String,
         recomputed: String,
     },
-    /// A receipt whose hash does not re-verify — forged or tampered
+    /// A receipt whose hash does not re-verify: forged or tampered
     /// evidence (`E-EVID-503`).
     ForgedEvidence { code: String },
     /// Object identity collision on mount (same id, different content).
@@ -253,11 +253,11 @@ impl std::fmt::Display for StdMountError {
             } => write!(
                 formatter,
                 "{code}: forged object: entry id `{entry_id}` does not re-derive from its \
-                 content (recomputed `{recomputed}`) — never read as data"
+                 content (recomputed `{recomputed}`) and is never read as data"
             ),
             Self::ForgedEvidence { code } => write!(
                 formatter,
-                "{code}: forged evidence: receipt hash does not re-verify — refused before \
+                "{code}: forged evidence: receipt hash does not re-verify; refused before \
                  anything is stored"
             ),
             Self::Collision { code, detail } => write!(formatter, "{code}: {detail}"),
@@ -285,7 +285,7 @@ pub fn mount_stdlib(bytes: &[u8]) -> Result<StdMount, StdMountError> {
         .read(bytes, None)
         .map_err(StdMountError::Pack)?;
     // Decode each entry payload exactly once, then run the two passes
-    // over the DECODED entries — objects first, then receipts — so the
+    // over the DECODED entries (objects first, then receipts) so the
     // mount is order-independent without re-parsing every payload twice.
     // Decode errors dominate by position in either design, and no
     // partial state escapes on failure (the graph is discarded), so the

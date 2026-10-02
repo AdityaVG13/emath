@@ -148,7 +148,7 @@ impl SeriesInterpolation {
 }
 
 /// `extrapolation: <mode>`: what happens outside the sampled
-/// support. The default is `refuse` — silent extrapolation is a quiet
+/// support. The default is `refuse`; silent extrapolation is a quiet
 /// killer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SeriesExtrapolation {
@@ -227,7 +227,7 @@ pub enum ExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    /// `a ≈ b` (ASCII `a ~= b`) — approximation labeling operator. A first-class relation that
+    /// `a ≈ b` (ASCII `a ~= b`): approximation labeling operator. A first-class relation that
     /// stamps authority: computing through an `≈` edge is
     /// authority-degraded, never silently exact. The optional
     /// `within rtol=…, atol=…` clause is the DECLARED tolerance; a bare
@@ -244,7 +244,7 @@ pub enum ExprKind {
         else_value: Box<Expr>,
     },
     List(Vec<Expr>),
-    /// `|x y| 1, 2 | 3, 4 |` — table literal. Named columns plus
+    /// `|x y| 1, 2 | 3, 4 |`: table literal. Named columns plus
     /// comma-separated rows; ≥2 headers keep the leading `|` unambiguous
     /// with cases arms. Lowers through the Matrix element path (numeric
     /// cells), with headers recorded only in the sema receipt.
@@ -252,12 +252,12 @@ pub enum ExprKind {
         headers: Vec<String>,
         rows: Vec<Vec<Expr>>,
     },
-    /// `{2, 3, 5}` — set literal. Finite-set carrier; elements are
+    /// `{2, 3, 5}`: set literal. Finite-set carrier; elements are
     /// deduplicated and order-canonicalized at evaluation. Bare `{name:
     /// value}` (record spelling without a path prefix) is ambiguous and
     /// refuses `E-SYN-154` at parse time, never silently a one-element set.
     Set(Vec<Expr>),
-    /// `{n in 0..100 if is_prime(n)}` — set comprehension. Desugars
+    /// `{n in 0..100 if is_prime(n)}`: set comprehension. Desugars
     /// from brace position where the parsed element expression is a
     /// top-level membership binary (`element in domain`) optionally
     /// followed by an `if` guard; the membership reading inside braces is
@@ -268,7 +268,7 @@ pub enum ExprKind {
         domain: Box<Expr>,
         guard: Option<Box<Expr>>,
     },
-    /// `Point:{x: 1.0, y: 2.0}` — inline record literal. Path-prefixed
+    /// `Point:{x: 1.0, y: 2.0}`: inline record literal. Path-prefixed
     /// braces distinguish records from sets under one ELP ambiguity scan.
     Record {
         type_path: Vec<String>,
@@ -278,7 +278,7 @@ pub enum ExprKind {
     /// `[(0.0 s, 0.0 V), ...] with interpolation: linear, extrapolation:
     /// refuse`: a time-series data
     /// literal with its declared interpretation policy. The policy is
-    /// part of the value's identity — it changes every downstream
+    /// part of the value's identity: it changes every downstream
     /// number. `None` means the language default (`refuse`), spelled in
     /// admission. Evaluation semantics are the named next slice.
     WithSeriesPolicy {
@@ -296,7 +296,7 @@ pub enum ExprKind {
         value: Box<Expr>,
         condition: Box<Expr>,
     },
-    /// `unit of E` or `dimension of E` — compile-time query usable
+    /// `unit of E` or `dimension of E`: compile-time query usable
     /// in `require`, `tests:`, and `expect`.
     UnitQuery {
         kind: UnitQueryKind,
@@ -309,29 +309,29 @@ pub enum ExprKind {
         arms: Vec<(Expr, Expr)>,
         else_arm: Box<Expr>,
     },
-    /// `function x in A: body` — lexical closure.
+    /// `function x in A: body`: lexical closure.
     FunctionAbs {
         param: String,
         domain: Box<Expr>,
         body: Box<Expr>,
     },
-    /// `recur f in T: body` — recursive closure group.
+    /// `recur f in T: body`: recursive closure group.
     Recur {
         name: String,
         ty: Box<Expr>,
         body: Box<Expr>,
     },
-    /// `quote(expression)` — closed typed code capture.
+    /// `quote(expression)`: closed typed code capture.
     Quote {
         body: Box<Expr>,
     },
-    /// `quote x in A: body` — function quotation.
+    /// `quote x in A: body`: function quotation.
     QuoteBind {
         param: String,
         domain: Box<Expr>,
         body: Box<Expr>,
     },
-    /// `callee x in domain: body` — generic callable binder.
+    /// `callee x in domain: body`: generic callable binder.
     CallableBinder {
         callee: Box<Expr>,
         param: String,
@@ -350,9 +350,9 @@ pub enum ExprKind {
 /// Kind of compile-time unit/dimension query.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnitQueryKind {
-    /// `unit of E` — returns the unit expression.
+    /// `unit of E`: returns the unit expression.
     Unit,
-    /// `dimension of E` — returns the named dimension.
+    /// `dimension of E`: returns the named dimension.
     Dimension,
 }
 
@@ -378,13 +378,13 @@ pub enum BinaryOp {
     Ge,
     And,
     Or,
-    /// `==>` — logical implication (right-associative).
+    /// `==>`: logical implication (right-associative).
     Imply,
-    /// `<==>` — logical biconditional.
+    /// `<==>`: logical biconditional.
     Iff,
-    /// `~~` — asymptotic equivalence. Lowers to a limit claim.
+    /// `~~`: asymptotic equivalence. Lowers to a limit claim.
     Asymp,
-    /// `v in s` — set membership. ASCII for ∈. In expression
+    /// `v in s`: set membership. ASCII for ∈. In expression
     /// position this is the membership operator; in binder keyword
     /// position (`sum n in 0..10`) `in` is consumed by the binder
     /// parser, so the two uses are provably disjoint (charter).
@@ -398,7 +398,7 @@ pub enum BinderKind {
     Integral,
     ForAll,
     Exists,
-    /// `series n in 0..inf: a[n]` — series convergence claim.
+    /// `series n in 0..inf: a[n]`: series convergence claim.
     Series,
 }
 

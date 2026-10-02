@@ -39,7 +39,7 @@ impl Term {
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut output = String::new();
-        // ubs:ignore — fmt::Write for String is infallible.
+        // ubs:ignore: fmt::Write for String is infallible.
         let _ = self.write_canonical(&mut output);
         output
     }
@@ -480,7 +480,7 @@ mod contract_tests {
         assert_eq!(modular, 6, "⋈ adds, ⧖ squares, ⊛ multiplies (mod 17)");
         assert_eq!(
             swapped, 5,
-            "⋈ multiplies, ⊛ adds after the swap — no-op mutants return 6"
+            "⋈ multiplies, ⊛ adds after the swap; no-op mutants return 6"
         );
         assert_ne!(modular, swapped);
     }

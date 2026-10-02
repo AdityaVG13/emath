@@ -507,7 +507,7 @@ pub(super) fn emit_hole_comments(holes: &[HoleRecord], extra_comments: &mut Vec<
         }
         for rejection in &hole.rejections {
             extra_comments.push(format!(
-                "# emath hole rejection: {} — {}",
+                "# emath hole rejection: {}: {}",
                 rejection.attempt, rejection.reason
             ));
         }

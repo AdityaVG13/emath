@@ -63,7 +63,7 @@ pub extern "C" fn em_init() {
 }
 
 /// Host-side allocation shim used when the crate is built for a native
-/// (non-wasm) target. `#[doc(hidden)]`: not a stable ABI surface — it
+/// (non-wasm) target. `#[doc(hidden)]`: not a stable ABI surface; it
 /// exists so the allocator conformance tests in `tests/emath-wasm` can
 /// drive the same paths the wasm exports use.
 #[cfg(not(target_arch = "wasm32"))]
@@ -94,7 +94,7 @@ pub mod host_alloc {
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // Hold LIVE_ALLOCS then ALLOCATIONS together (same order as em_free →
         // host free) so a concurrent em_free cannot observe membership in
-        // LIVE_ALLOCS while the addr table still lacks the id — that window
+        // LIVE_ALLOCS while the addr table still lacks the id; that window
         // would remove the guard entry and miss the free, leaking the buffer.
         let mut live = super::live_allocs_lock();
         let mut map = ALLOCATIONS
@@ -197,7 +197,7 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
     // Guard (step 0): accept only addresses this module minted and still
     // owes. A foreign pointer, a double-free of an address with no current
     // membership, or a stale pointer whose address was NOT re-minted fails
-    // the membership check and returns here as a provable no-op — before any
+    // the membership check and returns here as a provable no-op, before any
     // dereference. Generation-blind by design: a stale pointer whose address
     // a later `em_alloc` reused passes membership and is handled as that mint
     // (the sequence requires the host to already be violating the exactly-
@@ -236,7 +236,7 @@ pub extern "C" fn em_free(ptr: u32, len: u32) {
     //     matches the stored capacity, `from_raw_parts` can panic/UB. The
     //     guard enforces minted-and-owed + recorded capacity, not the
     //     allocator's physical layout against external corruption.
-    // Enforced by: LIVE_ALLOCS membership + stored capacity (clauses 0–2)
+    // Enforced by: LIVE_ALLOCS membership + stored capacity (clauses 0-2)
     // and `alloc_region`'s exact-capacity construction. Failure = host
     // feeding a foreign/double pair or memory corruption, not a library bug.
     #[cfg(target_arch = "wasm32")]
@@ -282,7 +282,7 @@ pub fn read_utf8<'a>(ptr: u32, len: u32) -> Result<&'a str, &'static str> {
     #[cfg(not(target_arch = "wasm32"))]
     let raw_ptr = {
         // Host builds mint opaque IDs, not native addresses. An unresolved
-        // id must not be cast to a pointer — that would be dangling UB.
+        // id must not be cast to a pointer; that would be dangling UB.
         let resolved = host_alloc::resolve(ptr);
         if resolved.is_null() {
             return Err("invalid UTF-8 input");
@@ -325,7 +325,7 @@ fn pack_json(json: &str) -> u64 {
     // Non-empty response must mint a real region. A zero ptr with nonzero
     // len would be an invalid pack (host would read from linear-memory
     // base). Recurse once through the error path only when the primary
-    // alloc failed — error JSON is tiny and cannot itself OOM in practice;
+    // alloc failed: error JSON is tiny and cannot itself OOM in practice;
     // if it did, return the empty pack rather than loop.
     if copy_len != 0 && ptr == 0 {
         if json.starts_with("{\"ok\": false") {

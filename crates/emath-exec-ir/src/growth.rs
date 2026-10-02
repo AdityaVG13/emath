@@ -6,19 +6,19 @@
 //! schema + registry entry); any parser/sema/backend/kernel-dispatch
 //! branch that NAMES a cohort operation fails the gate typed
 //! (`E-GROWTH-001`). The gate scans SOURCE TEXT (so it runs as a unit
-//! test over `include_str!` snapshots of the real nucleus — a live
+//! test over `include_str!` snapshots of the real nucleus: a live
 //! tripwire), classifies each file, strips comments, and reports:
 //!
 //! - **CDLOC** (core-domain LOC per capability): lines naming a cohort
 //!   cell outside its data zone. 0 on a healthy nucleus.
 //! - **SCBD** (shared-core branch deltas): match arms / equality tests
 //!   dispatching on a cohort identity. 0 on a healthy nucleus.
-//! - **KGS** (kernel generic surface): the `EmirOp` variant count — the
+//! - **KGS** (kernel generic surface): the `EmirOp` variant count: the
 //!   bounded generic vocabulary. Grows only with NEW GENERIC ops, never
 //!   per cell.
 //!
 //! Numbers are hypotheses until calibrated (a stated caveat); the
-//! gate's BINDING rule is the zero-operation-name-branches invariant —
+//! gate's BINDING rule is the zero-operation-name-branches invariant:
 //! the seeded PR fixture and the live nucleus prove both directions.
 
 /// Stable gate refusal code (operation-name branch in a gated file).
@@ -55,7 +55,7 @@ pub struct GrowthReport {
     pub scbd: u32,
     /// Cohort-name mentions per file (all classes, post comment-strip).
     pub mentions_per_file: std::collections::BTreeMap<String, u32>,
-    /// Mentions inside data zones (the registry — the admitted path).
+    /// Mentions inside data zones (the registry: the admitted path).
     pub data_zone_mentions: u32,
     /// Typed violations (`E-GROWTH-001`); empty = gate green.
     pub violations: Vec<GateViolation>,
@@ -70,7 +70,7 @@ impl GrowthReport {
 }
 
 /// Classify a scanned file by its tag prefix (`zone:path`). Unknown
-/// prefixes classify GATED (fail closed — a new directory does not
+/// prefixes classify GATED (fail closed: a new directory does not
 /// silently escape the gate).
 #[must_use]
 pub fn nucleus_class(tag: &str) -> NucleusClass {
@@ -84,7 +84,7 @@ pub fn nucleus_class(tag: &str) -> NucleusClass {
 }
 
 /// Strip `//` and `///` comment text (design notes never trip the gate)
-/// while KEEPING string-literal contents — cohort names live inside
+/// while KEEPING string-literal contents: cohort names live inside
 /// strings both in the registry (data) and in seeded branches (the
 /// violation). A token in a comment is noise; a token in a string is
 /// evidence.
@@ -158,7 +158,7 @@ fn line_mentions(stripped: &str, token: &str) -> bool {
 
 /// Run the gate over tagged nucleus sources.
 ///
-/// `sources` are `(tag, text)` pairs (tags classify the file —
+/// `sources` are `(tag, text)` pairs (tags classify the file:
 /// [`nucleus_class`]); `cohort` is the registered-cell identity list.
 /// Comments and string literals are stripped first; each remaining
 /// cohort-token mention is counted per file; mentions in a data zone
@@ -206,7 +206,7 @@ pub fn growth_gate(sources: &[(&str, &str)], cohort: &[&str]) -> GrowthReport {
 }
 
 /// Count the kernel's generic op surface: `EmirOp` variants in the
-/// exec-ir lib source. Bounded vocabulary — grows only with NEW GENERIC
+/// exec-ir lib source. Bounded vocabulary that grows only with NEW GENERIC
 /// ops, never per cell.
 #[must_use]
 pub fn kernel_generic_surface(lib_source: &str) -> usize {

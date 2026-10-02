@@ -1,4 +1,4 @@
-//! — CAPSTONE: portable `.emlib` envelopes.
+//! CAPSTONE: portable `.emlib` envelopes.
 
 use std::sync::Arc;
 

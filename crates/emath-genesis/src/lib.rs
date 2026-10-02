@@ -8,7 +8,7 @@
 //!
 //! Facade SPI note: each family module carries its own
 //! `check_version` (`binder/meaning_provider/morphism/synth`/
-//! tuning) with its OWN error type — five deliberate homonyms, not an
+//! tuning) with its OWN error type: five deliberate homonyms, not an
 //! incomplete facade. A root export would either collide five times or
 //! need five aliases; the module path IS the family address. Documented
 //! intentional SPI, like `core::tree`.
@@ -82,7 +82,7 @@ pub type Environment<V> = BTreeMap<VariableId, V>;
 /// carrier ([`Self::Value`]), constants, variables (via
 /// [`Environment`] in [`evaluate`]), apply, effects, budgets
 /// ([`evaluate_bounded`]) and evidence. A NEW world implements this
-/// trait only — the evaluator gains no match arm for it.
+/// trait only; the evaluator gains no match arm for it.
 pub trait FirstOrderWorld {
     /// Runtime value.
     type Value: Clone;
@@ -114,7 +114,7 @@ pub trait FirstOrderWorld {
     }
 
     /// Stable evidence record for result bundles (no naked
-    /// answers — every custom-world value names the world that produced
+    /// answers: every custom-world value names the world that produced
     /// it).
     fn evidence(&self) -> WorldEvidence;
 }
@@ -146,7 +146,7 @@ impl WorldEvidence {
 }
 
 /// World-evaluation budget (ABI budget seam): resource exhaustion is the
-/// typed [`EvalError::BudgetExhausted`] — never a partial value.
+/// typed [`EvalError::BudgetExhausted`], never a partial value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WorldBudget {
     /// Maximum evaluation steps (node visits).
@@ -185,7 +185,7 @@ impl WorldName {
 }
 
 /// Default custom portfolio order (doctrine): free symbolic, then
-/// the canonical-finite concrete worlds — Boolean when applicable,
+/// the canonical-finite concrete worlds: Boolean when applicable,
 /// modular when applicable. A typed disposition replaces a silent
 /// fallthrough when nothing applicable remains.
 #[must_use]
@@ -297,7 +297,7 @@ where
 
 /// [`evaluate`] under an explicit [`WorldBudget`] (ABI budget seam):
 /// node-visits are metered and exhaustion is the typed
-/// [`EvalError::BudgetExhausted`] — never a partial value.
+/// [`EvalError::BudgetExhausted`], never a partial value.
 pub fn evaluate_bounded<W: FirstOrderWorld>(
     term: &Term,
     world: &W,
@@ -537,7 +537,7 @@ impl FirstOrderWorld for ModularAlienWorld {
 #[must_use]
 pub fn reference_alien_term() -> (Signature, Term) {
     let mut signature = Signature::default();
-    // ubs:ignore — static distinct symbols; Signature::insert only errs on arity conflict.
+    // ubs:ignore, static distinct symbols; Signature::insert only errs on arity conflict.
     let _ = signature.insert(SymbolId("⧖".into()), 1);
     let _ = signature.insert(SymbolId("⋈".into()), 2);
     let _ = signature.insert(SymbolId("⊛".into()), 2);

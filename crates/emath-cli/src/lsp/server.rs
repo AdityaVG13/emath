@@ -243,7 +243,7 @@ impl ServerState {
                 } else {
                     2
                 };
-                // Half-open Span `[start, end)` — using only start made every
+                // Half-open Span `[start, end)`; using only start made every
                 // published range zero-width (wrong squiggle under the token).
                 let (start, end) =
                     span_positions(&document.text, item.primary.start, item.primary.end);
@@ -306,7 +306,7 @@ impl ServerState {
                                 ("kind".into(), JsonValue::String("markdown".into())),
                                 (
                                     "value".into(),
-                                    JsonValue::String(format!("**{keyword}** — {explanation}")),
+                                    JsonValue::String(format!("**{keyword}**: {explanation}")),
                                 ),
                             ]
                             .into(),

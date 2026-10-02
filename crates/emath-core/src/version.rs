@@ -7,17 +7,17 @@
 //! explicit constants, never guesses, and the deprecation ladder hides forms
 //! instead of removing them.
 //!
-//! 1. Reference version — the 16-chapter normative text as a whole; bumped on
+//! 1. Reference version: the 16-chapter normative text as a whole; bumped on
 //!    any normative sentence change.
-//! 2. Grammar version — surface.ebnf + genesis.ebnf; append-only within an
+//! 2. Grammar version: surface.ebnf + genesis.ebnf; append-only within an
 //!    edition.
-//! 3. Edition — package-level `emath.toml` field; parse/resolve epoch.
+//! 3. Edition: package-level `emath.toml` field; parse/resolve epoch.
 //!    Editions may admit new grammar, new sections/kinds/notations, upgraded
 //!    warnings, and formatter changes. They may NOT change name-resolution
 //!    semantics for existing packages.
-//! 4. Canonical encoding version — length-framed deterministic binary/JSON
+//! 4. Canonical encoding version: length-framed deterministic binary/JSON
 //!    encoding; decoders accept all prior versions, encoders emit exactly one.
-//! 5. Kind schema version — per-kind, already carried by identity elsewhere.
+//! 5. Kind schema version: per-kind, already carried by identity elsewhere.
 //!
 //! Std-only, deterministic, hashable: all values are fixed string constants
 //! so content identity over them is stable across toolchain builds.
@@ -142,7 +142,7 @@ impl std::fmt::Display for EditionError {
 /// - `Deprecated`: parses with a migrate-able warning; absent from new
 ///   editions' default grammar.
 /// - `Hidden`: absent from new editions; still parses under its home edition.
-/// - `Frozen`: replay only — parsed by replay tooling, refused by admission.
+/// - `Frozen`: replay only (parsed by replay tooling, refused by admission).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DeprecationStage {
     Recognized,

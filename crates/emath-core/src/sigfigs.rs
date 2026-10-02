@@ -7,7 +7,7 @@
 //! different evidence kinds and are never merged.
 //!
 //! Unit-preserving formatting: `format: "0.1 %"` and
-//! `format: preferred_unit min` change presentation only — the quantity's
+//! `format: preferred_unit min` change presentation only; the quantity's
 //! value and identity are untouched, and the format is excluded from the
 //! identity hash. A format unit incompatible with the quantity's dimension
 //! is refused (`E-UNIT-FMT`).
@@ -57,7 +57,7 @@ pub enum PrecisionWarning {
     /// Enforce mode: the literal carries fewer sf than declared.
     UnderReported { declared: u32, literal: u32 },
     /// Measured (uncertainty) values mixed with bare sf-values in one
-    /// context — different evidence kinds, must be labeled separately.
+    /// context: different evidence kinds that must be labeled separately.
     MixedMeasuredBareSf { measured: usize, bare_sf: usize },
 }
 
@@ -150,7 +150,7 @@ impl FormatSpec {
                 unit: unit.to_string(),
             });
         }
-        // Decimal pattern: `0` or `0.<digits>` — the digit COUNT after the
+        // Decimal pattern: `0` or `0.<digits>`; the digit COUNT after the
         // dot is the displayed decimal count (`0.1` = one decimal,
         // `0.01` = two). Digits themselves are position markers.
         let valid = head == "0"
@@ -198,7 +198,7 @@ impl FormattedQuantity {
     /// - `preferred_unit <unit>`: resolve, check dimension compatibility,
     ///   convert through SI, render (rounded to `sf_digits` when given).
     /// - pattern: fixed decimals on the value in its own unit, plus the
-    ///   literal suffix. Presentation only — never mutates the quantity.
+    ///   literal suffix. Presentation only, never mutates the quantity.
     pub fn display(
         &self,
         table: &UnitTable,

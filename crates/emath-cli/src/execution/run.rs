@@ -85,7 +85,7 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
     };
     // Typed-hole discipline (E-GOAL-043): the runner executes evaluate
     // cases. A no-test declaration carrying a goal outside that
-    // executable subset (a scratch `find` lowers to `search` — an open
+    // executable subset (a scratch `find` lowers to `search`; an open
     // hole stays symbolic) refuses before any checkpoint is written:
     // never a produced crate for an unexecutable goal. Declarations with
     // tests run their pinned cases; the goals do not gate those.

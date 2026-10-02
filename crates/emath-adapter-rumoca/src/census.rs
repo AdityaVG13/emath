@@ -2,7 +2,7 @@
 //!
 //! Documents the Modelica compiler phases and what is actually
 //! provides for each. Honesty contract: the adapter consumes **no upstream
-//! Rumoca fork** — every posture describes an in-tree native stand-in
+//! Rumoca fork**: every posture describes an in-tree native stand-in
 //! (subset string scanner, validation gate, native causalizer and
 //! forward-Euler simulator), so no phase is marked `Stable` and no phase
 //! is consumed through an upstream `public_contract`. Deterministic,

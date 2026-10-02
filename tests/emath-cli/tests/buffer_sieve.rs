@@ -1,7 +1,7 @@
 //! Buffer-carrier sieve through the real lanes:
 //! `emath run --json` answers exactly with work telemetry, a tiny
 //! `--work` budget suspends mid-sieve and writes a checkpoint, and
-//! `emath step` resumes to the same exact answer — proving the ENCODE
+//! `emath step` resumes to the same exact answer, proving the ENCODE
 //! checkpoint decision (buffers serialize with aliasing fidelity).
 //! Failure-first: `buffer` is an unbound name on the pre-carrier
 //! engine, so every case faults before the seam exists.

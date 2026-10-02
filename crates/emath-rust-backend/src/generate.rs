@@ -51,7 +51,7 @@ impl BackendInput<'_> {
                 .collect();
             let has_evaluate = !evaluate_goals.is_empty();
             // No state and no constructors: emit a free function instead of
-            // a method on an empty struct — but only for a single evaluate
+            // a method on an empty struct, but only for a single evaluate
             // target, since the free function is named after the
             // declaration. Multiple evaluate goals (the `E-SEC-133`
             // ergonomics default: every definition evaluates) take the

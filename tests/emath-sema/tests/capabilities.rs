@@ -2,7 +2,7 @@
 //! attributes and their typed refusals (see `elps/README.md`).
 //!
 //! Intent: experimental syntax must never compile silently in a stable
-//! package — every gate below proves either the refusal (E-PKG-064 /
+//! package: every gate below proves either the refusal (E-PKG-064 /
 //! E-SYN-117 / E-SYN-118 / E-PKG-065) or the declared-capability admit.
 
 use emath_test_harness::{Probe, Source, boot};

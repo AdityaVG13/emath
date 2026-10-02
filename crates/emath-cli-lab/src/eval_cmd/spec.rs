@@ -157,7 +157,7 @@ pub(super) fn eval_function_spec(args: &EvalArgs) -> CliExit {
         }
     }
     // Binding source: explicit `--set` when present, otherwise the
-    // spec's own oracle — the single worked example's `given` bindings
+    // spec's own oracle: the single worked example's `given` bindings
     // (deterministic, nothing invented; a function with zero inputs
     // evaluates with an empty binding map).
     let mut inputs_from = "set".to_string();
@@ -318,7 +318,7 @@ pub(super) fn eval_function_spec(args: &EvalArgs) -> CliExit {
 }
 
 /// Spec-oracle bindings for a plain eval (no `--set`): the file's own
-/// single worked example supplies the inputs — its `given` values run
+/// single worked example supplies the inputs: its `given` values run
 /// through the same generic lowering, and the example's expect verdict
 /// must pass. Deterministic and never invented; a spec with several
 /// examples (E-EVAL-003) or with inputs but none (E-EVAL-004) must

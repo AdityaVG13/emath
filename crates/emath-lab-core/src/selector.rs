@@ -103,7 +103,7 @@ impl Selector {
         })
     }
 
-    /// Route one request deterministically; never fails —
+    /// Route one request deterministically; never fails:
     /// shadow/retain/quarantine and closed gates serve baseline.
     pub fn dispatch(&mut self, request_id: u64) -> Route {
         let route = match self.outcome {

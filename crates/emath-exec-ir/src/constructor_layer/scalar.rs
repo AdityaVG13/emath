@@ -20,7 +20,7 @@ pub(super) fn parse_exact(text: &str) -> Result<ExactInt, ConstructorError> {
 /// Convert unsuffixed decimal text to an integer pair: `1.5` -> (15, 10),
 /// `1.5e+2` -> (150, 1). Suffixed literals (`f16`/`bf16`/`f32`/`f64`/
 /// `f128`) keep their explicit floating carrier, and exponents beyond
-/// the scale bound return `None` — either way the literal stays `Float64`
+/// the scale bound return `None`; either way the literal stays `Float64`
 /// and the output check refuses the `Rat` annotation honestly instead of
 /// silently coercing.
 pub(super) fn decimal_to_rational(text: &str) -> Option<(String, String)> {
@@ -280,8 +280,8 @@ pub(super) fn as_rat(value: CValue) -> Result<(ExactInt, ExactInt), ConstructorE
 
 /// Exact rational value of a finite Float64: every finite binary64 is
 /// mantissa * 2^exponent with an odd-part mantissa below 2^53, so the
-/// join to exact arithmetic never rounds. Non-finite values are `None`
-/// — the carrier contract faults them instead of ordering them.
+/// join to exact arithmetic never rounds. Non-finite values are `None`:
+/// the carrier contract faults them instead of ordering them.
 pub(super) fn f64_exact_rat(x: f64) -> Option<(ExactInt, ExactInt)> {
     if !x.is_finite() {
         return None;

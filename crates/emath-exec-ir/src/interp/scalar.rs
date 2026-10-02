@@ -3,7 +3,7 @@ use super::{Value, EmirValue, EvalFault, register, rat_pair, exact_ratio_arithme
 /// Type-preserving scalar addition (control mail 66): two `Value::I64`
 /// operands add exactly via `i64::checked_add` and return `Value::I64`;
 /// Float64 operands retain the existing strict-f64 behavior; any other
-/// carrier mix is a typed confusion — never a silent coercion.
+/// carrier mix is a typed confusion, never a silent coercion.
 #[derive(Clone, Copy)]
 pub(super) enum ScalarOp {
     Add,

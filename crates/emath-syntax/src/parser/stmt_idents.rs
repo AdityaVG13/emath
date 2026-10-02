@@ -161,12 +161,12 @@ impl super::Parser {
             // the action
             // integral binder `S = action integral t in t0..t1:
             // L(q(t), der(q(t)), t)`. The action is a FUNCTIONAL (a
-            // map from trajectories to Real) — it admits only
+            // map from trajectories to Real); it admits only
             // variation/evaluation goals, never scalar composition.
             // The binder grammar is a design follow-up; refuse at the
             // grammar naming it (previously the row died as `unknown
             // variable action` plus a generic row-shape error). A bare
-            // `action` stays a plain identifier — only the two-word
+            // `action` stays a plain identifier; only the two-word
             // spelling fences.
             "action" if matches!(self.peek_at(1), TokenKind::Keyword(Keyword::Integral)) => {
                 self.advance(); // `action`
@@ -184,7 +184,7 @@ impl super::Parser {
                 None
             }
             // the variation
-            // goal `variation <S> wrt q:` — a custom goal verb that
+            // goal `variation <S> wrt q:`, a custom goal verb that
             // lowers to core goals (ch9 contract): the Euler-Lagrange
             // residual built from admitted derivatives, simplified by
             // the native symbolic engine, solved as declared. The goal
@@ -213,7 +213,7 @@ impl super::Parser {
                 Some(self.stmt(start, StmtKind::Expect(expr)))
             }
             // `obs <name>[: <type>]
-            // = <data>` inside an `observations:` section — a measured
+            // = <data>` inside an `observations:` section, a measured
             // datum, never a definition. The row is losslessly a
             // `FieldDecl` with its value as the default; admission owns
             // the read-only semantics (E-OBS-WRITE). The `obs` prefix is

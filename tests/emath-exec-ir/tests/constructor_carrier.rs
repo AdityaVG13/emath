@@ -52,7 +52,7 @@ fn sequence_clone_is_shallow() {
     // (17.4s wall for ~13k indexed reads whose unit cost is
     // sub-second). Cloning a sequence must share the backing storage.
     // Failure-first: with Sequence(Vec<CValue>) there is no shared
-    // storage to compare — this test cannot even be expressed.
+    // storage to compare; this test cannot even be expressed.
     use std::sync::Arc;
     let items: Vec<CValue> = (0..100_000)
         .map(|i| CValue::Int(ExactInt::from(i)))
@@ -126,7 +126,7 @@ fn run_cases() {
     probe.case("l1_stale_dependency_refuses", |p| {
         // L1 dependency pinning: a quote captured against dependency v1,
         // evaluated against dependency v2 (same name, different body),
-        // refuses stale_dependency — never a silent re-resolve.
+        // refuses stale_dependency, never a silent re-resolve.
         let capture_source = "\
 emath function dep:
     inputs:
@@ -190,7 +190,7 @@ emath function dep:
 
     probe.case("l1_fuel_bounds_nested_evaluation", |p| {
         // L1 fuel: a quoted program's nested evaluation shares the
-        // engine work budget — a small budget suspends with
+        // engine work budget: a small budget suspends with
         // budget_exhausted instead of running unbounded.
         let source = "\
 emath function spin:

@@ -1,11 +1,11 @@
 //! World ABI and default custom world portfolio.
 //!
-//! The World ABI is trait-style — carrier, constants,
-//! variables, apply, effects, budgets, evidence — and a NEW world
+//! The World ABI is trait-style (carrier, constants,
+//! variables, apply, effects, budgets, evidence), and a NEW world
 //! implements the ABI only: the evaluator gains no match arm for it. The
 //! default custom portfolio orders candidate worlds (free symbolic,
 //! canonical finite: Boolean when applicable, modular when applicable)
-//! and disposes typed when nothing applies — never a silent fallthrough,
+//! and disposes typed when nothing applies, never a silent fallthrough,
 //! and the strict lane never selects an invented world (worlds are passed
 //! explicitly; nothing here mutates the strict VM seam).
 
@@ -114,7 +114,7 @@ fn intent() {
     );
     p.eq("default_portfolio_orders_and_disposes_typed#4", modular.selected, Some(WorldName::ModularAlien));
 
-    // Excluding everything: a TYPED disposition with the full trail —
+    // Excluding everything: a TYPED disposition with the full trail;
     // never a silent fallthrough, never an invented world.
     let exhausted = select_world(
         &signature,

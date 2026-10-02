@@ -125,7 +125,7 @@ impl Rec {
     pub fn value_text(&self) -> String {
         match self.fields.get("value") {
             Some(value) => display_value(value),
-            None => self.int("input_id").map_or_else(|| "—".to_string(), |id| format!("in{id}")),
+            None => self.int("input_id").map_or_else(|| "-".to_string(), |id| format!("in{id}")),
         }
     }
 }
@@ -787,8 +787,8 @@ pub fn verdict_label(verdict: i128) -> &'static str {
 
 /// `f<id> m<id>` of a record.
 pub fn fam_move(rec: &Rec) -> String {
-    let f = rec.int("family").filter(|f| *f >= 0).map_or_else(|| "f—".to_string(), |f| format!("f{f}"));
-    let m = rec.int("move").filter(|m| *m >= 0).map_or_else(|| "m—".to_string(), |m| format!("m{m}"));
+    let f = rec.int("family").filter(|f| *f >= 0).map_or_else(|| "f-".to_string(), |f| format!("f{f}"));
+    let m = rec.int("move").filter(|m| *m >= 0).map_or_else(|| "m-".to_string(), |m| format!("m{m}"));
     format!("{f} {m}")
 }
 

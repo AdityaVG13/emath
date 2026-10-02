@@ -1518,7 +1518,7 @@ impl Lowerer {
             }
             // A Str literal lowers to the text constant op (e6gvs): the
             // carrier evaluates in the emitted program exactly as it
-            // does in the constructor VM — dropping the arm demoted
+            // does in the constructor VM; dropping the arm demoted
             // every Str-bearing module to symbolic (not-runnable).
             ExprKind::Str(text) => Ok(self.push(EmirOp::ConstText(text.clone()))),
             ExprKind::Rational { numer, denom } => {

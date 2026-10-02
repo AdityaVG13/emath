@@ -221,7 +221,7 @@ pub(super) fn op_self_index(program: &EmirProgram, op: &EmirOp) -> Option<u32> {
 
 /// Static carrier-shape check (interp `TypeConfusion` parity): a carrier
 /// operand must be produced by a carrier op of the matching family,
-/// otherwise the strict backend refuses typed — a `BackendError`, never
+/// otherwise the strict backend refuses typed: a `BackendError`, never
 /// a Rust panic, never a silent scalar shadow.
 pub(super) fn expect_carrier(
     program: &EmirProgram,

@@ -1,4 +1,4 @@
-//! Constructor-layer acceptance pack T1–T18 and seam checks.
+//! Constructor-layer acceptance pack T1-T18 and seam checks.
 //!
 //! Each fixture states that it installed no topic identity. These tests
 //! discriminate the constitution observations, not historical FeatureIDs.
@@ -196,7 +196,7 @@ fn demand_emission_unresolved(
 #[test]
 fn fixtures_and_seams() {
     let mut probe = Probe::new(
-        "constructor layer: T1–T18 compute constitution observations; no topic FeatureIDs",
+        "constructor layer: T1-T18 compute constitution observations; no topic FeatureIDs",
     );
     probe.case("quotient-four-classes-and-failed-descent", |p| {
         all_passed("quotient.emath");
@@ -457,7 +457,7 @@ fn fixtures_and_seams() {
     probe.case("scalar-carrier-joins", |p| {
         // Ordering is a checked carrier operation on every numeric carrier:
         // Float64 `<`/`<=`/`>`/`>=` must COMPUTE (the reference ships them),
-        // and mixed exact/Float64 comparisons join exactly — a finite
+        // and mixed exact/Float64 comparisons join exactly: a finite
         // binary64 IS an exact rational, so `1 / 2 == 0.5` is true and never
         // a rounded or representation-strict comparison.
         let ordering = r#"
@@ -515,7 +515,7 @@ emath function CarrierJoins:
         // Reference (types chapter): "A rational annotation selects `Rat`.
         // A decimal literal without a floating annotation denotes its exact
         // decimal rational." Under a `Rat` annotation `0.1 + 0.2` is exactly
-        // `3/10` — never the binary64 sum. Suffixed literals keep Float64
+        // `3/10`, never the binary64 sum. Suffixed literals keep Float64
         // and refuse the Rat output. The rewrite is annotation-directed: a
         // `Float64` annotation keeps the rounded carrier.
         let dec = r#"
@@ -631,7 +631,7 @@ emath function BoundNames:
             }
         }
         // Admission agrees: the declaration must admit (an unbound recipe
-        // call still refuses method_unavailable — pinned in the corpus).
+        // call still refuses method_unavailable, pinned in the corpus).
         let admitted = emath_exec_ir::constructor_layer::admit_tree(&tree);
         p.demand(
             "bound-admitted",
@@ -686,13 +686,13 @@ emath function DepthFault:
     });
 
     probe.case("library-depth-faults-not-crashes", |p| {
-        // Library callers embed the engine on ordinary threads — no 64 MiB
+        // Library callers embed the engine on ordinary threads; no 64 MiB
         // worker to hide behind. The growth redline must exceed one
         // authored call's native frame cost (~50-100 KiB across the
         // K-machine frames between growth points); with the old 64 KiB
         // redline a default 2 MiB thread hit the guard page at ~40 levels
         // and aborted the process. The fault, not the crash, is the
-        // contract. As above, the self-call is deliberately NON-tail —
+        // contract. As above, the self-call is deliberately NON-tail:
         // tail-position closure self-calls are work-bounded instead.
         let depth = r#"
 emath function DepthFault:
@@ -2249,7 +2249,7 @@ emath function rebound:
 emath function subst_preserved:
     # Naming the root binder's OWN parameter substitutes nothing: the
     # parameter's occurrences are bound, not free (L2). The code is
-    # preserved — identity is unchanged — not edited.
+    # preserved (identity is unchanged), not edited.
     inputs:
         unused: Int
     outputs:
@@ -2734,7 +2734,7 @@ emath function WalkMatchOpen:
     probe.case("use-import-name-collision-refuses", |p| {
         // E-NAME-022 (user decision: collision is an error): an
         // imported declaration may not silently replace a same-named
-        // local one. Historical behavior was the clobber — imports
+        // local one. Historical behavior was the clobber: imports
         // installed after locals, so the local function ran the
         // imported body mid-module.
         let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2771,7 +2771,7 @@ emath function WalkMatchOpen:
     probe.case("use-import-same-source-idempotent", |p| {
         // The transitive diamond: dup_a and dup_b both import
         // dup_target, and dup_root imports both. The same source file
-        // installs twice under the same bare name — idempotent, NOT a
+        // installs twice under the same bare name: idempotent, NOT a
         // collision (the `use numerics.experiment` -> bounds/powers
         // -> exact.integers shape every stdlib import relies on).
         let importer_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3026,14 +3026,14 @@ emath function WalkMatchOpen:
 
     probe.case("recur-tail-scales-nontail-caps", |p| {
         // The tail-call seam for CLOSURE applications: a self-call in
-        // tail position reuses the application frame — the call depth
-        // stays at the entry value and WORK is the only bound — so a
+        // tail position reuses the application frame (the call depth
+        // stays at the entry value and WORK is the only bound), so a
         // tail-recursive closure builder scales past the 256 depth cap
         // (10_000 steps below; the base value 7 is reachable only by
         // walking every step). A NON-tail self-call (nested inside an
         // operation) keeps the configured depth cap. A GROWING tail
-        // loop is bounded by the work budget — a fault, never a crash
-        // or a hang — pinned on a 2 MiB library thread so a mutant
+        // loop is bounded by the work budget (a fault, never a crash
+        // or a hang), pinned on a 2 MiB library thread so a mutant
         // that reintroduces nesting aborts there instead of passing.
         let source = r#"
 emath function TailWalk:

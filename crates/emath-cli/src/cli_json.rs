@@ -89,7 +89,7 @@ pub fn json_diagnostics_entries(diagnostics: &Diagnostics) -> Vec<String> {
 
 /// Stdout envelope for `--json` command refusals (`check`/`eval` pattern).
 /// Uniform contract: every envelope carries `command`, a `status` string
-/// (`ok`|`refused`), and `diagnostics`. Deterministic — no timestamps.
+/// (`ok`|`refused`), and `diagnostics`. Deterministic, no timestamps.
 pub fn diagnostics_json_document(command: &str, admitted: bool, entries: &[String]) -> String {
     let mut out = emath_artifact::JsonWriter::object();
     out.string("command", command);

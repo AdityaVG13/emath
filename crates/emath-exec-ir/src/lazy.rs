@@ -4,7 +4,7 @@
 //! session boots with the NUCLEUS + the PRELUDE INDEX (each installed
 //! [`SemanticImage`]'s lock page) and loads reachable packs' pages on
 //! demand at file compile. The initialization receipt names exactly the
-//! loaded pages — an UNUSED pack's pages never load, and any attempt to
+//! loaded pages: an UNUSED pack's pages never load, and any attempt to
 //! serve one refuses typed (`E-LAZY-001`, the negative seed's
 //! silent-success: an eager loader wearing a lazy label). Unknown packs
 //! refuse typed (`E-LAZY-002`) at boot (custom profile) and at compile.
@@ -40,7 +40,7 @@ pub enum LoadProfile {
 /// Lazy-loading refusal. Closed set.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LazyError {
-    /// `E-LAZY-001` — a page was requested from a pack the session
+    /// `E-LAZY-001`: a page was requested from a pack the session
     /// never loaded (unused-pack access is detected, never served).
     UnloadedPackAccess {
         /// The unloaded pack.
@@ -48,7 +48,7 @@ pub enum LazyError {
         /// The requested page.
         page: String,
     },
-    /// `E-LAZY-002` — a pack nobody installed was named (at boot in a
+    /// `E-LAZY-002`: a pack nobody installed was named (at boot in a
     /// custom profile, or at file compile).
     UnknownPack {
         /// The unknown pack.
@@ -72,7 +72,7 @@ impl std::fmt::Display for LazyError {
         match self {
             Self::UnloadedPackAccess { pack, page } => write!(
                 formatter,
-                "{code}: `{pack}/{page}` was never loaded — unused pack \
+                "{code}: `{pack}/{page}` was never loaded; unused pack \
                  pages never load on a lazy session",
                 code = self.code()
             ),
@@ -89,7 +89,7 @@ impl std::error::Error for LazyError {}
 
 /// The initialization receipt: exactly the pages the session loaded,
 /// sorted (`nucleus` root + `<pack>/<page>` tokens). The receipt is the
-/// startup proof — an eager loader cannot fake it.
+/// startup proof; an eager loader cannot fake it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InitializationReceipt {
     loaded_pages: Vec<String>,
@@ -173,7 +173,7 @@ impl LazySession {
     }
 
     /// Serves a page body from a LOADED pack page; a page from a pack
-    /// the session never loaded refuses typed (`E-LAZY-001`) — never a
+    /// the session never loaded refuses typed (`E-LAZY-001`), never a
     /// silent eager fallback.
     pub fn page(&self, pack: &str, page: &str) -> Result<&str, LazyError> {
         if self.loaded.contains(&format!("{pack}/{page}")) {

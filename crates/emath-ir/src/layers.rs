@@ -1,5 +1,5 @@
 //! The ten-layer IR stack registry: one row per layer with its durable
-//! schema id, schema version and owning crate — the single enumeration
+//! schema id, schema version and owning crate: the single enumeration
 //! of the stack (syntax, HIR, MIG, SIR, GIR, resolution, EIR, evidence,
 //! rust-ir, artifact). Ids reuse durable artifact strings; versions are
 //! explicit so a schema change is a visible, versioned event.

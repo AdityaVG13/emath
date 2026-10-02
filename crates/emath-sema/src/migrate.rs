@@ -10,7 +10,7 @@
 //!
 //! This module is the CONTRACT CORE: rule self-classification, the
 //! canonical stable-JSON receipt, and LOAD-BEARING identity
-//! verification — a respell-class rewrite is emitted only when the
+//! verification: a respell-class rewrite is emitted only when the
 //! re-lowered semantic identity is byte-identical. A registered
 //! semantic correction instead requires two admitted, different
 //! identities and receipts the checked delta. The concrete rule
@@ -56,7 +56,7 @@ pub struct RuleSpec {
 /// E-MIG-RULE-001 `canonical-format`: the lossless formatter rewrite.
 /// Identity-preserving by construction AND verified by re-lowering
 /// (the engine refuses if the formatted text changes meaning, which
-/// would be a formatter bug — the verify gate makes that impossible
+/// would be a formatter bug; the verify gate makes that impossible
 /// to ship silently).
 pub const RULE_CANONICAL_FORMAT: RuleSpec = RuleSpec {
     id: "E-MIG-RULE-001",
@@ -148,7 +148,7 @@ pub struct MigrationReceipt {
     pub target_edition: &'static str,
     pub rules_applied: Vec<RuleApplied>,
     pub refusals: Vec<Refusal>,
-    /// `complete | partial-refused` — partial migration is
+    /// `complete | partial-refused`; partial migration is
     /// first-class, never a crash.
     pub verdict: String,
     /// A checked claim: true only when every applied respell verified
@@ -247,7 +247,7 @@ fn lower_identity(name: &str, source: &str) -> Result<String, Vec<String>> {
 /// Verify and receipt one migration site: lower `before_source`
 /// (must admit), lower `rewritten_source` (must admit), classify the
 /// rewrite, and emit the rewrite ONLY when identity is preserved
-/// byte-for-byte (respell) — an identity-changing rewrite refuses
+/// byte-for-byte (respell); an identity-changing rewrite refuses
 /// (E-MIG-VERIFY-FAIL) and emits nothing: the migration itself is a
 /// bug, never silently shipped. Equal input is an idempotent no-op
 /// (empty rule list, `complete`). `rule_id` stamps the receipt (the

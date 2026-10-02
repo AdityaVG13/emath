@@ -20,7 +20,7 @@ pub const INTERFACE_CORE: &str = "emath.plugin.interface";
 /// Sandbox policy attached to a plugin descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SandboxPolicy {
-    /// Fuel budget; `None` is "unmetered" — tolerated by [`admit`] for
+    /// Fuel budget; `None` is "unmetered", tolerated by [`admit`] for
     /// [`Trust::Local`], but [`execute`] requires positive fuel everywhere.
     pub fuel: Option<u64>,
     /// Granted permissions (e.g. `"network"`, `"fs-read"`).

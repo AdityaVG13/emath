@@ -21,7 +21,7 @@ pub struct Goal {
 }
 
 /// Goal-body payload for `differentiate` / `benchmark` (and unused on
-/// `evaluate`). Plain vocabulary data only — no domain model bound in
+/// `evaluate`). Plain vocabulary data only, no domain model bound in
 /// the IR.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GoalPayload {

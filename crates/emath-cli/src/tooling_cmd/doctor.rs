@@ -36,7 +36,7 @@ pub fn doctor_probes() -> Vec<DoctorProbe> {
 /// Language-root probe: most doctor consumers are about to run
 /// keep-commands that all gate on a verified Language Image, so the
 /// probe reports whether `language/spec` is discoverable from the
-/// working directory (MISSING elsewhere — the same condition the
+/// working directory (MISSING elsewhere: the same condition the
 /// E-LANG-IMAGE refusal enforces).
 fn language_root_probe() -> DoctorProbe {
     match crate::locate_language_root(None) {
@@ -218,7 +218,7 @@ pub(super) fn probe_program(command: &str) -> Option<String> {
     let program = parts.next()?;
     // The executable/args here are only the static doctor_probes() literals
     // (`rustc --version`, `cargo --version`, `rustfmt --version`,
-    // `cargo clippy --version`) — no user data reaches Command::new.
+    // `cargo clippy --version`), no user data reaches Command::new.
     let output = Command::new(program).args(parts).output().ok()?; // ubs:ignore static-literal probes
     if output.status.success() {
         let text = String::from_utf8_lossy(&output.stdout).trim().to_string();

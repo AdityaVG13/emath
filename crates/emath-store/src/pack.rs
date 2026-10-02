@@ -2,16 +2,16 @@
 //!
 //! The portable-pack draft: magic `EMATHLIB\0`, length-framed segments
 //! (the house `object_graph::frame` convention), corruption budgets,
-//! and a canonical export — entries are written sorted by id, so the
+//! and a canonical export: entries are written sorted by id, so the
 //! same entry set produces identical bytes regardless of insertion
 //! order. Thin packs carry a parent reference (the id of the pack they
-//! delta against) and REFUSE to read without that parent closure —
+//! delta against) and REFUSE to read without that parent closure:
 //! never a partial silent read.
 //!
 //! Draft discipline: no compression/decompression yet (the
 //! decompression budget is a declared follow-up), invisible to ordinary
 //! `emath run` until share/mount, and the format must not stabilize
-//! before the capstones. Entry ids are carried VERBATIM — never
+//! before the capstones. Entry ids are carried VERBATIM, never
 //! re-derived from payload bytes (re-derivation would mint a different
 //! identity; the lesson).
 //!
@@ -80,26 +80,26 @@ impl std::fmt::Display for PackFault {
         match self {
             Self::BadMagic { code } => write!(
                 formatter,
-                "{code}: not an .emlib pack (magic mismatch) — a corrupted or foreign file is \
+                "{code}: not an .emlib pack (magic mismatch); a corrupted or foreign file is \
                  never read as a pack"
             ),
             Self::Truncated { code } => write!(
                 formatter,
-                "{code}: pack is truncated — a length prefix runs past the buffer"
+                "{code}: pack is truncated: a length prefix runs past the buffer"
             ),
             Self::Oversized { code } => write!(
                 formatter,
                 "{code}: pack exceeds a declared budget (total bytes, entry count, or payload \
-                 size) — corruption never masquerades as data"
+                 size); corruption never masquerades as data"
             ),
             Self::ThinWithoutParent { code } => write!(
                 formatter,
-                "{code}: thin pack has no parent closure — a thin pack references the pack it \
+                "{code}: thin pack has no parent closure; a thin pack references the pack it \
                  deltas against and cannot be read without it"
             ),
             Self::DuplicateEntry { code, id } => write!(
                 formatter,
-                "{code}: duplicate entry id `{id}` — canonical export requires an id set"
+                "{code}: duplicate entry id `{id}`; canonical export requires an id set"
             ),
         }
     }
@@ -134,8 +134,8 @@ impl PackWriter {
     }
 
     /// Write a pack: full (no parent reference) or thin (names the
-    /// parent pack id it deltas against). Entries are sorted by id —
-    /// canonical export — and duplicates refuse.
+    /// parent pack id it deltas against). Entries are sorted by id
+    /// (canonical export), and duplicates refuse.
     pub fn write(&self, entries: &[PackEntry], parent: Option<&str>) -> Result<Vec<u8>, PackFault> {
         if entries.len() > self.budgets.max_entries {
             return Err(PackFault::Oversized {
@@ -191,7 +191,7 @@ impl PackReader {
     }
 
     /// Read a pack. A thin pack (non-empty parent reference) requires
-    /// `parent` to carry the parent pack's bytes — without the parent
+    /// `parent` to carry the parent pack's bytes; without the parent
     /// closure the read refuses (`E-EVID-605`), never a partial silent
     /// read. With the closure, the result is the merged view: parent
     /// entries overlaid by the thin entries (thin wins on equal ids).

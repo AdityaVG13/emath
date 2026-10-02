@@ -99,9 +99,9 @@ fn lpad(s: &str, width: usize) -> String {
 /// Exact or probe rendering of a record's score (SPEC §8.2).
 fn score_cells(rec: &Rec) -> (String, String, Tok) {
     match rec.score() {
-        Some(s) if rec.tier() == 0 => ("—".into(), approx(s), Tok::Dim),
+        Some(s) if rec.tier() == 0 => ("-".into(), approx(s), Tok::Dim),
         Some(s) => (rat_text(s), dec4(s), Tok::Text),
-        None => ("—".into(), "—".into(), Tok::Dim),
+        None => ("-".into(), "-".into(), Tok::Dim),
     }
 }
 
@@ -305,7 +305,7 @@ fn score(pen: &mut Pen<'_>, model: &RunModel, expanded: bool) {
 
 fn incumbent_card(pen: &mut Pen<'_>, model: &RunModel, x: u16, w: u16, expanded: bool) {
     let Some(rec) = model.incumbent_rec() else {
-        pen.text(x, 0, "INCUMBENT  —", Tok::Dim, true);
+        pen.text(x, 0, "INCUMBENT  -", Tok::Dim, true);
         return;
     };
     let key = format!("#{}", rec.key);
@@ -321,7 +321,7 @@ fn incumbent_card(pen: &mut Pen<'_>, model: &RunModel, x: u16, w: u16, expanded:
             pen.text(at, 1, &fit(&format!("  {}", rat_text(s)), w.saturating_sub(big.chars().count() as u16)), Tok::Dim, false);
         }
         None => {
-            pen.text(x, 1, "—", Tok::Dim, false);
+            pen.text(x, 1, "-", Tok::Dim, false);
         }
     }
     let promo = model.promotions.iter().rev().find(|p| p.key == rec.key);
@@ -360,7 +360,7 @@ fn incumbent_card(pen: &mut Pen<'_>, model: &RunModel, x: u16, w: u16, expanded:
             if y >= pen.h() {
                 break;
             }
-            let score = p.score.map_or_else(|| "—".to_string(), dec4);
+            let score = p.score.map_or_else(|| "-".to_string(), dec4);
             let gain = p.gain.map_or_else(String::new, super::model::signed4);
             let fm = model.records.get(&p.key).map(fam_move).unwrap_or_default();
             let line = format!("b{:<4} #{:<6} {:<8} {:<8} {fm}", p.batch, p.key, score, gain);
@@ -444,7 +444,7 @@ fn budget(pen: &mut Pen<'_>, model: &RunModel, expanded: bool) {
         pen.spans(ladder_x, h - 1, &[
             ("charged ".into(), Tok::Dim, false),
             (format!("{} u", units(used)), Tok::Text, false),
-            ("   computed —   cache —".into(), Tok::Dim, false),
+            ("   computed -   cache -".into(), Tok::Dim, false),
         ]);
     }
 }
@@ -549,14 +549,14 @@ fn frontier(pen: &mut Pen<'_>, hits: &mut Vec<Hit>, model: &RunModel, view: &Vie
             (score_text, if muted { Tok::Dim } else { score_tok }, false),
             (decimal, if muted { Tok::Dim } else { score_tok }, false),
             (if rec.tier() == 1 { "✓ exact".into() } else { "~ probe".into() }, if rec.tier() == 1 && !muted { Tok::Good } else { Tok::Dim }, false),
-            (rec.int("family").filter(|f| *f >= 0).map_or_else(|| "—".into(), |f| format!("f{f}")), base, false),
-            (rec.int("move").filter(|m| *m >= 0).map_or_else(|| "—".into(), |m| format!("m{m}")), base, false),
+            (rec.int("family").filter(|f| *f >= 0).map_or_else(|| "-".into(), |f| format!("f{f}")), base, false),
+            (rec.int("move").filter(|m| *m >= 0).map_or_else(|| "-".into(), |m| format!("m{m}")), base, false),
             (rec.parent().map_or_else(|| "seed".into(), |p| format!("#{p}")), base, false),
             (state_text(rec, state), state.tok(), state == RecState::Incumbent),
             (format!("b{}", rec.born), Tok::Dim, false),
             (children.to_string(), base, false),
-            (rec.rat("bound").map_or_else(|| "—".into(), rat_text), base, false),
-            (rec.int("witness").filter(|w| *w >= 0).map_or_else(|| "—".into(), |w| format!("c{w}")), base, false),
+            (rec.rat("bound").map_or_else(|| "-".into(), rat_text), base, false),
+            (rec.int("witness").filter(|w| *w >= 0).map_or_else(|| "-".into(), |w| format!("c{w}")), base, false),
         ];
         let mut x = 0u16;
         for i in &keep {
@@ -690,7 +690,7 @@ fn verdicts(pen: &mut Pen<'_>, model: &RunModel, expanded: bool) {
             x += pen.text(x, legend_y + i as u16, text, *tok, false);
         }
     }
-    let now = model.batches.last().map_or("—", |b| verdict_label(b.verdict));
+    let now = model.batches.last().map_or("-", |b| verdict_label(b.verdict));
     let now_tok = model.batches.last().map_or(Tok::Dim, |b| verdict_tok(b.verdict));
     let y = h.saturating_sub(1);
     let x = pen.spans(0, y, &[("now ".into(), Tok::Dim, false), (now.into(), now_tok, true)]);
@@ -703,9 +703,9 @@ fn family_tail(admitted: u64, refused: u64, promoted: u64) -> Vec<(String, Tok, 
         if n == 0 { (lpad("·", width), Tok::Faint, false) } else { (lpad(&n.to_string(), width), tok, tok == Tok::Good) }
     };
     vec![
-        (lpad(&format!("—→{admitted}"), 6), Tok::Text, false),
+        (lpad(&format!("-→{admitted}"), 6), Tok::Text, false),
         (" ".into(), Tok::Faint, false),
-        (lpad("—", 3), Tok::Faint, false),
+        (lpad("-", 3), Tok::Faint, false),
         (" ".into(), Tok::Faint, false),
         count(refused, 3, Tok::Warn),
         (" ".into(), Tok::Faint, false),
@@ -850,7 +850,7 @@ fn rec_line(rec: &Rec) -> String {
     let score = match rec.score() {
         Some(s) if rec.tier() == 0 => approx(s),
         Some(s) => dec4(s),
-        None => "—".into(),
+        None => "-".into(),
     };
     format!("#{}  {}  {score}", rec.key, fam_move(rec))
 }
@@ -944,8 +944,8 @@ fn refuted(pen: &mut Pen<'_>, model: &RunModel) {
             (format!("  refuted by c{ce}"), Tok::Text, false),
             (format!("  at b{batch}"), Tok::Dim, false),
         ]);
-        let was = rec.and_then(Rec::score).map_or_else(|| "—".into(), dec4);
-        let family = rec.and_then(|r| r.int("family")).filter(|f| *f >= 0).map_or_else(|| "f—".into(), |f| format!("f{f}"));
+        let was = rec.and_then(Rec::score).map_or_else(|| "-".into(), dec4);
+        let family = rec.and_then(|r| r.int("family")).filter(|f| *f >= 0).map_or_else(|| "f-".into(), |f| format!("f{f}"));
         let mut detail = format!("was {was}  ·  {family}");
         let tail = "  ·  withdrawn, kept for lineage";
         if detail.chars().count() + tail.chars().count() + 2 <= usize::from(w) {
@@ -978,9 +978,9 @@ fn evidence(pen: &mut Pen<'_>, model: &RunModel, ctx: &Ctx) {
         pen.text(0, y, &format!("closed · {} at b{}", level.reason, level.batch), Tok::Accent2, true);
         y += 1;
         let score = level.score.map_or_else(String::new, |s| format!("  {}  ({})", rat_text(s), dec4(s)));
-        pen.text(0, y, &format!("incumbent #{}{score}", level.key.map_or_else(|| "—".into(), |k| k.to_string())), Tok::Text, false);
+        pen.text(0, y, &format!("incumbent #{}{score}", level.key.map_or_else(|| "-".into(), |k| k.to_string())), Tok::Text, false);
         y += 1;
-        let file = level.file.clone().unwrap_or_else(|| "—".into());
+        let file = level.file.clone().unwrap_or_else(|| "-".into());
         let x = pen.text(0, y, &fit(&file, w.saturating_sub(24)), Tok::Info, false);
         if level.certificate {
             pen.text(x + 2, y, "✓ certificate", Tok::Good, true);

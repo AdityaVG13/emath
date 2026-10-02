@@ -3,7 +3,7 @@
 //! Generated artifacts must not contain unused mathematics. The
 //! reachable closure over a [`SemanticImage`] starts from the
 //! pinned entry set and keeps every cell the artifact can reach;
-//! shaking drops the UNREACHABLE cells' bytecode from the ARTIFACT —
+//! shaking drops the UNREACHABLE cells' bytecode from the ARTIFACT,
 //! never from source ("do not delete source cells": the `cells` page's
 //! schema records stay; only the bytecode page shrinks).
 //!
@@ -11,10 +11,10 @@
 //! headers followed by the compiled program); an
 //! `apply-capability name=<identity>` reference is the closure's ONLY
 //! internal edge type. Entries are the artifact's roots; everything
-//! reachable from an entry is REQUIRED and cannot be demoted — naming a
+//! reachable from an entry is REQUIRED and cannot be demoted; naming a
 //! required dependency as an entry too refuses typed (`E-SHAKE-002`,
 //! the negative seed's silent-success: a smaller-but-broken artifact).
-//! Shaking an unknown identity refuses typed (`E-SHAKE-001`) — never a
+//! Shaking an unknown identity refuses typed (`E-SHAKE-001`), never a
 //! silent no-op.
 //!
 //! The shaken image keeps the determinism law (sorted, stamped,
@@ -34,13 +34,13 @@ const BYTECODE_PAGE: &str = "worlds.bytecode";
 /// Shaking refusal. Closed set; every variant names the identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ShakeError {
-    /// `E-SHAKE-001` — a shake entry the image does not contain (never
+    /// `E-SHAKE-001`: a shake entry the image does not contain (never
     /// a silent no-op that pretends to shake).
     UnknownCell {
         /// The unknown capability identity.
         capability: String,
     },
-    /// `E-SHAKE-002` — a REQUIRED dependency (reachable from another
+    /// `E-SHAKE-002`: a REQUIRED dependency (reachable from another
     /// entry) cannot be demoted to a root; the smaller-but-broken
     /// artifact is refused.
     RequiredDependency {
@@ -65,12 +65,12 @@ impl std::fmt::Display for ShakeError {
         match self {
             Self::UnknownCell { capability } => write!(
                 formatter,
-                "{code}: cannot shake `{capability}` — not a cell of this image",
+                "{code}: cannot shake `{capability}`: not a cell of this image",
                 code = self.code()
             ),
             Self::RequiredDependency { capability } => write!(
                 formatter,
-                "{code}: `{capability}` is reachable from another entry — \
+                "{code}: `{capability}` is reachable from another entry; \
                  required dependencies cannot be shaken out",
                 code = self.code()
             ),
@@ -180,7 +180,7 @@ fn closure_from(roots: &[&str], edges: &BTreeSet<(String, String)>) -> BTreeSet<
 ///
 /// Refusals: an entry the image does not contain is
 /// [`ShakeError::UnknownCell`]; an entry reachable from ANOTHER entry is
-/// a required dependency being demoted — [`ShakeError::RequiredDependency`]
+/// a required dependency being demoted; [`ShakeError::RequiredDependency`]
 /// refuses the request as a whole (no partial artifact escapes).
 pub fn shake_image(image: &SemanticImage, entries: &[&str]) -> Result<ShakenImage, ShakeError> {
     let cells = image_cells(image);
@@ -235,7 +235,7 @@ fn bytecode_sections(bytecode: &str) -> Vec<(String, String)> {
 
 /// Rebuild the artifact with only the kept cells' bytecode sections;
 /// every other partition passes through unchanged (the cells page is
-/// the source records — "do not delete source cells"). The image id is
+/// the source records: "do not delete source cells"). The image id is
 /// re-derived by the canonical recipe, so a content change is
 /// always a new id and an identical shake is the identical image.
 fn rebuild(image: &SemanticImage, kept: &[String]) -> SemanticImage {

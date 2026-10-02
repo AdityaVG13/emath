@@ -591,7 +591,7 @@ emath function f() -> Float64:
 
         // The grammar and parser use `if c: a else: b` (colons, no `then`).
         // ch7's "Implemented today" list previously said `if cond then a else b`
-        // (with `then`) — a documentation drift.  The colon form is what
+        // (with `then`): a documentation drift.  The colon form is what
         // actually parses and runs.
         let source = "\
 emath function sign(x: Float64) -> Float64:
@@ -1025,7 +1025,7 @@ emath function test(d: Float64) -> Float64:
     probe.case("identifier_starting_with_i_not_complex", |p| {
         let f0 = p.failures().len();
 
-        // `image` should NOT be parsed as complex literal — `i` is only a
+        // `image` should NOT be parsed as complex literal; `i` is only a
         // complex suffix when not followed by identifier characters.
         let source = "\
 emath function test(image: Float64) -> Float64:
@@ -1247,7 +1247,7 @@ emath function f() -> Float64:
     probe.case("explicit_2_times_x_still_admits", |p| {
         let f0 = p.failures().len();
 
-        // The admitted spelling must remain untouched — the juxtaposition
+        // The admitted spelling must remain untouched; the juxtaposition
         // refusal cannot fire on operator-separated operands.
         let source = "\
 emath function f() -> Float64:

@@ -6,11 +6,11 @@
 //!   identity. [`Seed`] has no `Default` and there is no ambient
 //!   constructor anywhere in core: a seed exists only when a run
 //!   declares one. Entropy access is a declared capability, never
-//!   an ambient side effect — [`E_STOCH_ENTROPY`] is the typed refusal
+//!   an ambient side effect; [`E_STOCH_ENTROPY`] is the typed refusal
 //!   code for undeclared entropy access.
 //! - **Named algorithm.** The generator of record is a counter-based
 //!   Philox-class function ([`ALGORITHM_PHILOX4X32_10`]); algorithm
-//!   identity is a closed gate — an unknown name refuses
+//!   identity is a closed gate: an unknown name refuses
 //!   ([`E_STOCH_ALGORITHM`]) rather than silently swapping generators
 //!   behind the same receipt.
 //! - **Stream splits are declared paths.** A [`StreamPath`] is the
@@ -22,14 +22,14 @@
 //!
 //! Distribution semantics (sampling procedures, parameterizations) are
 //! world meanings on the distributions lane; they consume
-//! [`stream_value`] — the single deterministic primitive two providers
+//! [`stream_value`], the single deterministic primitive two providers
 //! must share for "same world + same seed ⇒ same stream".
 
 use crate::hash::fnv1a64_bytes;
 
-/// `E-STOCH-1` — an algorithm name that is not the declared generator.
+/// `E-STOCH-1`: an algorithm name that is not the declared generator.
 pub const E_STOCH_ALGORITHM: &str = "E-STOCH-1";
-/// `E-STOCH-2` — a malformed declared stream path (empty label).
+/// `E-STOCH-2`: a malformed declared stream path (empty label).
 pub const E_STOCH_STREAM: &str = "E-STOCH-2";
 /// The named counter-based generator of record: Philox4x32 with 10
 /// rounds (Random123 construction). Identity is RECORDED in receipts;
@@ -66,7 +66,7 @@ impl std::fmt::Display for Seed {
 
 /// A declared stream path: the split topology that names one deterministic
 /// sub-stream of a seeded run. The empty path is the legal ROOT stream;
-/// each split label must be non-empty. Labels are ORDERED — `a.b` and
+/// each split label must be non-empty. Labels are ORDERED: `a.b` and
 /// `b.a` are different streams.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StreamPath {
@@ -103,7 +103,7 @@ impl StreamPath {
 
 /// The single deterministic stream primitive the contract offers:
 /// `stream_value(seed, algorithm, path, counter) -> u64`. Pure in all
-/// arguments — parallel and sequential execution of any query order
+/// arguments: parallel and sequential execution of any query order
 /// yields identical values.
 ///
 /// Declared mapping (part of the contract, documented in the cell
@@ -147,7 +147,7 @@ pub fn stream_value(
 
 /// The canonical seed word for STATEFUL LOCAL generators (SplitMix64-class
 /// stepping generators that keep a `u64` state): counter 0 of the declared
-/// stream. This is the contract's one-seed-story seam — a local generator
+/// stream. This is the contract's one-seed-story seam: a local generator
 /// never owns its own seed namespace; its initial state derives from the
 /// same `(Seed, StreamPath)` identity every other stream consumer uses.
 /// The pre-contract provisional mapping (raw seed bits as the state)

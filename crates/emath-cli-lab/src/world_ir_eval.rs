@@ -2,7 +2,7 @@
 //! candidate classes run on the reference VM through one adapter.
 //!
 //! The world stays pure declaration data (`WorldIr`); the adapter is the
-//! World ABI seam — a new builtin class needs no evaluator change (the
+//! World ABI seam: a new builtin class needs no evaluator change (the
 //! trait contract). Each operator's declared `OperatorSemantics` is
 //! interpreted at VM time:
 //!
@@ -17,7 +17,7 @@
 //!   execute instead of fabricating carrier values.
 //!
 //! Total by construction: every symbol's interpretation either computes
-//! or keeps structure — the adapter never invents carrier elements the
+//! or keeps structure; the adapter never invents carrier elements the
 //! declaration did not write.
 
 use std::collections::BTreeMap;

@@ -33,7 +33,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
     // `--function` runs one entry; the module's authored tests are not
     // an input to that evaluation. Gating first would evaluate every
     // test under DEFAULT_WORK and refuse modules whose suites are
-    // larger than that default, regardless of --work — the budget the
+    // larger than that default, regardless of --work, the budget the
     // flag exists to raise. The report is only consumed by the
     // no-function lane below.
     let report = if request.function.is_some() {
@@ -91,7 +91,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
             }
             // `unbound` is the unknown-entry code: fall through to the query
             // lookup and the E-RUN-ENTRY refusal. Any other error means the
-            // entry EXISTS and its evaluation faulted — surface the fault
+            // entry EXISTS and its evaluation faulted; surface the fault
             // instead of masking it as a missing entry.
             Err(err) if err.code == "unbound" => {}
             Err(err) => {

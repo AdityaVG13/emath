@@ -24,7 +24,7 @@ fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>
 pub(crate) fn locate_language_root(anchor: Option<&Path>) -> Result<PathBuf, String> {
     // EMATH_ROOT: explicit override for external consumers that run `emath`
     // from their own project directories. Wins over the ancestor walk, and
-    // a set-but-wrong root is a NAMED refusal — never a silent fallback to
+    // a set-but-wrong root is a NAMED refusal, never a silent fallback to
     // walking, which would hide the misconfiguration from the consumer.
     if let Ok(root) = std::env::var("EMATH_ROOT") {
         if !root.is_empty() {

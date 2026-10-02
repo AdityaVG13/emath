@@ -55,7 +55,7 @@ impl UBig {
         }
     }
 
-    /// Exact decimal parse (no sign, no separators — the emitter strips
+    /// Exact decimal parse (no sign, no separators; the emitter strips
     /// `_` before calling). Refuses non-digits. Does NOT bound-check;
     /// the emitter enforces `LIMIT_BITS` at admission.
     pub fn parse_decimal(text: &str) -> Result<Self, BigError> {

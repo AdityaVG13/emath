@@ -1,4 +1,4 @@
-//! Evidence IR, assumption ledger, evidence-level policy (E0–E5),
+//! Evidence IR, assumption ledger, evidence-level policy (E0-E5),
 //! certificate registry, content-addressed store, revalidation, proof
 //! providers, and the certify-the-certifier corpus. Authority
 //! is explicit: claims carry roles/freshness/falsifiers; assumptions

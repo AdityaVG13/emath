@@ -8,14 +8,14 @@
 //!
 //! - eval: a Str literal evaluates to the Str value; record fields carry
 //!   it; structural equality (`==`/`!=`) works on it;
-//! - admit: a declared `key: Str` input is a CHECKED carrier — an Int
+//! - admit: a declared `key: Str` input is a CHECKED carrier: an Int
 //!   given where Str is declared refuses, and the ordering operators
 //!   refuse at admission (`Str carries structural equality only`) so the
 //!   admit lane agrees with the runtime's `type` fault;
 //! - emit: a Str carrier converts to the host Text value (cvalue_to_emir).
 //!
 //! Carrier semantics ONLY: no ordering, no concatenation, no
-//! length/indexing — the carrier first, the string LIBRARY never (the
+//! length/indexing; the carrier first, the string LIBRARY never (the
 //! recorded stance: that boundary is deliberate).
 //!
 //! Failure-first: before the seam, the bump/key rows below faulted with
@@ -33,7 +33,7 @@ fn scratch_dir(tag: &str) -> std::path::PathBuf {
     dir
 }
 
-/// Temporal-style keyed state with a Str key — no id table.
+/// Temporal-style keyed state with a Str key, no id table.
 fn keyed_module(dir: &std::path::Path) -> std::path::PathBuf {
     let path = dir.join("str_carrier.emath");
     std::fs::write(
@@ -121,7 +121,7 @@ fn wrong_carrier_module(dir: &std::path::Path) -> std::path::PathBuf {
     path
 }
 
-/// Ordering on Str: structural equality only — the ordering operators
+/// Ordering on Str: structural equality only; the ordering operators
 /// refuse at admission (mutation probe B also kills through here).
 fn ordering_module(dir: &std::path::Path) -> std::path::PathBuf {
     let path = dir.join("str_no_ordering.emath");
@@ -175,7 +175,7 @@ fn probe() {
         "does not have the declared input type",
     );
 
-    // Admit lane, boundary: ordering on Str refuses at admission — the
+    // Admit lane, boundary: ordering on Str refuses at admission; the
     // carrier exists without the string library.
     let ordering = ordering_module(&dir);
     let ordering_string = ordering.to_string_lossy().into_owned();

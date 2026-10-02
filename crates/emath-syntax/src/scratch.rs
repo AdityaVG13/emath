@@ -1,4 +1,4 @@
-//! Official scratch expansion for progressive exactness L0–L2.
+//! Official scratch expansion for progressive exactness L0-L2.
 //!
 //! Bare expressions, guided relationships, intent verbs, and named-declaration
 //! shorthand lower to the same declaration IR as contracted components.

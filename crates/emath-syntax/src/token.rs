@@ -127,13 +127,13 @@ impl Keyword {
 /// Which nabla-family glyph a [`TokenKind::Nabla`] carries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NablaForm {
-    /// `∇` — gradient.
+    /// `∇`: gradient.
     Grad,
-    /// `∇·` — divergence.
+    /// `∇·`: divergence.
     Div,
-    /// `∇×` — curl (2D scalar desugar; 3D arity refuses typed).
+    /// `∇×`: curl (2D scalar desugar; 3D arity refuses typed).
     Curl,
-    /// `∇²` — Laplacian (discrete 5-point stencil).
+    /// `∇²`: Laplacian (discrete 5-point stencil).
     Lap,
 }
 
@@ -162,27 +162,27 @@ pub enum TokenKind {
     Eq,
     EqEq,
     NotEq,
-    /// `==>` — logical implication.
+    /// `==>`: logical implication.
     Imply,
-    /// `<==>` — logical biconditional.
+    /// `<==>`: logical biconditional.
     Iff,
-    /// `~~` — asymptotic equivalence.
+    /// `~~`: asymptotic equivalence.
     TildeTilde,
-    /// `~` — distribution tag prefix on measurement literals
+    /// `~`: distribution tag prefix on measurement literals
     /// (`~ normal`, `~ uniform`, `~ lognormal`).
     Tilde,
-    /// `±` — measurement-literal uncertainty separator (`1.50 ± 0.02`).
+    /// `±`: measurement-literal uncertainty separator (`1.50 ± 0.02`).
     /// In core this IS the measurement literal; algebraic plus-minus
     /// lives only in the opt-in algebra pack.
     PlusMinus,
-    /// `∅` — the declared sink: a reaction endpoint that is
+    /// `∅`, the declared sink: a reaction endpoint that is
     /// deliberately nothing (`Drug -> ∅`). Never a magic empty side:
     /// a reaction endpoint with no terms and no `∅` refuses E-BIO-SINK.
     EmptySet,
     /// Attached parenthetical uncertainty (`0.5012(3)` = 0.5012 ± 0.0003):
     /// `number` keeps the mantissa spelling (exponent and any suffix
     /// included, parenthetical stripped); `digits` keeps the raw
-    /// uncertainty digits — decimal-place scaling is admission's job.
+    /// uncertainty digits; decimal-place scaling is admission's job.
     FloatUncertainty {
         number: String,
         digits: String,
@@ -195,7 +195,7 @@ pub enum TokenKind {
     Minus,
     Star,
     Slash,
-    /// `//` — exact rational separator (`3//7`).
+    /// `//`: exact rational separator (`3//7`).
     SlashSlash,
     Caret,
     Bang,
@@ -215,7 +215,7 @@ pub enum TokenKind {
     Question,
     Amp,
     Pipe,
-    /// `;` — row separator inside list literals (`[1, 2; 3, 4]`).
+    /// `;`: row separator inside list literals (`[1, 2; 3, 4]`).
     /// Nowhere else in the surface: outside a list literal it refuses.
     Semicolon,
     /// Nabla-family glyphs (`∇`, `∇·`, `∇×`, `∇²`, nabla pack),
@@ -223,22 +223,22 @@ pub enum TokenKind {
     /// `use sci::physics::notation::nabla` maps the form to an existing
     /// `core::pde` builtin; unmounted glyphs refuse at parse.
     Nabla(NablaForm),
-    /// `≈` (U+2248) or ASCII `~=` — the approximation labeling operator
+    /// `≈` (U+2248) or ASCII `~=`, the approximation labeling operator
     ///. One token either
     /// spelling; `~=` must be claimed before the bare `~` distribution
     /// tag, and `≈` before the non-ASCII ident path.
     TildeEq,
-    /// `⟨` (U+27E8) — bra/open angle of the braket pack. Lexed
+    /// `⟨` (U+27E8): bra/open angle of the braket pack. Lexed
     /// as a single token before the non-ASCII ident path; only the
     /// mounted braket pack admits forms built from it.
     LAngle,
-    /// `⟩` (U+27E9) — ket/close angle of the braket pack.
+    /// `⟩` (U+27E9): ket/close angle of the braket pack.
     RAngle,
-    /// `-->` — directed graph edge arrow. Glued from three
+    /// `-->`: directed graph edge arrow. Glued from three
     /// bytes so it beats `->` (Minus+Arrow today, a parse error in
     /// this shape); `x--y` without the `>` stays two Minus tokens.
     EdgeArrow,
-    /// `@` — attribute prefix on `emath` items (`@capabilities(...)`).
+    /// `@`: attribute prefix on `emath` items (`@capabilities(...)`).
     AtSign,
     Newline,
     Indent,

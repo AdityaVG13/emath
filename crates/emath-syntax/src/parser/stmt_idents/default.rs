@@ -259,7 +259,7 @@ impl super::super::Parser {
                         };
                         // the
                         // inline where-refinement row (`p: Float64 where
-                        // 0 <= self and self <= 1`) — the refinement
+                        // 0 <= self and self <= 1`); the refinement
                         // seed's grammar is a design follow-up; refuse at
                         // the grammar naming the design contract
                         // (previously the row half-parsed and the
@@ -276,7 +276,7 @@ impl super::super::Parser {
                             }
                             self.error_here(
                                 "E-SYN-101",
-                                "`name: Type where <predicate>` refinement rows are outside the current subset — the refinement-types design follow-up must first settle: predicates stay in a total, decidable fragment (same discipline as ch8's bounded lowering language; type checking deterministic and budgeted), refinements are recorded in semantic identity (as domain annotations already are), and conflicting constraints are NAMED in diagnostics (ch16 gate 6) so refinements stay usable rather than feared; the admitted refinement surface today is the domain annotation `Type in [lo, hi]`; there is no trust-me cast — the runtime-checked cast downgrades the capability label (Certified to nothing) and is receipt-visible",
+                                "`name: Type where <predicate>` refinement rows are outside the current subset; the refinement-types design follow-up must first settle: predicates stay in a total, decidable fragment (same discipline as ch8's bounded lowering language; type checking deterministic and budgeted), refinements are recorded in semantic identity (as domain annotations already are), and conflicting constraints are NAMED in diagnostics (ch16 gate 6) so refinements stay usable rather than feared; the admitted refinement surface today is the domain annotation `Type in [lo, hi]`; there is no trust-me cast: the runtime-checked cast downgrades the capability label (Certified to nothing) and is receipt-visible",
                             );
                             return None;
                         }

@@ -346,7 +346,7 @@ pub(super) fn reference_slot<'a>(capsule: &'a FeatureCapsule, name: &str) -> Opt
 }
 
 /// Shapes declared by the semantics slot's `inputs=` field, in argument
-/// order. The mapping is generic over the declared type tokens —
+/// order. The mapping is generic over the declared type tokens:
 /// `Vector<Float64>` and `Matrix<Float64>` carry their carriers, every
 /// other token is a scalar.
 pub(super) fn declared_input_shapes(semantics: &str) -> Vec<ParamShape> {

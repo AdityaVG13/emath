@@ -48,7 +48,7 @@ impl super::super::Parser {
         }
     }
 
-    /// one braket operand — an integer basis label or an
+    /// one braket operand: an integer basis label or an
     /// identifier naming a vector. Labels are validated when converted
     /// to values, so `⟨2|…⟩` refuses with the carrier named.
     pub(super) fn parse_braket_operand(&mut self, start: Span) -> Option<BraketOperand> {
@@ -123,7 +123,7 @@ impl super::super::Parser {
         }
     }
 
-    /// `⟨φ|ψ⟩` — the inner product. Label×label folds to the
+    /// `⟨φ|ψ⟩`, the inner product. Label×label folds to the
     /// Kronecker delta (`⟨0|1⟩` IS 0, machine-checked at parse);
     /// otherwise the exact desugar is the admitted `dot` builtin, since
     /// sesquilinear conjugation is the identity on the real carrier.
@@ -157,7 +157,7 @@ impl super::super::Parser {
         })
     }
 
-    /// `⟨φ|P|ψ⟩` — the sandwich, as the double sum over the
+    /// `⟨φ|P|ψ⟩`, the sandwich, as the double sum over the
     /// pack's 2-level carrier: `sum j in 0..2: φ[j] * (sum k in 0..2:
     /// P[j, k] * ψ[k])`. Every piece (sum binder, indexing, scalar
     /// multiply) is an admitted operation; the conjugate is the
@@ -263,7 +263,7 @@ impl super::super::Parser {
         })
     }
 
-    /// `|i⟩⟨j|` — the outer product (projector), the constant
+    /// `|i⟩⟨j|`, the outer product (projector), the constant
     /// real matrix with 1 at `[i, j]` on the 2-level carrier.
     pub(super) fn braket_projector(&mut self, start: Span, row: &str, col: &str) -> Option<Expr> {
         let Ok(row_n) = row.parse::<usize>() else {

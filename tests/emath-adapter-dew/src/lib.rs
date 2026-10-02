@@ -1,7 +1,7 @@
 //! Integration test crate for emath-adapter-dew.
 //!
 //! Thin Pattern-1 conformance slice:
-//! this lib target is the shared test-support owner — the verdict
+//! this lib target is the shared test-support owner; the verdict
 //! vocabulary below is reused by every integration test binary in the
 //! crate, so a green suite stays distinguishable from skipped or
 //! deferred checks and XFAIL entries stay bound to discrepancy ids.

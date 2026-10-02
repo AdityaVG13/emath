@@ -3,7 +3,7 @@
 //! Q-states, partial provider-capability steps, and serial/parallel/alt/
 //! fallback/portfolio composition; inapplicable steps refuse with stable
 //! reason codes, and `apply_total` lifts any partial step to an explicit
-//! refusal — never a panic or silent skip.
+//! refusal, never a panic or silent skip.
 
 use std::collections::BTreeSet;
 

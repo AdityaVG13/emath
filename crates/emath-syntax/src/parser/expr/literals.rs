@@ -28,7 +28,7 @@ impl super::super::Parser {
             self.error_here("E-SYN-102", "expected `|` to close table headers");
             return None;
         }
-        // Inside cells, `|` is a row delimiter, never infix `or` — same
+        // Inside cells, `|` is a row delimiter, never infix `or`, same
         // suppression the cases-arm parser uses. Saved/restored so a table
         // nested in a cases arm keeps the outer suppression state.
         let outer_suppress = self.suppress_pipe_or;
@@ -67,7 +67,7 @@ impl super::super::Parser {
             }
             // After the row-closing `|`: another row starts with an
             // expression token; anything else closes the table. A further
-            // `|` closes too — it belongs to the enclosing cases arm, not
+            // `|` closes too; it belongs to the enclosing cases arm, not
             // to this table (ambiguity scan).
             let closes = matches!(
                 self.peek(),
@@ -125,11 +125,11 @@ impl super::super::Parser {
     }
     /// validate an interpolated
     /// string template at parse. Purity: a hole carries only a name or
-    /// a dotted path — expressions, calls, and indexing refuse, so a
+    /// a dotted path; expressions, calls, and indexing refuse, so a
     /// side effect is impossible by grammar, not by discipline. The
     /// format spec is FIXED (`.` digits `f`); `{{`/`}}` escape literal
     /// braces; any other stray brace refuses. The template VALUE stays
-    /// raw in the `Str` literal — substitution is the string world's
+    /// raw in the `Str` literal; substitution is the string world's
     /// job, which is outside the current subset (every string value
     /// refuses at admission today); this validation is the grammar and
     /// its purity fence, the parse-level contract.
@@ -169,7 +169,7 @@ impl super::super::Parser {
         Some(())
     }
 
-    /// one interpolation hole — `name`, `dotted.path`, each with an
+    /// one interpolation hole: `name`, `dotted.path`, each with an
     /// optional fixed format spec `.Nf`.
     pub(super) fn validate_hole(&mut self, hole: &str) -> Option<()> {
         let (path, spec) = match hole.split_once(':') {
@@ -190,7 +190,7 @@ impl super::super::Parser {
                 "E-SYN-101",
                 format!(
                     "interpolation hole `{{{hole}}}` carries an expression; holes carry \
-                     only names or paths (purity — no side effects in the report lane)"
+                     only names or paths (purity: no side effects in the report lane)"
                 ),
             );
             return None;
@@ -330,7 +330,7 @@ impl super::super::Parser {
             TokenKind::Str(value) => {
                 self.advance();
                 // the interpolation
-                // grammar is validated at parse — purity (holes carry
+                // grammar is validated at parse: purity (holes carry
                 // only names/paths), the fixed format spec, and brace
                 // escapes. The template value stays raw in the `Str`
                 // literal; runtime substitution belongs to the string

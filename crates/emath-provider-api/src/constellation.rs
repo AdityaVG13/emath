@@ -595,7 +595,7 @@ pub fn default_constellation() -> MaturityRegistry {
             "runtime",
         ),
     ] {
-        // ubs:ignore — static census table; register/promote only fail on internal conflicts.
+        // ubs:ignore: static census table; register/promote only fail on internal conflicts.
         let _ = registry.register(ConstellationProvider {
             id: id.to_string(),
             wave,

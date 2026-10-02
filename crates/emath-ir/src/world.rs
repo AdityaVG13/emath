@@ -211,7 +211,7 @@ impl WorldIr {
     }
 
     /// Renders a deterministic seed canonical form; the display name is
-    /// excluded from content identity — `WorldId` binds semantic content.
+    /// excluded from content identity; `WorldId` binds semantic content.
     #[must_use]
     pub fn canonical(&self) -> String {
         let mut carriers = self.carriers.clone();

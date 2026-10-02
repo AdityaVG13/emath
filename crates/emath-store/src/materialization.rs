@@ -4,11 +4,11 @@
 //! Generated Rust/WASM/docs are caches unless published: a
 //! [`MaterializationRecipe`] binds the meaning it was specialized from,
 //! the generator identity (toolchain/provider), the target, and the
-//! canonical spec. Its `RecipeId` covers all four inputs — a
+//! canonical spec. Its `RecipeId` covers all four inputs: a
 //! provider/toolchain mismatch changes the recipe identity. The
 //! [`Materializer`] records recipe → artifact bindings and refuses a
 //! nondeterministic generator that derives a different `ArtifactId`
-//! under a recorded recipe identity (`E-EVID-601`) — delete +
+//! under a recorded recipe identity (`E-EVID-601`); delete +
 //! re-materialize with a deterministic generator rehydrates the same
 //! address, so generated output stays a cache, never a source.
 //!
@@ -22,7 +22,7 @@ use emath_core::{ArtifactId, MeaningId, RecipeId};
 const MATERIALIZATION_SCHEMA_V1: &str = "emath.materialization-recipe.v1";
 
 /// A materialization recipe: the four inputs whose identity is
-/// `RecipeId`. The recipe carries the meaning it was specialized from —
+/// `RecipeId`. The recipe carries the meaning it was specialized from:
 /// it never mints a new one (specializer outputs are recipes, not new
 /// meaning; generated Cargo is not a source of truth).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,7 +81,7 @@ impl MaterializationRecipe {
 
 /// Materialization refusals. `RehydrationMismatch` carries the house
 /// code `E-EVID-601`: a re-materialization derived a different artifact
-/// address than the one recorded under the recipe identity — a
+/// address than the one recorded under the recipe identity: a
 /// nondeterministic generator claiming the same recipe identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MaterializeFault {
@@ -104,7 +104,7 @@ impl std::fmt::Display for MaterializeFault {
             } => write!(
                 formatter,
                 "{code}: rehydration identity mismatch: recipe re-materialized to {derived} \
-                 but {recorded} is recorded — the generator is nondeterministic or the cache \
+                 but {recorded} is recorded; the generator is nondeterministic or the cache \
                  was tampered with; the recorded binding is preserved"
             ),
         }
@@ -114,7 +114,7 @@ impl std::fmt::Display for MaterializeFault {
 impl std::error::Error for MaterializeFault {}
 
 /// The materialization book: recipe identity → recorded artifact
-/// identity. Generated outputs are caches — GC may drop a binding
+/// identity. Generated outputs are caches; GC may drop a binding
 /// ([`Materializer::forget`]) and the recipe rehydrates it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Materializer {

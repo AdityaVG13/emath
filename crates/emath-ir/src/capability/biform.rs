@@ -5,7 +5,7 @@ use super::{CellClass, CellSchema, ClosureRefusal, ProjectionKind, SuppliedProje
 /// The stability gate: every required projection must be closed, and docs
 /// must be bound to the cell's current identity. Returns one typed
 /// refusal per gap (empty when the cell is stable); a non-empty result
-/// blocks stable visibly — a cell is not done because it compiles.
+/// blocks stable visibly; a cell is not done because it compiles.
 #[must_use]
 pub fn missing_required(
     schema: &CellSchema,
@@ -48,7 +48,7 @@ pub fn missing_required(
 /// authorities. A cell may carry a specification side and an algorithm
 /// side whose evidence objects are independent: satisfying tests of the
 /// algorithm do not prove the spec, and a spec proof does not certify a
-/// particular backend. The machinery is generic — a cell name is data,
+/// particular backend. The machinery is generic: a cell name is data,
 /// never a branch; the softmax fixture proves it without any softmax
 /// Rust path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -120,7 +120,7 @@ pub struct SideEvidence {
 }
 
 /// Typed per-side disposition (per side: provided / refused / not-applicable
-/// via the projection closure — a missing side is a typed refusal, never
+/// via the projection closure; a missing side is a typed refusal, never
 /// a silent hole).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BiformSideDisposition {
@@ -141,11 +141,11 @@ pub enum BiformSideDisposition {
 /// nothing silent, nothing unnamed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BiformRefusal {
-    /// `E-CELL-009` — a required side has no evidence object (a missing
+    /// `E-CELL-009`: a required side has no evidence object (a missing
     /// spec is treated as missing, never as proved by the algorithm
     /// side).
     MissingSide { name: String, side: BiformSide },
-    /// `E-CELL-010` — authority escalation: the supplying authority
+    /// `E-CELL-010`: authority escalation: the supplying authority
     /// cannot attest this side (algorithm tests, benchmarks, or provider
     /// receipts cannot raise spec authority).
     AuthorityEscalation {
@@ -153,7 +153,7 @@ pub enum BiformRefusal {
         side: BiformSide,
         claimed: BiformAuthority,
     },
-    /// `E-CELL-011` — one evidence object claimed for both sides: spec
+    /// `E-CELL-011`: one evidence object claimed for both sides: spec
     /// and algorithm evidence must be independent, so a green algorithm
     /// test never stamps the spec proved.
     SideEvidenceCollision {
@@ -293,13 +293,13 @@ pub fn assess_biform_closure(schema: &CellSchema, sides: &[SideEvidence]) -> Vec
 ///
 /// Each pass is a required [`ProjectionKind`] row with its
 /// [`ProjectionStatus`]; the phase order is the closure-matrix row order
-/// (P0–P11). Identity-affecting rows mutate the admission descriptor;
+/// (P0-P11). Identity-affecting rows mutate the admission descriptor;
 /// cosmetic rows annotate without changing identity.
 pub mod nanopass {
     use super::{CellClass, CellSchema, ClosureRefusal, ProjectionKind};
 
-    /// Ordered phases P0–P11. For [`CellClass::Pure`] the nine required
-    /// closure rows occupy P0–P8; the biform rows P9–P10 are
+    /// Ordered phases P0-P11. For [`CellClass::Pure`] the nine required
+    /// closure rows occupy P0-P8; the biform rows P9-P10 are
     /// `NotApplicable` (shown, never swallowed). Other classes fill
     /// phases per [`required_projections`].
     pub const PHASES: [u8; 12] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
@@ -309,7 +309,7 @@ pub mod nanopass {
     /// identity role.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct ProjectionPass {
-        /// Closure-matrix phase (P0–P11).
+        /// Closure-matrix phase (P0-P11).
         pub phase: u8,
         /// Required projection this pass fulfils.
         pub kind: ProjectionKind,

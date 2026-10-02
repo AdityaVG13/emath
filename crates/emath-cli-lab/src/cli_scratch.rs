@@ -197,7 +197,7 @@ pub fn expand_cmd(path: &Path, json: bool) -> CliExit {
         }
         for note in &expansion.notes {
             println!(
-                "# inferred: {} ({}) — {}",
+                "# inferred: {} ({}): {}",
                 note.inferred,
                 note.stability.as_str(),
                 note.rationale
@@ -228,7 +228,7 @@ pub fn expand_cmd(path: &Path, json: bool) -> CliExit {
                 );
             }
             for rejection in &hole.rejections {
-                println!("# rejected: {} — {}", rejection.attempt, rejection.reason);
+                println!("# rejected: {}: {}", rejection.attempt, rejection.reason);
             }
         }
         print!("{}", expansion.expanded);
@@ -289,7 +289,7 @@ pub(crate) fn exactness_cmd(request: ExactnessRequest) -> CliExit {
         if lock_path.is_file() {
             eprintln!(
                 "E-SYN-155 raise refused: {} carries a freeze lock ({}); `{}` cannot raise a \
-                 frozen meaning — edit the source and refreeze instead",
+                 frozen meaning; edit the source and refreeze instead",
                 path.display(),
                 lock_path.display(),
                 dimension.as_str(),
@@ -322,7 +322,7 @@ pub(crate) fn exactness_cmd(request: ExactnessRequest) -> CliExit {
         }
         for entry in &ledger.entries {
             println!(
-                "{} {} {} {} — {}",
+                "{} {} {} {}: {}",
                 entry.inference_id,
                 entry.dimension.as_str(),
                 entry.status.as_str(),

@@ -7,7 +7,7 @@
 //! declaration merging), duplicate declaration names across files
 //! refuse through the normal lane (`E-NAME-022`), and an in-package
 //! module import that does not resolve to a loaded source refuses
-//! typed (`E-PKG-050` — never a silent inert entry, the negative
+//! typed (`E-PKG-050`, never a silent inert entry, the negative
 //! seed's silent-success). The merged lane is session-level: the
 //! plain single-file `check` resolves `use` from the source file's
 //! directory on disk (constructor lane) and never consults the
@@ -87,7 +87,7 @@ fn package_imports() {
 
     // Package-level merging with duplicate detection: the SAME
     // declaration name in the sibling and the main file refuses typed
-    // through the normal lane — the merge cannot silently shadow.
+    // through the normal lane; the merge cannot silently shadow.
     let duplicate = "emath function P:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = x\n";
     let (mut session, main) = session_with(&main_source(), Some(duplicate));
     let result = session.check_package(main);
@@ -102,7 +102,7 @@ fn package_imports() {
     let f0 = p.failures().len();
 
     // NEGATIVE (the seed's silent-success): `use demo.missing` with no
-    // such source loaded must refuse typed E-PKG-050 — never a silent
+    // such source loaded must refuse typed E-PKG-050, never a silent
     // inert entry wearing an admitted label.
     let source = "package demo\n\nuse demo.missing\n\nemath function P:\n    inputs:\n        x: Float64\n    outputs:\n        y: Float64\n    definitions:\n        y = x\n";
     let (mut session, main) = session_with(source, None);
@@ -141,7 +141,7 @@ fn package_imports() {
     let f0 = p.failures().len();
 
     // Boundary: the plain single-file `check` never consults the
-    // session store — geometry is loaded but does not merge — and an
+    // session store (geometry is loaded but does not merge), and an
     // in-package import that cannot resolve from the source file's
     // directory on disk refuses `E-PKG-050` (the constructor lane
     // resolves `use` from the filesystem; no silent inert entry).

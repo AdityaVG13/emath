@@ -587,9 +587,9 @@ fn referenced_source_files(root: &Path, relatives: &BTreeSet<String>) -> BTreeSe
     referenced
 }
 
-// Active gate inputs: every declared test caller is active by construction —
+// Active gate inputs: every declared test caller is active by construction:
 // cargo compiles each file under a crate's tests/ root as its own caller
-// binary — alongside src files reachable through `mod` declarations. Without
+// binary, alongside src files reachable through `mod` declarations. Without
 // this, test-caller residue would be misclassified as retained and could
 // never fail the gate.
 fn is_active_gate_input(relative: &str, referenced: &BTreeSet<String>) -> bool {
@@ -814,8 +814,8 @@ fn intent() {
 
     });
     p.case("constructor_surface_grammar_is_not_dispatch", |p| {
-// The constructor grammar's tokens — declaration kinds, the binder envelope,
-// and the `quote` structural interface — select a declaration form or a
+// The constructor grammar's tokens (declaration kinds, the binder envelope,
+// and the `quote` structural interface) select a declaration form or a
 // specified structural operation, never a subject procedure. Recognizing
 // them must not fail as dispatch. The exemption is exact, so a
 // nucleus-implemented `quote.simplify` (an authored-algorithm

@@ -30,7 +30,7 @@ impl MeaningLock {
     /// Walks from `start` to a project root: a lock file or
     /// `emath-package.toml` wins, else the source-file parent (so a lock
     /// can live next to a lone genesis file). An empty `.emath/` directory
-    /// is not a root — that would let a nested decoy shadow a parent lock.
+    /// is not a root; that would let a nested decoy shadow a parent lock.
     #[must_use]
     pub fn discover_project_root(start: &Path) -> PathBuf {
         let mut current = if start.is_file() {

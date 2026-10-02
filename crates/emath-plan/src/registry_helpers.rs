@@ -40,7 +40,7 @@ pub fn sample_registry() -> ProviderRegistry {
             maximum_evidence: max_evidence,
             deterministic: true,
         };
-        // ubs:ignore — fixed sample kit ids; register only fails on duplicate/config conflict.
+        // ubs:ignore: fixed sample kit ids; register only fails on duplicate/config conflict.
         let _ = registry.register(id, ProviderIsolation::Static, table);
     }
     registry

@@ -164,7 +164,7 @@ pub(super) fn verify_declared_data(path: &Path, diagnostics: &mut Diagnostics) {
             diagnostics.error(
                 "E-OBS-HASH",
                 format!(
-                    "data drift for observation `{binding}`: declared sha256 {declared} but {} hashes to {digest} — changed data under an unchanged model is a different artifact identity",
+                    "data drift for observation `{binding}`: declared sha256 {declared} but {} hashes to {digest}; changed data under an unchanged model is a different artifact identity",
                     data_path.display()
                 ),
                 emath_core::Span::default(),
