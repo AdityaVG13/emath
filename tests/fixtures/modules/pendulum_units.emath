@@ -1,13 +1,13 @@
-# Dimensioned pendulum assembly — the units consumer proof for
+# Dimensioned pendulum assembly, the units consumer proof for
 # mechanics.pendulum. Fixture file (named data + gates only).
 #
 # SOFT composition: mechanics.pendulum is dimensionless by construction
 # (the stiffness k = g/L crosses the seam as an exact Rat VALUE); this
-# fixture is where the DIMENSIONS live — g in length time^-2, L in
+# fixture is where the DIMENSIONS live: g in length time^-2, L in
 # length, the quotient gate-checked to time^-2 by units.dimensions
 # before the value is allowed into the pendulum accelerations. The
 # mismatched variant (g carrying velocity dimensions) is refused by
-# name at the assembly boundary — never silently divided through.
+# name at the assembly boundary, never silently divided through.
 #
 # Run: emath test tests/fixtures/modules/pendulum_units.emath
 

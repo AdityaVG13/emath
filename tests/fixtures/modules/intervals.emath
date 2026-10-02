@@ -25,7 +25,7 @@ use analysis.intervals
 emath function ifact:
     # Fixture-local integer factorial: derives 41! by INTEGER
     # recursion, independent of the module's term recurrence that
-    # divides by (j+1) stepwise — a cross-check, not a tautology.
+    # divides by (j+1) stepwise, a cross-check, not a tautology.
     inputs:
         n: Int
     outputs:
@@ -114,7 +114,7 @@ emath function fixture_sqrt_two_bracket:
 
 emath function fixture_sqrt_exact_collapses:
     # 9/4 = (3/2)^2: both integer roots exact, the bounds coincide,
-    # width exactly zero — the enclosure CERTIFIES the value.
+    # width exactly zero; the enclosure CERTIFIES the value.
     inputs:
         unused: Int
     outputs:
@@ -243,7 +243,7 @@ emath function case_sqrt_negative_refuses:
 emath function case_bisect_budget_refuses:
     # Budget 4 admits the first refinement (mid 3/2, den bits 2,
     # 2*2 <= 4) and refuses the second (mid 5/4, den bits 3, 3*2 > 4)
-    # BEFORE evaluating its square — the authored gate fires with the
+    # BEFORE evaluating its square; the authored gate fires with the
     # one-step bracket as evidence, never an over-budget test.
     inputs:
         unused: Int

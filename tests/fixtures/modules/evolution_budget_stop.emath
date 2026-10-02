@@ -1,7 +1,7 @@
 # Module expected-refusal fixture: the authored step budget is a
 # contract. t_end = 2 needs 4 steps of h = 1/2; max_steps = 1 stops
 # the run with the named refusal code recorded on the result path
-# (complete = false, accepted_t = 1/2, attempted_t = 1) — never the
+# (complete = false, accepted_t = 1/2, attempted_t = 1), never the
 # requested final time.
 # Expected outcome: the test example fails with `step_budget_exhausted`
 # only when the budget guard is dropped (mutation check b); the

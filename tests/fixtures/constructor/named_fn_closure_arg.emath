@@ -1,7 +1,7 @@
 # A named top-level function passed where a closure-typed input is
 # expected coerces to a closure over its inputs: applying the
 # closure calls the function with the argument. Historical
-# behavior: the bare name yielded an unapplied closure value —
+# behavior: the bare name yielded an unapplied closure value:
 # calling it returned the closure itself. Pinned by
 # `named-fn-closure-arg-coerces`.
 use fold.reduce

@@ -1,6 +1,6 @@
 # Module acceptance fixture: reverse-direction rollout is exact.
 # Signed h = -1/2 from t = 1, y = 1/2 under y' = -y steps backward to
-# t = 1/2 with y = 3/4 — the exact inverse of the forward step that
+# t = 1/2 with y = 3/4, the exact inverse of the forward step that
 # produced 1/2 from 3/4. rollout_to with direction = -1 clips the
 # final step to a backward endpoint the same way.
 # Run: emath test tests/fixtures/modules/evolution_reverse.emath

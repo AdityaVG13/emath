@@ -1,5 +1,5 @@
 # Linear-systems fixtures: authored dense
-# solves — triangular substitution, elimination with zero-pivot swap,
+# solves: triangular substitution, elimination with zero-pivot swap,
 # singular-outcome refusal, ill-conditioning policy gate.
 #
 # Refusal cases pin the named code with `expect diagnostic.code`.
@@ -82,7 +82,7 @@ emath function case_ill_conditioned_refuses:
 emath function fixture_ill_conditioned_allows_when_floor_zero:
     # The same matrix with floor 0 solves EXACTLY (no float noise in
     # exact arithmetic): det = 1/1000 - 1 = -999/1000;
-    # x = ((2 - 1)/det_ish...) — computed exactly by the module; the
+    # x = ((2 - 1)/det_ish...), computed exactly by the module; the
     # point is the receipt, not the hand value: it does NOT refuse.
     inputs:
         unused: Int
@@ -91,7 +91,7 @@ emath function fixture_ill_conditioned_allows_when_floor_zero:
         plausible: Bool
     definitions:
         x = solve_dense([[1 / 1000, 1 / 1], [1 / 1, 1 / 1]], [1 / 1, 2 / 1], 0 / 1)
-        # x = (1000/999, 1000/999·?) — verify by residual instead:
+        # x = (1000/999, 1000/999·?), verify by residual instead:
         r0 = (1 / 1000) * x[0] + x[1] - 1 / 1
         r1 = x[0] + x[1] - 2 / 1
         refused = false

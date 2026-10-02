@@ -1,5 +1,5 @@
 # Diamond root: imports both arms, each of which transitively
-# imports dup_target — the same source file installs twice under
+# imports dup_target; the same source file installs twice under
 # the same bare name `dup_shared`. Must ADMIT and pass (idempotent
 # same-source install), the shape `use numerics.experiment` relies
 # on via bounds and powers both importing exact.integers.

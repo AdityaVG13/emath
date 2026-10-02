@@ -41,8 +41,8 @@ emath function two_in:
         result = a + b
 
 emath function tail_wrong_arity:
-    # A NAMED tail call with the wrong arity must also refuse `arity`
-    # — not a zip-truncated binding that faults `unbound` on the
+    # A NAMED tail call with the wrong arity must also refuse `arity`,
+    # not a zip-truncated binding that faults `unbound` on the
     # missing input.
     inputs:
         unused: Int

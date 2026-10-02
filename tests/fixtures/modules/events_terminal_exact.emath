@@ -1,5 +1,5 @@
 # Module acceptance fixture: a terminal event found EXACTLY. y' = -1
-# from y = 1; the guard y - 1/2 (falling) crosses at t = 1/2 — the
+# from y = 1; the guard y - 1/2 (falling) crosses at t = 1/2; the
 # Hermite interpolant of a line is the line, and 1/2 is dyadic, so the
 # 40-iteration bracket returns the root exactly. Terminal stops there.
 # Expected outcome: passes (1 authored test).

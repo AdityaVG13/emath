@@ -2,7 +2,7 @@
 # y' = -y, y0 = 1, target 1, tolerance 1/1000000: the h = 1 and h = 1/2
 # attempts REJECT, the first accepted segment is [0, 1/4], and the
 # falling guard y - 1/2 fires inside the third accepted segment with
-# the event time in the certified window (2/3, 7/10) — ln(2) = 0.6931.
+# the event time in the certified window (2/3, 7/10); ln(2) = 0.6931.
 # (Mutation check target: evaluating guards on attempted segments
 # fires inside the rejected h = 1 attempt at t ~ 0.57, outside the
 # asserted window, and the fixture fails.)

@@ -1,6 +1,6 @@
 # Module acceptance fixture: exact rational step values through the
 # evolution family and the delegation wrappers. Euler decay y' = -y,
-# y0 = 1, h = 1/2 gives exactly 1/2 — the exact recurrence value, NOT
+# y0 = 1, h = 1/2 gives exactly 1/2, the exact recurrence value, NOT
 # exp(-1/2); exact Rat arithmetic records no rounding. RK4 growth
 # y' = y, h = 1 gives 65/24. Two-dimensional system y' = [y2, y1]
 # from (1, 0) gives (37/24, 7/6).

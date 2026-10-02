@@ -1,6 +1,6 @@
 # Module acceptance fixture: exhaustive uniqueness of the training
 # winner. alpha = 2/15 (n = 16) is the UNIQUE minimizer of the
-# certified one-step error over the whole 31-point training grid —
+# certified one-step error over the whole 31-point training grid:
 # verified by exhaustive scan, not by local descent.
 # Expected outcome: passes (1 authored test).
 # Run: emath test tests/fixtures/modules/integrator_contract_unique.emath

@@ -1,7 +1,7 @@
 # Module acceptance fixture: the attempt-budget stop. Two attempts
 # are budgeted; both reject (tight tolerance against the h = 1
 # estimator gap). The run stops INCOMPLETE reporting the last ACCEPTED
-# time (0 — nothing was accepted) and the UNCHANGED initial state:
+# time (0, nothing was accepted) and the UNCHANGED initial state:
 # a rejected step never mutates the committed trajectory, and the
 # budget stop never reports the requested final time.
 # Expected outcome: passes (1 authored test).

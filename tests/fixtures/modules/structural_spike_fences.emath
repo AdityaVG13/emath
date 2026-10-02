@@ -3,17 +3,17 @@
 # Failure-first: authored BEFORE the spike module exists; the first run
 # fails at admission (unknown module). Two named fences:
 #
-#   cubic_no_fit    — the cubic target is outside the quadratic
+#   cubic_no_fit:     the cubic target is outside the quadratic
 #                     grammar: every arm keeps POSITIVE training,
 #                     holdout, and rollout error, never force-fit; AND
 #                     the reported holdout is the recomputed holdout of
 #                     the selected candidate (a training-scored report
 #                     is a fake win and must be caught).
-#   budget_accounting — the three-arm comparison is budget-matched:
+#   budget_accounting: the three-arm comparison is budget-matched:
 #                     every arm's cap is 65, every arm stays within its
 #                     cap, and the scan arms use exactly their 65 (the
 #                     climb arm records its actual count, which may be
-#                     less — convergence is allowed to finish early,
+#                     less; convergence is allowed to finish early,
 #                     extra evaluations are not).
 #
 # The cubic target is re-derived inline here on purpose: the fence

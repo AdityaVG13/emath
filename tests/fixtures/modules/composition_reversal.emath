@@ -133,7 +133,7 @@ emath function fixture_energy_not_exact:
 
 emath function fixture_damped_energy_decreases:
     # The deliberate dissipative case: the damped composition's energy
-    # delta is exactly -959/51200 (nonzero, negative, pinned) —
+    # delta is exactly -959/51200 (nonzero, negative, pinned):
     # strictly more dissipative than the Verlet error (-15/2048).
     inputs:
         unused: Int

@@ -8,7 +8,7 @@
 # tolerance vectors. (The originally drafted y' = y*y study is
 # unapproachable in exact rationals: each RK stage squares the
 # previous stage's denominator exponents, so digits grow doubly
-# exponentially per step — one step already produces ~330-bit
+# exponentially per step; one step already produces ~330-bit
 # rationals. Bit-budgeted nonlinear studies belong to the
 # bit-budgeted iteration lane.)
 # Expected outcome: passes (2 authored tests).

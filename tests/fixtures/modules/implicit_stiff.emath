@@ -14,7 +14,7 @@
 # current denominator bit length (the residual squares the
 # denominator, the ratio multiplies it again), so 40 caps verified
 # construction near 120 bits, safely under the engine boundary. The
-# gate trips at the 50-bit third iterate — BEFORE the engine fault,
+# gate trips at the 50-bit third iterate, BEFORE the engine fault,
 # with the trace as evidence, never a promoted unverified winner.
 
 use analysis.equations.iteration
@@ -87,14 +87,14 @@ emath function fixture_picard_control:
 
 emath function fixture_stiff_quadratic_budget:
     # y' = -1000 y^2, y0 = 1: G(z) = 100 z^2 + z - 1 with the IRRATIONAL
-    # positive root (sqrt(401) - 1)/200 — exact Newton can never reach
+    # positive root (sqrt(401) - 1)/200; exact Newton can never reach
     # it in finitely many exact steps. The first two iterates are pinned
-    # (101/201, then 1060501/4100601 — coprime by the Euclidean run in
+    # (101/201, then 1060501/4100601, coprime by the Euclidean run in
     # the derivation notes); denominators double in bit length per
-    # update (the third iterate's denominator is exactly 886553220781401
-    # — 50 bits), so the AUTHORED bit budget 40 trips at the third
+    # update (the third iterate's denominator is exactly 886553220781401,
+    # 50 bits), so the AUTHORED bit budget 40 trips at the third
     # iterate, BEFORE constructing a fourth whose ratio intermediates
-    # (~2^150) would cross the engine's checked i128 boundary —
+    # (~2^150) would cross the engine's checked i128 boundary:
     # verification_budget_exhausted with the trace as evidence, never
     # a promoted unverified winner.
     inputs:
@@ -155,7 +155,7 @@ emath function fixture_receipt_kinds_distinct:
             expect distinct == true
 
 emath function case_singular_jacobian_refuses:
-    # f = x^2 + 1 from x0 = 0: df(0) = 0 — the Newton direction is
+    # f = x^2 + 1 from x0 = 0: df(0) = 0: the Newton direction is
     # undefined; refuses singular_jacobian.
     inputs:
         unused: Int
