@@ -292,7 +292,11 @@ impl fmt::Display for CValue {
                 write!(f, ")")
             }
             Self::Closure(_) => write!(f, "<closure>"),
-            Self::Code(_) => write!(f, "<code>"),
+            Self::Code(code) => {
+                let mut text = String::new();
+                emath_syntax::formatter::format_expr(&mut text, &code.expr, emath_syntax::formatter::Prec::Root);
+                write!(f, "quote({text})")
+            }
             Self::Receipt(r) => write!(
                 f,
                 "receipt(execution={}, fulfillment={}, representation={})",

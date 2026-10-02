@@ -887,7 +887,8 @@ CType::Unknown, _) => CType::Unknown,
                 }
                 return Ok(CType::Record);
             }
-            if let Some(decl) = self.functions.get(&name) {
+            let local = segments.len() == 1 && types.get(&name).is_some_and(CType::is_closure);
+            if let Some(decl) = self.functions.get(&name).filter(|_| !local) {
                 return self.infer_named_call(types, &name, decl, args);
             }
             // Postfix `.field` on a non-path receiver is parsed as

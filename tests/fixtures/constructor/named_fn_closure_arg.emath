@@ -124,3 +124,19 @@ emath function run_local:
         example <local_holds_named_pair>:
             given unused = 0
             expect result == 8 / 3
+
+emath function run_local_shadows:
+    # a local closure named like a top-level function is the one called, in and out of tail position
+    inputs:
+        unused: Int
+    outputs:
+        result: Rat
+    definitions:
+        weighted = function x in Rat: x * 10
+        double = function x in Rat: x > 1 / 1
+        inner = weighted(1 / 2) + 1
+        result = if double(inner): weighted(inner) else: 0 / 1
+    tests:
+        example <local_wins_over_global>:
+            given unused = 0
+            expect result == 60 / 1

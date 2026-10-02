@@ -1503,7 +1503,7 @@ const NAMED_FN_DRIVER: &str = r#"
 //! in a record field, mapped by a generic fold, and - with two inputs -
 //! coerced curried as a fold step or a local binding.
 use named_fn_closure_arg::{
-    run_composed, run_direct, run_field, run_fold, run_local, run_map,
+    run_composed, run_direct, run_field, run_fold, run_local, run_local_shadows, run_map,
 };
 fn main() {
     let mut failures = 0usize;
@@ -1536,6 +1536,11 @@ fn main() {
     if got != Ok((8, 3)) {
         failures += 1;
         println!("DIFF local_holds_named_pair EMITTED {:?}; VM = 8/3", got);
+    }
+    let got = run_local_shadows(0);
+    if got != Ok((60, 1)) {
+        failures += 1;
+        println!("DIFF local_wins_over_global EMITTED {:?}; VM = 60/1", got);
     }
     if failures == 0 {
         println!("named_fn: all pins hold");
@@ -2924,9 +2929,9 @@ fn main() {
         }
     }
     // The VM's engine-step count for this application.
-    if RepeatWork(0) != Ok(539) {
+    if RepeatWork(0) != Ok(514) {
         failures += 1;
-        println!("DIFF RepeatWork EMITTED {:?}; VM = 539", RepeatWork(0));
+        println!("DIFF RepeatWork EMITTED {:?}; VM = 514", RepeatWork(0));
     }
     if failures > 0 {
         println!("SUMMARY {failures} conformance diffs");

@@ -1326,6 +1326,32 @@ impl Lowerer {
         if segments.len() == 2 && segments[1] == "open" {
             return Err("open is a binder, not a plain call".into());
         }
+        // A callee bound in the enclosing frame is a closure value:
+        // emit a typed indirect call. Curried programs fold application
+        // left, so `probe(k, cs)` on `Int -> CaseSet -> Rat` is one op.
+        // The arrow-name gate keeps field access (`base.field`, which
+        // parses as this same one-argument call shape) from shadowing:
+        // only closure-valued names (arrow-declared inputs, function
+        // literal defs, arrow-domain params) take this arm. It runs
+        // before the named-function arms: a local shadows a declared
+        // function of the same name, as in the engine.
+        if self.arrow_names.contains(&called)
+            && let Some(program) = self.locals.get(&called).copied().or_else(|| {
+                self.inputs
+                    .iter()
+                    .position(|input| input == &called)
+                    .map(|index| self.push(EmirOp::LoadInput(index as u16)))
+            })
+        {
+            let mut inputs = Vec::new();
+            for arg in args {
+                inputs.push(self.expr(arg)?);
+            }
+            if inputs.is_empty() {
+                return Err(format!("call `{called}` requires at least one argument"));
+            }
+            return Ok(self.push(EmirOp::CallValue { program, inputs }));
+        }
         if self.self_name.as_deref() == Some(called.as_str()) {
             let mut inputs = Vec::new();
             for arg in args {
@@ -1364,30 +1390,6 @@ impl Lowerer {
                 declared,
                 callee: Some(called),
             }));
-        }
-        // A callee bound in the enclosing frame is a closure value:
-        // emit a typed indirect call. Curried programs fold application
-        // left, so `probe(k, cs)` on `Int -> CaseSet -> Rat` is one op.
-        // The arrow-name gate keeps field access (`base.field`, which
-        // parses as this same one-argument call shape) from shadowing:
-        // only closure-valued names (arrow-declared inputs, function
-        // literal defs, arrow-domain params) take this arm.
-        if self.arrow_names.contains(&called)
-            && let Some(program) = self.locals.get(&called).copied().or_else(|| {
-                self.inputs
-                    .iter()
-                    .position(|input| input == &called)
-                    .map(|index| self.push(EmirOp::LoadInput(index as u16)))
-            })
-        {
-            let mut inputs = Vec::new();
-            for arg in args {
-                inputs.push(self.expr(arg)?);
-            }
-            if inputs.is_empty() {
-                return Err(format!("call `{called}` requires at least one argument"));
-            }
-            return Ok(self.push(EmirOp::CallValue { program, inputs }));
         }
         // `base.field` parses as `Call { Path[field], [base] }`: a
         // one-argument call on a name that is not closure-valued is

@@ -1,4 +1,5 @@
 use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, Rc, BTreeMap, Arc};
+use super::prelude::project_field;
 
 impl Engine {
     pub(in crate::constructor_layer) fn eval_tail(
@@ -33,11 +34,14 @@ impl Engine {
                     {
                         return Ok(EvalTail::Value(self.eval(expr)?));
                     }
-                    if self.functions.contains_key(&name) {
-                        let mut vals = Vec::new();
-                        for arg in args {
-                            vals.push(self.eval(arg)?);
-                        }
+                    let local = segments.len() == 1
+                        && matches!(self.env.get(&name), Some(CValue::Closure(_)));
+                    if !local && self.functions.contains_key(&name) {
+                        let vals = self.eval_tail_args(args, |done, rest| Kont::FnCall {
+                            name: name.clone(),
+                            done,
+                            rest,
+                        })?;
                         return Ok(EvalTail::Call { name, args: vals });
                     }
                     // Only a local closure in tail position reuses its frame;
@@ -45,9 +49,18 @@ impl Engine {
                     if segments.len() == 1 {
                         if let Some(CValue::Closure(_)) = self.env.get(&name) {
                             let callee = self.env.get(&name).cloned().unwrap();
-                            let mut vals = Vec::new();
-                            for arg in args {
-                                vals.push(self.eval(arg)?);
+                            let vals = self.eval_tail_args(args, |done, rest| Kont::CallArgs {
+                                callee: callee.clone(),
+                                done,
+                                rest,
+                            })?;
+                            // `recv.field` parses as `field(recv)`: a
+                            // receiver carrying the field projects, as
+                            // on the nested-call path.
+                            if let [recv] = vals.as_slice()
+                                && let Some(field) = project_field(recv, &name)
+                            {
+                                return Ok(EvalTail::Value(field));
                             }
                             return Ok(EvalTail::Apply { callee, args: vals });
                         }
@@ -57,6 +70,34 @@ impl Engine {
             }
             _ => Ok(EvalTail::Value(self.eval(expr)?)),
         }
+    }
+
+    /// A tail call's arguments, left to right, with the pending call on
+    /// the continuation while each one evaluates: a budget suspension
+    /// inside an argument must resume into the call, not drop it. The
+    /// resumed call finishes on the ordinary nested path (same value).
+    fn eval_tail_args(
+        &mut self,
+        args: &[Expr],
+        pending: impl Fn(Vec<CValue>, Vec<Rc<Expr>>) -> Kont,
+    ) -> Result<Vec<CValue>, ConstructorError> {
+        let mut done = Vec::with_capacity(args.len());
+        if self.facts_only_memo {
+            for arg in args {
+                done.push(self.eval(arg)?);
+            }
+            return Ok(done);
+        }
+        for (i, arg) in args.iter().enumerate() {
+            self.push_kont(|| {
+                pending(done.clone(), args[i + 1..].iter().map(|expr| Rc::new(expr.clone())).collect())
+            });
+            self.push_kont(|| Kont::EvalExpr { expr: Rc::new(arg.clone()) });
+            done.push(self.eval(arg)?);
+            self.pop_kont();
+            self.pop_kont();
+        }
+        Ok(done)
     }
 
     /// Machine buffer-carrier ops:

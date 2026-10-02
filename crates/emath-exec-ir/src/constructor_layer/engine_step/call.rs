@@ -87,6 +87,40 @@ impl Engine {
         if let Some(op) = machine_buffer_basename(name) {
             return self.eval_machine_buffer(op, args).map(Some);
         }
+        // A local closure shadows a declared function of the same name.
+        // A non-closure local does not: `recv.field` parses as
+        // `field(recv)` and still projects below.
+        if segments.len() == 1
+            && let Some(callee @ CValue::Closure(_)) = self.env.get(name).cloned()
+        {
+            if args.len() != 1 {
+                return Ok(None);
+            }
+            // One argument may still be `recv.field` on a receiver that
+            // carries the field: project it, else apply the closure to
+            // the value already evaluated (evaluated once either way).
+            // The callee lookup costs the step the generic call path
+            // charges to evaluate the callee.
+            self.charge()?;
+            let recv = if self.facts_only_memo {
+                self.eval(&args[0])?
+            } else {
+                self.push_kont(|| Kont::CallArgs {
+                    callee: callee.clone(),
+                    done: Vec::new(),
+                    rest: Vec::new(),
+                });
+                self.push_kont(|| Kont::EvalExpr { expr: Rc::new(args[0].clone()) });
+                let recv = self.eval(&args[0])?;
+                self.pop_kont();
+                self.pop_kont();
+                recv
+            };
+            if let Some(field) = project_field(&recv, name) {
+                return Ok(Some(field));
+            }
+            return self.apply_value(callee, &[recv]).map(Some);
+        }
         if let Some(decl) = self.functions.get(name).cloned() {
             return self.eval_fn(name, decl, args).map(Some);
         }
