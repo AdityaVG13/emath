@@ -2,268 +2,209 @@
 
 <div align="center">
 
-[![Status](https://img.shields.io/badge/status-active%20Rust%20workspace-2ea44f)](#what-exists-now)
+[![Status](https://img.shields.io/badge/status-active%20development-2ea44f)](#status-and-roadmap)
 [![Rust](https://img.shields.io/badge/rust-nightly%202026--08--27-b7410e)](rust-toolchain.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Language](https://img.shields.io/badge/docs-language-0969da)](language/README.md)
 [![Manual](https://img.shields.io/badge/docs-manual-0969da)](MANUAL.md)
-[![Constitution](https://img.shields.io/badge/docs-constitution-blue)](implementation/CONSTITUTION.md)
 
 </div>
 
-> **Write known math. Invent new math. Compile both.**
+> **Write known math. Invent new math. Run both.**
 
-**emath** is a Rust-first language and compiler for mathematics that runs. You write mathematical intent (settled theorems, half-formed models, or structures invented today) and the toolchain lowers it into ordinary, inspectable Cargo artifacts.
+emath is a language for mathematics that computes. You write definitions
+the way you would on a whiteboard, and the toolchain gives back an exact
+value, a trajectory, a self-contained Rust crate, or a named reason it
+cannot compute yet. The compiler is written in Rust; the mathematics is
+written in emath.
 
-A `.emath` source can carry objects, functions, queries, recursion, and quoted code; ordinary imported methods; scalar carriers; and host-observed receipts. Named recipes, `emath model` / `emath policy`, and `emath simulate` are not the language.
+## Why emath
 
-Intent is resolved through a deterministic pipeline (parse → constructor admission → typed IR → reference VM or emitted Rust), validated by `emath check` / `emath run`, and published as software you can link like any other crate. There is no `goals:` planner layer.
+Mathematical work usually lives in one tool (a computer algebra system, a
+notebook, a prover, a hand-written solver) while the runnable program
+lives in another. emath puts both in one language:
 
-## TL;DR
+- **Exact by default.** `Int` is unbounded and `Rat` is an exact rational.
+  `1/10 + 2/10 == 3/10` holds. Floating point is a carrier you choose.
+- **Every method is a definition.** Sums, derivatives, linear solvers,
+  Runge-Kutta steppers, and eigenvalue routines are ordinary `.emath`
+  modules you can read, import, and replace. The compiler has no
+  hidden math.
+- **One question, every carrier.** `emath compare` runs a function with
+  exact rationals, binary64, binary32, bfloat16, 64-bit integers,
+  intervals, and affine forms, and shows where the answers part.
+- **Code is a value.** `quote` makes programs inspectable and buildable
+  at run time, so a discovery loop can propose, test, and keep new
+  definitions in a library you own.
+- **Honest answers.** Results carry a receipt (`execution`,
+  `fulfillment`, `representation`, `evidence`, `remaining`). A missing
+  bound is `partial`, and an unsupported method is a named refusal,
+  never a silent guess.
 
-**The problem:** mathematical intent usually lives in one tool (a CAS, a notebook, a prover, a hand-written solver) while the runnable artifact lives in another. Units, shapes, evidence, and host integration fall through the cracks, and "it compiled" is treated as "it is true."
-
-**The solution:** emath is a single language surface for mathematics that computes. Declarations lower through a typed semantic IR, world interpretations, and verification gates into artifacts you can inspect and run. Interpretation is data (candidate *worlds*, kept as a portfolio). Nothing is refused at the door: unsupported work comes back labeled, with a route to the world that can do it.
-
-### What exists now
-
-| Area | Current implementation |
-|------|------------------------|
-| Language surface | `emath object`, `emath function`, `emath query`; `recur` and `quote` in expressions; scalar carriers; optional modules behind `use`. `model` / `policy` / `kind` are not core kinds |
-| Pipeline | Parse → admit constructor kinds → typed IR → reference VM (`emath run`) or Rust emission (`emath build`) |
-| Gates | `emath check`, `emath run`, `emath build` |
-| Capstone demos | `cargo xtask demo <name>` (holes-synthesis, scoped-binders, math-layout, cache-policy, and module demos) |
-| Web playground | `cargo xtask serve-web` after `cargo xtask build-web` (in-page WASM workbench; see [`web/README.md`](web/README.md)) |
-| Providers | Std-only; in-tree Dew/Rumoca stand-ins; Wrenfold / Franken* planned behind adapters |
-| Docs of record | [`MANUAL.md`](MANUAL.md), [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md), [`examples/`](examples/README.md) |
-
-### Honest boundaries
-
-- **Compiling is not proving.** The pipeline guarantees the artifact matches what you asked for, never that the idea is true. Lean / FrankenLean is planned as hired evidence, not authority.
-- Illustrative README sketches may parse and then return labeled partial results for unimplemented parts (a symbol, a bound, an open hole) with a route to what would compute them. That is expected.
-- There is no crates.io product claim yet. The workspace is the deliverable today.
-- Upstream engines are not absorbed into emath; adapters only, and not consumed yet.
-
-## What emath is not
-
-- It is not merely a computer algebra system.
-- It is not merely Modelica rewritten in Rust.
-- It is not a Rust macro that prints arithmetic expressions.
-- It is not a theorem prover pretending every theorem is executable.
-- It is not one giant vendored workspace of unrelated repositories.
-- It is not an AI code generator whose output is accepted without deterministic checking.
-
-## More than a compiler
-
-Any finite mathematical structure that is structurally well-formed admits: textbook math, a jumbled formula, an idea for a problem nobody has posed yet. The same glyphs can carry many legitimate meanings, so emath represents interpretation as data: candidate *worlds*, chosen deterministically and kept as a portfolio rather than collapsed into an unlabeled guess. The validation suite runs one spec through three worlds today: `free_symbolic → apply`, `Boolean_algebra → false`, `modular_numeric → 6`.
-
-You may not get the answer you wanted. You always get *an* answer, honestly labeled (a value, a bound, a symbolic form, or an open hole with its constraints). Nothing is refused at the door; nothing crosses the exit unlabeled. That freedom serves three lanes:
-
-- **Production software.** A `.emath` goal becomes an ordinary, verified Cargo artifact your Rust code links against.
-- **Teaching and exploration.** Write a declaration, run it in the browser playground, change a value, watch the output move.
-- **Open problems.** An unproven conjecture cannot be checked in a proof assistant until the proof exists. emath compiles it today into evidence-producing machinery: counterexample hunts, finite verdicts with certified bounds, byte-reproducible forever. The artifact is the progress.
-
-One line emath will not cross: **compiling is not proving.**
-
-## How Factory / Droid builds it
-
-emath turns mathematical intent into runnable code through a deterministic pipeline: source → typed semantic IR → mathematical goals → a resolution plan → generated Rust → Cargo artifact → verified host integration. Every stage is reproducible: deterministic output, byte-comparable across runs, with `emath check`, `emath build`, and an independent artifact check acting as hard gates. Nothing produced by the toolchain is trusted on assertion alone; it must pass those checks, just as `fmt`, `test`, and `clippy` must stay green for a change to land.
-
-Factory / Droid is the autonomous agent building emath. It works directly in the repository: designing language surface and compiler crates, running demos and the validation suite, and driving changes to completion. The deterministic, gate-checked pipeline is what makes that viable. Reproducible artifacts and hard verification mean the agent can iterate until the evidence says the change is real, rather than trusting assertion alone.
-
-## Roadmap
-
-emath ships in a fixed order. Language correctness first; interactive WASM second; production Rust packaging and ecosystem tooling third.
-
-- [ ] **1. Language & mathematical engine** *(in progress)*  
-  Surface syntax, admission, EMIR, solvers, numerics, units, demos. Mathematics that parses, type-checks, and computes.
-- [ ] **2. WASM & interactive surface** *(next)*  
-  Full Stage 1 capability in `emath-wasm` and the browser playground.
-- [ ] **3. Production Rust artifacts & ecosystem** *(later)*  
-  Host-ready Cargo components, then incremental compile, LSP, and provider bridges.
-
-## Quickstart
-
-The shortest path from nothing to a running program:
-
-```console
-$ emath new hello
-$ emath run hello/src/main.emath --set x=3
-```
-
-`emath new hello` writes a manifest and one source file (`src/main.emath`):
-
-```emath
-emath function Greeter:
-    inputs:
-        x: Float64
-    definitions:
-        y = x
-```
-
-Declare only what you need: `inputs:`, `outputs:`, `definitions:`, and `tests:` are the function sections. `goals:` and `compile:` are not constructor sections. `emath run` admits the source and evaluates definitions or source examples on the reference VM. It prints a constructor receipt. Use `emath test <file>` for authored tests. Use `emath build <file>` to emit Rust.
-
-### CLI change: 2026-09-08 (historical)
-
-`run` and `step` now commit each complete case. Retries reuse saved results; revision locks prevent competing commits. `--cancel-file` stops between cases. Failed definitions retain independent values without turning failure into success.
-
-At the time this note was written, `run` also accepted `--branch-from <checkpoint> --relation <relation>` and `--measure N`; those flags are no longer in the `run` surface (`emath help run` is the live list). No mathematical capability or `language/` file changed in this update.
-
-### CLI change: 2026-09-07
-
-`run` now returns mathematical results, not Cargo test output. Its `--out` directory holds saved runs, not generated crates. Existing scripts that need generated Rust tests must use `emath test`. `emath api --json` reports the command interface and verified Language Image features. `step`, `inspect`, and `verify` accept saved run files. [Execution contract](language/reference/diagnostics-and-tooling-contract.md#saved-mathematical-runs).
-
-**Prerequisites:** a nightly Rust toolchain. The repo pins `nightly-2026-08-27` via `rust-toolchain.toml` (with `rustfmt` and `clippy`). Rustup follows it automatically on first build; stable is not supported. Default features and demos are std-only; optional storage, search, and async-runtime features pull the exact dependencies recorded in `forks/UPSTREAM_LOCK.json`.
-
-**First build:** allow a few minutes for a debug build of the workspace (subsequent runs are incremental).
-
-```console
-$ git clone <repo-url> && cd emath
-$ cargo run -q -p emath-cli -- check language/examples/intro/add-exact.emath
-```
-
-(The `<repo-url>` is filled in when the public repository is reserved; inside a checkout the second line is enough.)
-
-`emath check` admits a teaching file against the Language Image and exits 0 on success. In-process capstone demos remain available as `cargo xtask demo holes-synthesis`, `cargo xtask demo scoped-binders`, `cargo xtask demo math-layout`, `cargo xtask demo cache-policy`, and the module demos; each prints `ok` and exits 0 on success.
-
-Exit criteria: the check command exits 0 on success; demo commands exit 0. Manual: [`MANUAL.md`](MANUAL.md). Architecture: [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md). Test surface: [`tests/README.md`](tests/README.md). Security: [`SECURITY.md`](SECURITY.md).
-
-## Example
-
-Constructor-layer source looks like this:
+## A taste
 
 ```emath
 use fold.reduce
 
-emath function Total:
+emath function SumOfSquares:
     inputs:
-        xs: sequence(Int)
+        n: Int
     outputs:
-        result: Int
+        total: Int
     definitions:
-        result = sum(xs)
+        total = sum(map(function k in Int: k * k, range(1, n)))
+    tests:
+        example <first_ten>:
+            given n = 10
+            expect total == 385
 ```
 
-What actually runs today:
+```console
+$ emath test sum_of_squares.emath
+ok first_ten
+1 authored tests passed
+$ emath run sum_of_squares.emath --function SumOfSquares --set n=100
+338350
+$ emath build sum_of_squares.emath --out squares/   # a standalone Rust crate
+```
 
-- `emath object`, `emath function`, and `emath query` (`tests/fixtures/constructor/`)
-- `recur` and `quote` as expression constructors
-- scalar `Bool` / `Int` / `Rat` / `Float64` operations
-- ordinary modules behind explicit `use` (`language/modules/`)
+The same function under every carrier world:
 
-`emath model`, `emath policy`, and `emath kind` are not core kinds. `emath simulate` refuses. Write an ordinary function and `emath run`. Compiling is not proving.
+```console
+$ emath compare third.emath --function Third --set x=1/10
+reference  0/1
+exact      0/1
+float64    0
+float32    0.000000007450580596923828   (gap 7.450580596923828e-9)
+bfloat16   0.00048828125   (gap 4.8828125e-4)
+int64      0/1
+interval   [-0.000000000000000027755575615628914, 0.000000000000000027755575615628914]   (width 5.551115123125783e-17)
+affine     0/1
+verdict: disagree
+```
 
-## Core composition
+Here `Third` computes `x / 3 * 3 - x`, which is exactly zero.
+
+## Getting started
+
+emath builds from source with the pinned nightly toolchain in
+[`rust-toolchain.toml`](rust-toolchain.toml); `rustup` picks it up
+automatically. Stable Rust is not supported.
+
+```console
+$ git clone https://github.com/AdityaVG13/emath.git
+$ cd emath
+$ cargo build -p emath-cli
+$ ./target/debug/emath check language/examples/intro/add-exact.emath
+```
+
+The first debug build takes a few minutes. Put `target/debug` on your
+`PATH` (or symlink `emath` into `~/.cargo/bin`) to use `emath` directly.
+The CLI finds the `language/` folder by walking up from the source file
+or the working directory. To run it from elsewhere, set `EMATH_ROOT` to a
+directory that contains `language/spec`.
+
+Start a project with `emath new NAME`, then follow the
+[quick start](language/QUICKSTART.md).
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `emath check FILE` | Parse and admit a file |
+| `emath run FILE --function F` | Evaluate a function or query and print its value or receipt |
+| `emath test FILE` | Run the authored `tests:` |
+| `emath build FILE` | Emit a self-contained, runnable Rust crate |
+| `emath compare FILE --function F` | Evaluate under every carrier world and report the gaps |
+| `emath dream FILE` | Launch a background discovery run with a live dashboard |
+| `emath keep FILE --function F --to LIB` | Write a discovered program into your library |
+| `emath step`, `inspect`, `verify` | Resume, read, or replay a saved run |
+| `emath api --search TEXT` | Find callable names, import paths, and signatures |
+| `emath new NAME` | Scaffold a project |
+
+`emath help` lists every command and `emath help COMMAND` describes one.
+The [manual](MANUAL.md) covers flags, exit codes, and JSON output.
+
+## How it works
 
 ```text
 .emath source
-  → parse
-  → constructor admission (object / function / query)
-  → typed IR
-  → reference VM (`emath run`) or Rust emission (`emath build`)
-  → receipt (execution, fulfillment, representation, evidence, remaining)
+  -> parse
+  -> admission (object / function / query)
+  -> typed IR
+  -> reference VM (run, test, compare, dream)  or  Rust emission (build)
+  -> value or receipt
 ```
 
-## Command surface
+The Rust side is a small universal core: parsing, admission, a typed IR,
+the reference VM, and code generation. Mathematics enters only as
+authored `.emath` modules under [`language/modules/`](language/modules/README.md)
+and worked objects under [`language/domains/`](language/domains/README.md).
+When a method cannot be expressed, the core gains a general operation,
+never a domain-specific one.
 
-Implemented today:
+## Status and roadmap
 
-| Command | Purpose |
-|---------|---------|
-| `emath check` | Constructor admission |
-| `emath run` | Evaluate a function or query; print a receipt |
-| `emath step` | Resume a constructor-layer continuation |
-| `emath inspect` | Read a saved checkpoint |
-| `emath verify` | Replay recorded observations |
-| `emath test` | Authored `tests:` |
-| `emath build` | Emit fully lowered runnable Rust |
-| `emath api --search` | Constructor contracts and imported exports |
-| `emath simulate` / `plan` / `eval` / `solve` | Refuse `E-KIND-GONE`; write an ordinary function and `emath run` |
+emath is in active development and is not yet published to crates.io.
+The repository is the deliverable today. Work proceeds in a fixed order:
 
-See [`language/CAPABILITY.md`](language/CAPABILITY.md) and [`MANUAL.md`](MANUAL.md).
+- [ ] **1. Language and mathematical engine** (in progress): syntax,
+  admission, the reference VM, Rust emission, and the module library
+  across algebra, analysis, numerics, probability, optimization, and
+  discovery.
+- [ ] **2. WebAssembly and the browser workbench** (next): every Stage 1
+  capability running in the browser through `emath-wasm`.
+- [ ] **3. Ecosystem** (later): incremental compilation, an editor
+  language server, external solver and proof-checker bridges, and a
+  package registry.
 
-## Web playground
+### Boundaries
 
-After a source checkout, build the workbench assets and WASM engine, then serve them locally (see [`web/README.md`](web/README.md)):
+- **Compiling is not proving.** emath guarantees that the program is what
+  you wrote, not that the mathematics is true. Finite checks are finite.
+  An independent proof checker is planned as a separate step. See
+  [Why not just Lean?](WHY_NOT_LEAN.md)
+- Native Rust crates enforce authored refusals but not the reference
+  VM's work budget.
+- External engines (symbolic, tensor, solver, and proof backends) are
+  planned behind adapters. None is wired in yet.
+
+## Web workbench
+
+An early in-browser workbench runs the compiler as WebAssembly, with no
+server round trips:
 
 ```console
 $ cargo xtask build-web
-$ cargo xtask serve-web [port]
+$ cargo xtask serve-web        # http://localhost:8080
 ```
 
-The server defaults to port 8080; navigate to `http://localhost:8080`. `emath web` is a named refusal — the playground is not part of the constructor CLI.
+See [`web/README.md`](web/README.md). The workbench is a Stage 2
+surface and does not yet cover the full language.
 
-Everything in the pane executes in-page through a C-ABI WASM build of the compiler (no server round-trips, no cargo, nothing leaves the machine):
+## Documentation
 
-- **Check / Plan / Intent Graph / Generate Rust / Format**: the same deterministic pipeline as the CLI.
-- **Run**: executes example tests through a strict-f64 interpreter over the lowered execution IR, honestly labeled `interpreted-strict-f64`. `emath run` returns reference-VM results in the terminal. `emath test` runs generated Rust tests. Agreement between the tiers requires a separate comparison.
-- **Worked examples**: an `example` with only `given` bindings (no `expect`) is not an error: it computes and displays the values, claiming nothing. Add an `expect` and it becomes a test with a pass/fail verdict.
-
-Edit the source, hit Run, watch the values move. That loop is the point. A lone expression or assignment in the pane (`y = x * x`, `3 * 7 + 1`) is wrapped to a declaration (the wrapped text is shown, not hidden) and declared inputs appear as fields you can wiggle without editing source.
-
-## The provider model
-
-emath is built on the shoulders of giants. When a capability already exists in an established engine, emath does not reimplement or absorb it. Adapters bridge to those engines and hand work to them as ordinary crates.
-
-emath owns what makes it distinct: its language, semantic IR, goals, evidence model, artifact format, and runtime outcome contract. For anything already done well elsewhere, emath calls out through an adapter rather than duplicating it.
-
-Adapters, honest status (std-only today; no upstream engine is consumed yet, as in-tree adapter crates ship native stand-ins):
-
-```text
-Dew (in-tree)          scalar strict-f64 mapping + Rust source/token backends
-Rumoca (in-tree)       Modelica subset scan + native structural/DAE/Euler
-Wrenfold               planned (symbolic oracle adapter)
-FrankenJAX             planned (tensors, autodiff, transforms)
-FrankenSciPy           planned (solvers, optimization, integration)
-FrankenSim             planned (operator graphs, kernels, certified numerics)
-FrankenLean            planned (theorem and proof evidence)
-native providers       exact arithmetic, intervals, search, basic numerics
-```
-
-Upstream engines (Dew JIT/GPU, the full Rumoca compiler, Wrenfold, Franken*) are pinned dependencies behind adapters, never presented as implemented before they are wired in. They do not define emath's public semantics, and no upstream internals appear in emath's stable public IR. The table above is the machine-checked status view; `emath provider` is a named refusal (providers are not language identities).
-
-## Design principles
-
-### Determinism is a contract
-
-Every stage of the pipeline is reproducible. Byte-comparable plans, gated builds, and independent artifact checks are the default, not optional polish.
-
-### Evidence travels with results
-
-Answers are labeled: a value, a bound, a symbol, or an open hole. Worlds stay as a portfolio. Nothing is trusted on assertion alone.
-
-### Refusal is better than a silent wrong answer
-
-Unsupported surface is named and routed, never silently guessed. Compiling is not proving. Partial sketches are welcome; incomplete capability is not disguised as success.
-
-### Capability specification is the source of truth
-
-Every mathematical capability, algorithm, and syntactic contract is authored as a declarative capability capsule. Rust implements the thin universal nucleus (parse, semantic admission, IR lowering, VM, and code generation), while mathematical theories, solvers, and contracts compile against that nucleus.
-
-## Why Rust
-
-Rust provides predictable native deployment, zero-cost abstractions for generated code, strong type and ownership boundaries, a mature package model through Cargo, practical integration with systems software, and a suitable language for implementing the compiler itself.
-
-The core toolchain is Rust-first. Optional providers may use other implementation languages behind stable adapters.
-
-## Documentation map
-
-| Doc | Role |
-|-----|------|
-| [`MANUAL.md`](MANUAL.md) | Operator and developer manual |
-| [`implementation/CONSTITUTION.md`](implementation/CONSTITUTION.md) | Formal architectural principles and laws |
-| [`implementation/CRATE_MAP.md`](implementation/CRATE_MAP.md) | Workspace layout and crate roles |
-| [`implementation/PUBLIC_API_INVENTORY.md`](implementation/PUBLIC_API_INVENTORY.md) | Public interfaces and ABI inventory |
-| [`implementation/ERROR_CODES.md`](implementation/ERROR_CODES.md) | Compiler error code specifications |
-| [`examples/README.md`](examples/README.md) | Host integration examples |
-| [`web/README.md`](web/README.md) | WebAssembly interactive workbench |
-| [`tests/README.md`](tests/README.md) | Test surface and verification intent |
-| [`SECURITY.md`](SECURITY.md) | Security policy |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution guidelines |
+| Document | What it covers |
+| --- | --- |
+| [Language home](language/README.md) | What emath is and where everything lives |
+| [Quick start](language/QUICKSTART.md) | Your first program in a few minutes |
+| [Capability](language/CAPABILITY.md) | What computes today and what is refused |
+| [Reference](language/reference/README.md) | The normative specification |
+| [Discovery](language/DISCOVERY.md) | Discovery loops, worlds, and research modules |
+| [Manual](MANUAL.md) | The command-line tool in detail |
+| [Constitution](implementation/CONSTITUTION.md) | Architectural principles |
+| [Crate map](implementation/CRATE_MAP.md) | Workspace layout and crate roles |
+| [Tests](tests/README.md) | Test layout and intent |
+| [Why not just Lean?](WHY_NOT_LEAN.md) | How emath relates to proof assistants |
+| [Security](SECURITY.md) | Security model and reporting |
 
 ## Contributing
 
-We are more than happy to welcome contributions. Before you start, please reach out to the author ([Aditya](https://x.com/adityavg13)) first so we can make sure we're all on the same page.
+Contributions are welcome. Please reach out to the author
+([Aditya](https://x.com/adityavg13)) before you start, so we can agree
+on the direction. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-The emath-owned code license is Apache-2.0 (`LICENSE`). Provider and corpus licenses remain independently tracked and reproduced in release bundles.
+emath is licensed under Apache-2.0 ([`LICENSE`](LICENSE)). Third-party
+licenses are tracked separately under [`licenses/`](licenses/).

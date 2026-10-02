@@ -1,71 +1,67 @@
-# Why Not Just Lean?
+# Why not just Lean?
 
-> A reference for the common question: "Why does emath exist if Lean already does math?"
+A short answer to a common question: if Lean already does mathematics,
+why does emath exist?
 
 ## Summary
 
-Lean and emath serve different purposes:
+Lean and emath answer different questions.
 
-- **Lean** is a theorem prover. It certifies that mathematical statements are true by checking proofs through a trusted kernel. It rejects anything it cannot prove.
-- **emath** is a mathematical-intent compiler. It turns declarative math specifications (including incomplete, ambiguous, or unproven ones) into deterministic, verified Rust programs that execute and produce results.
+- **Lean** is a proof assistant. It certifies that statements are true by
+  checking proofs against a small trusted kernel. It accepts nothing it
+  cannot check.
+- **emath** is a language for mathematics that computes. It turns
+  definitions (including incomplete, exploratory, or unproven ones) into
+  programs that run and return labeled answers.
 
-If the question is "is this theorem true?"; use Lean.
-If the question is "turn this math into a running program that gives an answer"; use emath.
+If your question is "is this theorem true?", use Lean. If your question
+is "what does this mathematics compute, and where does it break?", use
+emath. The two are complementary.
 
-These are complementary, not competitive. emath does not attempt to replace Lean.
+## Side by side
 
-## Core Distinction
+| | Lean | emath |
+| --- | --- | --- |
+| **Purpose** | Certify mathematical truth | Compute with mathematics and compile it to software |
+| **Checks** | Proofs, by kernel type checking | Programs, by admission, authored tests, and deterministic replay |
+| **Trust anchor** | A small trusted kernel | Determinism, exact arithmetic, and explicit labels on every answer |
+| **Execution** | Possible, secondary to proof | The primary deliverable: values, trajectories, and Rust crates |
+| **Unfinished ideas** | Must be fully stated and proved | Run as written; open parts come back `partial` or as named refusals |
 
-| Axis | Lean | emath |
-|---|---|---|
-| **Purpose** | Certify mathematical truth | Compile math into executable software |
-| **Verifies** | Proofs, via kernel type-checking | Programs and artifacts, via an evidence pipeline (claims, checks, hashes, negative controls) |
-| **Trust model** | Small trusted kernel as sole authority | No single anchor: independent artifact checker, byte-determinism, format/test/lint gates |
-| **Determinism** | Not applicable (proofs are logical objects) | Central: byte-identical reruns, pinned builds, sequential state ordering |
-| **Execution** | Secondary to proving | Primary: execution is the deliverable (evaluate, differentiate, solve, optimize, simulate, compile) |
-| **Admission policy** | Near-closed: any imprecision causes kernel rejection | Open: many legitimate interpretations are admitted; ambiguity is resolved explicitly, not silently |
+## What emath adds
 
-> "It is not a theorem prover pretending every theorem is executable."
->; emath README
+### Computing before a proof exists
 
-## What emath Does That Lean Cannot
+A conjecture can be explored in emath long before anyone proves it:
+evaluate it on cases, search a bounded range for counterexamples, and
+record the result as a reproducible run. The answer is a finite verdict
+("no counterexample up to N"), labeled as finite.
 
-### Ambiguous or incomplete specifications
+### Seeing where arithmetic matters
 
-A single `.emath` specification can admit multiple valid interpretations ("worlds"), each producing a different answer. This is a real, tested behavior; the same symbols compile to different results depending on which world is selected:
+`emath compare` runs one function with exact rationals, several float
+formats, 64-bit integers, intervals, and affine forms, and reports where
+the answers differ. That tells you whether a result depends on rounding,
+cancellation, or a branch that flips, which is a question a proof
+assistant does not ask.
 
-- `free_symbolic` → symbolic application
-- `Boolean_algebra` → `false`
-- `modular_numeric` → `6`
+### Inventing new definitions
 
-Lean requires a fully specified meaning before it can accept anything. emath admits the ambiguity, picks an interpretation, evaluates it, and labels the result honestly.
+Code is a value in emath. A discovery loop (`emath dream`) can propose
+programs, score them with an authored judge, and keep the winners as
+ordinary definitions in your own library (`emath keep`). See
+[DISCOVERY.md](language/DISCOVERY.md).
 
-### Open problems and unproven conjectures
+## The line emath does not cross
 
-An open conjecture cannot be stated in Lean until it is proven. emath accepts it anyway: "search up to n = 2^68, terminate if a counterexample is found, return trajectories." The output is a working, deterministic program plus a finite verdict ("no counterexample in range", with certified bounds and negative controls).
+**Compiling is not proving.** emath guarantees that the program is what
+you wrote, not that your idea is true. A false conjecture compiles into a
+faithful program that contains the false idea. Each answer from
+`emath compare` carries a claim marked `unchecked`.
 
-This produces a reproducible artifact; the exact substrate a future proof or counterexample would build against.
+## Working together
 
-**The boundary emath will not cross:** compiling is not proving. The pipeline guarantees "this artifact is exactly what you asked for"; not "your idea is true." Feed it a false conjecture and you get a faithful, verifiably-executing program containing the false idea. The guarantee is on the construction, not the truth of the content.
-
-### Exploration and prototyping
-
-emath enables iterating on mathematical ideas before they are proven:
-
-- Write a conjecture, pick an interpretation, evaluate examples, observe what it computes
-- Test ideas for problems that may not be settled or even well-posed
-- Prototype, find finite evidence or candidate counterexamples, refine, repeat
-
-Lean cannot participate until a proof exists. emath does this work while the proof does not.
-
-## The Lean Integration Plan
-
-Lean is planned as an optional evidence provider (FrankenLean adapter), not a core dependency. If Lean verifies a claim, its kernel verdict becomes one input to emath's evidence pipeline; packaged as evidence that the independent checker still hashes and gates like everything else.
-
-The relationship: emath's pipeline always runs its own checks. Lean can provide stronger evidence for specific claims, but it never overrides the pipeline. Stronger proof, same door policy.
-
-## Current Status
-
-The deterministic, verify-always core is real today: source → semantic IR → execution IR → interpreter or Rust codegen → verified Cargo artifact. The browser playground (`emath web`) runs check, plan, generate, and execute in-page through a WASM engine with no install beyond the repository checkout.
-
-Provider adapters (Wrenfold for symbolic codegen, FrankenJAX/SciPy/Sim for numerical backends, FrankenLean for proof evidence) are planned for later phases. The mathematical language surface is the current focus; building the foundation that makes everything else possible.
+A proof checker is planned as a separate, optional step: it takes emath
+claims in and returns verdicts. emath's own checks always run; a proof
+adds stronger evidence for a specific claim but never replaces them.
+Nothing in emath depends on Lean today.

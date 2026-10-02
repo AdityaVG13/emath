@@ -1,91 +1,187 @@
-# emath User Manual
+# emath manual
 
-emath is a language for mathematics that runs. You write `emath object`,
-`emath function`, or `emath query`. The toolchain returns a value, a
-receipt, generated Rust, or a named refusal.
+This manual covers the `emath` command-line tool: how to run, test,
+compile, compare, and explore `.emath` programs. For the language itself,
+start at [`language/README.md`](language/README.md). For what computes
+today, see [`language/CAPABILITY.md`](language/CAPABILITY.md).
 
-This page is the operator manual. The language constitution lives in
-[`language/`](language/README.md). Status of what computes:
-[`language/CAPABILITY.md`](language/CAPABILITY.md).
+`emath help` lists every command. `emath help COMMAND` prints one
+command's flags and examples. `emath capabilities --json` is the
+machine-readable contract.
 
-## What you write
+## Contents
 
-```emath
-emath function AddExact:
-    inputs:
-        a: Int
-        b: Int
-    outputs:
-        result: Int
-    definitions:
-        result = a + b
-    tests:
-        example <two_plus_one>:
-            given a = 2
-            given b = 1
-            expect result == 3
+- [Locating the language](#locating-the-language)
+- [Everyday commands](#everyday-commands)
+- [Comparing carrier worlds](#comparing-carrier-worlds)
+- [Discovery](#discovery)
+- [Saved runs](#saved-runs)
+- [Project and tooling commands](#project-and-tooling-commands)
+- [Exit codes](#exit-codes)
+- [JSON receipts](#json-receipts)
+- [Environment variables](#environment-variables)
+
+## Locating the language
+
+Every command needs the `language/` folder, which holds the Language
+Image and the module library. The CLI looks for it by walking up from
+the source file, then from the working directory. Outside the repository,
+set `EMATH_ROOT` to a directory that contains `language/spec`. A set but
+wrong `EMATH_ROOT` refuses with `E-LANG-IMAGE`; there is no silent
+fallback.
+
+## Everyday commands
+
+| Command | Purpose |
+| --- | --- |
+| `emath check FILE` | Parse and admit. Nothing runs. `-` reads from standard input |
+| `emath run FILE --function F` | Evaluate one function or query on the reference VM |
+| `emath test FILE` | Run the file's authored `tests:` |
+| `emath build FILE` | Emit a self-contained, runnable Rust crate |
+| `emath fmt FILE` | Check canonical formatting |
+| `emath api --search TEXT` | Find constructor contracts and module exports |
+
+```console
+$ emath run language/examples/intro/add-exact.emath --function AddExact --set a=2 --set b=1
+3
 ```
 
-Declaration kinds are only those three. `emath model`, `emath policy`,
-and `emath kind` refuse. `goals:`, `equations:`, `state:`, and
-`compile:` are not constructor sections.
+### Inputs
 
-The five constructor families are `object`, `function`, `recur`,
-`quote`, and `query`. Named recipes are ordinary modules behind
-`use` (`fold.reduce`'s `sum`, `analysis.derivative`, `algebra.solve`,
-`numerics.float64_kernels`' `sin_*`), or local code.
+`--set name=value` supplies one input. Values may be integers, exact
+rationals (`1/3`), decimals, Booleans, or lists (`--set 'xs=[1, 2, 3]'`).
+`--set-file path.json` supplies a JSON object of inputs; `--set` wins for
+a name given in both. A decimal is exact under a `Rat` input; a
+`Float64` input needs a floating literal such as `3.0`.
 
-## Commands
+### Work budgets
 
-```bash
-emath check language/examples/intro/add-exact.emath
-emath run language/examples/intro/add-exact.emath
-emath run language/examples/intro/add-exact.emath --set a=2 --set b=1 --json
+The reference VM counts work in deterministic engine steps, not time.
+`--work N` sets the budget for `run`, `test`, `compare`, `keep`, and
+`step`. `emath test` gives each example its own budget, so a large case
+that stops with `budget_exhausted` needs a larger `--work`.
+
+### Building Rust
+
+`emath build FILE --out DIR` writes a Cargo crate with one typed entry
+per runnable function. The crate embeds its runtime, has no
+dependencies, and builds offline. (A function that uses `quote.cost`,
+`quote.world`, or `quote.worlds` instead runs in the reference engine,
+which the crate vendors with a pinned `Cargo.lock`.)
+`--dry-run` reports the plan without writing. Native code enforces your
+authored refusals but not the VM's work budget.
+
+## Comparing carrier worlds
+
+`emath compare FILE --function F` evaluates one function under every
+carrier world and prints each answer, the exact gap from the first
+answer, and a verdict (`agree`, `disagree`, or `partial`).
+
+| World | How it reads real data |
+| --- | --- |
+| `reference` | As written |
+| `exact` | Every real as an exact rational |
+| `float64` | Data as binary64; the program's own constants stay exact |
+| `float32`, `bfloat16` | The same with narrower floats |
+| `int64` | Integers past signed 64 bits refuse `machine_overflow` |
+| `interval` | Outward-rounded enclosures that contain the exact answer |
+| `affine` | Affine forms, so a reused variable cancels (`x - x` is `0`) |
+
+- `--world NAME` restricts the run to chosen worlds (repeatable).
+- `--grid name=v1,v2,...`, `name=LO..HI`, or `name=LO..HI/N` sweeps an
+  input and maps where the worlds diverge.
+- Each answer carries an `unchecked` claim with a reproducible id.
+  emath never picks a winner.
+
+Details: [carrier worlds and claims](language/reference/diagnostics-and-tooling-contract.md#carrier-worlds-and-claims).
+
+## Discovery
+
+| Command | Purpose |
+| --- | --- |
+| `emath dream FILE --target StepFn` | Launch a background discovery run under `.emath/runs/NAME/` with a live dashboard |
+| `emath dream watch\|resume\|fork\|export RUN`, `emath dream list` | Manage runs. Detaching never stops a run |
+| `emath keep FILE --function F --to LIB` | Evaluate a function that returns a closed quoted program and write it into a library as an ordinary `emath function` |
+| `emath loop FILE` | Drive a research loop interactively (`step`, `run`, `show`, `grow-case`, `save`, `load`) or replay a script with `--script` |
+| `emath experiment MANIFEST` | Measure a baseline and a candidate on one workload and return an authored evaluator's decision |
+
+`--worlds w1,w2` on `dream`, `run`, and `build` sets the carrier worlds
+that `quote.worlds()` returns. `keep` refuses to overwrite different
+existing text unless you pass `--overwrite`. See
+[`language/DISCOVERY.md`](language/DISCOVERY.md).
+
+## Saved runs
+
+`emath run --out DIR` and budgeted runs save a checkpoint.
+
+| Command | Purpose |
+| --- | --- |
+| `emath inspect CHECKPOINT` | Read the saved question, attempts, and artifacts without executing |
+| `emath step CHECKPOINT --work N` | Resume the saved continuation |
+| `emath verify CHECKPOINT` | Replay the recorded cases. Replay is not a proof |
+
+`step` takes `--expect-revision N` to guard against a competing commit
+and `--cancel-file PATH` to stop between cases. An incompatible
+checkpoint refuses to resume. See
+[saved mathematical runs](language/reference/diagnostics-and-tooling-contract.md#saved-mathematical-runs).
+
+## Project and tooling commands
+
+| Command | Purpose |
+| --- | --- |
+| `emath new NAME` | Scaffold a project (`emath-package.toml`, `src/main.emath`) |
+| `emath migrate FILE` | Respell source into canonical form (`--check`, `--dry-run`, `--fix`) |
+| `emath diff A B` | Compare two sources by content id |
+| `emath explain CODE` | Look up a CLI diagnostic code (`--list-codes` lists them) |
+| `emath doctor` | Check for `rustc`, `cargo`, `rustfmt`, and `clippy` |
+| `emath catalog`, `emath capabilities` | Export the command matrix and the machine contract |
+| `emath triage`, `emath next` | Orient in a file and suggest next actions |
+| `emath version` | Print the CLI version |
+
+`emath simulate`, `plan`, `eval`, `solve`, and `web` are not commands of
+the language; they refuse with `E-KIND-GONE`. Write an ordinary function
+and use `emath run`.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The command completed |
+| `2` | Admission failure: syntax, type, or input |
+| `3` | Unmet, partial, or suspended answer |
+| `4` | Execution or backend fault |
+| `5` | Incompatible or corrupt checkpoint |
+
+## JSON receipts
+
+`emath run --json` prints a receipt with independent fields:
+
+```json
+{
+  "schema_version": "emath.constructor.v1",
+  "command": "run",
+  "admission": "ok",
+  "execution": "returned",
+  "fulfillment": "satisfied",
+  "representation": "exact_scalar",
+  "payload": "3",
+  "evidence": [],
+  "remaining": []
+}
 ```
 
-| Command | Meaning |
-|---------|---------|
-| `emath check FILE` | Parse and admit |
-| `emath run FILE` | Evaluate a function or query |
-| `emath loop FILE` | Drive a research-loop session surface (step, run, show, grow-case, save, load, export-native) |
-| `emath step CHECKPOINT` | Resume a constructor continuation |
-| `emath inspect CHECKPOINT` | Read saved question and artifacts |
-| `emath verify CHECKPOINT` | Replay recorded observations |
-| `emath test FILE` | Authored `tests:` |
-| `emath build FILE` | Emit runnable Rust |
-| `emath api --search TEXT --json` | Constructor contracts and imported exports |
+`execution` says whether evaluation returned, faulted, or suspended.
+`fulfillment` says whether the question was answered. `representation`
+says what kind of value came back. `evidence` and `remaining` list what
+supports the answer and what is still open.
 
-`emath simulate`, `plan`, `eval`, `sweep`, `genesis`, and `solve`
-refuse `E-KIND-GONE`. Write an ordinary function and `emath run`.
+## Environment variables
 
-Exit codes: 0 completed; 2 admission failure; 3 unmet or partial; 4
-execution fault; 5 incompatible checkpoint. A suspended run is 3.
-
-`--json` prints `execution`, `fulfillment`, `representation`,
-`payload`, `evidence`, and `remaining`. Historical `goal_met` labels
-are not the constructor receipt.
-
-## Types
-
-`Bool`, `Int`, `Rat`, `Float64`, `sequence(T)`, `T[n]`, records and
-variants from `emath object`, `A -> B`, and `Code[T]`. There is no
-`Real` carrier. `/` on integers yields `Rat`.
-
-## Modules
-
-Optional algorithms live under [`language/modules/`](language/modules/README.md).
-They are not auto-imported. Example: `use fold.reduce`. Worked objects of
-study (a pendulum, SHA-256, mass-action kinetics) live under
-[`language/domains/`](language/domains/README.md) and load the same way,
-for example `use mechanics.pendulum`.
-
-## Teaching programs
-
-Start at [`language/examples/README.md`](language/examples/README.md)
-and [`language/QUICKSTART.md`](language/QUICKSTART.md).
-
-## What this manual is not
-
-It is not a workbench, desugarer, or alias catalog. Unicode identifiers
-may name variables. Keyword spelling is the specified ASCII. There is
-no runtime alias registry.
+| Variable | Effect |
+| --- | --- |
+| `EMATH_ROOT` | Directory containing `language/spec`, for use outside the repository |
+| `EMATH_LOG` | Diagnostic log level (`error`, `warn`, `info`, `debug`) |
+| `NO_COLOR` | Disable ANSI colors |
+| `TERM=dumb` | Disable styling and cursor movement |
+| `CI` | Suppress interactive prompts |
+| `SOURCE_DATE_EPOCH` | Fixed timestamp for generated artifacts |
