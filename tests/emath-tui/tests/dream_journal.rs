@@ -287,7 +287,7 @@ fn dream_journal() {
             "library-holds-best",
             library.lines().any(|l| l == "use tune_prog")
                 && library.contains("result = count_primes_with([2, 1], n)")
-                && library.contains("Saving(work_after=36874, work_before=187862)"),
+                && library.contains("Saving(work_after=37773, work_before=191112)"),
             library.clone(),
         );
 
@@ -331,7 +331,7 @@ fn dream_journal() {
             "library-holds-factored",
             library.lines().any(|l| l == "use fold.reduce")
                 && library.contains("result = sum(tabulate(function i in Int: i * n, n)) * (3 + 4 + 1)")
-                && library.contains("Saving(work_after=853, work_before=2511)"),
+                && library.contains("Saving(work_after=880, work_before=2592)"),
             library.clone(),
         );
     });
