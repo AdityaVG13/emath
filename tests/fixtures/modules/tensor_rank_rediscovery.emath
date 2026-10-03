@@ -1,0 +1,59 @@
+# Rediscovery benchmark for search.tensor_rank: Strassen (1969).
+#
+# The tensor of 2x2 by 2x2 matrix multiplication has a standard
+# decomposition of rank 8, one term per product a[r][s] b[s][t]. Seeded
+# walks over flips (Kauers and Moosbauer, 2022) with entries kept in
+# -1..1, restarted with seeds 1, 2, ..., must reach rank 7, and the
+# seven terms must decompose the tensor exactly: every Brent equation
+# holds, so they multiply any two 2x2 matrices over any commutative
+# ring with seven multiplications. Seed 1 stays at rank 8 for 500
+# flips; its terms must still decompose the tensor, since flips and
+# reductions keep the sum. A decomposition missing one term, or with
+# one sign changed, must fail the same check. Two terms that share u
+# and have opposite w, or share v and have opposite w, merge into one
+# term with the same sum.
+#
+#     emath test tests/fixtures/modules/tensor_rank_rediscovery.emath --work 40000000000
+
+use search.tensor_rank
+use fold.reduce
+
+emath function Rediscovers:
+    inputs:
+        unused: Int
+    outputs:
+        start_rank: Int
+        rank: Int
+        exact: Bool
+        kept: sequence(Int)
+        broken: sequence(Bool)
+        merged: sequence(Int)
+        product: sequence(Int)
+    definitions:
+        t = matmul_tensor(2, 2, 2)
+        s = standard(t)
+        w = search_rank(t, s, 7, 500, range(1, 8), 1)
+        stuck = walk(t, s, 7, 500, 1, 1)
+        start_rank = length(s)
+        rank = length(w.terms)
+        exact = decomposes(t, w.terms)
+        kept = [length(stuck.terms), if decomposes(t, stuck.terms): 1 else: 0]
+        found = w.terms
+        flipped = Term: {u: found[0].u, v: found[0].v, w: map(function x in Int: 0 - x, found[0].w)}
+        broken = [decomposes(t, take(found, 6)), decomposes(t, concat([flipped], tabulate(function i in Int: found[i + 1], 6)))]
+        pair_u = [Term: {u: [1, 0], v: [1, 0], w: [1]}, Term: {u: [1, 0], v: [0, 1], w: [0 - 1]}]
+        pair_v = [Term: {u: [1, 0], v: [1, 1], w: [1]}, Term: {u: [0, 1], v: [1, 1], w: [0 - 1]}]
+        same = function ts in sequence(Term): if expand([2, 2, 1], reduce_terms(ts)) == expand([2, 2, 1], ts): length(reduce_terms(ts)) else: 0
+        merged = [same(pair_u), same(pair_v)]
+        # [[1, 2], [3, 4]] [[5, 6], [7, 8]] = [[19, 22], [43, 50]], row-major.
+        product = bilinear(found, [1, 2, 3, 4], [5, 6, 7, 8])
+    tests:
+        example <finds_seven_multiplications>:
+            given unused = 0
+            expect start_rank == 8
+            expect rank == 7
+            expect exact == true
+            expect kept == [8, 1]
+            expect broken == [false, false]
+            expect merged == [1, 1]
+            expect product == [19, 22, 43, 50]
