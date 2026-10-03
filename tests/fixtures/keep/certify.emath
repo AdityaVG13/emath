@@ -5,8 +5,8 @@
 # n >= 0, and its degree when it is a polynomial. Two programs of
 # orders a and b that agree at a + b consecutive n from 0 agree at
 # every n >= 0 (their difference satisfies a recurrence of order
-# a + b); two polynomials need only one point more than the larger
-# degree.
+# a + b), and roots at 1 the two share count once: two polynomials
+# need only one point more than the larger degree.
 #
 #   sum of cubes = T(n)^2     degrees 4 and 4: five points prove it
 #   n^3 = 3n^2 - 2n           agrees at n = 0, 1, 2; the fourth point
@@ -15,7 +15,8 @@
 #                             no polynomial: 1 is odd, so no bound, no proof
 #   Fibonacci, two ways       loops of state 2 and 3: five points
 #   a branch                  if n < 0: 0 else: n^2 takes one side from
-#                             n = 1 on: order 3 + 1, proven
+#                             n = 1 on: order 3 + 1, proven; its three
+#                             roots at 1 are n^2's, so four points do
 #   a squared step            agrees with Fibonacci at n = 0..3; its loop
 #                             is not linear, so no bound, no proof
 #   floor(T(n) / 2) = 0       T(n) = n(n - 1)/2 is even at n = 0, 1 but
@@ -32,7 +33,9 @@
 #                             step a tabulate over an inner fold with
 #                             branch coefficients, against its closed
 #                             form pi n + (1 - pi)(1 - l^n)/(1 - l):
-#                             proven
+#                             proven from five points (the two roots at
+#                             1 of the running total and of pi n count
+#                             once)
 #   a near miss               the closed form plus n(n-1)(n-2)(n-3)(n-4)/1000
 #                             agrees at n = 0..4; the certificate's
 #                             points reach n = 5 and refute it
@@ -54,8 +57,15 @@
 #                             with 0 at n = 0..2: the side taken from
 #                             n = 1 has order 3, so n = 3 is checked and
 #                             refutes it
+#   two loops read            2^n + 3^n as entries of two loops agrees
+#                             with 2 (5/2)^n at n = 0, 1: entries of
+#                             one loop count once, of two loops twice,
+#                             so n = 2 is checked and refutes it
 #   an added constant         acc / 2 + 1 has order 2, not 1: the
-#                             constant is one more term of the law
+#                             constant is one more term of the law;
+#                             the state is halved, not carried, so only
+#                             one root is at 1 and its agreement with n
+#                             at n = 0, 1 is refuted at n = 2
 #   no bound                  a coefficient that is the loop index, a
 #                             state read at the loop index, and a
 #                             coefficient that is n itself are not
@@ -197,7 +207,7 @@ emath function Certifies:
             expect orders == [5, 2, 4, 0 - 1, 3]
             expect degrees == [4, 0 - 1, 0 - 1, 0 - 1, 2]
             expect proven == [true, false, false, true, true, false, false, false, false]
-            expect points == [5, 4, 0, 5, 7, 0, 0, 6, 7]
+            expect points == [5, 4, 0, 5, 4, 0, 0, 6, 7]
 
 emath function CertifiesModels:
     inputs:
@@ -214,16 +224,17 @@ emath function CertifiesModels:
         by_index = quote(function n in Int: fold(function acc in Int: function k in Int: acc * k + 1, 1, range(0, n)))
         at_index = quote(function n in Int: fold(function p in sequence(Int): function k in Int: [p[1], p[int_rem(k, 2)]], [1, 2], range(0, n))[0])
         by_n = quote(function n in Int: fold(function acc in Int: function k in Int: acc * n, 1, range(0, n)))
+        two_loops = quote(function n in Int: fold(function p in sequence(Rat): function k in Int: [2 * p[0]], [1 / 1], range(0, n))[0] + fold(function p in sequence(Rat): function k in Int: [3 * p[0]], [1 / 1], range(0, n))[0])
         orders = map(function c in Code: shape(c).order, [quote(function n in Int: rat_pow(2 / 3, n)), quote(function n in Int: fold(function acc in Rat: function k in Int: acc / 2 + 1, 0 / 1, range(0, n))), by_index, at_index, by_n, quote(function n in Int: rat_pow(n / 1, n))])
-        certs = [certify_equal(model, closed, limit), certify_equal(model, near, limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function t in Int: acc + rat_pow(1 / 2, t), 0 / 1, range(1, n))), quote(function n in Int: 1 - rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: rat_pow(2 / 3, n) * rat_pow(3 / 2, n)), quote(function n in Int: 1), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: n, n))), quote(function n in Int: n), limit), certify_equal(quote(function n in Int: if 1 / 2 == 3 / 4: (if n == 0: 0 / 1 else: n / 1) else: rat_pow(1 / 2, n)), quote(function n in Int: rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: n / 1), quote(function n in Int: n + rat_pow(0 / 1, n)), limit), certify_equal_from(quote(function n in Int: n / 1), quote(function n in Int: n + rat_pow(0 / 1, n)), 1, limit), certify_equal(quote(function n in Int: if n == 0: 0 / 1 else: n * rat_pow(1 / 3, n - 1)), quote(function n in Int: 3 * n * rat_pow(1 / 3, n)), limit), certify_equal(quote(function n in Int: rat_pow(0 / 1, n - 2)), quote(function n in Int: 0 / 1), limit), certify_equal(quote(function n in Int: if n > 0: (n - 1) * (n - 2) / 1 else: 0 / 1), quote(function n in Int: 0 / 1), limit)]
+        certs = [certify_equal(model, closed, limit), certify_equal(model, near, limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function t in Int: acc + rat_pow(1 / 2, t), 0 / 1, range(1, n))), quote(function n in Int: 1 - rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: rat_pow(2 / 3, n) * rat_pow(3 / 2, n)), quote(function n in Int: 1), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: n, n))), quote(function n in Int: n), limit), certify_equal(quote(function n in Int: if 1 / 2 == 3 / 4: (if n == 0: 0 / 1 else: n / 1) else: rat_pow(1 / 2, n)), quote(function n in Int: rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: n / 1), quote(function n in Int: n + rat_pow(0 / 1, n)), limit), certify_equal_from(quote(function n in Int: n / 1), quote(function n in Int: n + rat_pow(0 / 1, n)), 1, limit), certify_equal(quote(function n in Int: if n == 0: 0 / 1 else: n * rat_pow(1 / 3, n - 1)), quote(function n in Int: 3 * n * rat_pow(1 / 3, n)), limit), certify_equal(quote(function n in Int: rat_pow(0 / 1, n - 2)), quote(function n in Int: 0 / 1), limit), certify_equal(quote(function n in Int: if n > 0: (n - 1) * (n - 2) / 1 else: 0 / 1), quote(function n in Int: 0 / 1), limit), certify_equal(two_loops, quote(function n in Int: 2 * rat_pow(5 / 2, n)), limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function k in Int: acc / 2 + 1, 0 / 1, range(0, n))), quote(function n in Int: n / 1), limit)]
         proven = map(function c in Certificate: c.proven, certs)
         bounded = map(function c in Certificate: c.points > 5, certs)
     tests:
         example <proves_laws_of_models_written_as_code>:
             given unused = 0
             expect orders == [1, 2, 0 - 1, 0 - 1, 0 - 1, 0 - 1]
-            expect proven == [true, false, true, true, false, true, false, true, true, false, false]
-            expect bounded == [true, true, false, false, false, false, false, false, false, false, false]
+            expect proven == [true, false, true, true, false, true, false, true, true, false, false, false, false]
+            expect bounded == [false, true, false, false, false, false, false, false, false, false, false, false, false]
 
 emath function power_gap:
     # Sum of x^t y^(n - 1 - t) over t < n, as a loop with state [x^t, partial sum].
