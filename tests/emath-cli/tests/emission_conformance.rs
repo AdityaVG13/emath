@@ -1564,7 +1564,7 @@ const CODE_IDENTITY_DRIVER: &str = r#"
 //! over the canonical bytes) and the equalities the search modules use.
 use code_identity::{
     body_identity, child_matches_template, different_code_differs, exact_substitute,
-    index_identity,
+    index_identity, nesting_differs,
     index_round_trip, joined_name, joined_tag, recur_identity,
     recur_over_sequence, recur_renamed_agree, recur_round_trip, recur_shadows,
     renamed_binders_agree, substituted_identity, template_identity,
@@ -1572,19 +1572,19 @@ use code_identity::{
 fn main() {
     let mut failures = 0usize;
     let pins: [(&str, Result<i64, String>, i64); 13] = [
-        ("exact_three", exact_substitute(3), 7734061378284101075),
-        ("exact_minus_four", exact_substitute(-4), 3757166404498068685),
-        ("index_two", index_identity(2), -789755635920280717),
-        ("index_minus_one", index_identity(-1), -8317634363300468623),
-        ("joined_twelve", joined_name(12), -4213184102754636739),
-        ("joined_zero", joined_name(0), -2904622620705799990),
-        ("template", template_identity(1), 1083551230141008259),
-        ("substituted_half", substituted_identity((1, 2)), 6799677611696251689),
-        ("sequence_binder_body", body_identity(1), -3712620093599836444),
-        ("recur_three", recur_identity(3), 8921994034227166034),
-        ("recur_minus_two", recur_identity(-2), -4154231795667992624),
-        ("recur_over_two", recur_over_sequence(vec![(1, 2), (3, 1)]), -3980976677755716721),
-        ("recur_over_empty", recur_over_sequence(vec![]), -3818502551705519958),
+        ("exact_three", exact_substitute(3), 9072198779725330122),
+        ("exact_minus_four", exact_substitute(-4), 395587551023868959),
+        ("index_two", index_identity(2), 629999334413993554),
+        ("index_minus_one", index_identity(-1), -6358394400781475681),
+        ("joined_twelve", joined_name(12), -8842153441291678809),
+        ("joined_zero", joined_name(0), -3419832116818647827),
+        ("template", template_identity(1), -1196788995459785803),
+        ("substituted_half", substituted_identity((1, 2)), -7428803188107537136),
+        ("sequence_binder_body", body_identity(1), -1844154563749970366),
+        ("recur_three", recur_identity(3), 7879228432184954446),
+        ("recur_minus_two", recur_identity(-2), 8209334220971875847),
+        ("recur_over_two", recur_over_sequence(vec![(1, 2), (3, 1)]), 1910726365657871909),
+        ("recur_over_empty", recur_over_sequence(vec![]), 5210087937655289470),
     ];
     for (name, got, vm) in pins {
         if got != Ok(vm) {
@@ -1595,6 +1595,7 @@ fn main() {
     let bools = [
         ("alpha_equivalent", renamed_binders_agree(3)),
         ("distinct", different_code_differs(1)),
+        ("nesting", nesting_differs(2)),
         ("child_is_x", child_matches_template(1)),
         ("alpha_equivalent_recur", recur_renamed_agree(2)),
         ("recur_name_bound", recur_shadows(2)),

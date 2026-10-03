@@ -177,7 +177,7 @@ pub fn fact_identity(
 
 /// Debug text with every `source: Span { .. }` field removed, so a type
 /// renders the same wherever it sits in the file.
-fn spanless(debug: &str) -> String {
+pub(super) fn spanless(debug: &str) -> String {
     const FIELD: &str = "source: Span {";
     let mut out = String::with_capacity(debug.len());
     let mut rest = debug;

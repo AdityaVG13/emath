@@ -9,75 +9,130 @@ pub(super) fn fnv64(bytes: &[u8]) -> u64 {
     hash
 }
 
+/// A length (of text, or of a list of subterms) as fixed-width bytes.
+pub(super) fn count_bytes(n: usize, out: &mut Vec<u8>) {
+    out.extend_from_slice(&(n as u32).to_le_bytes());
+}
+
+/// Text preceded by its length, so it cannot run into what follows.
+pub(super) fn text_bytes(text: &str, out: &mut Vec<u8>) {
+    count_bytes(text.len(), out);
+    out.extend_from_slice(text.as_bytes());
+}
+
+fn optional_bytes(expr: Option<&Expr>, binders: &mut Vec<String>, out: &mut Vec<u8>) {
+    match expr {
+        Some(expr) => {
+            out.push(1);
+            canonical_expr_bytes(expr, binders, out);
+        }
+        None => out.push(0),
+    }
+}
+
+fn list_bytes(items: &[Expr], binders: &mut Vec<String>, out: &mut Vec<u8>) {
+    count_bytes(items.len(), out);
+    for item in items {
+        canonical_expr_bytes(item, binders, out);
+    }
+}
+
 /// Canonical (de Bruijn-style) expression bytes: binder introductions
 /// push their name; a single-segment path resolving to a binder emits
 /// its binding depth; everything else recurses with stable kind tags.
 /// Alpha-equivalent expressions produce identical bytes, so the FNV-1a
 /// digest over them is a deterministic canonical identity.
+///
+/// The encoding is prefix-free: text carries its length, every list of
+/// subterms its count, every optional part a presence byte, and every
+/// kind is matched. Without that, `[[1], 2]` and `[[1, 2]]`, or
+/// `f(g(x), y)` and `f(g(x, y))`, wrote the same bytes and shared an
+/// identity whatever the hash. `emath-rt`'s `canonical_tree_bytes`
+/// writes the same bytes for the subset it distills.
 pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: &mut Vec<u8>) {
     match &expr.kind {
         ExprKind::Int(text) => {
             out.push(b'I');
-            out.extend_from_slice(text.as_bytes());
+            text_bytes(text, out);
         }
         ExprKind::Float(text) => {
             out.push(b'F');
-            out.extend_from_slice(text.as_bytes());
+            text_bytes(text, out);
         }
         ExprKind::Rational { numer, denom } => {
             out.push(b'R');
-            out.extend_from_slice(numer.as_bytes());
-            out.push(b'/');
-            out.extend_from_slice(denom.as_bytes());
+            text_bytes(numer, out);
+            text_bytes(denom, out);
         }
         ExprKind::Str(text) => {
             out.push(b'S');
-            out.extend_from_slice(text.as_bytes());
+            text_bytes(text, out);
         }
         ExprKind::Bool(value) => {
             out.push(b'B');
             out.push(u8::from(*value));
         }
-        ExprKind::Path { segments, .. } => {
+        ExprKind::Measured {
+            value,
+            uncertainty,
+            uncertainty_digits,
+            distribution,
+        } => {
+            out.push(b'M');
+            text_bytes(value, out);
+            text_bytes(uncertainty, out);
+            text_bytes(uncertainty_digits, out);
+            match distribution {
+                Some(name) => {
+                    out.push(1);
+                    text_bytes(name, out);
+                }
+                None => out.push(0),
+            }
+        }
+        ExprKind::Path { segments, generics } => {
             if binders.iter().any(|b| b == &segments[0]) {
                 let depth = binders.iter().rposition(|b| b == &segments[0]).unwrap_or(0);
                 out.push(b'#');
-                out.extend_from_slice(&(depth as u16).to_le_bytes());
+                count_bytes(depth, out);
                 // Field reads of a bound name (`a.lo`) keep their fields.
+                count_bytes(segments.len() - 1, out);
                 for segment in &segments[1..] {
-                    out.push(b'.');
-                    out.extend_from_slice(segment.as_bytes());
+                    text_bytes(segment, out);
                 }
             } else {
                 out.push(b'P');
+                count_bytes(segments.len(), out);
                 for segment in segments {
-                    out.push(b'.');
-                    out.extend_from_slice(segment.as_bytes());
+                    text_bytes(segment, out);
                 }
+            }
+            match generics {
+                Some(generics) => {
+                    out.push(1);
+                    text_bytes(&super::carry::spanless(&format!("{generics:?}")), out);
+                }
+                None => out.push(0),
             }
         }
         ExprKind::Call { function, args } => {
             out.push(b'C');
             canonical_expr_bytes(function, binders, out);
-            for arg in args {
-                canonical_expr_bytes(arg, binders, out);
-            }
+            list_bytes(args, binders, out);
         }
         ExprKind::Index { value, indices } => {
             out.push(b'N');
             canonical_expr_bytes(value, binders, out);
-            for index in indices {
-                canonical_expr_bytes(index, binders, out);
-            }
+            list_bytes(indices, binders, out);
         }
         ExprKind::Unary { op, value } => {
             out.push(b'U');
-            out.extend_from_slice(format!("{op:?}").as_bytes());
+            text_bytes(&format!("{op:?}"), out);
             canonical_expr_bytes(value, binders, out);
         }
         ExprKind::Binary { op, left, right } => {
             out.push(b'Y');
-            out.extend_from_slice(format!("{op:?}").as_bytes());
+            text_bytes(&format!("{op:?}"), out);
             canonical_expr_bytes(left, binders, out);
             canonical_expr_bytes(right, binders, out);
         }
@@ -91,21 +146,24 @@ pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: 
             canonical_expr_bytes(then_value, binders, out);
             canonical_expr_bytes(else_value, binders, out);
         }
-        ExprKind::List(items) | ExprKind::Tuple(items) | ExprKind::Set(items) => {
+        // A list and a tuple both view as a `Sequence`, so they share a tag.
+        ExprKind::List(items) | ExprKind::Tuple(items) => {
             out.push(b'[');
-            for item in items {
-                canonical_expr_bytes(item, binders, out);
-            }
+            list_bytes(items, binders, out);
+        }
+        ExprKind::Set(items) => {
+            out.push(b'$');
+            list_bytes(items, binders, out);
         }
         ExprKind::Record { type_path, fields } => {
             out.push(b'{');
+            count_bytes(type_path.len(), out);
             for segment in type_path {
-                out.push(b'.');
-                out.extend_from_slice(segment.as_bytes());
+                text_bytes(segment, out);
             }
+            count_bytes(fields.len(), out);
             for (name, value) in fields {
-                out.push(b':');
-                out.extend_from_slice(name.as_bytes());
+                text_bytes(name, out);
                 canonical_expr_bytes(value, binders, out);
             }
         }
@@ -116,12 +174,8 @@ pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: 
         } => {
             out.push(b'G');
             out.push(u8::from(*inclusive));
-            if let Some(start) = start {
-                canonical_expr_bytes(start, binders, out);
-            }
-            if let Some(end) = end {
-                canonical_expr_bytes(end, binders, out);
-            }
+            optional_bytes(start.as_deref(), binders, out);
+            optional_bytes(end.as_deref(), binders, out);
         }
         ExprKind::Cases {
             subject,
@@ -129,9 +183,8 @@ pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: 
             else_arm,
         } => {
             out.push(b'K');
-            if let Some(subject) = subject {
-                canonical_expr_bytes(subject, binders, out);
-            }
+            optional_bytes(subject.as_deref(), binders, out);
+            count_bytes(arms.len(), out);
             for (condition, value) in arms {
                 canonical_expr_bytes(condition, binders, out);
                 canonical_expr_bytes(value, binders, out);
@@ -203,19 +256,25 @@ pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: 
             canonical_expr_bytes(domain, binders, out);
             binders.push(var.clone());
             canonical_expr_bytes(element, binders, out);
-            if let Some(guard) = guard {
-                canonical_expr_bytes(guard, binders, out);
-            }
+            optional_bytes(guard.as_deref(), binders, out);
             binders.pop();
         }
         ExprKind::Approx {
             left,
             right,
-            tolerance: _,
+            tolerance,
         } => {
             out.push(b'~');
             canonical_expr_bytes(left, binders, out);
             canonical_expr_bytes(right, binders, out);
+            match tolerance {
+                Some(tolerance) => {
+                    out.push(1);
+                    optional_bytes(tolerance.rtol.as_ref(), binders, out);
+                    optional_bytes(tolerance.atol.as_ref(), binders, out);
+                }
+                None => out.push(0),
+            }
         }
         ExprKind::Conditioned {
             value,
@@ -225,36 +284,42 @@ pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: 
             canonical_expr_bytes(value, binders, out);
             canonical_expr_bytes(condition, binders, out);
         }
-        ExprKind::UnitQuery { expr, .. } => {
+        ExprKind::UnitQuery { kind, expr } => {
             out.push(b'^');
+            text_bytes(&format!("{kind:?}"), out);
             canonical_expr_bytes(expr, binders, out);
         }
-        ExprKind::Quantity { value, .. } => {
+        ExprKind::Quantity { value, unit } => {
             out.push(b'u');
             canonical_expr_bytes(value, binders, out);
+            text_bytes(&super::carry::spanless(&format!("{unit:?}")), out);
         }
-        ExprKind::WithSeriesPolicy { value, .. } => {
+        ExprKind::WithSeriesPolicy {
+            value,
+            interpolation,
+            extrapolation,
+        } => {
             out.push(b'w');
             canonical_expr_bytes(value, binders, out);
+            text_bytes(interpolation.map_or("", |mode| mode.spelling()), out);
+            text_bytes(extrapolation.map_or("", |mode| mode.spelling()), out);
         }
         ExprKind::Slice { start, end } => {
             out.push(b'g');
-            if let Some(start) = start {
-                canonical_expr_bytes(start, binders, out);
-            }
-            if let Some(end) = end {
-                canonical_expr_bytes(end, binders, out);
-            }
+            optional_bytes(start.as_deref(), binders, out);
+            optional_bytes(end.as_deref(), binders, out);
         }
-        ExprKind::Table { rows, .. } => {
+        ExprKind::Table { headers, rows } => {
             out.push(b't');
+            count_bytes(headers.len(), out);
+            for header in headers {
+                text_bytes(header, out);
+            }
+            count_bytes(rows.len(), out);
             for row in rows {
-                for cell in row {
-                    canonical_expr_bytes(cell, binders, out);
-                }
+                list_bytes(row, binders, out);
             }
         }
-        _ => out.push(b'X'),
     }
 }
 
@@ -531,7 +596,7 @@ pub(super) fn decl_stamp(decl: &FnDecl) -> u64 {
     let mut out = Vec::new();
     for (name, expr) in &decl.defs {
         out.push(b'd');
-        out.extend_from_slice(name.as_bytes());
+        text_bytes(name, &mut out);
         canonical_expr_bytes(expr, &mut Vec::new(), &mut out);
     }
     fnv64(&out)

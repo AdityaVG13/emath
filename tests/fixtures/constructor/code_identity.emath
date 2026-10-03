@@ -84,6 +84,21 @@ emath function different_code_differs:
             given k = 1
             expect result == true
 
+emath function nesting_differs:
+    # the same leaves nested differently: [[1], c] and [[1, c]], f(g(x), c) and f(g(x, c))
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        lists = quote.identity(quote.substitute(quote([[1], c]), "c", k)) != quote.identity(quote.substitute(quote([[1, c]]), "c", k))
+        calls = quote.identity(quote.substitute(quote(f(g(x), c)), "c", k)) != quote.identity(quote.substitute(quote(f(g(x, c))), "c", k))
+        result = lists and calls
+    tests:
+        example <nesting>:
+            given k = 2
+            expect result == true
+
 emath function child_matches_template:
     # a child of a view is a node; its identity is its code's
     inputs:
