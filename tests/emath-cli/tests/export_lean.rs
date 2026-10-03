@@ -12,13 +12,16 @@
 //! accepted, and the same folder with one wrong expected value is
 //! rejected naming that example. `mixed.emath` joins Int and Rat where
 //! Lean needs one type (an `if`, a list, a cons, a fold's start), and
+//! `remainder.emath` calls `int_rem` beside its own `int_rem` and
+//! `exact.modular`'s guarded one, which emath never runs for that call;
 //! the whole folder must still check. The `--check` half needs `lake`
 //! on PATH.
 //!
-//! Laws: with `law/certify.emath` beside the chain, its three
+//! Laws: with `law/certify.emath` beside the chain, its four
 //! `certify_equal` calls and one `certify_all` call become theorems.
 //! The chain against its closed form at one point, the running sum
-//! against n(n - 1)/2, and the chain against its closed form at every
+//! against n(n - 1)/2, the powers of 1/2 summed from t = 1, and the
+//! chain against its closed form at every
 //! parameter point the closed form computes at are proven; a quotient
 //! by a sequence of n is reported unproven (exit 3), not rejected. A
 //! closed form at the wrong point, or with its parameters swapped, is
@@ -173,6 +176,7 @@ fn export_lean() {
                     && text.contains("unproven: certify.emath law 3 of `certified`: Lean found no order bound")
                     && !text.contains("law 1 of")
                     && !text.contains("law 2 of")
+                    && !text.contains("law 4 of")
                     && !text.contains("not translated")
                     && !text.contains("rejected:"),
                 format!("exit {code}\n{text}"),

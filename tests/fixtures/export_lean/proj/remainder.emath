@@ -1,0 +1,24 @@
+# A call to `int_rem` runs the machine remainder, never this file's
+# own `int_rem` nor `exact.modular`'s guarded one beside `pow_mod`.
+use exact.modular.{pow_mod}
+
+emath function int_rem:
+    inputs:
+        value: Int
+        modulus: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 5
+
+emath function weekday:
+    inputs:
+        day: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_rem(day, 7)
+    tests:
+        example <negative_day>:
+            given day = 0 - 3
+            expect result == 4

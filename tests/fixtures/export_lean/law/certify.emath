@@ -2,7 +2,8 @@
 # against its closed form at one parameter point; a running sum of t
 # against n(n - 1)/2; and (n^2 - 1)/(n + 1) against n - 1, which holds
 # for n >= 0 but divides by a sequence, so neither emath nor Lean bounds
-# its order. certified_all: the chain against its closed form at every
+# its order; and the halves 1/2 + ... + 1/2^n, summed from t = 1,
+# against 1 - 1/2^n. certified_all: the chain against its closed form at every
 # parameter point where the closed form computes (1 - (a - b) != 0).
 use model
 use found
@@ -15,7 +16,7 @@ emath function certified:
     outputs:
         result: sequence(Certificate)
     definitions:
-        result = [certify_equal(quote(function n in Int: mean_on(1 / 2, 1 / 4, n)), quote(function n in Int: mean_closed(1 / 2, 1 / 4, n)), limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function t in Int: acc + t, 0 / 1, range(0, n))), quote(function n in Int: n * (n - 1) / 2), limit), certify_equal(quote(function n in Int: (n * n - 1) / (n + 1)), quote(function n in Int: n - 1), limit)]
+        result = [certify_equal(quote(function n in Int: mean_on(1 / 2, 1 / 4, n)), quote(function n in Int: mean_closed(1 / 2, 1 / 4, n)), limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function t in Int: acc + t, 0 / 1, range(0, n))), quote(function n in Int: n * (n - 1) / 2), limit), certify_equal(quote(function n in Int: (n * n - 1) / (n + 1)), quote(function n in Int: n - 1), limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function t in Int: acc + rat_pow(1 / 2, t), 0 / 1, range(1, n))), quote(function n in Int: 1 - rat_pow(1 / 2, n)), limit)]
 
 emath function certified_all:
     inputs:

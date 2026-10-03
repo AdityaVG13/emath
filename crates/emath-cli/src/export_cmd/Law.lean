@@ -212,6 +212,10 @@ theorem HasOrder.rat_pow_add (c : ℚ) (j : ℤ) (h : c ≠ 0 ∨ 0 ≤ j) :
     simp only [Emath.rat_pow, h1, h2, ↓reduceIte]
     rw [show (((n + 1 : ℕ) : ℤ) + j).toNat = ((n : ℤ) + j).toNat + 1 by omega, pow_succ, mul_comm]
 
+theorem HasOrder.rat_pow_add_left (c : ℚ) (j : ℤ) (h : c ≠ 0 ∨ 0 ≤ j) :
+    HasOrder 0 1 (fun n : ℕ => Emath.rat_pow c (j + (n : ℤ))) := by
+  simpa only [add_comm] using HasOrder.rat_pow_add c j h
+
 theorem HasOrder.rat_pow_sub (c : ℚ) (j : ℤ) (h : c ≠ 0 ∨ j ≤ 0) :
     HasOrder 0 1 (fun n : ℕ => Emath.rat_pow c ((n : ℤ) - j)) := by
   have := HasOrder.rat_pow_add c (-j) (h.imp id fun hj => by omega)
@@ -720,6 +724,7 @@ macro_rules
         | with_reducible exact HasOrder.cast_nat
         | with_reducible exact HasOrder.rat_pow _
         | (with_reducible apply HasOrder.rat_pow_add); decide +kernel
+        | (with_reducible apply HasOrder.rat_pow_add_left); decide +kernel
         | (with_reducible apply HasOrder.rat_pow_sub); decide +kernel
         | (with_reducible apply HasOrder.fold_acc); (intro acc t; beta_reduce; ring)
         | emath_readout; all_goals (first | decide | (intros; emath_lin; done) | emath_linear [] | emath_linear [$defs,*])
