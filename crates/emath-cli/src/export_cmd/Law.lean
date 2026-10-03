@@ -3,12 +3,18 @@ Written by `emath export lean` when a project certifies laws; the next
 such export overwrites it, and an export without laws leaves it unbuilt.
 
 The Lean side of emath's `search.certify`: two sequences that satisfy
-linear recurrences of orders `a` and `b` and agree at `a + b` points
-agree everywhere (`eq_of_order`, `eq_of_order_from`). `emath_order`
+linear recurrences and agree at as many points as their difference's
+order agree everywhere (`eq_of_order`, `eq_of_order_from`). `emath_order`
 bounds a sequence's order by a subset of the shape rules certify uses,
 each rule a theorem here: constants, `n`, powers, sums, scaling,
 products, eventual branches, running sums (`fold` with `acc + h(t)`)
 and linear readouts of a linear loop over lists (Cayley–Hamilton).
+`HasOrder a k` counts the characteristic roots at `1` apart from the
+rest, so a sum of constants, polynomials in `n` and running sums keeps
+the larger count instead of adding them, and a loop read in several
+places is one readout (`emath_readout_through`). Fewer points means
+fewer and smaller evaluations below. `emath_lin` proves a loop step
+linear from its shape; `emath_linear` unrolls it when that fails.
 `emath_check` checks the points and, when they disagree, names one.
 
 `certify_all` laws hold for every parameter value the hypotheses allow.
@@ -17,7 +23,7 @@ At each `n` both sides are rational functions of the parameters, so
 numerator and denominator (degrees and coefficient sizes) and
 `kron_eq` picks a single rational point, large enough that a nonzero
 polynomial cannot vanish there (`eq_zero_of_kpt`), where agreement at
-the `a + b` start points implies agreement as rational functions. The
+the start points implies agreement as rational functions. The
 same point serves every `n` (`kshared`), so `emath_kcheck` asks the
 kernel for one evaluation, and when the sides disagree it reports
 whether they differ at an allowed parameter point.
@@ -67,7 +73,15 @@ def Ann (p : ℚ[X]) (u : ℕ → ℚ) : Prop := aeval shift p u = 0
 /-- `u` satisfies a linear recurrence with constant coefficients of
 order at most `k`: `u (n + d) = c₁ u (n + d - 1) + ... + c_d u n` with
 `d ≤ k`, for every `n`. -/
-def HasOrder (k : ℕ) (u : ℕ → ℚ) : Prop := ∃ p : ℚ[X], p.Monic ∧ p.natDegree ≤ k ∧ Ann p u
+def Rec (k : ℕ) (u : ℕ → ℚ) : Prop := ∃ p : ℚ[X], p.Monic ∧ p.natDegree ≤ k ∧ Ann p u
+
+/-- `u` has order at most `a + k` with `a` of its characteristic roots at
+`1` counted apart: `(X - 1) ^ a * q` annihilates `u` for a monic `q` of
+degree at most `k`. Constants, polynomials in `n` and running sums only
+add roots at `1`, so a sum keeps the larger `a` where plain orders add,
+and `eq_of_order` checks close to the true order's number of points. -/
+def HasOrder (a k : ℕ) (u : ℕ → ℚ) : Prop :=
+  ∃ q : ℚ[X], q.Monic ∧ q.natDegree ≤ k ∧ Ann ((X - C 1) ^ a * q) u
 
 theorem Ann.mul_left {p : ℚ[X]} {u : ℕ → ℚ} (h : Ann p u) (q : ℚ[X]) : Ann (q * p) u := by
   unfold Ann at *
@@ -76,8 +90,21 @@ theorem Ann.mul_left {p : ℚ[X]} {u : ℕ → ℚ} (h : Ann p u) (q : ℚ[X]) :
 theorem Ann.mul_right {p : ℚ[X]} {u : ℕ → ℚ} (h : Ann p u) (q : ℚ[X]) : Ann (p * q) u := by
   rw [mul_comm]; exact h.mul_left q
 
+theorem Ann.of_dvd {p m : ℚ[X]} {u : ℕ → ℚ} (h : Ann p u) (hm : p ∣ m) : Ann m u := by
+  obtain ⟨c, rfl⟩ := hm; exact h.mul_right c
+
+theorem Rec.hasOrder {k : ℕ} {u : ℕ → ℚ} (h : Rec k u) : HasOrder 0 k u := by
+  obtain ⟨p, hp, hpd, hpa⟩ := h
+  exact ⟨p, hp, hpd, by rwa [pow_zero, one_mul]⟩
+
+theorem HasOrder.rec {a k : ℕ} {u : ℕ → ℚ} (h : HasOrder a k u) : Rec (a + k) u := by
+  obtain ⟨q, hq, hqd, hqa⟩ := h
+  have hm := (monic_X_sub_C (1 : ℚ)).pow a
+  refine ⟨_, hm.mul hq, ?_, hqa⟩
+  rw [hm.natDegree_mul hq, natDegree_pow, natDegree_X_sub_C, mul_one]; omega
+
 /-- A sequence of order `k` that vanishes at `0, ..., k - 1` vanishes. -/
-theorem HasOrder.eq_zero {k : ℕ} {w : ℕ → ℚ} (hw : HasOrder k w) (h0 : ∀ i < k, w i = 0) :
+theorem Rec.eq_zero {k : ℕ} {w : ℕ → ℚ} (hw : Rec k w) (h0 : ∀ i < k, w i = 0) :
     ∀ n, w n = 0 := by
   obtain ⟨p, hp, hpk, hpa⟩ := hw
   intro n
@@ -97,63 +124,70 @@ theorem HasOrder.eq_zero {k : ℕ} {w : ℕ → ℚ} (hw : HasOrder k w) (h0 : �
       rw [hrest, hlead, zero_add, one_mul, Nat.sub_add_cancel (by omega)] at key
       simpa using key
 
-theorem HasOrder.mono {a b : ℕ} {u : ℕ → ℚ} (h : HasOrder a u) (hab : a ≤ b) : HasOrder b u := by
-  obtain ⟨p, hp, hpd, hpa⟩ := h
-  exact ⟨p, hp, hpd.trans hab, hpa⟩
-
-theorem HasOrder.add {a b : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a u) (hv : HasOrder b v) :
-    HasOrder (a + b) (fun n => u n + v n) := by
+/-- `(X - 1) ^ max a b * p * q` annihilates both summands. -/
+theorem HasOrder.add {a b k l : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a k u) (hv : HasOrder b l v) :
+    HasOrder (max a b) (k + l) (fun n => u n + v n) := by
   obtain ⟨p, hp, hpd, hpa⟩ := hu
   obtain ⟨q, hq, hqd, hqa⟩ := hv
   refine ⟨p * q, hp.mul hq, by rw [hp.natDegree_mul hq]; omega, ?_⟩
-  show aeval shift (p * q) (u + v) = 0
-  rw [map_add, hpa.mul_right q, hqa.mul_left p, add_zero]
+  have hu' := hpa.of_dvd (mul_dvd_mul (pow_dvd_pow (X - C 1) (le_max_left a b)) (dvd_mul_right p q))
+  have hv' := hqa.of_dvd (mul_dvd_mul (pow_dvd_pow (X - C 1) (le_max_right a b)) (dvd_mul_left q p))
+  unfold Ann at *
+  show aeval shift _ (u + v) = 0
+  rw [map_add, hu', hv', add_zero]
 
-theorem HasOrder.sub {a b : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a u) (hv : HasOrder b v) :
-    HasOrder (a + b) (fun n => u n - v n) := by
+theorem HasOrder.sub {a b k l : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a k u) (hv : HasOrder b l v) :
+    HasOrder (max a b) (k + l) (fun n => u n - v n) := by
   obtain ⟨p, hp, hpd, hpa⟩ := hu
   obtain ⟨q, hq, hqd, hqa⟩ := hv
   refine ⟨p * q, hp.mul hq, by rw [hp.natDegree_mul hq]; omega, ?_⟩
-  show aeval shift (p * q) (u - v) = 0
-  rw [map_sub, hpa.mul_right q, hqa.mul_left p, sub_zero]
+  have hu' := hpa.of_dvd (mul_dvd_mul (pow_dvd_pow (X - C 1) (le_max_left a b)) (dvd_mul_right p q))
+  have hv' := hqa.of_dvd (mul_dvd_mul (pow_dvd_pow (X - C 1) (le_max_right a b)) (dvd_mul_left q p))
+  unfold Ann at *
+  show aeval shift _ (u - v) = 0
+  rw [map_sub, hu', hv', sub_zero]
 
-theorem HasOrder.smul {k : ℕ} {u : ℕ → ℚ} (c : ℚ) (hu : HasOrder k u) :
-    HasOrder k (c • u) := by
+theorem HasOrder.smul {a k : ℕ} {u : ℕ → ℚ} (c : ℚ) (hu : HasOrder a k u) :
+    HasOrder a k (c • u) := by
   obtain ⟨p, hp, hpd, hpa⟩ := hu
   refine ⟨p, hp, hpd, ?_⟩
   unfold Ann at *
   rw [map_smul, hpa, smul_zero]
 
-theorem HasOrder.const_mul {k : ℕ} {u : ℕ → ℚ} (c : ℚ) (hu : HasOrder k u) :
-    HasOrder k (fun n => c * u n) := hu.smul c
+theorem HasOrder.const_mul {a k : ℕ} {u : ℕ → ℚ} (c : ℚ) (hu : HasOrder a k u) :
+    HasOrder a k (fun n => c * u n) := hu.smul c
 
-theorem HasOrder.mul_const {k : ℕ} {u : ℕ → ℚ} (c : ℚ) (hu : HasOrder k u) :
-    HasOrder k (fun n => u n * c) := by
+theorem HasOrder.mul_const {a k : ℕ} {u : ℕ → ℚ} (c : ℚ) (hu : HasOrder a k u) :
+    HasOrder a k (fun n => u n * c) := by
   convert hu.smul c using 1
   funext n; simp [mul_comm]
 
-theorem HasOrder.div_const {k : ℕ} {u : ℕ → ℚ} (c : ℚ) (hu : HasOrder k u) :
-    HasOrder k (fun n => u n / c) := by
+theorem HasOrder.div_const {a k : ℕ} {u : ℕ → ℚ} (c : ℚ) (hu : HasOrder a k u) :
+    HasOrder a k (fun n => u n / c) := by
   convert hu.smul c⁻¹ using 1
   funext n; simp [div_eq_mul_inv, mul_comm]
 
-theorem HasOrder.neg {k : ℕ} {u : ℕ → ℚ} (hu : HasOrder k u) : HasOrder k (fun n => -u n) := by
+theorem HasOrder.neg {a k : ℕ} {u : ℕ → ℚ} (hu : HasOrder a k u) :
+    HasOrder a k (fun n => -u n) := by
   convert hu.smul (-1) using 1
   funext n; simp
 
 /-- An order-one recurrence, stated as a step. -/
-theorem HasOrder.of_step {u : ℕ → ℚ} (c : ℚ) (h : ∀ n, u (n + 1) = c * u n) : HasOrder 1 u := by
+theorem Rec.of_step {u : ℕ → ℚ} (c : ℚ) (h : ∀ n, u (n + 1) = c * u n) : Rec 1 u := by
   refine ⟨X - C c, monic_X_sub_C c, by simp, ?_⟩
   funext n
   simp [shift, h]
 
-theorem HasOrder.const (c : ℚ) : HasOrder 1 (fun _ => c) :=
-  HasOrder.of_step 1 (fun n => by simp)
+theorem HasOrder.const (c : ℚ) : HasOrder 1 0 (fun _ => c) := by
+  refine ⟨1, monic_one, by simp, ?_⟩
+  rw [pow_one, mul_one]
+  funext n
+  simp [shift]
 
-theorem HasOrder.geom (c : ℚ) : HasOrder 1 (fun n => c ^ n) :=
-  HasOrder.of_step c (fun n => by ring)
+theorem HasOrder.geom (c : ℚ) : HasOrder 0 1 (fun n => c ^ n) :=
+  (Rec.of_step c (fun n => by ring)).hasOrder
 
-theorem HasOrder.rat_pow (c : ℚ) : HasOrder 1 (fun n : ℕ => Emath.rat_pow c (n : ℤ)) := by
+theorem HasOrder.rat_pow (c : ℚ) : HasOrder 0 1 (fun n : ℕ => Emath.rat_pow c (n : ℤ)) := by
   have : (fun n : ℕ => Emath.rat_pow c (n : ℤ)) = (fun n => c ^ n) := by
     funext n; simp [Emath.rat_pow]
   rw [this]; exact HasOrder.geom c
@@ -167,8 +201,8 @@ theorem rat_pow_eq_zpow {c : ℚ} (hc : c ≠ 0) (e : ℤ) : Emath.rat_pow c e =
 /-- `rat_pow(c, n + j)`: geometric when `c ≠ 0` or the exponent is never
 negative (`rat_pow(0, -1)` is `0`, not `0⁻¹ · 0⁰`). -/
 theorem HasOrder.rat_pow_add (c : ℚ) (j : ℤ) (h : c ≠ 0 ∨ 0 ≤ j) :
-    HasOrder 1 (fun n : ℕ => Emath.rat_pow c ((n : ℤ) + j)) := by
-  refine HasOrder.of_step c (fun n => ?_)
+    HasOrder 0 1 (fun n : ℕ => Emath.rat_pow c ((n : ℤ) + j)) := by
+  refine (Rec.of_step c (fun n => ?_)).hasOrder
   rcases h with hc | hj
   · rw [rat_pow_eq_zpow hc, rat_pow_eq_zpow hc]
     push_cast
@@ -179,7 +213,7 @@ theorem HasOrder.rat_pow_add (c : ℚ) (j : ℤ) (h : c ≠ 0 ∨ 0 ≤ j) :
     rw [show (((n + 1 : ℕ) : ℤ) + j).toNat = ((n : ℤ) + j).toNat + 1 by omega, pow_succ, mul_comm]
 
 theorem HasOrder.rat_pow_sub (c : ℚ) (j : ℤ) (h : c ≠ 0 ∨ j ≤ 0) :
-    HasOrder 1 (fun n : ℕ => Emath.rat_pow c ((n : ℤ) - j)) := by
+    HasOrder 0 1 (fun n : ℕ => Emath.rat_pow c ((n : ℤ) - j)) := by
   have := HasOrder.rat_pow_add c (-j) (h.imp id fun hj => by omega)
   simpa [sub_eq_add_neg] using this
 
@@ -222,11 +256,11 @@ theorem Ann.eq_zero {r : ℚ[X]} {w : ℕ → ℚ} (hr : r.Monic) (h0 : r.natDeg
 most `a b`: the products `shift^i u * shift^j v` span a shift-invariant
 space of dimension at most `a b`, and the shift's characteristic
 polynomial there (Cayley–Hamilton) annihilates `u v`. -/
-theorem HasOrder.mul {a b : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a u) (hv : HasOrder b v) :
-    HasOrder (a * b) (fun n => u n * v n) := by
+theorem Rec.mul {a b : ℕ} {u v : ℕ → ℚ} (hu : Rec a u) (hv : Rec b v) :
+    Rec (a * b) (fun n => u n * v n) := by
   obtain ⟨p, hp, hpd, hpa⟩ := hu
   obtain ⟨q, hq, hqd, hqa⟩ := hv
-  have zero : HasOrder (a * b) (fun _ => (0 : ℚ)) := ⟨1, monic_one, by simp, by simp [Ann]; rfl⟩
+  have zero : Rec (a * b) (fun _ => (0 : ℚ)) := ⟨1, monic_one, by simp, by simp [Ann]; rfl⟩
   by_cases hd : p.natDegree = 0
   · have := hpa.eq_zero hp hd; subst this; simpa using zero
   by_cases he : q.natDegree = 0
@@ -272,28 +306,32 @@ theorem HasOrder.mul {a b : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a u) (hv : H
     rw [key T.charpoly ⟨_, huv⟩, LinearMap.aeval_self_charpoly]
     rfl
 
-theorem HasOrder.cast_nat : HasOrder 2 (fun n : ℕ => (((n : ℤ)) : ℚ)) := by
-  refine ⟨(X - C 1) * (X - C 1), (monic_X_sub_C 1).mul (monic_X_sub_C 1), ?_, ?_⟩
-  · rw [(monic_X_sub_C 1).natDegree_mul (monic_X_sub_C 1), natDegree_X_sub_C]
-  · funext n
-    simp [shift]
+theorem HasOrder.mul {a k b l : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a k u) (hv : HasOrder b l v) :
+    HasOrder 0 ((a + k) * (b + l)) (fun n => u n * v n) :=
+  (hu.rec.mul hv.rec).hasOrder
 
-/-- Partial sums, from any start, gain one order. -/
-theorem HasOrder.partial_sum {k : ℕ} {h : ℕ → ℚ} (c : ℚ) (hh : HasOrder k h) :
-    HasOrder (k + 1) (fun n => c + ∑ t ∈ Finset.range n, h t) := by
+theorem HasOrder.cast_nat : HasOrder 2 0 (fun n : ℕ => (((n : ℤ)) : ℚ)) := by
+  refine ⟨1, monic_one, by simp, ?_⟩
+  rw [mul_one, pow_two]
+  funext n
+  simp [shift]
+
+/-- Partial sums, from any start, gain one root at `1`. -/
+theorem HasOrder.partial_sum {a k : ℕ} {h : ℕ → ℚ} (c : ℚ) (hh : HasOrder a k h) :
+    HasOrder (a + 1) k (fun n => c + ∑ t ∈ Finset.range n, h t) := by
   obtain ⟨p, hp, hpd, hpa⟩ := hh
-  refine ⟨p * (X - C 1), hp.mul (monic_X_sub_C 1), ?_, ?_⟩
-  · rw [hp.natDegree_mul (monic_X_sub_C 1), natDegree_X_sub_C]; omega
-  · unfold Ann at *
-    rw [map_mul, Module.End.mul_apply]
-    have : aeval shift (X - C 1 : ℚ[X]) (fun n => c + ∑ t ∈ Finset.range n, h t) = h := by
-      funext n; simp [shift, Finset.sum_range_succ]
-    rw [this, hpa]
+  refine ⟨p, hp, hpd, ?_⟩
+  rw [show (X - C 1 : ℚ[X]) ^ (a + 1) * p = (X - C 1) ^ a * p * (X - C 1) by ring]
+  unfold Ann at *
+  rw [map_mul, Module.End.mul_apply]
+  have : aeval shift (X - C 1 : ℚ[X]) (fun n => c + ∑ t ∈ Finset.range n, h t) = h := by
+    funext n; simp [shift, Finset.sum_range_succ]
+  rw [this, hpa]
 
 /-- `φ (Tᵗ v)` for a linear map `T` of a `k`-dimensional space has order
 `k` (Cayley–Hamilton). -/
-theorem HasOrder.linear_iterate {k : ℕ} (T : Module.End ℚ (Fin k → ℚ)) (v : Fin k → ℚ)
-    (φ : (Fin k → ℚ) →ₗ[ℚ] ℚ) : HasOrder k (fun t => φ ((T ^ t) v)) := by
+theorem Rec.linear_iterate {k : ℕ} (T : Module.End ℚ (Fin k → ℚ)) (v : Fin k → ℚ)
+    (φ : (Fin k → ℚ) →ₗ[ℚ] ℚ) : Rec k (fun t => φ ((T ^ t) v)) := by
   refine ⟨LinearMap.charpoly T, LinearMap.charpoly_monic T, ?_, ?_⟩
   · rw [LinearMap.charpoly_natDegree]; simp
   · funext t
@@ -331,9 +369,9 @@ theorem fold_acc_eq (f : ℚ → ℤ → ℚ) (hf : ∀ acc t, f acc t = acc + f
     ring
 
 /-- `fold(function acc: function t: acc + h(t), init, range(lo, n))`. -/
-theorem HasOrder.fold_acc {k : ℕ} (f : ℚ → ℤ → ℚ) (init : ℚ) (lo : ℤ)
-    (hf : ∀ acc t, f acc t = acc + f 0 t) (hh : HasOrder k (fun t : ℕ => f 0 (lo + t))) :
-    HasOrder (k + 1) (fun n : ℕ => Emath.fold f init (Emath.range lo n)) := by
+theorem HasOrder.fold_acc {a k : ℕ} (f : ℚ → ℤ → ℚ) (init : ℚ) (lo : ℤ)
+    (hf : ∀ acc t, f acc t = acc + f 0 t) (hh : HasOrder a k (fun t : ℕ => f 0 (lo + t))) :
+    HasOrder (a + 1) k (fun n : ℕ => Emath.fold f init (Emath.range lo n)) := by
   have := hh.partial_sum init
   convert this using 1
   funext n
@@ -353,30 +391,110 @@ theorem ofFn_index {k : ℕ} (xs : List ℚ) (h : xs.length = k) :
   · intro n h1 h2
     simp [Emath.index, List.getD_eq_getElem?_getD, h2]
 
+/-- `F` is linear in the loop state `x`. A structure, so that `intro`
+does not open it. -/
+structure Lin {k : ℕ} (F : (Fin k → ℚ) → ℚ) : Prop where
+  map : ∀ (a : ℚ) (x y : Fin k → ℚ), F (a • x + y) = a * F x + F y
+
+theorem index_tabulate (f : ℤ → ℚ) (n i : ℤ) :
+    Emath.index (Emath.tabulate f n) i = if i.toNat < n.toNat then f i.toNat else 0 := by
+  unfold Emath.index Emath.tabulate
+  split_ifs with h
+  · simp [List.getD_eq_getElem?_getD, h]
+  · simp [List.getD_eq_getElem?_getD, h]; rfl
+
+/-! Linearity of a loop step by its shape, one rule per construct, so a
+step over `k` states is not unrolled into `k` cases. -/
+
+namespace Lin
+variable {k : ℕ} {F G : (Fin k → ℚ) → ℚ}
+
+theorem index (j : ℤ) : Lin (fun x : Fin k → ℚ => Emath.index (List.ofFn x) j) :=
+  ⟨fun a x y => by simp only [index_ofFn]; split_ifs <;> simp⟩
+
+theorem zero {c : ℚ} (h : c = 0) : Lin (fun _ : Fin k → ℚ => c) := ⟨fun a x y => by simp [h]⟩
+
+theorem add (hF : Lin F) (hG : Lin G) : Lin (fun x => F x + G x) :=
+  ⟨fun a x y => by rw [hF.map, hG.map]; ring⟩
+
+theorem sub (hF : Lin F) (hG : Lin G) : Lin (fun x => F x - G x) :=
+  ⟨fun a x y => by rw [hF.map, hG.map]; ring⟩
+
+theorem neg (hF : Lin F) : Lin (fun x => -F x) := ⟨fun a x y => by rw [hF.map]; ring⟩
+
+theorem mul_const (c : ℚ) (hF : Lin F) : Lin (fun x => F x * c) :=
+  ⟨fun a x y => by rw [hF.map]; ring⟩
+
+theorem const_mul (c : ℚ) (hF : Lin F) : Lin (fun x => c * F x) :=
+  ⟨fun a x y => by rw [hF.map]; ring⟩
+
+theorem div_const (c : ℚ) (hF : Lin F) : Lin (fun x => F x / c) :=
+  ⟨fun a x y => by rw [hF.map]; ring⟩
+
+/-- A branch on a condition that does not read the state. -/
+theorem ite (c : Prop) [Decidable c] (hF : Lin F) (hG : Lin G) :
+    Lin (fun x => if c then F x else G x) :=
+  ⟨fun a x y => by split_ifs; exacts [hF.map a x y, hG.map a x y]⟩
+
+/-- `fold(function acc: function t: acc + h(t), init, r)`. -/
+theorem fold_acc {δ : Type} (h : (Fin k → ℚ) → δ → ℚ) (init : (Fin k → ℚ) → ℚ) (r : List δ)
+    (hh : ∀ t, Lin (fun x => h x t)) (hi : Lin init) :
+    Lin (fun x => Emath.fold (fun acc t => acc + h x t) (init x) r) := by
+  unfold Emath.fold
+  induction r generalizing init with
+  | nil => simpa using hi
+  | cons t r ih => exact ih (fun x => init x + h x t) (hi.add (hh t))
+
+theorem index_tabulate (g : (Fin k → ℚ) → ℤ → ℚ) (n i : ℤ) (hg : ∀ j, Lin (fun x => g x j)) :
+    Lin (fun x => Emath.index (Emath.tabulate (g x) n) i) :=
+  ⟨fun a x y => by
+    simp only [Law.index_tabulate]
+    split_ifs
+    · exact (hg _).map a x y
+    · ring⟩
+
+end Lin
+
+/-- Proves `Lin (fun x => body)` by the shape of `body`. -/
+syntax "emath_lin" : tactic
+macro_rules
+  | `(tactic| emath_lin) => `(tactic|
+      repeat' ((try beta_reduce); first
+        | with_reducible exact Lin.index _
+        | ((with_reducible apply Lin.zero); norm_num)
+        | ((with_reducible apply Lin.index_tabulate); intro _)
+        | ((with_reducible apply Lin.fold_acc); intro _)
+        | with_reducible apply Lin.add
+        | with_reducible apply Lin.sub
+        | with_reducible apply Lin.neg
+        | with_reducible apply Lin.mul_const
+        | with_reducible apply Lin.const_mul
+        | with_reducible apply Lin.div_const
+        | with_reducible apply Lin.ite))
+
 /-- A linear readout `L` of a loop whose step `f` is linear on lists of the
 start's length: `L(fold(function p: function i: f(p), s, range(lo, c + t)))`
 has order `s.length` in `t` (Cayley–Hamilton for the step). -/
 theorem HasOrder.list_readout (f : List ℚ → List ℚ) (s : List ℚ) (lo c : ℤ) (L : List ℚ → ℚ)
-    (hL : ∀ (a : ℚ) (x y : Fin s.length → ℚ),
-      L (List.ofFn (a • x + y)) = a * L (List.ofFn x) + L (List.ofFn y))
+    (hL : Lin (fun x : Fin s.length → ℚ => L (List.ofFn x)))
     (hc : 0 ≤ c)
     (hlen : ∀ x : Fin s.length → ℚ, (f (List.ofFn x)).length = s.length)
-    (hlin : ∀ (a : ℚ) (x y : Fin s.length → ℚ) (i : Fin s.length),
-      Emath.index (f (List.ofFn (a • x + y))) (i : ℕ) =
-        a * Emath.index (f (List.ofFn x)) (i : ℕ) + Emath.index (f (List.ofFn y)) (i : ℕ)) :
-    HasOrder s.length (fun t : ℕ => L (Emath.fold (fun p (_ : ℤ) => f p) s
+    (hlin : ∀ i : Fin s.length,
+      Lin (fun x : Fin s.length → ℚ => Emath.index (f (List.ofFn x)) (i : ℕ))) :
+    HasOrder 0 s.length (fun t : ℕ => L (Emath.fold (fun p (_ : ℤ) => f p) s
       (Emath.range lo (c + t)))) := by
   have hf0 : ∀ i : Fin s.length, Emath.index (f (List.ofFn (0 : Fin s.length → ℚ))) (i : ℕ) = 0 := by
-    intro i; have := hlin 1 0 0 i; simp at this; linarith
-  have hL0 : L (List.ofFn (0 : Fin s.length → ℚ)) = 0 := by have := hL 1 0 0; simp at this; linarith
+    intro i; have := (hlin i).map 1 0 0; simp at this; linarith
+  have hL0 : L (List.ofFn (0 : Fin s.length → ℚ)) = 0 := by
+    have := hL.map 1 0 0; simp at this; linarith
   let T : Module.End ℚ (Fin s.length → ℚ) :=
     { toFun := fun x i => Emath.index (f (List.ofFn x)) (i : ℕ)
-      map_add' := fun x y => funext fun i => by simpa using hlin 1 x y i
-      map_smul' := fun a x => funext fun i => by simpa [hf0] using hlin a x 0 i }
+      map_add' := fun x y => funext fun i => by simpa using (hlin i).map 1 x y
+      map_smul' := fun a x => funext fun i => by simpa [hf0] using (hlin i).map a x 0 }
   let φ : (Fin s.length → ℚ) →ₗ[ℚ] ℚ :=
     { toFun := fun x => L (List.ofFn x)
-      map_add' := fun x y => by simpa using hL 1 x y
-      map_smul' := fun a x => by simpa [hL0] using hL a x 0 }
+      map_add' := fun x y => by simpa using hL.map 1 x y
+      map_smul' := fun a x => by simpa [hL0] using hL.map a x 0 }
   let v : Fin s.length → ℚ := fun i => Emath.index s (i : ℕ)
   have hit : ∀ m, f^[m] s = List.ofFn ((T ^ m) v) := by
     intro m
@@ -385,7 +503,7 @@ theorem HasOrder.list_readout (f : List ℚ → List ℚ) (s : List ℚ) (lo c :
     | succ m ih =>
       rw [Function.iterate_succ_apply', ih, pow_succ', Module.End.mul_apply]
       exact (ofFn_index _ (hlen _)).symm
-  convert HasOrder.linear_iterate T ((T ^ c.toNat) v) φ using 1
+  convert (Rec.linear_iterate T ((T ^ c.toNat) v) φ).hasOrder using 1
   funext t
   have hct : (c + (t : ℤ)).toNat = t + c.toNat := by omega
   rw [fold_iterate, hct, hit, pow_add, Module.End.mul_apply]
@@ -393,23 +511,21 @@ theorem HasOrder.list_readout (f : List ℚ → List ℚ) (s : List ℚ) (lo c :
 
 /-- `list_readout` over `range(lo, t)`. -/
 theorem HasOrder.list_readout_zero (f : List ℚ → List ℚ) (s : List ℚ) (lo : ℤ) (L : List ℚ → ℚ)
-    (hL : ∀ (a : ℚ) (x y : Fin s.length → ℚ),
-      L (List.ofFn (a • x + y)) = a * L (List.ofFn x) + L (List.ofFn y))
+    (hL : Lin (fun x : Fin s.length → ℚ => L (List.ofFn x)))
     (hlen : ∀ x : Fin s.length → ℚ, (f (List.ofFn x)).length = s.length)
-    (hlin : ∀ (a : ℚ) (x y : Fin s.length → ℚ) (i : Fin s.length),
-      Emath.index (f (List.ofFn (a • x + y))) (i : ℕ) =
-        a * Emath.index (f (List.ofFn x)) (i : ℕ) + Emath.index (f (List.ofFn y)) (i : ℕ)) :
-    HasOrder s.length (fun t : ℕ => L (Emath.fold (fun p (_ : ℤ) => f p) s
+    (hlin : ∀ i : Fin s.length,
+      Lin (fun x : Fin s.length → ℚ => Emath.index (f (List.ofFn x)) (i : ℕ))) :
+    HasOrder 0 s.length (fun t : ℕ => L (Emath.fold (fun p (_ : ℤ) => f p) s
       (Emath.range lo t))) := by
   simpa using HasOrder.list_readout f s lo 0 L hL le_rfl hlen hlin
 
 open Lean Meta Elab Tactic in
-/-- On `HasOrder k (fun t => body)`, finds a loop `Emath.fold _ _ _` over
+/-- On `HasOrder a k (fun t => body)`, finds a loop `Emath.fold _ _ _` over
 lists in `body` that reads `t`, and applies `list_readout` with the rest of
 `body` as the readout. Fails when `body` reads `t` outside the loop. -/
 elab "emath_readout" : tactic => withMainContext do
   let goal ← instantiateMVars (← getMainTarget)
-  let some (_, u) := goal.app2? ``HasOrder | throwError "emath_readout: not a HasOrder goal"
+  let some (_, _, u) := goal.app3? ``HasOrder | throwError "emath_readout: not a HasOrder goal"
   let .lam n ty body bi := u | throwError "emath_readout: not a function"
   let readout ← withLocalDecl n bi ty fun t => do
     let body := body.instantiate1 t
@@ -432,11 +548,11 @@ elab "emath_readout" : tactic => withMainContext do
   catch _ => saved.restore
   throwError "emath_readout: the loop is not over range(lo, c + t)"
 
-/-- Two sequences of orders `a` and `b` that agree at `0, ..., a + b - 1`
-agree everywhere. -/
-theorem eq_of_order {a b : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a u) (hv : HasOrder b v)
-    (h : ∀ i < a + b, u i = v i) (n : ℕ) : u n = v n := by
-  have := (hu.sub hv).eq_zero (fun i hi => by simp [h i hi]) n
+/-- Two sequences that agree at the first `max a b + (k + l)` points
+agree everywhere: their difference has that order. -/
+theorem eq_of_order {a b k l : ℕ} {u v : ℕ → ℚ} (hu : HasOrder a k u) (hv : HasOrder b l v)
+    (h : ∀ i < max a b + (k + l), u i = v i) (n : ℕ) : u n = v n := by
+  have := (hu.sub hv).rec.eq_zero (fun i hi => by simp [h i hi]) n
   exact sub_eq_zero.mp this
 
 theorem aeval_comm_shift_pow (p : ℚ[X]) (m : ℕ) :
@@ -445,9 +561,9 @@ theorem aeval_comm_shift_pow (p : ℚ[X]) (m : ℕ) :
     _ = aeval shift (X ^ m * p) := by rw [mul_comm]
     _ = shift ^ m * aeval shift p := by rw [map_mul, map_pow, aeval_X]
 
-/-- A sequence of order `k` keeps that order shifted by `s`. -/
-theorem HasOrder.shift_by {k : ℕ} {u : ℕ → ℚ} (hu : HasOrder k u) (s : ℕ) :
-    HasOrder k (fun n => u (s + n)) := by
+/-- A sequence keeps its order shifted by `s`. -/
+theorem HasOrder.shift_by {a k : ℕ} {u : ℕ → ℚ} (hu : HasOrder a k u) (s : ℕ) :
+    HasOrder a k (fun n => u (s + n)) := by
   obtain ⟨p, hp, hpd, hpa⟩ := hu
   refine ⟨p, hp, hpd, ?_⟩
   have : (fun n => u (s + n)) = (shift ^ s) u := by
@@ -455,29 +571,31 @@ theorem HasOrder.shift_by {k : ℕ} {u : ℕ → ℚ} (hu : HasOrder k u) (s : �
   unfold Ann at *
   rw [this, ← Module.End.mul_apply, aeval_comm_shift_pow, Module.End.mul_apply, hpa, map_zero]
 
-/-- A sequence equal to one of order `k` from `m` on has order `k + m`. -/
-theorem HasOrder.eventually {k : ℕ} {u : ℕ → ℚ} (m : ℕ) (w : ℕ → ℚ) (hw : HasOrder k w)
-    (h : ∀ n, m ≤ n → u n = w n) : HasOrder (k + m) u := by
-  obtain ⟨p, hp, hpd, hpa⟩ := hw
-  refine ⟨p * X ^ m, hp.mul (monic_X_pow m), ?_, ?_⟩
-  · rw [hp.natDegree_mul (monic_X_pow m), natDegree_X_pow]; omega
+/-- A sequence equal to `w` from `m` on has `w`'s order plus `m`. -/
+theorem HasOrder.eventually {a k : ℕ} {u : ℕ → ℚ} (m : ℕ) (w : ℕ → ℚ) (hw : HasOrder a k w)
+    (h : ∀ n, m ≤ n → u n = w n) : HasOrder a (k + m) u := by
+  obtain ⟨q, hq, hqd, hqa⟩ := hw
+  refine ⟨q * X ^ m, hq.mul (monic_X_pow m), ?_, ?_⟩
+  · rw [hq.natDegree_mul (monic_X_pow m), natDegree_X_pow]; omega
   · have hs : (shift ^ m) u = (shift ^ m) w := by
       funext n; rw [shift_pow_apply, shift_pow_apply, h _ (by omega)]
+    set p := (X - C 1 : ℚ[X]) ^ a * q
+    rw [← mul_assoc]
     unfold Ann at *
     calc aeval shift (p * X ^ m) u = aeval shift p ((shift ^ m) u) := by
           rw [map_mul, map_pow, aeval_X, Module.End.mul_apply]
       _ = (aeval shift p * shift ^ m) w := by rw [hs]; rfl
-      _ = 0 := by rw [aeval_comm_shift_pow, Module.End.mul_apply, hpa, map_zero]
+      _ = 0 := by rw [aeval_comm_shift_pow, Module.End.mul_apply, hqa, map_zero]
 
 open Lean Meta Elab Tactic in
-/-- On `HasOrder k (fun n => if decide (x ~ y) = true then a else b)`
+/-- On `HasOrder a k (fun n => if decide (x ~ y) = true then a else b)`
 where one of `x`, `y` does not read `n` (call it `K`): a comparison of
 `n` with `K` takes one side for every `n ≥ (K + 1).toNat`, so the order
 is that side's plus `(K + 1).toNat` (`eventually`). Which side, and that
 the comparison is with `n` at all, `omega` proves. -/
 elab "emath_branch" : tactic => withMainContext do
   let goal ← instantiateMVars (← getMainTarget)
-  let some (_, u) := goal.app2? ``HasOrder | throwError "emath_branch: not a HasOrder goal"
+  let some (_, _, u) := goal.app3? ``HasOrder | throwError "emath_branch: not a HasOrder goal"
   let .lam n ty body bi := u | throwError "emath_branch: not a function"
   let (bound, sides) ← withLocalDecl n bi ty fun t => do
     let body := body.instantiate1 t
@@ -507,19 +625,21 @@ elab "emath_branch" : tactic => withMainContext do
     catch _ => saved.restore
   throwError "emath_branch: no side holds from (K + 1).toNat on"
 
-/-- Agreement at `s, ..., s + a + b - 1` gives agreement at every `n ≥ s`. -/
-theorem eq_of_order_from {a b : ℕ} {u v : ℕ → ℚ} (s : ℕ) (hu : HasOrder a u) (hv : HasOrder b v)
-    (h : ∀ i < a + b, u (s + i) = v (s + i)) (n : ℕ) (hn : s ≤ n) : u n = v n := by
+/-- Agreement at the `max a b + (k + l)` points from `s` gives agreement
+at every `n ≥ s`. -/
+theorem eq_of_order_from {a b k l : ℕ} {u v : ℕ → ℚ} (s : ℕ) (hu : HasOrder a k u)
+    (hv : HasOrder b l v) (h : ∀ i < max a b + (k + l), u (s + i) = v (s + i)) (n : ℕ)
+    (hn : s ≤ n) : u n = v n := by
   have := eq_of_order (hu.shift_by s) (hv.shift_by s) h (n - s)
   simpa [Nat.add_sub_cancel' hn] using this
 
 /-- A branch on a condition that does not read `n` takes one side at every `n`. -/
-theorem HasOrder.if_true {k : ℕ} {c : Bool} {u v : ℕ → ℚ} (h : c = true) (hu : HasOrder k u) :
-    HasOrder k (fun n => if c = true then u n else v n) := by
+theorem HasOrder.if_true {a k : ℕ} {c : Bool} {u v : ℕ → ℚ} (h : c = true)
+    (hu : HasOrder a k u) : HasOrder a k (fun n => if c = true then u n else v n) := by
   simpa [h] using hu
 
-theorem HasOrder.if_false {k : ℕ} {c : Bool} {u v : ℕ → ℚ} (h : c = false) (hv : HasOrder k v) :
-    HasOrder k (fun n => if c = true then u n else v n) := by
+theorem HasOrder.if_false {a k : ℕ} {c : Bool} {u v : ℕ → ℚ} (h : c = false)
+    (hv : HasOrder a k v) : HasOrder a k (fun n => if c = true then u n else v n) := by
   simpa [h] using hv
 
 open Lean Meta Elab Tactic in
@@ -547,13 +667,16 @@ elab "emath_check" start:num : tactic => withMainContext do
         throwError "emath_check: the two sides differ at n = {start.getNat + k}"
     throwError "emath_check: Lean could not evaluate the two sides at the {count} checked points"
 
-/-- Unfolds the loop step on a list of variables; closes linearity goals. -/
+/-- Unfolds the loop step on a list of variables, one case per state when
+`emath_lin` cannot read linearity off the step's shape; closes linearity
+and length goals. -/
 syntax "emath_linear" "[" ident,* "]" : tactic
 macro_rules
   | `(tactic| emath_linear [$defs,*]) => do
     let lemmas ← defs.getElems.mapM fun d => `(Lean.Parser.Tactic.simpLemma| $d:ident)
     `(tactic|
       (intros; (first | (rename_i i; fin_cases i) | skip);
+       all_goals (try refine ⟨fun _ _ _ => ?_⟩);
        all_goals (simp [Emath.tabulate, Emath.fold, Emath.range, Emath.index, Emath.int_quot,
          Emath.int_rem, List.ofFn_succ, List.range_succ, List.map_append, List.foldl_append,
          $lemmas,*]; try ring); done))
@@ -566,6 +689,24 @@ macro_rules
     for d in defs.getElems.reverse do
       tac ← `(Lean.Parser.Tactic.tacticSeq| first | simp only [$d:ident] | $tac)
     `(tactic| ($tac))
+
+open Lean Elab Tactic in
+/-- `emath_readout` after unfolding `defs` one at a time: a loop that a
+user function reads several times (`p[0] + p[4]` of the same state)
+becomes one readout, of the loop's order once rather than once per read. -/
+elab "emath_readout_through" "[" defs:ident,* "]" : tactic => do
+  let saved ← saveState
+  for _ in [0:8] do
+    try evalTactic (← `(tactic| emath_unfold [$defs,*])) catch _ => break
+    let attempt ← saveState
+    try
+      evalTactic (← `(tactic| emath_readout))
+      evalTactic (← `(tactic|
+        all_goals (first | decide | (intros; emath_lin; done) | emath_linear [] | emath_linear [$defs,*])))
+      return
+    catch _ => attempt.restore
+  saved.restore
+  throwError "emath_readout_through: no linear readout of one loop"
 
 /-- Bounds the order of `fun n => body` by the rules of emath's
 `search.certify` shape analysis. `defs` are the user functions `body`
@@ -581,10 +722,11 @@ macro_rules
         | (with_reducible apply HasOrder.rat_pow_add); decide +kernel
         | (with_reducible apply HasOrder.rat_pow_sub); decide +kernel
         | (with_reducible apply HasOrder.fold_acc); (intro acc t; beta_reduce; ring)
-        | emath_readout; all_goals (first | decide | emath_linear [] | emath_linear [$defs,*])
+        | emath_readout; all_goals (first | decide | (intros; emath_lin; done) | emath_linear [] | emath_linear [$defs,*])
         | (with_reducible apply HasOrder.if_true); (first | decide +kernel | exact decide_eq_true ‹_›)
         | (with_reducible apply HasOrder.if_false); (first | decide +kernel | exact decide_eq_false ‹_›)
         | emath_branch
+        | emath_readout_through [$defs,*]
         | with_reducible apply HasOrder.add
         | with_reducible apply HasOrder.sub
         | with_reducible apply HasOrder.const_mul
