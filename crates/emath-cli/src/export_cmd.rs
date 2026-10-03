@@ -24,7 +24,7 @@
 mod lean;
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::{CliExit, EXIT_ADMISSION, EXIT_IO, EXIT_OK, EXIT_PARTIAL, EXIT_REFUSED, EXIT_TOOLCHAIN, EXIT_USAGE};
 
@@ -133,21 +133,46 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         println!("lean: not checked: {reason}");
         return EXIT_TOOLCHAIN;
     }
-    let output = match Command::new("lake").arg("build").current_dir(&out).output() {
-        Ok(output) => output,
+    let lake = Command::new("lake")
+        .arg("build")
+        .current_dir(&out)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let lake = match lake {
+        Ok(child) => child,
         Err(error) => {
             println!("lean: not checked: cannot run `lake` ({error}); install Lean with elan");
             return EXIT_TOOLCHAIN;
         }
     };
+    // emath certifies every law while Lean builds; only the verdicts on
+    // laws Lean proves are read.
+    let certified = certified(&export.law_sites);
+    let output = match lake.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => {
+            println!("lean: not checked: `lake build` did not finish ({error})");
+            return EXIT_TOOLCHAIN;
+        }
+    };
     let log = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
     let at = |lean: &str, line: usize| log.contains(&format!("{lean}:{line}:"));
-    let proved: Vec<&lean::LawSite> = export
+    let uncertified: Vec<String> = export
         .law_sites
         .iter()
-        .filter(|site| output.status.success() || !(site.first_line..=site.last_line).any(|line| at(&site.lean, line)))
+        .zip(&certified)
+        .filter(|(site, certified)| {
+            !**certified
+                && (output.status.success() || !(site.first_line..=site.last_line).any(|line| at(&site.lean, line)))
+        })
+        .map(|(site, _)| {
+            format!(
+                "{}: Lean proves it, but emath does not certify it (Lean's arithmetic is total where emath's faults)",
+                site.what
+            )
+        })
         .collect();
-    let uncertified = uncertified(&proved);
     if output.status.success() && uncertified.is_empty() {
         println!(
             "lean: accepted ({} examples, {} library examples and {} laws proved by the kernel)",
@@ -205,31 +230,27 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     if rejected.is_empty() && !unproven.is_empty() { EXIT_PARTIAL } else { EXIT_REFUSED }
 }
 
-/// The laws Lean proved that emath does not certify. Lean's arithmetic
+/// Whether emath certifies each law, in `sites` order. Lean's arithmetic
 /// is total (`x / 0 = 0`, a list read past its end gives 0) where emath
-/// faults, so Lean can prove a statement emath refuses; Lean never
-/// claims more than emath.
-fn uncertified(proved: &[&lean::LawSite]) -> Vec<String> {
-    let mut by_source: Vec<(&Path, Vec<&lean::LawSite>)> = Vec::new();
-    for site in proved {
+/// faults, so Lean can prove a statement emath refuses; a law Lean
+/// proves counts only with emath's verdict, so Lean never claims more
+/// than emath.
+fn certified(sites: &[lean::LawSite]) -> Vec<bool> {
+    let mut verdicts = vec![false; sites.len()];
+    let mut by_source: Vec<(&Path, Vec<usize>)> = Vec::new();
+    for (index, site) in sites.iter().enumerate() {
         match by_source.iter_mut().find(|(source, _)| *source == site.source.as_path()) {
-            Some((_, sites)) => sites.push(site),
-            None => by_source.push((&site.source, vec![site])),
+            Some((_, indices)) => indices.push(index),
+            None => by_source.push((&site.source, vec![index])),
         }
     }
-    let mut out = Vec::new();
-    for (source, sites) in by_source {
-        let calls: Vec<&str> = sites.iter().map(|site| site.emath_call.as_str()).collect();
-        for (site, certified) in sites.iter().zip(lean::emath_certifies(source, &calls)) {
-            if !certified {
-                out.push(format!(
-                    "{}: Lean proves it, but emath does not certify it (Lean's arithmetic is total where emath's faults)",
-                    site.what
-                ));
-            }
+    for (source, indices) in by_source {
+        let calls: Vec<&str> = indices.iter().map(|&index| sites[index].emath_call.as_str()).collect();
+        for (&index, certified) in indices.iter().zip(lean::emath_certifies(source, &calls)) {
+            verdicts[index] = certified;
         }
     }
-    out
+    verdicts
 }
 
 /// The shared Mathlib packages: `EMATH_LEAN_MATHLIB`, else
