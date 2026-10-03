@@ -466,11 +466,13 @@ impl core::fmt::Debug for ExprCode {
 
 impl PartialEq for ExprCode {
     /// The node family's code law (`node_eq`): two codes are equal when
-    /// their distilled trees and stamped dependencies are. The compiled
-    /// factory is derived from the same tree, so it carries no identity
-    /// of its own; records with code fields compare through this.
+    /// their distilled trees are, up to renaming of bound names (the
+    /// VM's `eq_values`). Stamped dependencies do not count: a rebuilt
+    /// code carries none, and `quote.identity` ignores them too. The
+    /// compiled factory is derived from the same tree, so it carries no
+    /// identity of its own; records with code fields compare through this.
     fn eq(&self, other: &Self) -> bool {
-        self.tree == other.tree && self.deps == other.deps
+        super::code_tree::same_tree(&self.tree, &other.tree)
     }
 }
 

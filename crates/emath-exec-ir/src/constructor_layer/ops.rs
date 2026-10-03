@@ -390,6 +390,13 @@ pub(super) fn eq_values(left: &CValue, right: &CValue) -> Result<bool, Construct
             }
             Ok(true)
         }
+        // Code equality is `quote.identity`'s relation without the hash:
+        // the same canonical bytes, so it holds up to renaming of bound
+        // names and ignores source positions. The structural default
+        // compared spans, so `quote(x + 1) == quote(x + 1)` was false.
+        (CValue::Code(a), CValue::Code(b)) => {
+            Ok(super::identity::same_code(&a.expr, &b.expr))
+        }
         _ => Ok(left == right),
     }
 }

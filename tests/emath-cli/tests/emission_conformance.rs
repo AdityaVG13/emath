@@ -1563,7 +1563,7 @@ const CODE_IDENTITY_DRIVER: &str = r#"
 //! quote.identity in the emitted crate: the VM's exact numbers (FNV-1a
 //! over the canonical bytes) and the equalities the search modules use.
 use code_identity::{
-    body_identity, child_matches_template, different_code_differs, exact_substitute,
+    body_identity, child_matches_template, code_equality, different_code_differs, exact_substitute,
     index_identity, nesting_differs,
     index_round_trip, joined_name, joined_tag, recur_identity,
     recur_over_sequence, recur_renamed_agree, recur_round_trip, recur_shadows,
@@ -1594,6 +1594,7 @@ fn main() {
     }
     let bools = [
         ("alpha_equivalent", renamed_binders_agree(3)),
+        ("code_equality", code_equality(3)),
         ("distinct", different_code_differs(1)),
         ("nesting", nesting_differs(2)),
         ("child_is_x", child_matches_template(1)),

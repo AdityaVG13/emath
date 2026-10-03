@@ -243,7 +243,7 @@ pub enum NodeValue {
 /// `eq_values` for the record family: scalar pairs compare VALUES
 /// through the union kernels (`2 == 2/1` is true), records compare
 /// type name and field set, sequences and tuples compare elementwise,
-/// and code values compare tree and dependencies. Mixed shapes are
+/// and code values compare canonical trees. Mixed shapes are
 /// never equal (the VM's structural default). Total: no node value
 /// has mutable state.
 pub fn node_eq(
@@ -1062,6 +1062,21 @@ pub fn tree_identity(tree: &CodeTree) -> Result<i64, String> {
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     Ok(hash as i64)
+}
+
+/// The VM's code equality (`constructor_layer/identity.rs` `same_code`):
+/// the same canonical bytes, so equal up to renaming of bound names. A
+/// tree with an unrecorded binder domain has no canonical bytes here;
+/// such trees compare structurally.
+pub fn same_tree(left: &CodeTree, right: &CodeTree) -> bool {
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    match (
+        canonical_tree_bytes(left, &mut Vec::new(), &mut a),
+        canonical_tree_bytes(right, &mut Vec::new(), &mut b),
+    ) {
+        (Ok(()), Ok(())) => a == b,
+        _ => left == right,
+    }
 }
 
 fn count_bytes(n: usize, out: &mut Vec<u8>) {

@@ -72,6 +72,26 @@ emath function renamed_binders_agree:
             given k = 3
             expect result == true
 
+emath function code_equality:
+    # `==` on code is quote.identity's relation: equal up to bound names,
+    # wherever the code was written, and whether or not it was rebuilt
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        q = quote.substitute(quote(inc_a(s) + c), "c", k)
+        same = q == quote.substitute(quote(inc_a(s) + c), "c", k)
+        differ = q != quote.substitute(quote(inc_a(s) + c), "c", k + 1)
+        rebuilt = quote.make(quote.view(q)) == q
+        left = quote.body(if k > 0: quote(inc_a) else: quote(size)).fragment
+        right = quote.body(if k > 0: quote(inc_b) else: quote(size)).fragment
+        result = same and differ and rebuilt and left == right
+    tests:
+        example <code_equality>:
+            given k = 3
+            expect result == true
+
 emath function different_code_differs:
     inputs:
         k: Int

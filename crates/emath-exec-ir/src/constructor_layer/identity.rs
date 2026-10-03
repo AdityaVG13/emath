@@ -324,9 +324,17 @@ pub(super) fn canonical_expr_bytes(expr: &Expr, binders: &mut Vec<String>, out: 
 }
 
 pub(super) fn code_identity(expr: &Expr) -> u64 {
+    fnv64(&canonical_bytes(expr))
+}
+
+fn canonical_bytes(expr: &Expr) -> Vec<u8> {
     let mut out = Vec::new();
     canonical_expr_bytes(expr, &mut Vec::new(), &mut out);
-    fnv64(&out)
+    out
+}
+
+pub(super) fn same_code(left: &Expr, right: &Expr) -> bool {
+    canonical_bytes(left) == canonical_bytes(right)
 }
 
 /// Free path names of a code body: single-segment paths not bound by an
