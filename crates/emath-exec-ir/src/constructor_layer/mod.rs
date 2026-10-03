@@ -375,6 +375,9 @@ pub struct TestObservation {
     pub passed: bool,
     pub detail: String,
     pub receipt: Option<Receipt>,
+    /// The fault code when a given, the function, or an expect faulted
+    /// (a demanded fault included): the example's value is undefined.
+    pub fault: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

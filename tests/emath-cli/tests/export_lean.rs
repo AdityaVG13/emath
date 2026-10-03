@@ -15,7 +15,9 @@
 //! Lean needs one type (an `if`, a list, a cons, a fold's start), and
 //! `remainder.emath` calls `int_rem` beside its own `int_rem` and
 //! `exact.modular`'s guarded one, which emath never runs for that call;
-//! the whole folder must still check. The `--check` half needs `lake`
+//! the whole folder must still check. Its example that faults in emath
+//! (a remainder by 0) is not exported, though Lean's total `%` would
+//! accept it. The `--check` half needs `lake`
 //! on PATH.
 //!
 //! Laws: with `law/certify.emath` beside the chain, its four
@@ -134,7 +136,9 @@ fn export_lean() {
         let (text, code) = emath(&dir, &["export", "lean", "proj", "--check"]);
         probe.demand(
             "folder-accepted-beside-refusals",
-            code == EXIT_PARTIAL as i32 && text.contains("lean: accepted"),
+            code == EXIT_PARTIAL as i32
+                && text.contains("lean: accepted")
+                && text.contains("not translated: remainder.emath example <no_length> of `cycle`: it faults in emath"),
             format!("exit {code}\n{text}"),
         );
 

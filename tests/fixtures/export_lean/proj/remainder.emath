@@ -1,5 +1,7 @@
 # A call to `int_rem` runs the machine remainder, never this file's
 # own `int_rem` nor `exact.modular`'s guarded one beside `pow_mod`.
+# `cycle` by a zero length faults in emath, while Lean's total `%`
+# would give 17 % 0 = 17: that example must not reach Lean.
 use exact.modular.{pow_mod}
 
 emath function int_rem:
@@ -22,3 +24,21 @@ emath function weekday:
         example <negative_day>:
             given day = 0 - 3
             expect result == 4
+
+emath function cycle:
+    inputs:
+        day: Int
+        length: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_rem(day, length)
+    tests:
+        example <ten_days>:
+            given day = 10
+            given length = 7
+            expect result == 3
+        example <no_length>:
+            given day = 17
+            given length = 0
+            expect result == 17

@@ -150,13 +150,13 @@ fn evaluate_tree_with(
                             givens.insert(name.clone(), value);
                         }
                         Err(err) => {
-                            given_fault = Some(format!("given `{name}`: {}: {}", err.code, err.message));
+                            given_fault = Some((format!("given `{name}`: {}: {}", err.code, err.message), err.code));
                             break;
                         }
                     }
                 }
-                if let Some(detail) = given_fault {
-                    tests.push(TestObservation { label, passed: false, detail, receipt: None });
+                if let Some((detail, code)) = given_fault {
+                    tests.push(TestObservation { label, passed: false, detail, receipt: None, fault: Some(code) });
                     continue;
                 }
                 if decl.as_kind == "query" {
@@ -175,6 +175,7 @@ fn evaluate_tree_with(
                             passed: false,
                             detail: format!("{}: {}", err.code, err.message),
                             receipt: None,
+                            fault: Some(err.code),
                         });
                         continue;
                     }
@@ -212,6 +213,7 @@ fn evaluate_tree_with(
                 );
                 let mut passed = true;
                 let mut detail = receipt.fulfillment.clone();
+                let mut fault = None;
                 engine.expect_atoms.set(true);
                 for expect in expects {
                     match engine.eval(&expect) {
@@ -223,6 +225,7 @@ fn evaluate_tree_with(
                         Err(err) => {
                             passed = false;
                             detail = err.message;
+                            fault = Some(err.code);
                         }
                     }
                 }
@@ -232,6 +235,7 @@ fn evaluate_tree_with(
                     passed,
                     detail,
                     receipt: Some(receipt),
+                    fault,
                 });
                 engine.env = saved;
             } else if let Some(fndecl) = engine.functions.get(&decl.name).cloned() {
@@ -327,6 +331,7 @@ fn evaluate_tree_with(
                 if fault_code.is_some() && expects.is_empty() {
                     ok = false;
                 }
+                let mut fault = fault_code.clone();
                 engine.expect_atoms.set(true);
                 for expect in expects {
                     match engine.eval(&expect) {
@@ -338,6 +343,7 @@ fn evaluate_tree_with(
                         Err(err) => {
                             ok = false;
                             detail = err.message;
+                            fault.get_or_insert(err.code);
                         }
                     }
                 }
@@ -358,6 +364,7 @@ fn evaluate_tree_with(
                     passed: ok,
                     detail,
                     receipt: None,
+                    fault,
                 });
                 }
             }

@@ -287,6 +287,7 @@ pub(crate) struct Export {
 }
 
 struct Source {
+    path: PathBuf,
     rel: String,
     tree: SyntaxTree,
     /// (selection, file) for each sibling user file this one uses.
@@ -461,7 +462,7 @@ fn load(
     }
     visiting.remove(path);
     order.push(path.to_path_buf());
-    sources.insert(path.to_path_buf(), Source { rel, tree, local_uses, library_uses });
+    sources.insert(path.to_path_buf(), Source { path: path.to_path_buf(), rel, tree, local_uses, library_uses });
     Ok(())
 }
 
@@ -636,14 +637,27 @@ fn translate_file(
     text.push_str(&format!("namespace {module}\n\n"));
     let lean_path = lean_path(&source.rel);
     text.push_str(&body);
+    let with_examples: BTreeSet<String> = own
+        .iter()
+        .filter(|decl| translated.contains_key(&decl.name) && !examples(decl).is_empty())
+        .map(|decl| decl.name.clone())
+        .collect();
+    let faults = if with_examples.is_empty() { BTreeMap::new() } else { emath_faults(source, &with_examples)? };
     for decl in &own {
         if !translated.contains_key(&decl.name) {
             continue;
         }
         let params = section_typed_fields(decl, "inputs");
         let output = section_typed_fields(decl, "outputs").remove(0);
+        let mut index = 0;
         for case in examples(decl) {
             let what = format!("{} example <{}> of `{}`", source.rel, case.label, decl.name);
+            let key = (decl.name.clone(), (!case.loose).then_some(index));
+            index += usize::from(!case.loose);
+            if let Some(code) = faults.get(&key) {
+                refusals.push(format!("not translated: {what}: it faults in emath (`{code}`), so it has no value to prove"));
+                continue;
+            }
             match theorem(&decl.name, &ident(&decl.name), &params, &output, &case, &mut names) {
                 Ok(theorem) => {
                     let first_line = text.lines().count() + 1;
@@ -819,12 +833,14 @@ struct Case {
     label: String,
     givens: Vec<(String, Expr)>,
     expects: Vec<Expr>,
+    /// Givens and expects written outside any `example`.
+    loose: bool,
 }
 
 fn examples(decl: &Declaration) -> Vec<Case> {
     let mut cases: Vec<Case> = Vec::new();
     let mut labels = BTreeMap::<String, usize>::new();
-    let mut loose = Case { label: decl.name.clone(), givens: Vec::new(), expects: Vec::new() };
+    let mut loose = Case { label: decl.name.clone(), givens: Vec::new(), expects: Vec::new(), loose: true };
     let mut push = |cases: &mut Vec<Case>, mut case: Case| {
         let seen = labels.entry(case.label.clone()).or_default();
         *seen += 1;
@@ -841,6 +857,7 @@ fn examples(decl: &Declaration) -> Vec<Case> {
                         label: example.generic.clone().unwrap_or_else(|| decl.name.clone()),
                         givens: Vec::new(),
                         expects: Vec::new(),
+                        loose: false,
                     };
                     for inner in &example.suite.statements {
                         match &inner.kind {
@@ -861,6 +878,59 @@ fn examples(decl: &Declaration) -> Vec<Case> {
         push(&mut cases, loose);
     }
     cases
+}
+
+/// The examples of the `exported` functions that fault when emath runs
+/// them, keyed by function and index among its `example`s (`None`: the
+/// loose givens and expects). Lean's arithmetic is total (`x / 0 = 0`),
+/// so such an example would get a value in Lean it never has in emath.
+fn emath_faults(
+    source: &Source,
+    exported: &BTreeSet<String>,
+) -> Result<BTreeMap<(String, Option<usize>), String>, String> {
+    let mut tree = source.tree.clone();
+    for item in &mut tree.items {
+        let Item::Declaration(decl) = item else {
+            continue;
+        };
+        if decl.as_kind != "function" || !exported.contains(&decl.name) {
+            decl.body.retain(|stmt| !matches!(&stmt.kind, StmtKind::Section(section) if section.name == "tests"));
+            continue;
+        }
+        let name = decl.name.clone();
+        let mut index = 0;
+        for stmt in &mut decl.body {
+            let StmtKind::Section(section) = &mut stmt.kind else {
+                continue;
+            };
+            if section.name != "tests" {
+                continue;
+            }
+            for inner in &mut section.suite.statements {
+                if let StmtKind::Section(example) = &mut inner.kind
+                    && example.name == "example"
+                {
+                    example.generic = Some(format!("{name}#{index}"));
+                    index += 1;
+                }
+            }
+        }
+    }
+    let report = emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(&source.path)).map_err(|error| {
+        format!("{}: emath could not run its examples: {}: {}", source.rel, error.code, error.message)
+    })?;
+    let mut faults = BTreeMap::new();
+    for test in report.tests {
+        let Some(code) = test.fault else {
+            continue;
+        };
+        let key = match test.label.rsplit_once('#').map(|(name, index)| (name, index.parse::<usize>())) {
+            Some((name, Ok(index))) => (name.to_string(), Some(index)),
+            _ => (test.label, None),
+        };
+        faults.insert(key, code);
+    }
+    Ok(faults)
 }
 
 /// `name.label : (let givens; let output := f args; expects) = true`,
