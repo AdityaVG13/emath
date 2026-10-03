@@ -15,11 +15,14 @@
 //! the whole folder must still check. The `--check` half needs `lake`
 //! on PATH.
 //!
-//! Laws: with `law/certify.emath` beside the chain, its two
-//! `certify_equal` calls become theorems. The chain against its closed
-//! form is proven; the running sum against n(n - 1)/2 is reported
-//! unproven (exit 3), not rejected; a closed form at the wrong point is
-//! rejected with the n where the sides differ (exit 1). Exported again
+//! Laws: with `law/certify.emath` beside the chain, its three
+//! `certify_equal` calls and one `certify_all` call become theorems.
+//! The chain against its closed form at one point, the running sum
+//! against n(n - 1)/2, and the chain against its closed form at every
+//! parameter point the closed form computes at are proven; a quotient
+//! by a sequence of n is reported unproven (exit 3), not rejected. A
+//! closed form at the wrong point, or with its parameters swapped, is
+//! rejected with where the sides differ (exit 1). Exported again
 //! without the laws into the same folder, the chain checks without
 //! Mathlib. This half also needs prebuilt Mathlib.
 
@@ -91,7 +94,7 @@ fn export_lean() {
         text.clone(),
     );
     let lean = dir.join("proj/lean");
-    for file in ["lakefile.toml", "lean-toolchain", "Emath/Prelude.lean", "Export/refused.lean", "Export/chain/both.lean"] {
+    for file in ["lakefile.lean", "lean-toolchain", "Emath/Prelude.lean", "Export/refused.lean", "Export/chain/both.lean"] {
         probe.demand(&format!("wrote-{file}"), lean.join(file).is_file(), text.clone());
     }
     let refused = std::fs::read_to_string(lean.join("Export/refused.lean")).unwrap_or_default();
@@ -120,9 +123,35 @@ fn export_lean() {
         let (text, code) = emath(&dir, &["export", "lean", "proj/chain", "--out", &out_arg, "--check"]);
         probe.demand("chain-accepted", code == EXIT_OK as i32 && text.contains("lean: accepted"), format!("exit {code}\n{text}"));
 
+        let certify = dir.join("proj/chain/certify.emath");
+        std::fs::copy(fixtures.join("law/certify.emath"), &certify).expect("copy certify");
+        // Exported for review, then built by hand where Mathlib is not
+        // prebuilt: Lake must refuse before it clones or compiles Mathlib.
+        let bare = dir.join("bare");
+        let missing = dir.join("no-mathlib");
+        let exported = Command::new(emath_bin())
+            .args(["export", "lean", "proj/chain", "--out", &bare.to_string_lossy()])
+            .current_dir(&dir)
+            .env("EMATH_ROOT", workspace())
+            .env("EMATH_LEAN_MATHLIB", &missing)
+            .status()
+            .expect("run emath");
+        // Git may not reach the network here, so a missing guard fails
+        // this check rather than download and compile Mathlib.
+        let built = Command::new("lake")
+            .arg("build")
+            .current_dir(&bare)
+            .env("GIT_ALLOW_PROTOCOL", "file")
+            .output()
+            .expect("run lake");
+        let text = format!("{exported}\n{}{}", String::from_utf8_lossy(&built.stdout), String::from_utf8_lossy(&built.stderr));
+        probe.demand(
+            "bare-lake-refuses-unbuilt-mathlib",
+            exported.success() && !built.status.success() && text.contains("Mathlib is not prebuilt") && !missing.exists(),
+            text,
+        );
+
         if let Some(mathlib) = prebuilt_mathlib() {
-            let certify = dir.join("proj/chain/certify.emath");
-            std::fs::copy(fixtures.join("law/certify.emath"), &certify).expect("copy certify");
             let laws = dir.join("laws");
             let laws_arg = laws.to_string_lossy().to_string();
             let check = || {
@@ -141,19 +170,32 @@ fn export_lean() {
                 "law-proven-beside-unproven",
                 code == EXIT_PARTIAL as i32
                     && text.contains("lean: not proven")
-                    && text.contains("unproven: certify.emath law 2 of `certified`")
+                    && text.contains("unproven: certify.emath law 3 of `certified`: Lean found no order bound")
                     && !text.contains("law 1 of")
+                    && !text.contains("law 2 of")
+                    && !text.contains("not translated")
                     && !text.contains("rejected:"),
                 format!("exit {code}\n{text}"),
             );
+            let laws_lean = std::fs::read_to_string(laws.join("Export/certify.lean")).unwrap_or_default();
+            probe.demand(
+                "all-law-hypothesis-is-the-divisor",
+                laws_lean.contains("(h₁ : 1 - (a - b) ≠ 0)\n    : ∀ n₀ : ℕ,"),
+                laws_lean,
+            );
             let source = std::fs::read_to_string(&certify).expect("read certify");
-            std::fs::write(&certify, source.replace("mean_closed(1 / 2, 1 / 4, n)", "mean_closed(1 / 2, 1 / 5, n)"))
-                .expect("write wrong law");
+            let wrong = source
+                .replace("mean_closed(1 / 2, 1 / 4, n)", "mean_closed(1 / 2, 1 / 5, n)")
+                .replace("mean_closed(a, b, n)", "mean_closed(b, a, n)");
+            std::fs::write(&certify, wrong).expect("write wrong laws");
             let (text, code) = check();
             probe.demand(
-                "wrong-law-rejected",
+                "wrong-laws-rejected",
                 code == EXIT_REFUSED as i32
-                    && text.contains("rejected: certify.emath law 1 of `certified`: the two sides differ at n = "),
+                    && text.contains("rejected: certify.emath law 1 of `certified`: the two sides differ at n = ")
+                    && text.contains(
+                        "rejected: certify.emath law 1 of `certified_all`: the two sides differ at a parameter point the hypotheses allow",
+                    ),
                 format!("exit {code}\n{text}"),
             );
             // Without its laws the folder needs no Mathlib, even where

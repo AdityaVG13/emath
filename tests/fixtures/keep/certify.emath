@@ -14,8 +14,8 @@
 #   floor(n^2 / 2) = n^2 - n  agrees at 0, 1, 2, but floor(n^2 / 2) is
 #                             no polynomial: 1 is odd, so no bound, no proof
 #   Fibonacci, two ways       loops of state 2 and 3: five points
-#   a branch                  equal at every n, but the analysis does not
-#                             read branches: observed, not proven
+#   a branch                  if n < 0: 0 else: n^2 takes one side from
+#                             n = 1 on: order 3 + 1, proven
 #   a squared step            agrees with Fibonacci at n = 0..3; its loop
 #                             is not linear, so no bound, no proof
 #   floor(T(n) / 2) = 0       T(n) = n(n - 1)/2 is even at n = 0, 1 but
@@ -43,6 +43,17 @@
 #                             from 0, proven from 1
 #   a closed condition        if 1/2 == 3/4 is decided before n is read:
 #                             only the side taken needs a bound
+#   a branch on n             if n == 0: 0 else: n (1/3)^(n - 1) equals
+#                             3 n (1/3)^n: the branch takes its else side
+#                             from n = 1, delaying that side's order 2 by
+#                             one; (1/3)^(n - 1) is geometric, the
+#                             product of orders 2 and 1 has order 2
+#   a shifted power of 0      0^(n - 2) is 0, 0, 1, 0, ...: not geometric
+#                             (it agrees with 0 at n = 0, 1), no bound
+#   a delayed side            if n > 0: (n - 1)(n - 2) else: 0 agrees
+#                             with 0 at n = 0..2: the side taken from
+#                             n = 1 has order 3, so n = 3 is checked and
+#                             refutes it
 #   an added constant         acc / 2 + 1 has order 2, not 1: the
 #                             constant is one more term of the law
 #   no bound                  a coefficient that is the loop index, a
@@ -183,10 +194,10 @@ emath function Certifies:
     tests:
         example <proves_only_what_it_can_bound>:
             given unused = 0
-            expect orders == [5, 2, 0 - 1, 0 - 1, 3]
+            expect orders == [5, 2, 4, 0 - 1, 3]
             expect degrees == [4, 0 - 1, 0 - 1, 0 - 1, 2]
-            expect proven == [true, false, false, true, false, false, false, false, false]
-            expect points == [5, 4, 0, 5, 0, 0, 0, 6, 7]
+            expect proven == [true, false, false, true, true, false, false, false, false]
+            expect points == [5, 4, 0, 5, 7, 0, 0, 6, 7]
 
 emath function CertifiesModels:
     inputs:
@@ -204,15 +215,15 @@ emath function CertifiesModels:
         at_index = quote(function n in Int: fold(function p in sequence(Int): function k in Int: [p[1], p[int_rem(k, 2)]], [1, 2], range(0, n))[0])
         by_n = quote(function n in Int: fold(function acc in Int: function k in Int: acc * n, 1, range(0, n)))
         orders = map(function c in Code: shape(c).order, [quote(function n in Int: rat_pow(2 / 3, n)), quote(function n in Int: fold(function acc in Rat: function k in Int: acc / 2 + 1, 0 / 1, range(0, n))), by_index, at_index, by_n, quote(function n in Int: rat_pow(n / 1, n))])
-        certs = [certify_equal(model, closed, limit), certify_equal(model, near, limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function t in Int: acc + rat_pow(1 / 2, t), 0 / 1, range(1, n))), quote(function n in Int: 1 - rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: rat_pow(2 / 3, n) * rat_pow(3 / 2, n)), quote(function n in Int: 1), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: n, n))), quote(function n in Int: n), limit), certify_equal(quote(function n in Int: if 1 / 2 == 3 / 4: (if n == 0: 0 / 1 else: n / 1) else: rat_pow(1 / 2, n)), quote(function n in Int: rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: n / 1), quote(function n in Int: n + rat_pow(0 / 1, n)), limit), certify_equal_from(quote(function n in Int: n / 1), quote(function n in Int: n + rat_pow(0 / 1, n)), 1, limit)]
+        certs = [certify_equal(model, closed, limit), certify_equal(model, near, limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function t in Int: acc + rat_pow(1 / 2, t), 0 / 1, range(1, n))), quote(function n in Int: 1 - rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: rat_pow(2 / 3, n) * rat_pow(3 / 2, n)), quote(function n in Int: 1), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: n, n))), quote(function n in Int: n), limit), certify_equal(quote(function n in Int: if 1 / 2 == 3 / 4: (if n == 0: 0 / 1 else: n / 1) else: rat_pow(1 / 2, n)), quote(function n in Int: rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: n / 1), quote(function n in Int: n + rat_pow(0 / 1, n)), limit), certify_equal_from(quote(function n in Int: n / 1), quote(function n in Int: n + rat_pow(0 / 1, n)), 1, limit), certify_equal(quote(function n in Int: if n == 0: 0 / 1 else: n * rat_pow(1 / 3, n - 1)), quote(function n in Int: 3 * n * rat_pow(1 / 3, n)), limit), certify_equal(quote(function n in Int: rat_pow(0 / 1, n - 2)), quote(function n in Int: 0 / 1), limit), certify_equal(quote(function n in Int: if n > 0: (n - 1) * (n - 2) / 1 else: 0 / 1), quote(function n in Int: 0 / 1), limit)]
         proven = map(function c in Certificate: c.proven, certs)
         bounded = map(function c in Certificate: c.points > 5, certs)
     tests:
         example <proves_laws_of_models_written_as_code>:
             given unused = 0
             expect orders == [1, 2, 0 - 1, 0 - 1, 0 - 1, 0 - 1]
-            expect proven == [true, false, true, true, false, true, false, true]
-            expect bounded == [true, true, false, false, false, false, false, false]
+            expect proven == [true, false, true, true, false, true, false, true, true, false, false]
+            expect bounded == [true, true, false, false, false, false, false, false, false, false, false]
 
 emath function power_gap:
     # Sum of x^t y^(n - 1 - t) over t < n, as a loop with state [x^t, partial sum].

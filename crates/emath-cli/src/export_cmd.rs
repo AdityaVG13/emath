@@ -156,7 +156,8 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     // An order bound that fails leaves the check without its point
     // count, so the check's own error then says nothing about the law.
     // A check only refutes when `emath_check` names a point where the
-    // kernel proved the sides differ.
+    // kernel proved the sides differ (`emath_kcheck`: a parameter point
+    // the hypotheses allow).
     for site in &export.law_sites {
         let check = format!("{}:{}:", site.lean, site.check_line);
         let counterexample = log
@@ -165,6 +166,11 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
             .find_map(|line| line.split_once("the two sides differ at ").map(|(_, at)| at.trim().to_string()));
         if site.order_lines.iter().any(|&line| at(&site.lean, line)) {
             unproven.push(format!("{}: Lean found no order bound for a side", site.what));
+        } else if site.bound_lines.iter().any(|&line| at(&site.lean, line)) {
+            unproven.push(format!(
+                "{}: Lean could not bound a side as a ratio of polynomials in the parameters under the hypotheses",
+                site.what
+            ));
         } else if let Some(point) = counterexample {
             rejected.push(format!("{}: the two sides differ at {point}", site.what));
         } else if at(&site.lean, site.check_line) {
@@ -232,6 +238,7 @@ fn prebuilt_mathlib(out: &Path, packages: &Path) -> Result<(), String> {
     }
     let fetched = Command::new("lake")
         .args(["exe", "cache", "get"])
+        .env(lean::FETCH_ENV, "1")
         .current_dir(out)
         .status()
         .map_err(|error| format!("cannot run `lake` ({error}); install Lean with elan"))?;

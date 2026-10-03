@@ -7,10 +7,10 @@
 //! library functions the embedded prelude (`Prelude.lean`) defines.
 //! Every authored `example` becomes a theorem the Lean kernel proves by
 //! evaluation (`decide +kernel`), so a wrong value is a Lean error.
-//! A function calling `certify_equal(_from)` becomes law theorems
-//! instead (see `law`). Anything else is refused by name, with the
-//! declarations that depend on it; the rest of the file still
-//! translates.
+//! A function calling `certify_equal(_from)` or `certify_all(_from)`
+//! becomes law theorems instead (see `law` and `law_all`). Anything
+//! else is refused by name, with the declarations that depend on it;
+//! the rest of the file still translates.
 //!
 //! Semantics: `/` is always exact rational division, and integer
 //! literals are typed `Int` unless a typed neighbour fixes their type,
@@ -54,32 +54,56 @@ fn quoted(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// Set by `emath export lean --check` around its own `lake exe cache
+/// get`, the one Lake call that may run before Mathlib is built.
+pub(crate) const FETCH_ENV: &str = "EMATH_LEAN_FETCH";
+
+/// `lakefile.lean`, not TOML: with laws it refuses to load unless the
+/// Mathlib modules `Law.lean` imports are built, so a bare `lake build`
+/// can neither clone Mathlib nor compile it (hours of every core). Lake
+/// reads `lakefile.lean` over a `lakefile.toml` an older export left.
 /// The libraries list their modules, so files an earlier export left
 /// (an `Emath/Law.lean`, the Lean file of a deleted source) are not
-/// built: they may need Mathlib this project does not require. A Lake
-/// glob cannot spell a name such as `my-model`; then `Export` takes
-/// every file under it.
+/// built: they may need Mathlib this project does not require. A
+/// module name Lean cannot spell, such as `my-model`, makes `Export`
+/// take every file under it.
 fn lakefile(mathlib: Option<&Path>, sources: &[&str]) -> String {
     let stems: Vec<&str> = sources.iter().map(|rel| rel.strip_suffix(".emath").unwrap_or(rel)).collect();
+    let module = |name: &str| format!(".one {}.toName", quoted(name));
     let export_globs = if stems.iter().all(|stem| stem.split('/').all(plain)) {
-        stems.iter().map(|stem| quoted(&format!("Export.{}", stem.replace('/', ".")))).collect::<Vec<_>>().join(", ")
+        stems.iter().map(|stem| module(&format!("Export.{}", stem.replace('/', ".")))).collect::<Vec<_>>().join(", ")
     } else {
-        "\"Export.+\"".to_string()
+        ".submodules `Export".to_string()
     };
-    let (packages, law, require) = match mathlib {
-        None => (String::new(), "", String::new()),
-        Some(packages) => (
-            format!("packagesDir = {}\n", quoted(&packages.to_string_lossy())),
-            ", \"Emath.Law\"",
-            "\n[[require]]\nname = \"mathlib\"\ngit = \"https://github.com/leanprover-community/mathlib4\"\n\
-             rev = \"v4.34.1\"\n"
-                .to_string(),
-        ),
-    };
+    let mut emath_globs = vec![module("Emath.Prelude"), module("Emath.Checks")];
+    let mut text = "import Lake\nopen Lake DSL System\n\n".to_string();
+    let mut package = "package emath_export".to_string();
+    let mut require = String::new();
+    if let Some(packages) = mathlib {
+        let dir = quoted(&packages.to_string_lossy());
+        let built = quoted(&packages.join("mathlib/.lake/build/lib/lean").to_string_lossy());
+        let oleans = law_imports()
+            .iter()
+            .map(|module| quoted(&format!("{}.olean", module.replace('.', "/"))))
+            .collect::<Vec<_>>()
+            .join(", ");
+        text.push_str(&format!(
+            "#eval show IO Unit from do\n  \
+             if (← IO.getEnv {fetch}).isNone then\n    \
+             for olean in [{oleans}] do\n      \
+             unless ← (FilePath.mk {built} / olean).pathExists do\n        \
+             throw <| IO.userError (\"Mathlib is not prebuilt in \" ++ {dir} ++\n          \
+             \"; `emath export lean --check` fetches its cache. Compiling Mathlib from source takes hours.\")\n\n",
+            fetch = quoted(FETCH_ENV)
+        ));
+        package.push_str(&format!(" where\n  packagesDir := {dir}"));
+        require = "\nrequire mathlib from git \"https://github.com/leanprover-community/mathlib4\" @ \"v4.34.1\"\n".to_string();
+        emath_globs.push(module("Emath.Law"));
+    }
     format!(
-        "name = \"emath_export\"\n{packages}defaultTargets = [\"Emath\", \"Export\"]\n\n\
-         [[lean_lib]]\nname = \"Emath\"\nglobs = [\"Emath.Prelude\", \"Emath.Checks\"{law}]\n\n\
-         [[lean_lib]]\nname = \"Export\"\nglobs = [{export_globs}]\n{require}"
+        "{text}{package}\n{require}\n@[default_target]\nlean_lib Emath where\n  globs := #[{}]\n\n\
+         @[default_target]\nlean_lib Export where\n  globs := #[{export_globs}]\n",
+        emath_globs.join(", ")
     )
 }
 
@@ -215,15 +239,32 @@ pub(crate) struct ExampleSite {
     pub what: String,
 }
 
-/// One certified law as a theorem: the lines of its two order bounds and
-/// of its check at the first points.
+/// One certified law as a theorem: the lines of its two order bounds,
+/// of its two bounds in the parameters (`certify_all`) and of its check.
 pub(crate) struct LawSite {
     pub lean: String,
     pub first_line: usize,
     pub order_lines: [usize; 2],
+    pub bound_lines: Vec<usize>,
     pub check_line: usize,
     pub last_line: usize,
     pub what: String,
+}
+
+/// A law theorem and the offsets of its lines from its first line.
+struct LawText {
+    text: String,
+    order: [usize; 2],
+    bound: Vec<usize>,
+    check: usize,
+}
+
+/// A translated user function, for reading the divisors and branch
+/// conditions a law reaches: its declaration and the qualified Lean
+/// names of the user functions its file can call.
+struct Body {
+    decl: Declaration,
+    names: BTreeMap<String, String>,
 }
 
 #[derive(Default)]
@@ -241,6 +282,8 @@ pub(crate) struct Export {
     /// Each translated function's qualified Lean name and the user
     /// functions it calls.
     calls: BTreeMap<String, BTreeSet<String>>,
+    /// Each translated function by qualified Lean name.
+    bodies: BTreeMap<String, Body>,
 }
 
 struct Source {
@@ -345,13 +388,13 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path) -> Result<E
         let manifest = MANIFEST.replace("\"@PACKAGES_DIR@\"", &quoted(&mathlib.to_string_lossy()));
         export.files.insert(0, ("Emath/Law.lean".to_string(), LAW.to_string()));
         export.files.insert(0, ("lake-manifest.json".to_string(), manifest));
-        export.files.insert(0, ("lakefile.toml".to_string(), lakefile(Some(mathlib), &rels)));
+        export.files.insert(0, ("lakefile.lean".to_string(), lakefile(Some(mathlib), &rels)));
     } else {
         // Replaces the Mathlib manifest an earlier export with laws wrote.
         let manifest = "{\"version\": \"1.2.0\",\n \"packagesDir\": \".lake/packages\",\n \"packages\": [],\n \
                         \"name\": \"emath_export\",\n \"lakeDir\": \".lake\",\n \"fixedToolchain\": false}\n";
         export.files.insert(0, ("lake-manifest.json".to_string(), manifest.to_string()));
-        export.files.insert(0, ("lakefile.toml".to_string(), lakefile(None, &rels)));
+        export.files.insert(0, ("lakefile.lean".to_string(), lakefile(None, &rels)));
     }
     Ok(export)
 }
@@ -527,6 +570,15 @@ fn translate_file(
     for name in &own_names {
         names.targets.entry(name.clone()).or_insert(Target::Refused);
     }
+    let visible = visible(&names);
+    for decl in &own {
+        if translated.contains_key(&decl.name) {
+            export.bodies.insert(
+                format!("{module}.{}", ident(&decl.name)),
+                Body { decl: (*decl).clone(), names: visible.clone() },
+            );
+        }
+    }
     let mut laws = Vec::new();
     for decl in &certifiers {
         for case in examples(decl) {
@@ -538,7 +590,7 @@ fn translate_file(
         for (k, (call, args)) in certify_calls(decl, &names).into_iter().enumerate() {
             let what = format!("{} law {} of `{}`", source.rel, k + 1, decl.name);
             let name = format!("{}.law_{}", ident(&decl.name), k + 1);
-            match law(&name, call, args, &mut names, &export.calls) {
+            match law(&name, call, args, &mut names, &export.calls, &export.bodies) {
                 Ok(text) => laws.push((text, what)),
                 Err(reason) => refusals.push(format!("not translated: {what}: {reason}")),
             }
@@ -586,12 +638,13 @@ fn translate_file(
     }
     for (law, what) in laws {
         let first_line = text.lines().count() + 1;
-        text.push_str(&law);
+        text.push_str(&law.text);
         export.law_sites.push(LawSite {
             lean: lean_path.clone(),
             first_line,
-            order_lines: [first_line + LAW_LINES[0], first_line + LAW_LINES[1]],
-            check_line: first_line + LAW_LINES[2],
+            order_lines: law.order.map(|offset| first_line + offset),
+            bound_lines: law.bound.iter().map(|offset| first_line + offset).collect(),
+            check_line: first_line + law.check,
             last_line: text.lines().count(),
             what,
         });
@@ -865,35 +918,34 @@ fn certify_calls<'a>(decl: &'a Declaration, names: &Names) -> Vec<(&'a str, &'a 
     calls
 }
 
-/// Lines of a law theorem's two order bounds and its check, after its
-/// first line.
-const LAW_LINES: [usize; 3] = [4, 5, 6];
-
 /// `certify_equal(quote(function n in Int: left), quote(...: right), limit)`
 /// (or `certify_equal_from` with a start) as `∀ n ≥ start, left = right`,
 /// proved by bounding each side's order (`emath_order`, unfolding the
-/// user functions it reaches) and checking the first points.
+/// user functions it reaches) and checking the first points. The
+/// `certify_all` forms go to `law_all`.
 fn law(
     name: &str,
     call: &str,
     args: &[Expr],
     names: &mut Names,
     calls: &BTreeMap<String, BTreeSet<String>>,
-) -> Result<String, String> {
+    bodies: &BTreeMap<String, Body>,
+) -> Result<LawText, String> {
+    let start_of = |start: &Expr| match &start.kind {
+        ExprKind::Int(digits) => {
+            digits.replace('_', "").parse::<u64>().map_err(|_| "the start is too large".to_string())
+        }
+        _ => Err("the start must be a whole-number literal".to_string()),
+    };
     let (left, right, start) = match (call, args) {
         ("certify_equal", [left, right, _]) => (left, right, 0),
-        ("certify_equal_from", [left, right, start, _]) => match &start.kind {
-            ExprKind::Int(digits) => (
-                left,
-                right,
-                digits.replace('_', "").parse::<u64>().map_err(|_| "the start is too large".to_string())?,
-            ),
-            _ => return Err("the start must be a whole-number literal".into()),
-        },
-        ("certify_all" | "certify_all_from", _) => {
-            return Err(format!("`{call}` (a law at every parameter point) has no Lean translation yet"));
+        ("certify_equal_from", [left, right, start, _]) => (left, right, start_of(start)?),
+        ("certify_all", [left, right, _]) => return law_all(name, left, right, 0, names, calls, bodies),
+        ("certify_all_from", [left, right, start, _]) => {
+            return law_all(name, left, right, start_of(start)?, names, calls, bodies);
         }
-        _ => return Err(format!("`{call}` takes two quoted functions and a limit")),
+        ("certify_equal" | "certify_all", _) => return Err(format!("`{call}` takes two quoted functions and a limit")),
+        _ => return Err(format!("`{call}` takes two quoted functions, a start and a limit")),
     };
     let mut side = |quoted: &Expr| -> Result<(String, String), String> {
         let (param, domain, body) = match &quoted.kind {
@@ -914,14 +966,7 @@ fn law(
             return Err("a side's value is not a number".into());
         }
         let (text, _) = coerce(text, level, &ty, &Ty::Rat);
-        let mut reached = BTreeSet::new();
-        let mut pending: Vec<String> = ctx.names.called.iter().cloned().collect();
-        while let Some(function) = pending.pop() {
-            if reached.insert(function.clone()) {
-                pending.extend(calls.get(&function).into_iter().flatten().cloned());
-            }
-        }
-        let unfold = reached.into_iter().collect::<Vec<_>>().join(", ");
+        let unfold = reached(&ctx.names.called, calls);
         Ok((format!("(fun ({} : Int) => {text}) (n₀ : Int)", ident(param)), unfold))
     };
     let (left, left_unfold) = side(left)?;
@@ -931,12 +976,611 @@ fn law(
     } else {
         (format!("_from {start}"), format!(" {start} ≤ n₀ →"))
     };
-    // Keep in step with LAW_LINES.
-    Ok(format!(
-        "theorem {name} : ∀ n₀ : ℕ,{condition}\n    {left} =\n      {right} :=\n  \
-         Emath.Law.eq_of_order{from}\n    (by emath_order [{left_unfold}])\n    \
-         (by emath_order [{right_unfold}])\n    (by emath_check {start})\n\n"
-    ))
+    Ok(LawText {
+        text: format!(
+            "theorem {name} : ∀ n₀ : ℕ,{condition}\n    {left} =\n      {right} :=\n  \
+             Emath.Law.eq_of_order{from}\n    (by emath_order [{left_unfold}])\n    \
+             (by emath_order [{right_unfold}])\n    (by emath_check {start})\n\n"
+        ),
+        order: [4, 5],
+        bound: Vec::new(),
+        check: 6,
+    })
+}
+
+/// The binders a quoted function literal opens with (name, domain),
+/// and the body inside the last of them.
+fn binders(quoted: &Expr) -> Result<(Vec<(&str, &Expr)>, &Expr), String> {
+    let (param, domain, mut body) = match &quoted.kind {
+        ExprKind::Quote { body } => match &body.kind {
+            ExprKind::FunctionAbs { param, domain, body } => (param, domain.as_ref(), body.as_ref()),
+            _ => return Err("a side is not a quoted `function n in Int: ...`".into()),
+        },
+        ExprKind::QuoteBind { param, domain, body } => (param, domain.as_ref(), body.as_ref()),
+        _ => return Err("a side is not a quoted `function n in Int: ...`".into()),
+    };
+    let mut out = vec![(param.as_str(), domain)];
+    while let ExprKind::FunctionAbs { param, domain, body: inner } = &body.kind {
+        out.push((param.as_str(), domain.as_ref()));
+        body = inner;
+    }
+    Ok((out, body))
+}
+
+/// The user functions `called` reaches, for `emath_order` to unfold.
+fn reached(called: &BTreeSet<String>, calls: &BTreeMap<String, BTreeSet<String>>) -> String {
+    let mut reached = BTreeSet::new();
+    let mut pending: Vec<String> = called.iter().cloned().collect();
+    while let Some(function) = pending.pop() {
+        if reached.insert(function.clone()) {
+            pending.extend(calls.get(&function).into_iter().flatten().cloned());
+        }
+    }
+    reached.into_iter().collect::<Vec<_>>().join(", ")
+}
+
+/// `certify_all(quote(function x1 in Rat: ... function n in Int: left),
+/// quote(...: right), limit)` (or `certify_all_from`) as: for all
+/// rationals x1, ..., xk meeting the hypotheses, `∀ n ≥ start, left =
+/// right`. emath's proof covers the parameter points where each branch
+/// condition on the parameters takes the side it takes on emath's grid,
+/// and where both programs compute; the hypotheses are those conditions
+/// (with the side they take at the grid's first point, parameter i =
+/// 1/(i + 2)) and every divisor the programs reach that reads only the
+/// parameters, nonzero. Proved by `emath_order` for the orders in n and
+/// `params_eq`: one kernel evaluation at a point no nonzero rational
+/// function of the bounded size can vanish at (`Law.lean`). A divisor
+/// that reads n or a loop value gets no hypothesis, so the proof then
+/// fails rather than claim more than emath.
+fn law_all(
+    name: &str,
+    left: &Expr,
+    right: &Expr,
+    start: u64,
+    names: &mut Names,
+    calls: &BTreeMap<String, BTreeSet<String>>,
+    bodies: &BTreeMap<String, Body>,
+) -> Result<LawText, String> {
+    let (left_binders, left_body) = binders(left)?;
+    let (right_binders, right_body) = binders(right)?;
+    let k = left_binders.len() - 1;
+    if k == 0 || right_binders.len() != k + 1 {
+        return Err("the sides do not open with the same parameters and then n".into());
+    }
+    for (_, domain) in left_binders[..k].iter().chain(&right_binders[..k]) {
+        if domain_type(domain)? != Ty::Rat {
+            return Err("a parameter is not over `Rat`".into());
+        }
+    }
+    for (_, domain) in [left_binders[k], right_binders[k]] {
+        if domain_type(domain)? != Ty::Int {
+            return Err("a side's last variable is not over `Int`".into());
+        }
+    }
+    let params: Vec<String> = left_binders[..k].iter().map(|(param, _)| param.to_string()).collect();
+    let mut used = BTreeSet::new();
+    for body in [left_body, right_body] {
+        visit(body, &mut |expr| {
+            if let ExprKind::Path { segments, .. } = &expr.kind {
+                used.extend(segments.iter().cloned());
+            }
+        });
+    }
+    let point = ["x", "y", "z", "w", "v"]
+        .into_iter()
+        .map(str::to_string)
+        .chain((1..).map(|i| format!("x{i}")))
+        .find(|candidate| {
+            !used.contains(candidate) && candidate.as_str() != left_binders[k].0 && candidate.as_str() != right_binders[k].0
+        })
+        .expect("an unused name");
+    let at = |i: usize| Expr {
+        kind: ExprKind::Call {
+            function: Box::new(path(&point)),
+            args: vec![Expr { kind: ExprKind::Int(i.to_string()), source: Default::default() }],
+        },
+        source: Default::default(),
+    };
+
+    let mut reach = Reach {
+        bodies,
+        params: &params,
+        grid: params.iter().enumerate().map(|(i, param)| (param.clone(), (1, i as i128 + 2))).collect(),
+        fresh: 0,
+        depth: 0,
+        valued: BTreeSet::new(),
+        divisors: Vec::new(),
+        branches: Vec::new(),
+    };
+    let mut statement = Vec::new();
+    let mut functions = Vec::new();
+    let mut unfolds = Vec::new();
+    for (binders, body) in [(&left_binders, left_body), (&right_binders, right_body)] {
+        let n = binders[k].0;
+        let mut reserved: BTreeSet<&str> = params.iter().map(String::as_str).collect();
+        reserved.extend(binders.iter().map(|(param, _)| *param));
+        reserved.insert(point.as_str());
+        let mut rebinds = None;
+        visit(body, &mut |expr| {
+            if let ExprKind::FunctionAbs { param, .. } = &expr.kind
+                && reserved.contains(param.as_str())
+            {
+                rebinds = Some(param.clone());
+            }
+        });
+        if let Some(param) = rebinds {
+            return Err(format!("a closure in the law rebinds `{param}`"));
+        }
+        let to_params: BTreeMap<String, Expr> =
+            binders[..k].iter().zip(&params).map(|((own, _), param)| (own.to_string(), path(param))).collect();
+        let to_point: BTreeMap<String, Expr> =
+            binders[..k].iter().enumerate().map(|(i, (own, _))| (own.to_string(), at(i))).collect();
+
+        names.called.clear();
+        let mut scope: Vec<(String, Ty)> = params.iter().map(|param| (param.clone(), Ty::Rat)).collect();
+        scope.push((n.to_string(), Ty::Int));
+        let mut ctx = Ctx { names, scope };
+        let (text, level, ty) = ctx.expr(&rename(body, &to_params), false)?;
+        if !matches!(ty, Ty::Int | Ty::Rat | Ty::Lit) {
+            return Err("a side's value is not a number".into());
+        }
+        let (text, _) = coerce(text, level, &ty, &Ty::Rat);
+        statement.push(format!("(fun ({} : Int) => {text}) (n₀ : Int)", ident(n)));
+        unfolds.push(reached(&ctx.names.called, calls));
+
+        ctx.scope = vec![(point.clone(), arrows(vec![Ty::Int], Ty::Rat)), (n.to_string(), Ty::Int)];
+        let (text, level, ty) = ctx.expr(&rename(body, &to_point), false)?;
+        let (text, _) = coerce(text, level, &ty, &Ty::Rat);
+        functions.push(format!("(fun ({} : Int) => {text}) (n : Int)", ident(n)));
+
+        let mut env: BTreeMap<String, Expr> = to_params;
+        env.insert(n.to_string(), reach.fresh());
+        reach.expand(body, &env, &visible(names))?;
+    }
+
+    // Each hypothesis as the theorem states it and as `S` reads it at `x`.
+    let mut hypotheses: Vec<(String, String)> = Vec::new();
+    let to_point: BTreeMap<String, Expr> = params.iter().enumerate().map(|(i, param)| (param.clone(), at(i))).collect();
+    let param_scope: Vec<(String, Ty)> = params.iter().map(|param| (param.clone(), Ty::Rat)).collect();
+    let point_scope = vec![(point.clone(), arrows(vec![Ty::Int], Ty::Rat))];
+    let facts = reach.branches.iter().map(|(condition, side)| (condition, Some(*side)));
+    for (expr, side) in facts.chain(reach.divisors.iter().map(|divisor| (divisor, None))) {
+        let mut state = |expr: &Expr, scope: &Vec<(String, Ty)>| -> Result<String, String> {
+            let mut ctx = Ctx { names: &mut *names, scope: scope.clone() };
+            Ok(match side {
+                Some(true) => prop(&mut ctx, expr)?,
+                Some(false) => format!("¬ ({})", prop(&mut ctx, expr)?),
+                None => {
+                    let (text, level, _) = ctx.expr(expr, false)?;
+                    format!("{} ≠ 0", paren(text, level, LEVEL_ADD))
+                }
+            })
+        };
+        let text = state(expr, &param_scope)?;
+        let at_point = state(&rename(expr, &to_point), &point_scope)?;
+        if !hypotheses.iter().any(|(seen, _)| *seen == text) {
+            hypotheses.push((text, at_point));
+        }
+    }
+
+    let hyp_names: Vec<String> = (1..=hypotheses.len()).map(|i| format!("h{}", subscript(i))).collect();
+    let set = if hypotheses.is_empty() {
+        "True".to_string()
+    } else {
+        hypotheses
+            .iter()
+            .map(|(_, at_point)| {
+                if at_point.contains(" ∧ ") || at_point.contains(" ∨ ") { format!("({at_point})") } else { at_point.clone() }
+            })
+            .collect::<Vec<_>>()
+            .join(" ∧ ")
+    };
+    let proof = match hyp_names.as_slice() {
+        [] => "trivial".to_string(),
+        [one] => one.clone(),
+        many => format!("⟨{}⟩", many.join(", ")),
+    };
+    let (condition, intro, from_start) = if start == 0 {
+        (String::new(), String::new(), "(Nat.zero_le _)".to_string())
+    } else {
+        (format!(" {start} ≤ n₀ →"), " hn".to_string(), "hn".to_string())
+    };
+    let [left, right] = [&statement[0], &statement[1]];
+    let [left_unfold, right_unfold] = [&unfolds[0], &unfolds[1]];
+    let mut lines = vec![
+        // One evaluation can outrun the default budget; the kernel still
+        // checks the whole term.
+        "set_option maxHeartbeats 0 in".to_string(),
+        format!(
+            "theorem {name} {}",
+            params.iter().map(|param| format!("({} : ℚ)", ident(param))).collect::<Vec<_>>().join(" ")
+        ),
+    ];
+    for (hyp, (text, _)) in hyp_names.iter().zip(&hypotheses) {
+        lines.push(format!("    ({hyp} : {text})"));
+    }
+    lines.push(format!("    : ∀ n₀ : ℕ,{condition}"));
+    lines.push(format!("    {left} ="));
+    lines.push(format!("      {right} := fun n₀{intro} =>"));
+    lines.push(format!("  Emath.Law.eq_of_order_from (u := fun n₀ : ℕ => {left})"));
+    lines.push(format!("    (v := fun n₀ : ℕ => {right}) {start}"));
+    let order = [lines.len(), lines.len() + 1];
+    lines.push(format!("    (by emath_order [{left_unfold}])"));
+    lines.push(format!("    (by emath_order [{right_unfold}])"));
+    lines.push(format!("    (Emath.Law.params_eq (fun {point} : Fin {k} → ℚ => {set})"));
+    lines.push(format!("      (fun {point} (n : ℕ) => {})", functions[0]));
+    lines.push(format!("      (fun {point} (n : ℕ) => {}) _ _", functions[1]));
+    let bound = vec![lines.len(), lines.len() + 1];
+    lines.push(format!("      (fun n => by emath_bound [{left_unfold}])"));
+    lines.push(format!("      (fun n => by emath_bound [{right_unfold}])"));
+    let check = lines.len();
+    lines.push(format!(
+        "      {start} _ (by emath_kcheck) ![{}] {proof})",
+        params.iter().map(|param| ident(param)).collect::<Vec<_>>().join(", ")
+    ));
+    lines.push(format!("    n₀ {from_start}"));
+    Ok(LawText { text: format!("{}\n\n", lines.join("\n")), order, bound, check })
+}
+
+/// The qualified Lean name of each user function `names` can call.
+fn visible(names: &Names) -> BTreeMap<String, String> {
+    names
+        .targets
+        .iter()
+        .filter_map(|(local, target)| match target {
+            Target::Lean(lean, _) if lean.contains('.') => Some((local.clone(), lean.clone())),
+            Target::Lean(lean, _) => Some((local.clone(), format!("{}.{lean}", names.namespace))),
+            Target::Refused => None,
+        })
+        .collect()
+}
+
+fn subscript(i: usize) -> String {
+    i.to_string().chars().map(|digit| char::from_u32(0x2080 + digit.to_digit(10).unwrap_or(0)).unwrap_or('_')).collect()
+}
+
+fn path(name: &str) -> Expr {
+    Expr { kind: ExprKind::Path { segments: vec![name.to_string()], generics: None }, source: Default::default() }
+}
+
+/// `expr` with each name in `map` replaced; the caller makes sure no
+/// closure inside rebinds one of them.
+fn rename(expr: &Expr, map: &BTreeMap<String, Expr>) -> Expr {
+    let go = |inner: &Expr| Box::new(rename(inner, map));
+    let kind = match &expr.kind {
+        ExprKind::Path { segments, generics: None } if segments.len() == 1 && map.contains_key(&segments[0]) => {
+            return map[&segments[0]].clone();
+        }
+        ExprKind::Call { function, args } => {
+            ExprKind::Call { function: go(function), args: args.iter().map(|arg| rename(arg, map)).collect() }
+        }
+        ExprKind::Index { value, indices } => {
+            ExprKind::Index { value: go(value), indices: indices.iter().map(|index| rename(index, map)).collect() }
+        }
+        ExprKind::Unary { op, value } => ExprKind::Unary { op: *op, value: go(value) },
+        ExprKind::Binary { op, left, right } => ExprKind::Binary { op: *op, left: go(left), right: go(right) },
+        ExprKind::If { condition, then_value, else_value } => ExprKind::If {
+            condition: go(condition),
+            then_value: go(then_value),
+            else_value: go(else_value),
+        },
+        ExprKind::List(items) => ExprKind::List(items.iter().map(|item| rename(item, map)).collect()),
+        ExprKind::SequenceCons { head, tail, spread_head } => {
+            ExprKind::SequenceCons { head: go(head), tail: go(tail), spread_head: *spread_head }
+        }
+        ExprKind::FunctionAbs { param, domain, body } => {
+            ExprKind::FunctionAbs { param: param.clone(), domain: domain.clone(), body: go(body) }
+        }
+        other => other.clone(),
+    };
+    Expr { kind, source: expr.source }
+}
+
+/// A Boolean condition as a Lean proposition: comparisons as relations,
+/// `and`, `or` and `not` as connectives, anything else as `= true`.
+fn prop(ctx: &mut Ctx, expr: &Expr) -> Result<String, String> {
+    let relation = match &expr.kind {
+        ExprKind::Binary { op: BinaryOp::And, left, right } => {
+            return Ok(format!("({}) ∧ ({})", prop(ctx, left)?, prop(ctx, right)?));
+        }
+        ExprKind::Binary { op: BinaryOp::Or, left, right } => {
+            return Ok(format!("({}) ∨ ({})", prop(ctx, left)?, prop(ctx, right)?));
+        }
+        ExprKind::Unary { op: UnaryOp::Not, value } => return Ok(format!("¬ ({})", prop(ctx, value)?)),
+        ExprKind::Bool(value) => return Ok(if *value { "True" } else { "False" }.to_string()),
+        ExprKind::Binary { op, left, right } => match op {
+            BinaryOp::Eq => Some(("=", left, right)),
+            BinaryOp::Ne => Some(("≠", left, right)),
+            BinaryOp::Lt => Some(("<", left, right)),
+            BinaryOp::Le => Some(("≤", left, right)),
+            BinaryOp::Gt => Some((">", left, right)),
+            BinaryOp::Ge => Some(("≥", left, right)),
+            _ => None,
+        },
+        _ => None,
+    };
+    match relation {
+        Some((symbol, left, right)) => {
+            let (l, _) = ctx.operand(left, is_literal(left) && !is_literal(right), LEVEL_CONS)?;
+            let (r, _) = ctx.operand(right, is_literal(right) && !is_literal(left), LEVEL_CONS)?;
+            Ok(format!("{l} {symbol} {r}"))
+        }
+        None => {
+            let (text, level, _) = ctx.expr(expr, false)?;
+            Ok(format!("{} = true", paren(text, level, LEVEL_APP)))
+        }
+    }
+}
+
+/// Reads the divisors and branch conditions a law's sides reach through
+/// the user functions they call, as expressions in the law's
+/// parameters. A value that depends on anything else (n, a closure's
+/// variable, a field) becomes a fresh name `#k`, so it is never mistaken
+/// for one that reads only the parameters.
+struct Reach<'a> {
+    bodies: &'a BTreeMap<String, Body>,
+    params: &'a [String],
+    /// The first point of emath's grid.
+    grid: BTreeMap<String, (i128, i128)>,
+    fresh: usize,
+    depth: usize,
+    /// Functions already read as values (passed, not called).
+    valued: BTreeSet<String>,
+    divisors: Vec<Expr>,
+    branches: Vec<(Expr, bool)>,
+}
+
+/// Past this many nodes a definition's value is not carried into the
+/// expressions that use it.
+const REACH_NODES: usize = 4000;
+
+impl Reach<'_> {
+    fn fresh_name(&mut self) -> String {
+        self.fresh += 1;
+        format!("#{}", self.fresh)
+    }
+
+    fn fresh(&mut self) -> Expr {
+        path(&self.fresh_name())
+    }
+
+    /// Reads only the parameters (and prelude functions).
+    fn closed_over_params(&self, expr: &Expr) -> bool {
+        let mut ok = true;
+        visit(expr, &mut |inner| match &inner.kind {
+            ExprKind::Path { segments, generics: None } => {
+                let [name] = segments.as_slice() else {
+                    ok = false;
+                    return;
+                };
+                if !self.params.contains(name) && prelude_signature(name).is_none() {
+                    ok = false;
+                }
+            }
+            ExprKind::Path { .. } | ExprKind::FunctionAbs { .. } => ok = false,
+            _ => {}
+        });
+        ok
+    }
+
+    fn reads_params(&self, expr: &Expr) -> bool {
+        let mut reads = false;
+        visit(expr, &mut |inner| {
+            if let ExprKind::Path { segments, .. } = &inner.kind
+                && segments.len() == 1
+                && self.params.contains(&segments[0])
+            {
+                reads = true;
+            }
+        });
+        reads
+    }
+
+    fn expand(
+        &mut self,
+        expr: &Expr,
+        env: &BTreeMap<String, Expr>,
+        names: &BTreeMap<String, String>,
+    ) -> Result<Expr, String> {
+        let kind = match &expr.kind {
+            ExprKind::Int(_) | ExprKind::Rational { .. } | ExprKind::Bool(_) => return Ok(expr.clone()),
+            ExprKind::Path { segments, generics: None } if segments.len() == 1 => {
+                let name = &segments[0];
+                if let Some(value) = env.get(name) {
+                    return Ok(value.clone());
+                }
+                if let Some(qualified) = names.get(name) {
+                    self.function_value(qualified)?;
+                    return Ok(self.fresh());
+                }
+                return Ok(expr.clone());
+            }
+            ExprKind::Path { .. } => return Ok(self.fresh()),
+            ExprKind::Call { function, args } => {
+                let args = args.iter().map(|arg| self.expand(arg, env, names)).collect::<Result<Vec<_>, _>>()?;
+                if let ExprKind::Path { segments, generics: None } = &function.kind
+                    && let [name] = segments.as_slice()
+                    && !env.contains_key(name)
+                    && let Some(qualified) = names.get(name)
+                {
+                    return self.inline(qualified, args);
+                }
+                ExprKind::Call { function: Box::new(self.expand(function, env, names)?), args }
+            }
+            ExprKind::Index { value, indices } => ExprKind::Index {
+                value: Box::new(self.expand(value, env, names)?),
+                indices: indices.iter().map(|index| self.expand(index, env, names)).collect::<Result<_, _>>()?,
+            },
+            ExprKind::Unary { op, value } => ExprKind::Unary { op: *op, value: Box::new(self.expand(value, env, names)?) },
+            ExprKind::Binary { op, left, right } => {
+                let left = self.expand(left, env, names)?;
+                let right = self.expand(right, env, names)?;
+                if *op == BinaryOp::Div && self.closed_over_params(&right) && self.reads_params(&right) {
+                    self.divisors.push(right.clone());
+                }
+                ExprKind::Binary { op: *op, left: Box::new(left), right: Box::new(right) }
+            }
+            ExprKind::If { condition, then_value, else_value } => {
+                let condition = self.expand(condition, env, names)?;
+                if self.closed_over_params(&condition) {
+                    let Some(Val::Bool(side)) = eval(&condition, &self.grid) else {
+                        return Err("a branch condition on the parameters cannot be evaluated at emath's first grid point".into());
+                    };
+                    if self.reads_params(&condition) {
+                        self.branches.push((condition, side));
+                    }
+                    return self.expand(if side { then_value } else { else_value }, env, names);
+                }
+                ExprKind::If {
+                    condition: Box::new(condition),
+                    then_value: Box::new(self.expand(then_value, env, names)?),
+                    else_value: Box::new(self.expand(else_value, env, names)?),
+                }
+            }
+            ExprKind::List(items) => {
+                ExprKind::List(items.iter().map(|item| self.expand(item, env, names)).collect::<Result<_, _>>()?)
+            }
+            ExprKind::SequenceCons { head, tail, spread_head } => ExprKind::SequenceCons {
+                head: Box::new(self.expand(head, env, names)?),
+                tail: Box::new(self.expand(tail, env, names)?),
+                spread_head: *spread_head,
+            },
+            ExprKind::FunctionAbs { param, domain, body } => {
+                let fresh = self.fresh_name();
+                let mut inner = env.clone();
+                inner.insert(param.clone(), path(&fresh));
+                let body = self.expand(body, &inner, names)?;
+                ExprKind::FunctionAbs { param: fresh, domain: domain.clone(), body: Box::new(body) }
+            }
+            other => return Err(format!("{} has no Lean translation", construct(other))),
+        };
+        Ok(Expr { kind, source: expr.source })
+    }
+
+    /// The output of user function `qualified` at `args`.
+    fn inline(&mut self, qualified: &str, args: Vec<Expr>) -> Result<Expr, String> {
+        let bodies = self.bodies;
+        let Some(body) = bodies.get(qualified) else {
+            return Err(format!("the law reaches `{qualified}`, whose definition is not translated"));
+        };
+        let params = section_typed_fields(&body.decl, "inputs");
+        if params.len() != args.len() {
+            return Ok(self.fresh());
+        }
+        self.depth += 1;
+        if self.depth > 64 {
+            return Err("calls nest too deep to read the law's divisors".into());
+        }
+        let mut env: BTreeMap<String, Expr> = params.into_iter().map(|(name, _)| name).zip(args).collect();
+        for section in body.decl.sections().filter(|section| section.name == "definitions") {
+            for stmt in &section.suite.statements {
+                if let StmtKind::Assign { target, value } = &stmt.kind
+                    && let [name] = target.segments.as_slice()
+                {
+                    let mut value = self.expand(value, &env, &body.names)?;
+                    let mut nodes = 0;
+                    visit(&value, &mut |_| nodes += 1);
+                    if nodes > REACH_NODES {
+                        value = self.fresh();
+                    }
+                    env.insert(name.clone(), value);
+                }
+            }
+        }
+        self.depth -= 1;
+        let output = section_typed_fields(&body.decl, "outputs").into_iter().next().map(|(name, _)| name);
+        Ok(match output.and_then(|name| env.remove(&name)) {
+            Some(value) => value,
+            None => self.fresh(),
+        })
+    }
+
+    /// Reads the divisors and conditions of a function passed as a value.
+    fn function_value(&mut self, qualified: &str) -> Result<(), String> {
+        if !self.valued.insert(qualified.to_string()) {
+            return Ok(());
+        }
+        let bodies = self.bodies;
+        let Some(body) = bodies.get(qualified) else {
+            return Err(format!("the law reaches `{qualified}`, whose definition is not translated"));
+        };
+        let count = section_typed_fields(&body.decl, "inputs").len();
+        let args = (0..count).map(|_| self.fresh()).collect();
+        self.inline(qualified, args).map(|_| ())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Val {
+    /// numerator, denominator > 0, in lowest terms.
+    Num(i128, i128),
+    Bool(bool),
+}
+
+fn ratio(numer: i128, denom: i128) -> Option<Val> {
+    if denom == 0 {
+        return None;
+    }
+    let (mut a, mut b) = (numer.unsigned_abs(), denom.unsigned_abs());
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    let g = i128::try_from(a.max(1)).ok()?;
+    let sign = if denom < 0 { -1 } else { 1 };
+    Some(Val::Num(sign * numer / g, sign * denom / g))
+}
+
+/// `expr` at `point`, exactly; `None` past `i128` or outside the
+/// arithmetic and logic of numbers.
+fn eval(expr: &Expr, point: &BTreeMap<String, (i128, i128)>) -> Option<Val> {
+    let num = |expr: &Expr| match eval(expr, point)? {
+        Val::Num(n, d) => Some((n, d)),
+        Val::Bool(_) => None,
+    };
+    match &expr.kind {
+        ExprKind::Int(digits) => ratio(digits.replace('_', "").parse().ok()?, 1),
+        ExprKind::Rational { numer, denom } => {
+            ratio(numer.replace('_', "").parse().ok()?, denom.replace('_', "").parse().ok()?)
+        }
+        ExprKind::Bool(value) => Some(Val::Bool(*value)),
+        ExprKind::Path { segments, generics: None } if segments.len() == 1 => {
+            point.get(&segments[0]).and_then(|&(n, d)| ratio(n, d))
+        }
+        ExprKind::Unary { op: UnaryOp::Pos, value } => eval(value, point),
+        ExprKind::Unary { op: UnaryOp::Neg, value } => {
+            let (n, d) = num(value)?;
+            ratio(n.checked_neg()?, d)
+        }
+        ExprKind::Unary { op: UnaryOp::Not, value } => match eval(value, point)? {
+            Val::Bool(value) => Some(Val::Bool(!value)),
+            Val::Num(..) => None,
+        },
+        ExprKind::Binary { op: BinaryOp::And | BinaryOp::Or, left, right } => {
+            let (Val::Bool(l), Val::Bool(r)) = (eval(left, point)?, eval(right, point)?) else {
+                return None;
+            };
+            let and = matches!(&expr.kind, ExprKind::Binary { op: BinaryOp::And, .. });
+            Some(Val::Bool(if and { l && r } else { l || r }))
+        }
+        ExprKind::Binary { op, left, right } => {
+            let ((a, b), (c, d)) = (num(left)?, num(right)?);
+            let cross = || Some((a.checked_mul(d)?, c.checked_mul(b)?));
+            match op {
+                BinaryOp::Add => ratio(a.checked_mul(d)?.checked_add(c.checked_mul(b)?)?, b.checked_mul(d)?),
+                BinaryOp::Sub => ratio(a.checked_mul(d)?.checked_sub(c.checked_mul(b)?)?, b.checked_mul(d)?),
+                BinaryOp::Mul => ratio(a.checked_mul(c)?, b.checked_mul(d)?),
+                BinaryOp::Div => ratio(a.checked_mul(d)?, b.checked_mul(c)?),
+                BinaryOp::Eq => Some(Val::Bool(a == c && b == d)),
+                BinaryOp::Ne => Some(Val::Bool(a != c || b != d)),
+                BinaryOp::Lt => cross().map(|(l, r)| Val::Bool(l < r)),
+                BinaryOp::Le => cross().map(|(l, r)| Val::Bool(l <= r)),
+                BinaryOp::Gt => cross().map(|(l, r)| Val::Bool(l > r)),
+                BinaryOp::Ge => cross().map(|(l, r)| Val::Bool(l >= r)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 /// `f` on `expr` and every expression inside it, outermost first.
