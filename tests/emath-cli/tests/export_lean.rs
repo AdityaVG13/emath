@@ -17,7 +17,8 @@
 //! `exact.modular`'s guarded one, which emath never runs for that call;
 //! the whole folder must still check. Its example that faults in emath
 //! (a remainder by 0) is not exported, though Lean's total `%` would
-//! accept it. The `--check` half needs `lake`
+//! accept it. A function with several outputs becomes a Lean structure
+//! whose fields its examples and callers read. The `--check` half needs `lake`
 //! on PATH.
 //!
 //! Laws: with `law/certify.emath` beside the chain, its five
@@ -110,6 +111,11 @@ fn export_lean() {
         "translated-beside-refused",
         refused.contains("def square") && !refused.contains("def code") && !refused.contains("def uses_code"),
         refused,
+    );
+    probe.demand(
+        "several-outputs-translate",
+        !text.contains("mixed.emath `divmod`") && !text.contains("mixed.emath `recombine`"),
+        text.clone(),
     );
     probe.demand("lean-not-run", !lean.join(".lake").exists(), text.clone());
     let model = std::fs::read_to_string(lean.join("Export/chain/model.lean")).unwrap_or_default();

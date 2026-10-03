@@ -117,6 +117,9 @@ enum Ty {
     Bool,
     List(Box<Ty>),
     Fn(Box<Ty>, Box<Ty>),
+    /// The outputs of a function with several, as the Lean structure of
+    /// that (qualified) name: its fields and their types.
+    Record(String, Vec<(String, Ty)>),
     /// A type parameter of a generic prelude function.
     Var(u8),
     /// An integer literal left bare: a neighbour fixes its type.
@@ -216,6 +219,7 @@ fn render(ty: &Ty) -> String {
             let domain = if domain.contains('→') { format!("({domain})") } else { domain };
             format!("{domain} → {}", render(codomain))
         }
+        Ty::Record(name, _) => name.clone(),
         Ty::Var(_) | Ty::Lit | Ty::Unknown => "_".into(),
     }
 }
@@ -653,7 +657,7 @@ fn translate_file(
             continue;
         }
         let params = section_typed_fields(decl, "inputs");
-        let output = section_typed_fields(decl, "outputs").remove(0);
+        let outputs = section_typed_fields(decl, "outputs");
         let mut index = 0;
         for case in examples(decl) {
             let what = format!("{} example <{}> of `{}`", source.rel, case.label, decl.name);
@@ -663,7 +667,7 @@ fn translate_file(
                 refusals.push(format!("not translated: {what}: it faults in emath (`{code}`), so it has no value to prove"));
                 continue;
             }
-            match theorem(&decl.name, &ident(&decl.name), &params, &output, &case, &mut names) {
+            match theorem(&decl.name, &ident(&decl.name), &params, &outputs, &case, &mut names) {
                 Ok(theorem) => {
                     let first_line = text.lines().count() + 1;
                     text.push_str(&theorem);
@@ -795,9 +799,26 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
         }
     }
     let params = section_typed_fields(decl, "inputs");
-    let outputs = section_typed_fields(decl, "outputs");
-    let [(output, output_ty)] = outputs.as_slice() else {
-        return Err("only functions with one output translate".into());
+    let mut outputs = Vec::new();
+    for (name, ty) in section_typed_fields(decl, "outputs") {
+        outputs.push((name, lean_type(&ty)?));
+    }
+    if outputs.is_empty() {
+        return Err("a function without outputs has no Lean translation".into());
+    }
+    // Several outputs are the fields of a structure, as emath returns
+    // them as a record with those fields.
+    let mut structure = String::new();
+    let output_ty = if let [(_, ty)] = outputs.as_slice() {
+        ty.clone()
+    } else {
+        let local = format!("{}.Out", ident(&decl.name));
+        structure.push_str(&format!("structure {local} where\n"));
+        for (name, ty) in &outputs {
+            structure.push_str(&format!("  {} : {}\n", ident(name), render(ty)));
+        }
+        structure.push_str("deriving DecidableEq\n\n");
+        Ty::Record(format!("{}.{local}", names.namespace), outputs.clone())
     };
     let mut head = format!("def {}", ident(&decl.name));
     let mut scope = Vec::new();
@@ -806,12 +827,11 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
         head.push_str(&format!(" ({} : {})", ident(name), render(&ty)));
         scope.push((name.clone(), ty));
     }
-    let output_ty = lean_type(output_ty)?;
     head.push_str(&format!(" : {} :=\n", render(&output_ty)));
     let signature = arrows(scope.iter().map(|(_, ty)| ty.clone()).collect(), output_ty.clone());
     let mut ctx = Ctx { names, scope };
     let mut lines = String::new();
-    let mut assigned = None;
+    let mut assigned = BTreeMap::new();
     for section in decl.sections().filter(|section| section.name == "definitions") {
         for stmt in &section.suite.statements {
             match &stmt.kind {
@@ -819,9 +839,7 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
                     let name = &target.segments[0];
                     let (value, _, ty) = ctx.expr(value, false)?;
                     lines.push_str(&format!("  let {} := {value}\n", ident(name)));
-                    if name == output {
-                        assigned = Some(ty.clone());
-                    }
+                    assigned.insert(name.clone(), ty.clone());
                     ctx.scope.push((name.clone(), ty));
                 }
                 StmtKind::Require(_) => {}
@@ -829,11 +847,22 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
             }
         }
     }
-    let Some(result_ty) = assigned else {
-        return Err(format!("output `{output}` is never defined"));
+    let mut results = Vec::new();
+    for (output, ty) in &outputs {
+        let Some(result_ty) = assigned.get(output) else {
+            return Err(format!("output `{output}` is never defined"));
+        };
+        results.push((output, coerce(ident(output), LEVEL_ATOM, result_ty, ty).0));
+    }
+    let result = match results.as_slice() {
+        [(_, result)] => result.clone(),
+        _ => {
+            let fields: Vec<String> =
+                results.iter().map(|(output, result)| format!("{} := {result}", ident(output))).collect();
+            format!("{{ {} }}", fields.join(", "))
+        }
     };
-    let (result, _) = coerce(ident(output), LEVEL_ATOM, &result_ty, &output_ty);
-    Ok((format!("{head}{lines}  {result}\n\n"), signature))
+    Ok((format!("{structure}{head}{lines}  {result}\n\n"), signature))
 }
 
 struct Case {
@@ -1003,7 +1032,7 @@ fn theorem(
     name: &str,
     callee: &str,
     params: &[(String, TypeExpr)],
-    (output, output_ty): &(String, TypeExpr),
+    outputs: &[(String, TypeExpr)],
     case: &Case,
     names: &mut Names,
 ) -> Result<String, String> {
@@ -1035,8 +1064,22 @@ fn theorem(
         args.push(ident(param));
     }
     ctx.scope.extend(scope);
-    lines.push(format!("let {} := {callee}{}", ident(output), args.iter().map(|arg| format!(" {arg}")).collect::<String>()));
-    ctx.scope.push((output.clone(), lean_type(output_ty).unwrap_or(Ty::Unknown)));
+    let call = format!("{callee}{}", args.iter().map(|arg| format!(" {arg}")).collect::<String>());
+    match outputs {
+        [(output, output_ty)] => {
+            lines.push(format!("let {} := {call}", ident(output)));
+            ctx.scope.push((output.clone(), lean_type(output_ty).unwrap_or(Ty::Unknown)));
+        }
+        _ => {
+            // Not an emath name, so no given or output shadows it.
+            let record = "«emath outputs»";
+            lines.push(format!("let {record} := {call}"));
+            for (output, output_ty) in outputs {
+                lines.push(format!("let {} := {record}.{}", ident(output), ident(output)));
+                ctx.scope.push((output.clone(), lean_type(output_ty).unwrap_or(Ty::Unknown)));
+            }
+        }
+    }
     let mut checks = Vec::new();
     for expect in &case.expects {
         let (check, level, _) = ctx.expr(expect, false)?;
@@ -1646,7 +1689,10 @@ impl Reach<'_> {
             }
         }
         self.depth -= 1;
-        let output = section_typed_fields(&body.decl, "outputs").into_iter().next().map(|(name, _)| name);
+        // Several outputs make a record, which no divisor or condition
+        // reads whole; its fields read as unknown values.
+        let outputs = section_typed_fields(&body.decl, "outputs");
+        let output = (outputs.len() == 1).then(|| outputs[0].0.clone());
         Ok(match output.and_then(|name| env.remove(&name)) {
             Some(value) => value,
             None => self.fresh(),
@@ -1792,15 +1838,14 @@ fn library_checks(
         // about the prelude's machine operation.
         for decl in functions(&libraries[file]).filter(|decl| used.contains(&decl.name) && !machine_int(&decl.name)) {
             let params = section_typed_fields(decl, "inputs");
-            let mut outputs = section_typed_fields(decl, "outputs");
+            let outputs = section_typed_fields(decl, "outputs");
             if outputs.len() != 1 {
                 continue;
             }
-            let output = outputs.remove(0);
             for case in examples(decl) {
                 let mut names = Names::default();
                 let callee = format!("Emath.{}", decl.name);
-                if let Ok(theorem) = theorem(&decl.name, &callee, &params, &output, &case, &mut names) {
+                if let Ok(theorem) = theorem(&decl.name, &callee, &params, &outputs, &case, &mut names) {
                     let first_line = text.lines().count() + 1;
                     text.push_str(&theorem);
                     export.sites.push(ExampleSite {
@@ -1962,6 +2007,12 @@ impl Ctx<'_> {
                     Ok((text, LEVEL_ATOM, ty))
                 }
             },
+            [value, field]
+                if let Some(Ty::Record(_, fields)) = self.local(value)
+                    && let Some((_, ty)) = fields.iter().find(|(name, _)| name == field) =>
+            {
+                Ok((format!("{}.{}", ident(value), ident(field)), LEVEL_ATOM, ty.clone()))
+            }
             [value, field] if self.local(value).is_some() => match field.as_str() {
                 "numer" | "denom" | "length" => {
                     Ok((format!("Emath.{field} {}", ident(value)), LEVEL_APP, Ty::Int))
