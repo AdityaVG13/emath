@@ -327,6 +327,9 @@ impl ExactInt {
     }
 
     pub fn gcd(a: &Self, b: &Self) -> Result<Self, ExactError> {
+        if let (Self::Small(x), Self::Small(y)) = (a, b) {
+            return Ok(Self::from_u128(gcd_u128(x.unsigned_abs(), y.unsigned_abs())));
+        }
         let mut x = a.abs();
         let mut y = b.abs();
         while !y.is_zero() {
@@ -343,6 +346,14 @@ impl ExactInt {
         }
         match (self, other) {
             (Self::Small(a), Self::Small(b)) if *b != 0 => {
+                // i128 division is a software routine; operands that fit
+                // i64 divide in hardware (`checked_div` refuses only
+                // i64::MIN / -1, which the i128 path below handles).
+                if let (Ok(x), Ok(y)) = (i64::try_from(*a), i64::try_from(*b)) {
+                    if let (Some(q), Some(r)) = (x.checked_div(y), x.checked_rem(y)) {
+                        return Ok((Self::Small(q.into()), Self::Small(r.into())));
+                    }
+                }
                 if *a == i128::MIN && *b == -1 {
                     return Ok((
                         Self::from_parts(false, vec![0, 0, 0, 0x8000_0000])?,
@@ -416,6 +427,29 @@ impl ExactInt {
                 }
             }
             Self::Big { neg, limbs } => (*neg, limbs.clone()),
+        }
+    }
+}
+
+/// Binary (Stein) gcd: shifts and subtractions only, because every
+/// division step of Euclid's algorithm on u128 is a software routine.
+fn gcd_u128(mut a: u128, mut b: u128) -> u128 {
+    if a == 0 {
+        return b;
+    }
+    if b == 0 {
+        return a;
+    }
+    let shift = (a | b).trailing_zeros();
+    a >>= a.trailing_zeros();
+    loop {
+        b >>= b.trailing_zeros();
+        if a > b {
+            std::mem::swap(&mut a, &mut b);
+        }
+        b -= a;
+        if b == 0 {
+            return a << shift;
         }
     }
 }
