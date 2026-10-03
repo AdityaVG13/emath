@@ -1,0 +1,65 @@
+# Functions that call themselves or each other. Lean needs a
+# termination proof, so the export recurses on fuel instead.
+
+# 20000 calls deep: past the Lean kernel's default recursion depth.
+emath function count_down:
+    inputs:
+        n: Int
+        acc: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 0: acc else: count_down(n - 1, acc + n)
+    tests:
+        example <deep>:
+            given n = 20000
+            given acc = 0
+            expect result == 200010000
+
+emath function is_even:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if n == 0: true else: is_odd(n - 1)
+
+emath function is_odd:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if n == 0: false else: is_even(n - 1)
+    tests:
+        example <seven>:
+            given n = 7
+            expect result == true
+
+emath function base_pair:
+    inputs:
+        n: Int
+    outputs:
+        a: Int
+        b: Int
+    definitions:
+        a = 0
+        b = 1
+
+# Recursion through a record output, started from another function's
+# record with the same fields.
+emath function fib_pair:
+    inputs:
+        n: Int
+    outputs:
+        a: Int
+        b: Int
+    definitions:
+        prev = if n <= 0: base_pair(n) else: fib_pair(n - 1)
+        a = if n <= 0: prev.a else: prev.b
+        b = if n <= 0: prev.b else: prev.a + prev.b
+    tests:
+        example <ten>:
+            given n = 10
+            expect a == 55
+            expect b == 89

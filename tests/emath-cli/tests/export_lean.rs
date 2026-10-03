@@ -117,6 +117,7 @@ fn export_lean() {
         !text.contains("mixed.emath `divmod`") && !text.contains("mixed.emath `recombine`"),
         text.clone(),
     );
+    probe.demand("recursion-translates", !text.contains("recursive.emath"), text.clone());
     probe.demand("lean-not-run", !lean.join(".lake").exists(), text.clone());
     let model = std::fs::read_to_string(lean.join("Export/chain/model.lean")).unwrap_or_default();
     let golden = std::fs::read_to_string(fixtures.join("golden/model.lean")).unwrap_or_default();

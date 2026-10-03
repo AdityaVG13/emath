@@ -5,6 +5,7 @@ overwrites it.
 import Emath.Prelude
 
 set_option linter.unusedVariables false
+set_option maxRecDepth 1000000
 
 namespace Export.chain.model
 

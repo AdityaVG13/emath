@@ -172,6 +172,25 @@ fn coerce(text: String, level: u8, from: &Ty, to: &Ty) -> (String, u8) {
             format!("List.map (fun (x : Int) => (x : Rat)) {}", paren(text, level, LEVEL_ATOM)),
             LEVEL_APP,
         ),
+        // emath records with the same fields are one type; Lean's
+        // structures of two functions are not.
+        (Ty::Record(from_name, from_fields), Ty::Record(to_name, to_fields))
+            if from_name != to_name
+                && from_fields.len() == to_fields.len()
+                && from_fields.iter().all(|(name, _)| to_fields.iter().any(|(other, _)| other == name)) =>
+        {
+            let fields: Vec<String> = to_fields
+                .iter()
+                .map(|(name, to)| {
+                    let from = &from_fields.iter().find(|(other, _)| other == name).expect("same fields").1;
+                    format!("{} := {}", ident(name), coerce(format!("r.{}", ident(name)), LEVEL_ATOM, from, to).0)
+                })
+                .collect();
+            (
+                format!("(fun (r : {from_name}) => ({{ {} }} : {to_name})) {}", fields.join(", "), paren(text, level, LEVEL_ATOM)),
+                LEVEL_APP,
+            )
+        }
         _ => (text, level),
     }
 }
@@ -318,6 +337,9 @@ struct Module {
 #[derive(Clone)]
 enum Target {
     Lean(String, Ty),
+    /// A function of the recursive group being translated, by Lean
+    /// name: calls go to its fuel form, spending one fuel.
+    Fuel(String, Ty),
     Refused,
 }
 
@@ -355,6 +377,10 @@ impl Names {
                     if lean.contains('.') { lean.clone() } else { format!("{}.{lean}", self.namespace) };
                 self.called.insert(qualified);
                 return Ok((lean.clone(), ty.clone()));
+            }
+            Some(Target::Fuel(lean, ty)) => {
+                self.called.insert(format!("{}.{lean}", self.namespace));
+                return Ok((format!("{lean}.fuel {FUEL}"), ty.clone()));
             }
             Some(Target::Refused) => return Err(format!("calls `{name}`, which is not translated")),
             None => {}
@@ -582,22 +608,29 @@ fn translate_file(
     }
     let mut translated = BTreeMap::new();
     let plain_names: BTreeSet<String> = own.iter().map(|decl| decl.name.clone()).collect();
-    let order = ordered(&own, &plain_names, &mut |decl, reason| {
-        refusals.push(format!("not translated: {} `{}`: {reason}", source.rel, decl.name));
-    });
-    for decl in order {
+    for (group, recursive) in ordered(&own, &plain_names) {
         names.called.clear();
-        match function(decl, &mut names) {
-            Ok((text, signature)) => {
+        let result = if recursive {
+            recursive_group(&group, &mut names)
+        } else {
+            function(group[0], &mut names).map(|(text, signature)| (text, vec![signature]))
+        };
+        match result {
+            Ok((text, signatures)) => {
                 body.push_str(&text);
-                export.calls.insert(format!("{module}.{}", ident(&decl.name)), std::mem::take(&mut names.called));
-                names.targets.insert(decl.name.clone(), Target::Lean(ident(&decl.name), signature.clone()));
-                translated.insert(decl.name.clone(), signature);
-                export.functions += 1;
+                let called = std::mem::take(&mut names.called);
+                for (decl, signature) in group.iter().zip(signatures) {
+                    export.calls.insert(format!("{module}.{}", ident(&decl.name)), called.clone());
+                    names.targets.insert(decl.name.clone(), Target::Lean(ident(&decl.name), signature.clone()));
+                    translated.insert(decl.name.clone(), signature);
+                    export.functions += 1;
+                }
             }
             Err(reason) => {
-                refusals.push(format!("not translated: {} `{}`: {reason}", source.rel, decl.name));
-                names.targets.insert(decl.name.clone(), Target::Refused);
+                for decl in &group {
+                    refusals.push(format!("not translated: {} `{}`: {reason}", source.rel, decl.name));
+                    names.targets.insert(decl.name.clone(), Target::Refused);
+                }
             }
         }
     }
@@ -642,7 +675,10 @@ fn translate_file(
         text.push_str(&format!("import {import}\n"));
     }
     // emath binders may go unused (a fold's index, say).
-    text.push_str("\nset_option linter.unusedVariables false\n\n");
+    text.push_str("\nset_option linter.unusedVariables false\n");
+    // The kernel's default depth stops a recursive function's example
+    // long before emath's work budget does.
+    text.push_str("set_option maxRecDepth 1000000\n\n");
     text.push_str(&format!("namespace {module}\n\n"));
     let lean_path = lean_path(&source.rel);
     text.push_str(&body);
@@ -715,52 +751,74 @@ fn translate_file(
     ))
 }
 
-/// The file's functions, callees first. A function on a call cycle
-/// is reported through `refuse` and left out.
-fn ordered<'a>(
-    own: &[&'a Declaration],
-    own_names: &BTreeSet<String>,
-    refuse: &mut dyn FnMut(&Declaration, &str),
-) -> Vec<&'a Declaration> {
-    let by_name: BTreeMap<&str, &Declaration> = own.iter().map(|decl| (decl.name.as_str(), *decl)).collect();
-    let mut done = BTreeSet::new();
-    let mut cyclic = BTreeSet::new();
-    let mut out = Vec::new();
-    fn visit<'a>(
-        decl: &'a Declaration,
-        by_name: &BTreeMap<&str, &'a Declaration>,
-        own_names: &BTreeSet<String>,
-        stack: &mut Vec<String>,
-        done: &mut BTreeSet<String>,
-        cyclic: &mut BTreeSet<String>,
-        out: &mut Vec<&'a Declaration>,
-    ) {
-        if done.contains(&decl.name) {
-            return;
+/// The file's functions in groups that call each other, callees'
+/// groups first (Tarjan's strongly connected components). A group of
+/// one is recursive only if it calls itself.
+fn ordered<'a>(own: &[&'a Declaration], own_names: &BTreeSet<String>) -> Vec<(Vec<&'a Declaration>, bool)> {
+    struct Walk<'a, 'b> {
+        by_name: BTreeMap<&'b str, &'a Declaration>,
+        callees: BTreeMap<&'b str, Vec<String>>,
+        index: BTreeMap<String, usize>,
+        low: BTreeMap<String, usize>,
+        stack: Vec<&'a Declaration>,
+        on_stack: BTreeSet<String>,
+        out: Vec<(Vec<&'a Declaration>, bool)>,
+    }
+    impl<'a> Walk<'a, '_> {
+        fn visit(&mut self, decl: &'a Declaration) {
+            let at = self.index.len();
+            self.index.insert(decl.name.clone(), at);
+            self.low.insert(decl.name.clone(), at);
+            self.stack.push(decl);
+            self.on_stack.insert(decl.name.clone());
+            for callee in self.callees[decl.name.as_str()].clone() {
+                if !self.index.contains_key(&callee) {
+                    self.visit(self.by_name[callee.as_str()]);
+                    let low = self.low[&decl.name].min(self.low[&callee]);
+                    self.low.insert(decl.name.clone(), low);
+                } else if self.on_stack.contains(&callee) {
+                    let low = self.low[&decl.name].min(self.index[&callee]);
+                    self.low.insert(decl.name.clone(), low);
+                }
+            }
+            if self.low[&decl.name] == at {
+                let mut group = Vec::new();
+                while let Some(member) = self.stack.pop() {
+                    self.on_stack.remove(&member.name);
+                    group.push(member);
+                    if member.name == decl.name {
+                        break;
+                    }
+                }
+                group.reverse();
+                let recursive = group.len() > 1 || self.callees[decl.name.as_str()].contains(&decl.name);
+                self.out.push((group, recursive));
+            }
         }
-        if let Some(at) = stack.iter().position(|name| *name == decl.name) {
-            cyclic.extend(stack[at..].iter().cloned());
-            return;
-        }
-        stack.push(decl.name.clone());
+    }
+    let mut walk = Walk {
+        by_name: own.iter().map(|decl| (decl.name.as_str(), *decl)).collect(),
+        callees: BTreeMap::new(),
+        index: BTreeMap::new(),
+        low: BTreeMap::new(),
+        stack: Vec::new(),
+        on_stack: BTreeSet::new(),
+        out: Vec::new(),
+    };
+    for decl in own {
         let mut callees = BTreeSet::new();
         for stmt in &decl.body {
             collect_stmt_names(stmt, &mut callees);
         }
-        for callee in callees.iter().filter(|name| own_names.contains(*name) && !machine_int(name)) {
-            visit(by_name[callee.as_str()], by_name, own_names, stack, done, cyclic, out);
-        }
-        stack.pop();
-        done.insert(decl.name.clone());
-        out.push(decl);
+        let callees = callees.into_iter().filter(|name| own_names.contains(name) && !machine_int(name)).collect();
+        walk.callees.insert(decl.name.as_str(), callees);
     }
     for decl in own {
-        visit(decl, &by_name, own_names, &mut Vec::new(), &mut done, &mut cyclic, &mut out);
+        if !walk.index.contains_key(&decl.name) {
+            walk.visit(decl);
+        }
     }
-    for decl in out.iter().filter(|decl| cyclic.contains(&decl.name)) {
-        refuse(decl, "recursion has no Lean translation yet");
-    }
-    out.into_iter().filter(|decl| !cyclic.contains(&decl.name)).collect()
+    walk.out
 }
 
 fn collect_stmt_names(stmt: &emath_core::tree::Stmt, names: &mut BTreeSet<String>) {
@@ -790,6 +848,41 @@ fn collect_names(expr: &Expr, names: &mut BTreeSet<String>) {
 
 /// The Lean definition and its signature.
 fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), String> {
+    let shape = shape(decl, &names.namespace)?;
+    let body = definitions(decl, &shape, names)?;
+    let text = format!(
+        "{}def {}{} : {} :=\n{}  {}\n\n",
+        shape.structure,
+        ident(&decl.name),
+        shape.binders(),
+        render(&shape.output),
+        body.lines.iter().map(|line| format!("  {line}\n")).collect::<String>(),
+        body.result
+    );
+    Ok((text, shape.signature()))
+}
+
+/// A function's declared Lean types: its parameters, its output (a
+/// structure `f.Out` when it has several, as emath returns several
+/// outputs as a record with those fields) and that structure's text.
+struct Shape {
+    params: Vec<(String, Ty)>,
+    outputs: Vec<(String, Ty)>,
+    output: Ty,
+    structure: String,
+}
+
+impl Shape {
+    fn binders(&self) -> String {
+        self.params.iter().map(|(name, ty)| format!(" ({} : {})", ident(name), render(ty))).collect()
+    }
+
+    fn signature(&self) -> Ty {
+        arrows(self.params.iter().map(|(_, ty)| ty.clone()).collect(), self.output.clone())
+    }
+}
+
+fn shape(decl: &Declaration, namespace: &str) -> Result<Shape, String> {
     if !decl.generics.is_empty() {
         return Err("generic functions have no Lean translation yet".into());
     }
@@ -798,39 +891,40 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
             return Err(format!("section `{}:` has no Lean translation", section.name));
         }
     }
-    let params = section_typed_fields(decl, "inputs");
+    let mut params = Vec::new();
+    for (name, ty) in section_typed_fields(decl, "inputs") {
+        params.push((name, lean_type(&ty)?));
+    }
     let mut outputs = Vec::new();
     for (name, ty) in section_typed_fields(decl, "outputs") {
         outputs.push((name, lean_type(&ty)?));
     }
-    if outputs.is_empty() {
-        return Err("a function without outputs has no Lean translation".into());
-    }
-    // Several outputs are the fields of a structure, as emath returns
-    // them as a record with those fields.
     let mut structure = String::new();
-    let output_ty = if let [(_, ty)] = outputs.as_slice() {
-        ty.clone()
-    } else {
-        let local = format!("{}.Out", ident(&decl.name));
-        structure.push_str(&format!("structure {local} where\n"));
-        for (name, ty) in &outputs {
-            structure.push_str(&format!("  {} : {}\n", ident(name), render(ty)));
+    let output = match outputs.as_slice() {
+        [] => return Err("a function without outputs has no Lean translation".into()),
+        [(_, ty)] => ty.clone(),
+        _ => {
+            let local = format!("{}.Out", ident(&decl.name));
+            structure.push_str(&format!("structure {local} where\n"));
+            for (name, ty) in &outputs {
+                structure.push_str(&format!("  {} : {}\n", ident(name), render(ty)));
+            }
+            structure.push_str("deriving DecidableEq, Inhabited\n\n");
+            Ty::Record(format!("{namespace}.{local}"), outputs.clone())
         }
-        structure.push_str("deriving DecidableEq\n\n");
-        Ty::Record(format!("{}.{local}", names.namespace), outputs.clone())
     };
-    let mut head = format!("def {}", ident(&decl.name));
-    let mut scope = Vec::new();
-    for (name, ty) in &params {
-        let ty = lean_type(ty)?;
-        head.push_str(&format!(" ({} : {})", ident(name), render(&ty)));
-        scope.push((name.clone(), ty));
-    }
-    head.push_str(&format!(" : {} :=\n", render(&output_ty)));
-    let signature = arrows(scope.iter().map(|(_, ty)| ty.clone()).collect(), output_ty.clone());
-    let mut ctx = Ctx { names, scope };
-    let mut lines = String::new();
+    Ok(Shape { params, outputs, output, structure })
+}
+
+/// A function's definitions as Lean `let` lines and its result.
+struct Definitions {
+    lines: Vec<String>,
+    result: String,
+}
+
+fn definitions(decl: &Declaration, shape: &Shape, names: &mut Names) -> Result<Definitions, String> {
+    let mut ctx = Ctx { names, scope: shape.params.clone() };
+    let mut lines = Vec::new();
     let mut assigned = BTreeMap::new();
     for section in decl.sections().filter(|section| section.name == "definitions") {
         for stmt in &section.suite.statements {
@@ -838,7 +932,7 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
                 StmtKind::Assign { target, value } if target.segments.len() == 1 && target.indices.is_empty() => {
                     let name = &target.segments[0];
                     let (value, _, ty) = ctx.expr(value, false)?;
-                    lines.push_str(&format!("  let {} := {value}\n", ident(name)));
+                    lines.push(format!("let {} := {value}", ident(name)));
                     assigned.insert(name.clone(), ty.clone());
                     ctx.scope.push((name.clone(), ty));
                 }
@@ -848,7 +942,7 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
         }
     }
     let mut results = Vec::new();
-    for (output, ty) in &outputs {
+    for (output, ty) in &shape.outputs {
         let Some(result_ty) = assigned.get(output) else {
             return Err(format!("output `{output}` is never defined"));
         };
@@ -862,7 +956,56 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
             format!("{{ {} }}", fields.join(", "))
         }
     };
-    Ok((format!("{structure}{head}{lines}  {result}\n\n"), signature))
+    Ok(Definitions { lines, result })
+}
+
+/// Not an emath name, so no parameter shadows it.
+const FUEL: &str = "«emath fuel»";
+
+/// A group of functions that call each other (or one that calls
+/// itself). Lean accepts a definition only with a termination proof,
+/// so each becomes `f.fuel`, recursion on a fuel count that every call
+/// spends one of, and `f` runs it with 2^64 fuel. emath spends at least
+/// one unit of its `u64` work count per nested call, so every value emath
+/// computes, under any budget, ends before the fuel does and `f` there is
+/// emath's value.
+fn recursive_group(group: &[&Declaration], names: &mut Names) -> Result<(String, Vec<Ty>), String> {
+    let mut shapes = Vec::new();
+    for decl in group {
+        let shape = shape(decl, &names.namespace)?;
+        names.targets.insert(decl.name.clone(), Target::Fuel(ident(&decl.name), shape.signature()));
+        shapes.push(shape);
+    }
+    let mut text: String = shapes.iter().map(|shape| shape.structure.as_str()).collect();
+    let mut defs = Vec::new();
+    for (decl, shape) in group.iter().zip(&shapes) {
+        let body = definitions(decl, shape, names)?;
+        defs.push(format!(
+            "def {}.fuel ({FUEL} : Nat){} : {} :=\n  match {FUEL} with\n  | 0 => default\n  | {FUEL} + 1 =>\n{}    {}\n",
+            ident(&decl.name),
+            shape.binders(),
+            render(&shape.output),
+            body.lines.iter().map(|line| format!("    {line}\n")).collect::<String>(),
+            body.result
+        ));
+    }
+    if defs.len() == 1 {
+        text.push_str(&defs[0]);
+        text.push('\n');
+    } else {
+        text.push_str(&format!("mutual\n\n{}\nend\n\n", defs.join("\n")));
+    }
+    let fuel = u128::from(u64::MAX) + 1;
+    for (decl, shape) in group.iter().zip(&shapes) {
+        let args: String = shape.params.iter().map(|(name, _)| format!(" {}", ident(name))).collect();
+        text.push_str(&format!(
+            "def {name}{} : {} :=\n  {name}.fuel {fuel}{args}\n\n",
+            shape.binders(),
+            render(&shape.output),
+            name = ident(&decl.name),
+        ));
+    }
+    Ok((text, shapes.iter().map(Shape::signature).collect()))
 }
 
 struct Case {
@@ -1431,7 +1574,7 @@ fn visible(names: &Names) -> BTreeMap<String, String> {
         .filter_map(|(local, target)| match target {
             Target::Lean(lean, _) if lean.contains('.') => Some((local.clone(), lean.clone())),
             Target::Lean(lean, _) => Some((local.clone(), format!("{}.{lean}", names.namespace))),
-            Target::Refused => None,
+            Target::Fuel(..) | Target::Refused => None,
         })
         .collect()
 }
@@ -2004,7 +2147,8 @@ impl Ctx<'_> {
                 Some(ty) => Ok((ident(name), LEVEL_ATOM, ty)),
                 None => {
                     let (text, ty) = self.names.resolve(name)?;
-                    Ok((text, LEVEL_ATOM, ty))
+                    let level = if text.contains(' ') { LEVEL_APP } else { LEVEL_ATOM };
+                    Ok((text, level, ty))
                 }
             },
             [value, field]

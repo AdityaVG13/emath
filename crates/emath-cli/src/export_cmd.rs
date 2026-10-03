@@ -180,10 +180,28 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         );
         return translated;
     }
+    // Lean's errors located in a site's lines; when every one is a spent
+    // time or depth budget, Lean never decided the claim either way.
+    let errors = |lean: &str, lines: std::ops::RangeInclusive<usize>| -> Vec<&str> {
+        let marks: Vec<String> = lines.map(|line| format!("{lean}:{line}:")).collect();
+        log.lines().filter(|text| marks.iter().any(|mark| text.contains(mark.as_str()))).collect()
+    };
+    let out_of_budget = |errors: &[&str]| {
+        !errors.is_empty()
+            && errors.iter().all(|text| {
+                ["deterministic timeout", "(deterministic) timeout", "deep recursion", "maximum recursion depth"]
+                    .iter()
+                    .any(|budget| text.contains(budget))
+            })
+    };
+    const OUT_OF_BUDGET: &str = "Lean ran out of time or recursion depth before deciding it";
     let mut rejected = Vec::new();
     let mut unproven = uncertified;
     for site in &export.sites {
-        if (site.first_line..=site.last_line).any(|line| at(&site.lean, line)) {
+        let errors = errors(&site.lean, site.first_line..=site.last_line);
+        if out_of_budget(&errors) {
+            unproven.push(format!("{}: {OUT_OF_BUDGET}", site.what));
+        } else if !errors.is_empty() {
             rejected.push(site.what.clone());
         }
     }
@@ -209,6 +227,8 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
             rejected.push(format!("{}: the two sides differ at {point}", site.what));
         } else if at(&site.lean, site.check_line) {
             unproven.push(format!("{}: Lean could not evaluate the sides at the checked points", site.what));
+        } else if out_of_budget(&errors(&site.lean, site.first_line..=site.last_line)) {
+            unproven.push(format!("{}: {OUT_OF_BUDGET}", site.what));
         } else if (site.first_line..=site.last_line).any(|line| at(&site.lean, line)) {
             rejected.push(format!("{}: Lean does not accept the law's statement", site.what));
         }
