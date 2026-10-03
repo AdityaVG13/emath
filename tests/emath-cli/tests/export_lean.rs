@@ -20,8 +20,10 @@
 //! accept it. The `--check` half needs `lake`
 //! on PATH.
 //!
-//! Laws: with `law/certify.emath` beside the chain, its four
+//! Laws: with `law/certify.emath` beside the chain, its five
 //! `certify_equal` calls and one `certify_all` call become theorems.
+//! n / 0 against 0 is proved by Lean's total division but reported
+//! unproven, since emath (where it faults) does not certify it.
 //! The chain against its closed form at one point, the running sum
 //! against n(n - 1)/2, the powers of 1/2 summed from t = 1, and the
 //! chain against its closed form at every
@@ -195,6 +197,7 @@ fn export_lean() {
                 code == EXIT_PARTIAL as i32
                     && text.contains("lean: not proven")
                     && text.contains("unproven: certify.emath law 3 of `certified`: Lean found no order bound")
+                    && text.contains("unproven: certify.emath law 5 of `certified`: Lean proves it, but emath does not certify it")
                     && !text.contains("law 1 of")
                     && !text.contains("law 2 of")
                     && !text.contains("law 4 of")

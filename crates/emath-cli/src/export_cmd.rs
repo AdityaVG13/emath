@@ -12,6 +12,9 @@
 //! `n`, proved by the law library (`Law.lean`) on Mathlib. Such a
 //! project uses one shared, prebuilt Mathlib (see `mathlib_packages`);
 //! `--check` fetches Mathlib's cache there once and never compiles it.
+//! A law Lean proves counts only if emath certifies it too: Lean's
+//! arithmetic is total (`x / 0 = 0`) where emath's faults. Likewise an
+//! example that faults in emath is not exported.
 //!
 //! Exit: 0 everything translated (and, with `--check`, Lean accepted);
 //! 3 something was not translated, a law was not proven, or `lake` or
@@ -138,16 +141,22 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         }
     };
     let log = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-    if output.status.success() {
+    let at = |lean: &str, line: usize| log.contains(&format!("{lean}:{line}:"));
+    let proved: Vec<&lean::LawSite> = export
+        .law_sites
+        .iter()
+        .filter(|site| output.status.success() || !(site.first_line..=site.last_line).any(|line| at(&site.lean, line)))
+        .collect();
+    let uncertified = uncertified(&proved);
+    if output.status.success() && uncertified.is_empty() {
         println!(
             "lean: accepted ({} examples, {} library examples and {} laws proved by the kernel)",
             export.examples, export.library_examples, export.laws
         );
         return translated;
     }
-    let at = |lean: &str, line: usize| log.contains(&format!("{lean}:{line}:"));
     let mut rejected = Vec::new();
-    let mut unproven = Vec::new();
+    let mut unproven = uncertified;
     for site in &export.sites {
         if (site.first_line..=site.last_line).any(|line| at(&site.lean, line)) {
             rejected.push(site.what.clone());
@@ -194,6 +203,33 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     }
     println!("{log}");
     if rejected.is_empty() && !unproven.is_empty() { EXIT_PARTIAL } else { EXIT_REFUSED }
+}
+
+/// The laws Lean proved that emath does not certify. Lean's arithmetic
+/// is total (`x / 0 = 0`, a list read past its end gives 0) where emath
+/// faults, so Lean can prove a statement emath refuses; Lean never
+/// claims more than emath.
+fn uncertified(proved: &[&lean::LawSite]) -> Vec<String> {
+    let mut by_source: Vec<(&Path, Vec<&lean::LawSite>)> = Vec::new();
+    for site in proved {
+        match by_source.iter_mut().find(|(source, _)| *source == site.source.as_path()) {
+            Some((_, sites)) => sites.push(site),
+            None => by_source.push((&site.source, vec![site])),
+        }
+    }
+    let mut out = Vec::new();
+    for (source, sites) in by_source {
+        let calls: Vec<&str> = sites.iter().map(|site| site.emath_call.as_str()).collect();
+        for (site, certified) in sites.iter().zip(lean::emath_certifies(source, &calls)) {
+            if !certified {
+                out.push(format!(
+                    "{}: Lean proves it, but emath does not certify it (Lean's arithmetic is total where emath's faults)",
+                    site.what
+                ));
+            }
+        }
+    }
+    out
 }
 
 /// The shared Mathlib packages: `EMATH_LEAN_MATHLIB`, else

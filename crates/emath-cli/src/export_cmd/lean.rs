@@ -249,6 +249,10 @@ pub(crate) struct LawSite {
     pub check_line: usize,
     pub last_line: usize,
     pub what: String,
+    /// The `.emath` file stating the law, and the law's call as emath
+    /// source, for asking emath whether it certifies the law too.
+    pub source: PathBuf,
+    pub emath_call: String,
 }
 
 /// A law theorem and the offsets of its lines from its first line.
@@ -288,6 +292,7 @@ pub(crate) struct Export {
 
 struct Source {
     path: PathBuf,
+    text: String,
     rel: String,
     tree: SyntaxTree,
     /// (selection, file) for each sibling user file this one uses.
@@ -462,7 +467,7 @@ fn load(
     }
     visiting.remove(path);
     order.push(path.to_path_buf());
-    sources.insert(path.to_path_buf(), Source { path: path.to_path_buf(), rel, tree, local_uses, library_uses });
+    sources.insert(path.to_path_buf(), Source { path: path.to_path_buf(), text, rel, tree, local_uses, library_uses });
     Ok(())
 }
 
@@ -616,7 +621,7 @@ fn translate_file(
             let what = format!("{} law {} of `{}`", source.rel, k + 1, decl.name);
             let name = format!("{}.law_{}", ident(&decl.name), k + 1);
             match law(&name, call, args, &mut names, &export.calls, &export.bodies) {
-                Ok(text) => laws.push((text, what)),
+                Ok(text) => laws.push((text, what, emath_call(&source.text, call, args))),
                 Err(reason) => refusals.push(format!("not translated: {what}: {reason}")),
             }
         }
@@ -674,7 +679,7 @@ fn translate_file(
             }
         }
     }
-    for (law, what) in laws {
+    for (law, what, emath_call) in laws {
         let first_line = text.lines().count() + 1;
         text.push_str(&law.text);
         export.law_sites.push(LawSite {
@@ -685,6 +690,8 @@ fn translate_file(
             check_line: first_line + law.check,
             last_line: text.lines().count(),
             what,
+            source: source.path.clone(),
+            emath_call,
         });
         export.laws += 1;
     }
@@ -931,6 +938,63 @@ fn emath_faults(
         faults.insert(key, code);
     }
     Ok(faults)
+}
+
+/// A law's `search.certify` call as emath source. A work limit that is
+/// not a literal (the certifying function's input, say) becomes a
+/// generous literal, since the call runs on its own.
+fn emath_call(text: &str, call: &str, args: &[Expr]) -> String {
+    let mut parts: Vec<&str> = args
+        .iter()
+        .map(|arg| text.get(arg.source.start as usize..arg.source.end as usize).unwrap_or(""))
+        .collect();
+    if let Some(limit) = parts.last_mut()
+        && limit.trim().parse::<u64>().is_err()
+    {
+        *limit = "1000000000";
+    }
+    format!("{call}({})", parts.join(", "))
+}
+
+/// Whether emath certifies each law call (`LawSite::emath_call`) stated
+/// in `path`, each run on its own beside the file's declarations. A law
+/// emath cannot run counts as not certified.
+pub(crate) fn emath_certifies(path: &Path, calls: &[&str]) -> Vec<bool> {
+    let mut certified = vec![false; calls.len()];
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return certified;
+    };
+    let (mut tree, _) = emath_syntax::parse_str(&text);
+    for item in &mut tree.items {
+        if let Item::Declaration(decl) = item {
+            decl.body.retain(|stmt| !matches!(&stmt.kind, StmtKind::Section(section) if section.name == "tests"));
+        }
+    }
+    let mut laws = String::new();
+    for (k, call) in calls.iter().enumerate() {
+        laws.push_str(&format!(
+            "emath function emath_export_law_{k}:\n    inputs:\n        unused: Int\n    outputs:\n        result: Bool\n    definitions:\n        result = ({call}).proven\n    tests:\n        example <law_{k}>:\n            given unused = 0\n            expect result == true\n\n"
+        ));
+    }
+    let (extra, diagnostics) = emath_syntax::parse_str(&laws);
+    if diagnostics.has_errors() {
+        return certified;
+    }
+    tree.items.extend(extra.items);
+    // The call's own limit bounds each point it evaluates; this bounds
+    // the whole certificate far above what a law that Lean proves needs.
+    let work = 1_000_000_000_000;
+    let Ok(report) = emath_exec_ir::constructor_layer::evaluate_tree_budgeted_at(&tree, Some(path), work) else {
+        return certified;
+    };
+    for test in report.tests {
+        if let Some(Ok(k)) = test.label.strip_prefix("law_").map(str::parse::<usize>)
+            && k < calls.len()
+        {
+            certified[k] = test.passed;
+        }
+    }
+    certified
 }
 
 /// `name.label : (let givens; let output := f args; expects) = true`,
