@@ -39,14 +39,118 @@ globs = [\"Emath.+\"]\n\
 name = \"Export\"\n\
 globs = [\"Export.+\"]\n";
 
-/// Library functions and builtins `Prelude.lean` defines, by emath name.
-const PRELUDE_NAMES: &[&str] = &[
-    "range", "tabulate", "fold", "sum", "product", "int_sum", "int_prod", "length", "int_quot",
-    "int_rem", "int_pow", "pow_int", "rat_pow",
-];
-/// Prelude functions with a generic accumulator: a literal argument
-/// keeps its `Int` type rather than taking one from elsewhere.
-const GENERIC_PRELUDE: &[&str] = &["fold"];
+/// The Lean type of a translated value, so that where an `Int` meets a
+/// `Rat` (the branches of an `if`, list items, a call argument) the
+/// `Int` side is cast, as emath widens it.
+#[derive(Clone, Debug, PartialEq)]
+enum Ty {
+    Int,
+    Rat,
+    Bool,
+    List(Box<Ty>),
+    Fn(Box<Ty>, Box<Ty>),
+    /// A type parameter of a generic prelude function.
+    Var(u8),
+    /// An integer literal left bare: a neighbour fixes its type.
+    Lit,
+    Unknown,
+}
+
+fn list(element: Ty) -> Ty {
+    Ty::List(Box::new(element))
+}
+
+fn arrows(params: Vec<Ty>, output: Ty) -> Ty {
+    params.into_iter().rev().fold(output, |acc, param| Ty::Fn(Box::new(param), Box::new(acc)))
+}
+
+/// Signatures of the library functions and builtins `Prelude.lean`
+/// defines, by emath name.
+fn prelude_signature(name: &str) -> Option<Ty> {
+    let (a, b) = (Ty::Var(0), Ty::Var(1));
+    Some(match name {
+        "range" => arrows(vec![Ty::Int, Ty::Int], list(Ty::Int)),
+        "tabulate" => arrows(vec![arrows(vec![Ty::Int], a.clone()), Ty::Int], list(a)),
+        "fold" => arrows(
+            vec![arrows(vec![b.clone(), a.clone()], b.clone()), b.clone(), list(a)],
+            b,
+        ),
+        "sum" | "product" | "int_sum" | "int_prod" => arrows(vec![list(Ty::Int)], Ty::Int),
+        "length" => arrows(vec![list(a)], Ty::Int),
+        "int_quot" | "int_rem" | "int_pow" | "pow_int" => arrows(vec![Ty::Int, Ty::Int], Ty::Int),
+        "rat_pow" => arrows(vec![Ty::Rat, Ty::Int], Ty::Rat),
+        _ => return None,
+    })
+}
+
+/// The type both of two values can take: `Int` widens to `Rat`.
+fn join(a: &Ty, b: &Ty) -> Ty {
+    match (a, b) {
+        (Ty::Lit | Ty::Unknown, other) | (other, Ty::Lit | Ty::Unknown) => other.clone(),
+        (Ty::Int, Ty::Rat) | (Ty::Rat, Ty::Int) => Ty::Rat,
+        (Ty::List(x), Ty::List(y)) => list(join(x, y)),
+        _ => a.clone(),
+    }
+}
+
+/// `text` (of type `from`) as a value of type `to`.
+fn coerce(text: String, level: u8, from: &Ty, to: &Ty) -> (String, u8) {
+    match (from, to) {
+        (Ty::Int, Ty::Rat) => (format!("({} : Rat)", paren(text, level, LEVEL_CONS)), LEVEL_ATOM),
+        (Ty::List(x), Ty::List(y)) if **x == Ty::Int && **y == Ty::Rat => (
+            format!("List.map (fun (x : Int) => (x : Rat)) {}", paren(text, level, LEVEL_ATOM)),
+            LEVEL_APP,
+        ),
+        _ => (text, level),
+    }
+}
+
+fn paren(text: String, level: u8, max: u8) -> String {
+    if level > max { format!("({text})") } else { text }
+}
+
+/// Binds the type parameters in `param` to the matching parts of `arg`.
+fn unify(param: &Ty, arg: &Ty, bound: &mut BTreeMap<u8, Ty>) {
+    match (param, arg) {
+        (Ty::Var(var), _) if !bound.contains_key(var) => {
+            let arg = if *arg == Ty::Lit { Ty::Int } else { arg.clone() };
+            if arg != Ty::Unknown {
+                bound.insert(*var, arg);
+            }
+        }
+        (Ty::List(param), Ty::List(arg)) => unify(param, arg, bound),
+        (Ty::Fn(p_in, p_out), Ty::Fn(a_in, a_out)) => {
+            unify(p_in, a_in, bound);
+            unify(p_out, a_out, bound);
+        }
+        _ => {}
+    }
+}
+
+fn substitute(ty: &Ty, bound: &BTreeMap<u8, Ty>) -> Ty {
+    match ty {
+        Ty::Var(var) => bound.get(var).cloned().unwrap_or(Ty::Var(*var)),
+        Ty::List(element) => list(substitute(element, bound)),
+        Ty::Fn(domain, codomain) => Ty::Fn(Box::new(substitute(domain, bound)), Box::new(substitute(codomain, bound))),
+        other => other.clone(),
+    }
+}
+
+/// Lean text for a concrete type.
+fn render(ty: &Ty) -> String {
+    match ty {
+        Ty::Int => "Int".into(),
+        Ty::Rat => "Rat".into(),
+        Ty::Bool => "Bool".into(),
+        Ty::List(element) => format!("List {}", atom_type(render(element))),
+        Ty::Fn(domain, codomain) => {
+            let domain = render(domain);
+            let domain = if domain.contains('→') { format!("({domain})") } else { domain };
+            format!("{domain} → {}", render(codomain))
+        }
+        Ty::Var(_) | Ty::Lit | Ty::Unknown => "_".into(),
+    }
+}
 
 const LEAN_KEYWORDS: &[&str] = &[
     "abbrev", "at", "attribute", "axiom", "break", "by", "calc", "catch", "class", "continue",
@@ -93,13 +197,14 @@ struct Module {
     namespace: String,
     module: String,
     exports: Option<Vec<String>>,
-    translated: BTreeSet<String>,
+    /// Translated functions and their signatures.
+    translated: BTreeMap<String, Ty>,
     functions: BTreeSet<String>,
 }
 
 #[derive(Clone)]
 enum Target {
-    Lean(String),
+    Lean(String, Ty),
     Refused,
 }
 
@@ -112,15 +217,15 @@ struct Names {
 }
 
 impl Names {
-    fn resolve(&mut self, name: &str) -> Result<String, String> {
+    fn resolve(&mut self, name: &str) -> Result<(String, Ty), String> {
         match self.targets.get(name) {
-            Some(Target::Lean(lean)) => return Ok(lean.clone()),
+            Some(Target::Lean(lean, ty)) => return Ok((lean.clone(), ty.clone())),
             Some(Target::Refused) => return Err(format!("calls `{name}`, which is not translated")),
             None => {}
         }
-        if PRELUDE_NAMES.contains(&name) {
+        if let Some(ty) = prelude_signature(name) {
             self.used_prelude.insert(name.to_string());
-            return Ok(format!("Emath.{name}"));
+            return Ok((format!("Emath.{name}"), ty));
         }
         match self.library.get(name) {
             Some(module) => Err(format!("`{name}` (from `{module}`) has no Lean translation")),
@@ -289,10 +394,9 @@ fn translate_file(
         // Imported names stay qualified: an imported file's private
         // functions may share a name with this file's.
         for (local, name) in selected(selection, available.into_iter()) {
-            let target = if imported.translated.contains(&name) {
-                Target::Lean(format!("{}.{}", imported.namespace, ident(&name)))
-            } else {
-                Target::Refused
+            let target = match imported.translated.get(&name) {
+                Some(ty) => Target::Lean(format!("{}.{}", imported.namespace, ident(&name)), ty.clone()),
+                None => Target::Refused,
             };
             names.targets.insert(local, target);
         }
@@ -320,16 +424,16 @@ fn translate_file(
             ));
         }
     }
-    let mut translated = BTreeSet::new();
+    let mut translated = BTreeMap::new();
     let order = ordered(&own, &own_names, &mut |decl, reason| {
         refusals.push(format!("not translated: {} `{}`: {reason}", source.rel, decl.name));
     });
     for decl in order {
         match function(decl, &mut names) {
-            Ok(text) => {
+            Ok((text, signature)) => {
                 body.push_str(&text);
-                names.targets.insert(decl.name.clone(), Target::Lean(ident(&decl.name)));
-                translated.insert(decl.name.clone());
+                names.targets.insert(decl.name.clone(), Target::Lean(ident(&decl.name), signature.clone()));
+                translated.insert(decl.name.clone(), signature);
                 export.functions += 1;
             }
             Err(reason) => {
@@ -355,11 +459,11 @@ fn translate_file(
     let lean_path = lean_path(&source.rel);
     text.push_str(&body);
     for decl in &own {
-        if !translated.contains(&decl.name) {
+        if !translated.contains_key(&decl.name) {
             continue;
         }
         let params = section_typed_fields(decl, "inputs");
-        let output = section_typed_fields(decl, "outputs").remove(0).0;
+        let output = section_typed_fields(decl, "outputs").remove(0);
         for case in examples(decl) {
             let what = format!("{} example <{}> of `{}`", source.rel, case.label, decl.name);
             match theorem(&decl.name, &ident(&decl.name), &params, &output, &case, &mut names) {
@@ -492,7 +596,8 @@ fn collect_names(expr: &Expr, names: &mut BTreeSet<String>) {
     }
 }
 
-fn function(decl: &Declaration, names: &mut Names) -> Result<String, String> {
+/// The Lean definition and its signature.
+fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), String> {
     if !decl.generics.is_empty() {
         return Err("generic functions have no Lean translation yet".into());
     }
@@ -509,32 +614,38 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<String, String> {
     let mut head = format!("def {}", ident(&decl.name));
     let mut scope = Vec::new();
     for (name, ty) in &params {
-        head.push_str(&format!(" ({} : {})", ident(name), lean_type(ty)?));
-        scope.push(name.clone());
+        let ty = lean_type(ty)?;
+        head.push_str(&format!(" ({} : {})", ident(name), render(&ty)));
+        scope.push((name.clone(), ty));
     }
-    head.push_str(&format!(" : {} :=\n", lean_type(output_ty)?));
+    let output_ty = lean_type(output_ty)?;
+    head.push_str(&format!(" : {} :=\n", render(&output_ty)));
+    let signature = arrows(scope.iter().map(|(_, ty)| ty.clone()).collect(), output_ty.clone());
     let mut ctx = Ctx { names, scope };
     let mut lines = String::new();
-    let mut assigned = false;
+    let mut assigned = None;
     for section in decl.sections().filter(|section| section.name == "definitions") {
         for stmt in &section.suite.statements {
             match &stmt.kind {
                 StmtKind::Assign { target, value } if target.segments.len() == 1 && target.indices.is_empty() => {
                     let name = &target.segments[0];
-                    let (value, _) = ctx.expr(value, false)?;
+                    let (value, _, ty) = ctx.expr(value, false)?;
                     lines.push_str(&format!("  let {} := {value}\n", ident(name)));
-                    ctx.scope.push(name.clone());
-                    assigned |= name == output;
+                    if name == output {
+                        assigned = Some(ty.clone());
+                    }
+                    ctx.scope.push((name.clone(), ty));
                 }
                 StmtKind::Require(_) => {}
                 _ => return Err("a definition that is not `name = value` has no Lean translation".into()),
             }
         }
     }
-    if !assigned {
+    let Some(result_ty) = assigned else {
         return Err(format!("output `{output}` is never defined"));
-    }
-    Ok(format!("{head}{lines}  {}\n\n", ident(output)))
+    };
+    let (result, _) = coerce(ident(output), LEVEL_ATOM, &result_ty, &output_ty);
+    Ok((format!("{head}{lines}  {result}\n\n"), signature))
 }
 
 struct Case {
@@ -591,7 +702,7 @@ fn theorem(
     name: &str,
     callee: &str,
     params: &[(String, TypeExpr)],
-    output: &str,
+    (output, output_ty): &(String, TypeExpr),
     case: &Case,
     names: &mut Names,
 ) -> Result<String, String> {
@@ -601,25 +712,33 @@ fn theorem(
     let mut ctx = Ctx { names, scope: Vec::new() };
     let mut lines = Vec::new();
     let mut args = Vec::new();
+    let mut scope = Vec::new();
     for (param, ty) in params {
         let (_, value) = case
             .givens
             .iter()
             .find(|(given, _)| given == param)
             .ok_or_else(|| format!("the example does not give `{param}`"))?;
-        let (value, _) = ctx.expr(value, false)?;
+        let (value, level, value_ty) = ctx.expr(value, false)?;
         match lean_type(ty) {
-            Ok(ty) => lines.push(format!("let {} : {ty} := {value}", ident(param))),
-            Err(_) => lines.push(format!("let {} := {value}", ident(param))),
+            Ok(ty) => {
+                let (value, _) = coerce(value, level, &value_ty, &ty);
+                lines.push(format!("let {} : {} := {value}", ident(param), render(&ty)));
+                scope.push((param.clone(), ty));
+            }
+            Err(_) => {
+                lines.push(format!("let {} := {value}", ident(param)));
+                scope.push((param.clone(), value_ty));
+            }
         }
         args.push(ident(param));
     }
-    ctx.scope.extend(params.iter().map(|(param, _)| param.clone()));
+    ctx.scope.extend(scope);
     lines.push(format!("let {} := {callee}{}", ident(output), args.iter().map(|arg| format!(" {arg}")).collect::<String>()));
-    ctx.scope.push(output.to_string());
+    ctx.scope.push((output.clone(), lean_type(output_ty).unwrap_or(Ty::Unknown)));
     let mut checks = Vec::new();
     for expect in &case.expects {
-        let (check, level) = ctx.expr(expect, false)?;
+        let (check, level, _) = ctx.expr(expect, false)?;
         checks.push(if level > LEVEL_AND { format!("({check})") } else { check });
     }
     lines.push(checks.join(" && "));
@@ -649,7 +768,7 @@ fn library_checks(
             if outputs.len() != 1 {
                 continue;
             }
-            let output = outputs.remove(0).0;
+            let output = outputs.remove(0);
             for case in examples(decl) {
                 let mut names = Names {
                     targets: BTreeMap::new(),
@@ -684,74 +803,120 @@ const LEVEL_AND: u8 = 5;
 const LEVEL_OR: u8 = 6;
 const LEVEL_OPEN: u8 = 9;
 
+type Out = (String, u8, Ty);
+
 struct Ctx<'a> {
     names: &'a mut Names,
-    scope: Vec<String>,
+    scope: Vec<(String, Ty)>,
 }
 
 impl Ctx<'_> {
-    /// Lean text and its binding level. `bare`: an integer literal may
-    /// stay untyped because a typed neighbour fixes its type.
-    fn expr(&mut self, expr: &Expr, bare: bool) -> Result<(String, u8), String> {
+    fn local(&self, name: &str) -> Option<Ty> {
+        self.scope.iter().rev().find(|(bound, _)| bound == name).map(|(_, ty)| ty.clone())
+    }
+
+    /// Lean text, its binding level and its type. `bare`: an integer
+    /// literal may stay untyped because a typed neighbour fixes its type.
+    fn expr(&mut self, expr: &Expr, bare: bool) -> Result<Out, String> {
         if !bare && is_literal(expr) && !has_division(expr) {
-            let (text, _) = self.expr(expr, true)?;
-            return Ok((format!("({text} : Int)"), LEVEL_ATOM));
+            let (text, _, _) = self.expr(expr, true)?;
+            return Ok((format!("({text} : Int)"), LEVEL_ATOM, Ty::Int));
         }
         match &expr.kind {
-            ExprKind::Int(digits) => Ok((digits.replace('_', ""), LEVEL_ATOM)),
+            ExprKind::Int(digits) => Ok((digits.replace('_', ""), LEVEL_ATOM, Ty::Lit)),
             ExprKind::Rational { numer, denom } => Ok((
                 format!("(({} : Rat) / {})", numer.replace('_', ""), denom.replace('_', "")),
                 LEVEL_ATOM,
+                Ty::Rat,
             )),
-            ExprKind::Bool(value) => Ok((value.to_string(), LEVEL_ATOM)),
+            ExprKind::Bool(value) => Ok((value.to_string(), LEVEL_ATOM, Ty::Bool)),
             ExprKind::Path { segments, generics: None } => self.path(segments),
             ExprKind::Call { function, args } => self.call(function, args),
             ExprKind::Index { value, indices } => {
                 let [index] = indices.as_slice() else {
                     return Err("indexing with several indices has no Lean translation".into());
                 };
-                let value = self.operand(value, false, LEVEL_ATOM)?;
-                let index = self.operand(index, true, LEVEL_ATOM)?;
-                Ok((format!("Emath.index {value} {index}"), LEVEL_APP))
+                let (value, ty) = self.operand(value, false, LEVEL_ATOM)?;
+                let (index, _) = self.operand(index, true, LEVEL_ATOM)?;
+                let element = match ty {
+                    Ty::List(element) => *element,
+                    _ => Ty::Unknown,
+                };
+                Ok((format!("Emath.index {value} {index}"), LEVEL_APP, element))
             }
             ExprKind::Unary { op: UnaryOp::Pos, value } => self.expr(value, bare),
             ExprKind::Unary { op: UnaryOp::Neg, value } => {
-                let value = self.operand(value, bare || is_literal(value), LEVEL_ATOM)?;
-                Ok((format!("-{value}"), LEVEL_APP))
+                let (value, ty) = self.operand(value, bare || is_literal(value), LEVEL_ATOM)?;
+                Ok((format!("-{value}"), LEVEL_APP, ty))
             }
             ExprKind::Unary { op: UnaryOp::Not, value } => {
-                let value = self.operand(value, false, LEVEL_ATOM)?;
-                Ok((format!("!{value}"), LEVEL_APP))
+                let (value, _) = self.operand(value, false, LEVEL_ATOM)?;
+                Ok((format!("!{value}"), LEVEL_APP, Ty::Bool))
             }
             ExprKind::Binary { op, left, right } => self.binary(*op, left, right, bare),
             ExprKind::If { condition, then_value, else_value } => {
-                let (condition, _) = self.expr(condition, false)?;
+                let (condition, _, _) = self.expr(condition, false)?;
                 let then_bare = is_literal(then_value) && !is_literal(else_value);
                 let else_bare = is_literal(else_value) && !is_literal(then_value);
-                let (then_value, _) = self.expr(then_value, then_bare)?;
-                let (else_value, _) = self.expr(else_value, else_bare)?;
-                Ok((format!("if {condition} then {then_value} else {else_value}"), LEVEL_OPEN))
+                let (then_text, then_level, then_ty) = self.expr(then_value, then_bare)?;
+                let (else_text, else_level, else_ty) = self.expr(else_value, else_bare)?;
+                let ty = join(&then_ty, &else_ty);
+                let (then_text, _) = coerce(then_text, then_level, &then_ty, &ty);
+                let (else_text, _) = coerce(else_text, else_level, &else_ty, &ty);
+                Ok((format!("if {condition} then {then_text} else {else_text}"), LEVEL_OPEN, ty))
             }
             ExprKind::List(items) => {
                 let all_literal = items.iter().all(is_literal);
                 let mut parts = Vec::new();
                 for item in items {
-                    parts.push(self.expr(item, !all_literal && is_literal(item))?.0);
+                    parts.push(self.expr(item, !all_literal && is_literal(item))?);
                 }
-                Ok((format!("[{}]", parts.join(", ")), LEVEL_ATOM))
+                let element = parts.iter().fold(Ty::Lit, |acc, (_, _, ty)| join(&acc, ty));
+                let parts: Vec<String> =
+                    parts.into_iter().map(|(text, level, ty)| coerce(text, level, &ty, &element).0).collect();
+                Ok((format!("[{}]", parts.join(", ")), LEVEL_ATOM, list(element)))
             }
             ExprKind::SequenceCons { head, tail, spread_head } => {
-                let head = self.operand(head, false, LEVEL_APP)?;
-                let tail = self.operand(tail, false, LEVEL_APP)?;
+                let (head_text, head_level, head_ty) = self.expr(head, false)?;
+                let (tail_text, tail_level, tail_ty) = self.expr(tail, false)?;
+                let ty = if *spread_head {
+                    join(&head_ty, &tail_ty)
+                } else {
+                    let element = match &tail_ty {
+                        Ty::List(element) => element.as_ref().clone(),
+                        _ => Ty::Unknown,
+                    };
+                    list(join(&head_ty, &element))
+                };
+                let (head_text, head_level) = if *spread_head {
+                    coerce(head_text, head_level, &head_ty, &ty)
+                } else {
+                    let Ty::List(element) = &ty else { unreachable!() };
+                    coerce(head_text, head_level, &head_ty, element)
+                };
+                let (tail_text, tail_level) = coerce(tail_text, tail_level, &tail_ty, &ty);
                 let op = if *spread_head { "++" } else { "::" };
-                Ok((format!("{head} {op} {tail}"), LEVEL_CONS))
+                Ok((
+                    format!(
+                        "{} {op} {}",
+                        paren(head_text, head_level, LEVEL_APP),
+                        paren(tail_text, tail_level, LEVEL_APP)
+                    ),
+                    LEVEL_CONS,
+                    ty,
+                ))
             }
             ExprKind::FunctionAbs { param, domain, body } => {
                 let ty = domain_type(domain)?;
-                self.scope.push(param.clone());
+                self.scope.push((param.clone(), ty.clone()));
                 let body = self.expr(body, false);
                 self.scope.pop();
-                Ok((format!("fun ({} : {ty}) => {}", ident(param), body?.0), LEVEL_OPEN))
+                let (body, _, body_ty) = body?;
+                Ok((
+                    format!("fun ({} : {}) => {body}", ident(param), render(&ty)),
+                    LEVEL_OPEN,
+                    Ty::Fn(Box::new(ty), Box::new(body_ty)),
+                ))
             }
             other => Err(format!("{} has no Lean translation", construct(other))),
         }
@@ -759,57 +924,84 @@ impl Ctx<'_> {
 
     /// `expr` as an operand: parenthesized when it binds looser than
     /// `max`.
-    fn operand(&mut self, expr: &Expr, bare: bool, max: u8) -> Result<String, String> {
-        let (text, level) = self.expr(expr, bare)?;
-        Ok(if level > max { format!("({text})") } else { text })
+    fn operand(&mut self, expr: &Expr, bare: bool, max: u8) -> Result<(String, Ty), String> {
+        let (text, level, ty) = self.expr(expr, bare)?;
+        Ok((paren(text, level, max), ty))
     }
 
-    fn path(&mut self, segments: &[String]) -> Result<(String, u8), String> {
+    fn path(&mut self, segments: &[String]) -> Result<Out, String> {
         match segments {
-            [name] if self.scope.contains(name) => Ok((ident(name), LEVEL_ATOM)),
-            [name] => Ok((self.names.resolve(name)?, LEVEL_ATOM)),
-            [value, field] if self.scope.contains(value) => match field.as_str() {
-                "numer" | "denom" | "length" => Ok((format!("Emath.{field} {}", ident(value)), LEVEL_APP)),
+            [name] => match self.local(name) {
+                Some(ty) => Ok((ident(name), LEVEL_ATOM, ty)),
+                None => {
+                    let (text, ty) = self.names.resolve(name)?;
+                    Ok((text, LEVEL_ATOM, ty))
+                }
+            },
+            [value, field] if self.local(value).is_some() => match field.as_str() {
+                "numer" | "denom" | "length" => {
+                    Ok((format!("Emath.{field} {}", ident(value)), LEVEL_APP, Ty::Int))
+                }
                 _ => Err(format!("field `.{field}` has no Lean translation")),
             },
             _ => Err(format!("`{}` has no Lean translation", segments.join("."))),
         }
     }
 
-    fn call(&mut self, function: &Expr, args: &[Expr]) -> Result<(String, u8), String> {
-        let (callee, generic) = match &function.kind {
+    /// Each argument is cast to its parameter's type; a generic
+    /// parameter takes the type its first argument fixes.
+    fn call(&mut self, function: &Expr, args: &[Expr]) -> Result<Out, String> {
+        let (mut text, mut signature) = match &function.kind {
             ExprKind::Path { segments, generics: None } if segments.len() == 1 => {
-                let name = &segments[0];
-                if self.scope.contains(name) {
-                    (ident(name), false)
-                } else {
-                    (self.names.resolve(name)?, GENERIC_PRELUDE.contains(&name.as_str()))
-                }
+                let (text, _, ty) = self.path(segments)?;
+                (text, ty)
             }
-            _ => (self.operand(function, false, LEVEL_APP)?, false),
+            _ => self.operand(function, false, LEVEL_APP)?,
         };
-        let mut text = callee;
+        let mut bound = BTreeMap::new();
         for arg in args {
+            let (param, rest) = match signature {
+                Ty::Fn(param, rest) => (*param, *rest),
+                _ => (Ty::Unknown, Ty::Unknown),
+            };
+            let want = substitute(&param, &bound);
+            let (arg_text, level, ty) = if is_literal(arg) && !has_division(arg) {
+                match &want {
+                    Ty::Int | Ty::Rat if want == param => self.expr(arg, true)?,
+                    Ty::Int | Ty::Rat => {
+                        let (text, _, _) = self.expr(arg, true)?;
+                        (format!("({text} : {})", render(&want)), LEVEL_ATOM, want.clone())
+                    }
+                    _ => self.expr(arg, false)?,
+                }
+            } else {
+                self.expr(arg, false)?
+            };
+            unify(&param, &ty, &mut bound);
+            let (arg_text, level) = coerce(arg_text, level, &ty, &substitute(&param, &bound));
             text.push(' ');
-            text.push_str(&self.operand(arg, !generic && is_literal(arg), LEVEL_ATOM)?);
+            text.push_str(&paren(arg_text, level, LEVEL_ATOM));
+            signature = rest;
         }
-        Ok((text, LEVEL_APP))
+        Ok((text, LEVEL_APP, substitute(&signature, &bound)))
     }
 
-    fn binary(&mut self, op: BinaryOp, left: &Expr, right: &Expr, bare: bool) -> Result<(String, u8), String> {
+    fn binary(&mut self, op: BinaryOp, left: &Expr, right: &Expr, bare: bool) -> Result<Out, String> {
         // A literal operand beside a typed one takes that type; inside
-        // a literal the caller already typed, it stays bare.
+        // a literal the caller already typed, it stays bare. Lean's
+        // arithmetic and comparisons insert the `Int` to `Rat` cast
+        // themselves.
         let left_bare = is_literal(left) && (bare || !is_literal(right));
         let right_bare = is_literal(right) && (bare || !is_literal(left));
-        let arithmetic = |ctx: &mut Self, symbol: &str, level: u8| -> Result<(String, u8), String> {
-            let l = ctx.operand(left, left_bare, level)?;
-            let r = ctx.operand(right, right_bare, level - 1)?;
-            Ok((format!("{l} {symbol} {r}"), level))
+        let arithmetic = |ctx: &mut Self, symbol: &str, level: u8| -> Result<Out, String> {
+            let (l, left_ty) = ctx.operand(left, left_bare, level)?;
+            let (r, right_ty) = ctx.operand(right, right_bare, level - 1)?;
+            Ok((format!("{l} {symbol} {r}"), level, join(&left_ty, &right_ty)))
         };
-        let relation = |ctx: &mut Self, symbol: &str| -> Result<(String, u8), String> {
-            let (l, _) = ctx.expr(left, left_bare)?;
-            let (r, _) = ctx.expr(right, right_bare)?;
-            Ok((format!("decide ({l} {symbol} {r})"), LEVEL_APP))
+        let relation = |ctx: &mut Self, symbol: &str| -> Result<Out, String> {
+            let (l, _, _) = ctx.expr(left, left_bare)?;
+            let (r, _, _) = ctx.expr(right, right_bare)?;
+            Ok((format!("decide ({l} {symbol} {r})"), LEVEL_APP, Ty::Bool))
         };
         match op {
             BinaryOp::Add => arithmetic(self, "+", LEVEL_ADD),
@@ -823,8 +1015,8 @@ impl Ctx<'_> {
                 } else {
                     format!("({} : Rat)", self.expr(left, false)?.0)
                 };
-                let r = self.operand(right, is_literal(right), LEVEL_ATOM.max(LEVEL_MUL - 1))?;
-                Ok((format!("{l} / {r}"), LEVEL_MUL))
+                let (r, _) = self.operand(right, is_literal(right), LEVEL_ATOM.max(LEVEL_MUL - 1))?;
+                Ok((format!("{l} / {r}"), LEVEL_MUL, Ty::Rat))
             }
             BinaryOp::Eq => relation(self, "="),
             BinaryOp::Ne => relation(self, "≠"),
@@ -833,14 +1025,14 @@ impl Ctx<'_> {
             BinaryOp::Gt => relation(self, ">"),
             BinaryOp::Ge => relation(self, "≥"),
             BinaryOp::And => {
-                let l = self.operand(left, false, LEVEL_AND)?;
-                let r = self.operand(right, false, LEVEL_AND - 1)?;
-                Ok((format!("{l} && {r}"), LEVEL_AND))
+                let (l, _) = self.operand(left, false, LEVEL_AND)?;
+                let (r, _) = self.operand(right, false, LEVEL_AND - 1)?;
+                Ok((format!("{l} && {r}"), LEVEL_AND, Ty::Bool))
             }
             BinaryOp::Or => {
-                let l = self.operand(left, false, LEVEL_OR)?;
-                let r = self.operand(right, false, LEVEL_OR - 1)?;
-                Ok((format!("{l} || {r}"), LEVEL_OR))
+                let (l, _) = self.operand(left, false, LEVEL_OR)?;
+                let (r, _) = self.operand(right, false, LEVEL_OR - 1)?;
+                Ok((format!("{l} || {r}"), LEVEL_OR, Ty::Bool))
             }
             other => Err(format!("operator `{other:?}` has no Lean translation")),
         }
@@ -885,45 +1077,41 @@ fn construct(kind: &ExprKind) -> &'static str {
     }
 }
 
-fn lean_type(ty: &TypeExpr) -> Result<String, String> {
+fn lean_type(ty: &TypeExpr) -> Result<Ty, String> {
     match &ty.kind {
         TypeKind::Path { segments, generic_args } => {
             let name = segments.last().map(String::as_str).unwrap_or("");
             match (name, generic_args.as_slice()) {
-                ("Int" | "Nat", []) => Ok("Int".into()),
-                ("Rat", []) => Ok("Rat".into()),
-                ("Bool", []) => Ok("Bool".into()),
-                ("sequence", [GenericArg::Type(element)]) => Ok(format!("List {}", atom_type(lean_type(element)?))),
+                ("Int" | "Nat", []) => Ok(Ty::Int),
+                ("Rat", []) => Ok(Ty::Rat),
+                ("Bool", []) => Ok(Ty::Bool),
+                ("sequence", [GenericArg::Type(element)]) => Ok(list(lean_type(element)?)),
                 _ => Err(format!("type `{}` has no Lean translation", segments.join("."))),
             }
         }
         TypeKind::Fn { domain, codomain } => {
-            let domain = lean_type(domain)?;
-            let domain = if domain.contains('→') { format!("({domain})") } else { domain };
-            Ok(format!("{domain} → {}", lean_type(codomain)?))
+            Ok(Ty::Fn(Box::new(lean_type(domain)?), Box::new(lean_type(codomain)?)))
         }
         _ => Err("this type has no Lean translation".into()),
     }
 }
 
 /// The type a closure's `in` domain names.
-fn domain_type(domain: &Expr) -> Result<String, String> {
+fn domain_type(domain: &Expr) -> Result<Ty, String> {
     match &domain.kind {
         ExprKind::Path { segments, generics } => {
             let name = segments.last().map(String::as_str).unwrap_or("");
             match (name, generics.as_deref()) {
-                ("Int" | "Nat", None) => Ok("Int".into()),
-                ("Rat", None) => Ok("Rat".into()),
-                ("Bool", None) => Ok("Bool".into()),
-                ("sequence", Some([GenericArg::Type(element)])) => {
-                    Ok(format!("List {}", atom_type(lean_type(element)?)))
-                }
+                ("Int" | "Nat", None) => Ok(Ty::Int),
+                ("Rat", None) => Ok(Ty::Rat),
+                ("Bool", None) => Ok(Ty::Bool),
+                ("sequence", Some([GenericArg::Type(element)])) => Ok(list(lean_type(element)?)),
                 _ => Err(format!("domain `{}` has no Lean translation", segments.join("."))),
             }
         }
         ExprKind::Call { function, args } => match (&function.kind, args.as_slice()) {
             (ExprKind::Path { segments, .. }, [element]) if segments.len() == 1 && segments[0] == "sequence" => {
-                Ok(format!("List {}", atom_type(domain_type(element)?)))
+                Ok(list(domain_type(element)?))
             }
             _ => Err("this domain has no Lean translation".into()),
         },

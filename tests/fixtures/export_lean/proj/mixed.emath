@@ -1,0 +1,28 @@
+# Int and Rat meeting where Lean needs one type: the branches of an
+# `if`, the items of a list, a cons, and a fold's starting value.
+use fold.reduce
+
+emath function mixed:
+    inputs:
+        c: Bool
+        n: Int
+        p: Rat
+    outputs:
+        result: Rat
+    definitions:
+        chosen = if c: n else: p
+        items = [n, p]
+        more = [n, ..items]
+        total = fold(function acc in Rat: function x in Rat: acc + x, 0, more)
+        result = chosen + total
+    tests:
+        example <int_branch>:
+            given c = true
+            given n = 2
+            given p = 1 / 3
+            expect result == 19 / 3
+        example <rat_branch>:
+            given c = false
+            given n = 2
+            given p = 1 / 3
+            expect result == 14 / 3

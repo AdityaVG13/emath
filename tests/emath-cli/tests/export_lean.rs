@@ -10,8 +10,10 @@
 //! `tests/fixtures/export_lean/golden/model.lean`. With `--check`
 //! Lean's kernel checks every authored example: the chain folder is
 //! accepted, and the same folder with one wrong expected value is
-//! rejected naming that example. The `--check` half needs `lake` on
-//! PATH.
+//! rejected naming that example. `mixed.emath` joins Int and Rat where
+//! Lean needs one type (an `if`, a list, a cons, a fold's start), and
+//! the whole folder must still check. The `--check` half needs `lake`
+//! on PATH.
 
 mod common;
 
@@ -85,6 +87,15 @@ fn export_lean() {
     probe.demand("model-matches-golden", model == golden, model);
 
     if lake_available() {
+        // `mixed.emath` joins Int and Rat in an `if`, a list, a cons and
+        // a fold's start, as emath does; Lean must accept the same file.
+        let (text, code) = emath(&dir, &["export", "lean", "proj", "--check"]);
+        probe.demand(
+            "folder-accepted-beside-refusals",
+            code == EXIT_PARTIAL as i32 && text.contains("lean: accepted"),
+            format!("exit {code}\n{text}"),
+        );
+
         let out = dir.join("checked");
         let out_arg = out.to_string_lossy().to_string();
         let (text, code) = emath(&dir, &["export", "lean", "proj/chain", "--out", &out_arg, "--check"]);
