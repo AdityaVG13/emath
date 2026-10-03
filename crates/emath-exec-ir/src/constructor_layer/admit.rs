@@ -595,6 +595,14 @@ impl Engine {
                         "buffer comparison is refused: a mutable carrier has no total value equality",
                     ));
                 }
+                if matches!(op, BinaryOp::Eq | BinaryOp::Ne)
+                    && (matches!(l, CType::Closure(..)) || matches!(r, CType::Closure(..)))
+                {
+                    return Err(fault(
+                        "function_equality_refused",
+                        "function comparison is refused: equality of functions is not decidable; compare their values at chosen inputs",
+                    ));
+                }
                 // Str carries structural equality only (bead e6gvs): the
                 // ordering ops refuse at admission so the admit lane
                 // agrees with the runtime's `type` fault; the carrier

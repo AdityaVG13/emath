@@ -325,6 +325,10 @@ pub(super) fn eq_values(left: &CValue, right: &CValue) -> Result<bool, Construct
             "buffer_equality_refused",
             "buffer comparison is refused: a mutable carrier has no total value equality",
         )),
+        (CValue::Closure(_), CValue::Closure(_)) => Err(fault(
+            "function_equality_refused",
+            "function comparison is refused: equality of functions is not decidable; compare their values at chosen inputs",
+        )),
         (CValue::Sequence(a), CValue::Sequence(b)) => {
             if a.len() != b.len() {
                 return Ok(false);

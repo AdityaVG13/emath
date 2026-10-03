@@ -62,6 +62,20 @@ emath function ComparesBuffers:
         result = flags == flags
 ";
 
+// Two function values written alike: equality between functions is not
+// decidable, and the VM's structural compare saw source positions.
+const FUNCTION_EQUALITY_REFUSED: &str = "\
+emath function ComparesFunctions:
+    inputs:
+        k: Int
+    outputs:
+        result: Bool
+    definitions:
+        f = function a in Int: a + k
+        g = function a in Int: a + k
+        result = f == g
+";
+
 // Non-tail call chain so the suspended state holds the SAME buffer in
 // several live frames: Outer's env binds `flags`, Inner's guard frame
 // binds it again, Step's write frame binds it a third time. The write
@@ -109,7 +123,7 @@ fn tree(source: &str) -> emath_core::tree::SyntaxTree {
 #[test]
 fn probe() {
     boot();
-    let mut p = Probe::new("buffer carrier: shared writes, checked bounds, refused equality, alias-faithful checkpoints");
+    let mut p = Probe::new("buffer carrier: shared writes, checked bounds, refused buffer and function equality, alias-faithful checkpoints");
 
     p.case("write_reads_through_alias", |p| {
         let t = tree(WRITE_READ);
@@ -142,6 +156,9 @@ fn probe() {
         let t = tree(EQUALITY_REFUSED);
         let err = admit_tree_at(&t, None).expect_err("buffer equality must refuse");
         p.eq("named-refusal", err.code, "buffer_equality_refused");
+        let t = tree(FUNCTION_EQUALITY_REFUSED);
+        let err = admit_tree_at(&t, None).expect_err("function equality must refuse");
+        p.eq("function-named-refusal", err.code, "function_equality_refused");
     });
 
     p.case("checkpoint_encodes_aliasing", |p| {
