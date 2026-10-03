@@ -1,0 +1,23 @@
+# Closed form for model.mean_on: with L = a - b and the fixed point
+# pi = b / (1 - L), state 1 at step t has chance pi + (1 - pi) L^t.
+exports: mean_closed
+
+use analysis.powers
+
+emath function mean_closed:
+    inputs:
+        a: Rat
+        b: Rat
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        l = a - b
+        pi = b / (1 - l)
+        result = n * pi + (1 - pi) * l * (1 - rat_pow(l, n)) / (1 - l)
+    tests:
+        example <two_steps>:
+            given a = 1 / 2
+            given b = 1 / 4
+            given n = 2
+            expect result == 7 / 8

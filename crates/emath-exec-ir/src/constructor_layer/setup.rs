@@ -244,6 +244,21 @@ pub(super) fn package_of(tree: &SyntaxTree) -> Option<&[String]> {
     })
 }
 
+/// Where one `use` line of `tree` (the file at `source`) resolves, by
+/// the engine's own rules, and whether that file is a library module
+/// (under a `language/modules` or `language/domains` root) rather than
+/// a user file.
+pub fn resolve_use(
+    tree: &SyntaxTree,
+    path: &[String],
+    source: &Path,
+) -> Result<(PathBuf, bool), ConstructorError> {
+    let roots = module_roots_for(Some(source));
+    let file = resolve_import(path, &roots, Some(source), package_of(tree))?;
+    let library = roots.iter().any(|root| file.starts_with(root));
+    Ok((file, library))
+}
+
 pub(super) fn resolve_import(
     path: &[String],
     roots: &[PathBuf],

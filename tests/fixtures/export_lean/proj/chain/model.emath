@@ -1,0 +1,53 @@
+# A two-state chain. From state 1 the next step is in state 1 with
+# chance a; from state 0 it moves to state 1 with chance b. Step 0 is
+# in state 1. dist(a, b, t) is the distribution at step t, index 1 =
+# state 1; mean_on is the expected number of steps among 1..n spent in
+# state 1.
+exports: dist, mean_on
+
+use fold.reduce
+
+emath function stay:
+    inputs:
+        a: Rat
+        b: Rat
+        from: Int
+        to: Int
+    outputs:
+        result: Rat
+    definitions:
+        p = if from == 1: a else: b
+        result = if to == 1: p else: 1 - p
+
+emath function dist:
+    inputs:
+        a: Rat
+        b: Rat
+        t: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        step = function d in sequence(Rat): tabulate(function to in Int: fold(function acc in Rat: function from in Int: acc + d[from] * stay(a, b, from, to), 0 / 1, range(0, 2)), 2)
+        result = fold(function d in sequence(Rat): function i in Int: step(d), [0 / 1, 1 / 1], range(0, t))
+    tests:
+        example <one_step>:
+            given a = 1 / 2
+            given b = 1 / 4
+            given t = 1
+            expect result == [1 / 2, 1 / 2]
+
+emath function mean_on:
+    inputs:
+        a: Rat
+        b: Rat
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = fold(function acc in Rat: function t in Int: acc + dist(a, b, t)[1], 0 / 1, range(1, n))
+    tests:
+        example <two_steps>:
+            given a = 1 / 2
+            given b = 1 / 4
+            given n = 2
+            expect result == 7 / 8

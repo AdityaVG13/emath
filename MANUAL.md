@@ -102,6 +102,7 @@ Details: [carrier worlds and claims](language/reference/diagnostics-and-tooling-
 | `emath dream FILE --target StepFn` | Launch a background discovery run under `.emath/runs/NAME/` with a live dashboard |
 | `emath dream watch\|resume\|fork\|export RUN`, `emath dream list` | Manage runs. Detaching never stops a run |
 | `emath keep FILE --function F --to LIB` | Evaluate a function that returns a closed quoted program and write it into a library as an ordinary `emath function` |
+| `emath export lean FILE\|DIR` | Write a Lean 4 project of the functions and their examples for review; add `--check` to have the Lean kernel prove every example |
 | `emath loop FILE` | Drive a research loop interactively (`step`, `run`, `show`, `grow-case`, `save`, `load`) or replay a script with `--script` |
 | `emath experiment MANIFEST` | Measure a baseline and a candidate on one workload and return an authored evaluator's decision |
 

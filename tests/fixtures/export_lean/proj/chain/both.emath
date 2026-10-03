@@ -1,0 +1,19 @@
+# The chain against its closed form, through two sibling imports.
+use model
+use found
+
+emath function gap:
+    inputs:
+        a: Rat
+        b: Rat
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = mean_on(a, b, n) - mean_closed(a, b, n)
+    tests:
+        example <agree_at_five>:
+            given a = 2 / 3
+            given b = 1 / 5
+            given n = 5
+            expect result == 0

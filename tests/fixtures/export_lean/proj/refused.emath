@@ -1,0 +1,30 @@
+# One function Lean can take, one it cannot (quoted code), and one
+# that depends on the second.
+emath function square:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = x * x
+    tests:
+        example <three>:
+            given x = 3
+            expect result == 9
+
+emath function code:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        program = quote(function y in Int: y + 1)
+        result = x
+
+emath function uses_code:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = code(x) + 1
