@@ -2136,7 +2136,28 @@ fn literal_frame_expr(
     let declared = &instantiate_declared(&arg_kinds, declared);
     let mut refined = InputKinds::new();
     for (index, (name, value)) in names.iter().zip(inputs).enumerate() {
-        refined.insert(name.clone(), frame_input_kind(kind_at(kinds, *value), declared.get(index)));
+        let actual = kind_at(kinds, *value);
+        // The scalar union cannot bind a sequence (or any non-scalar)
+        // parameter: the inlined body would index or measure a scalar
+        // and the crate would not compile. Refusing here lets an
+        // expression template keep its tree without a compiled factory.
+        if actual == ValueKind::CodeValue
+            && let Some(signature) = declared.get(index)
+            && !matches!(
+                ValueKind::from_signature(signature),
+                ValueKind::CodeValue
+                    | ValueKind::I64
+                    | ValueKind::ExactInt
+                    | ValueKind::Rational
+                    | ValueKind::Bool
+                    | ValueKind::Other
+            )
+        {
+            return Err(BackendError::UnsupportedType(format!(
+                "a scalar union value cannot bind a `{signature}` parameter"
+            )));
+        }
+        refined.insert(name.clone(), frame_input_kind(actual, declared.get(index)));
     }
     for (name, value) in states.iter().zip(state) {
         refined.insert(name.clone(), kind_at(kinds, *value));
