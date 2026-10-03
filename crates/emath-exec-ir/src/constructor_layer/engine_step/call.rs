@@ -1,6 +1,7 @@
 use super::super::{Engine, Expr, CValue, ConstructorError, ExprKind, Rc, Kont, fault, machine_int_basename, machine_buffer_basename, cint, Code, FnDecl, MAX_CALL_DEPTH, EvalTail};
 use super::super::world::CarrierWorld;
 use super::prelude::{admit_input_type, code_identity, is_refused_recipe, path_expr, project_field, rebuild_expr};
+use super::tail::PendingExpr;
 
 /// The identifier a `quote.join` operand spells: a quoted single
 /// identifier (`quote(triangular)`) or a viewed reference's name tag
@@ -32,25 +33,7 @@ impl Engine {
             }
         }
         let cal = self.eval(function)?;
-        if self.facts_only_memo {
-            let vals = self.eval_args_direct(args)?;
-            return self.apply_value(cal, &vals);
-        }
-        let mut vals = Vec::new();
-        let mut rest: Vec<Rc<Expr>> = args.iter().map(|expr| Rc::new(expr.clone())).collect();
-        while !rest.is_empty() {
-            let next = rest.remove(0);
-            self.push_kont(|| Kont::CallArgs {
-                callee: cal.clone(),
-                done: vals.clone(),
-                rest: rest.clone(),
-            });
-            self.push_kont(|| Kont::EvalExpr { expr: next.clone() });
-            vals.push(self.eval(&next)?);
-            self.pop_kont();
-            self.pop_kont();
-        }
-        self.apply_value(cal, &vals)
+        self.finish_call_args(cal, Vec::with_capacity(args.len()), args, None)
     }
 
     pub(in crate::constructor_layer) fn eval_named_call(
@@ -102,20 +85,16 @@ impl Engine {
             // The callee lookup costs the step the generic call path
             // charges to evaluate the callee.
             self.charge()?;
-            let recv = if self.facts_only_memo {
-                self.eval(&args[0])?
-            } else {
-                self.push_kont(|| Kont::CallArgs {
-                    callee: callee.clone(),
-                    done: Vec::new(),
-                    rest: Vec::new(),
-                });
-                self.push_kont(|| Kont::EvalExpr { expr: Rc::new(args[0].clone()) });
-                let recv = self.eval(&args[0])?;
-                self.pop_kont();
-                self.pop_kont();
-                recv
-            };
+            let recv = self.eval_with_konts(&args[0], || {
+                [
+                    Kont::CallArgs {
+                        callee: callee.clone(),
+                        done: Vec::new(),
+                        rest: Vec::new(),
+                    },
+                    Kont::EvalExpr { expr: Rc::new(args[0].clone()) },
+                ]
+            })?;
             if let Some(field) = project_field(&recv, name) {
                 return Ok(Some(field));
             }
@@ -379,16 +358,7 @@ impl Engine {
         self.call_depth += 1;
         self.push_frame(name);
         let saved = self.env.clone();
-        let result = if self.facts_only_memo {
-            self.eval_args_direct(args).and_then(|vals| self.apply_fn_body(name, decl, &vals))
-        } else {
-            self.eval_fn_args(
-                name,
-                decl,
-                Vec::new(),
-                args.iter().map(|expr| Rc::new(expr.clone())).collect(),
-            )
-        };
+        let result = self.eval_fn_args(name, decl, Vec::with_capacity(args.len()), args);
         let exhausted = matches!(
             &result,
             Err(err) if err.code == "budget_exhausted"
@@ -401,36 +371,18 @@ impl Engine {
         result
     }
 
-    /// Arguments left to right, read in place: the `eval_fn_args` order
-    /// without its kont bookkeeping, for an evaluation that never suspends.
-    fn eval_args_direct(&mut self, args: &[Expr]) -> Result<Vec<CValue>, ConstructorError> {
-        let mut vals = Vec::with_capacity(args.len());
-        for arg in args {
-            vals.push(self.eval(arg)?);
-        }
-        Ok(vals)
-    }
-
-    pub(in crate::constructor_layer) fn eval_fn_args(
+    pub(in crate::constructor_layer) fn eval_fn_args<E: PendingExpr>(
         &mut self,
         name: &str,
         decl: Rc<FnDecl>,
         mut done: Vec<CValue>,
-        rest: Vec<Rc<Expr>>,
+        rest: &[E],
     ) -> Result<CValue, ConstructorError> {
-        let mut rest = rest;
-        while !rest.is_empty() {
-            let next = rest.remove(0);
-            self.push_kont(|| Kont::FnCall {
-                name: name.to_string(),
-                done: done.clone(),
-                rest: rest.clone(),
-            });
-            self.push_kont(|| Kont::EvalExpr { expr: next.clone() });
-            done.push(self.eval(&next)?);
-            self.pop_kont();
-            self.pop_kont();
-        }
+        self.eval_pending_items(&mut done, rest, |done, rest| Kont::FnCall {
+            name: name.to_string(),
+            done,
+            rest,
+        })?;
         self.apply_fn_body(name, decl, &done)
     }
 
@@ -449,32 +401,24 @@ impl Engine {
             .get(&name)
             .cloned()
             .ok_or_else(|| fault("unbound", format!("unknown function `{name}`")))?;
-        self.eval_fn_args(&name, decl, done, rest)
+        self.eval_fn_args(&name, decl, done, &rest)
     }
 
-    pub(in crate::constructor_layer) fn finish_call_args(
+    pub(in crate::constructor_layer) fn finish_call_args<E: PendingExpr>(
         &mut self,
         callee: CValue,
         mut done: Vec<CValue>,
-        rest: Vec<Rc<Expr>>,
+        rest: &[E],
         incoming: Option<CValue>,
     ) -> Result<CValue, ConstructorError> {
         if let Some(value) = incoming {
             done.push(value);
         }
-        let mut rest = rest;
-        while !rest.is_empty() {
-            let next = rest.remove(0);
-            self.push_kont(|| Kont::CallArgs {
-                callee: callee.clone(),
-                done: done.clone(),
-                rest: rest.clone(),
-            });
-            self.push_kont(|| Kont::EvalExpr { expr: next.clone() });
-            done.push(self.eval(&next)?);
-            self.pop_kont();
-            self.pop_kont();
-        }
+        self.eval_pending_items(&mut done, rest, |done, rest| Kont::CallArgs {
+            callee: callee.clone(),
+            done,
+            rest,
+        })?;
         self.apply_value(callee, &done)
     }
 

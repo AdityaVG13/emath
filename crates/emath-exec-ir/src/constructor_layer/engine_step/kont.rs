@@ -159,13 +159,11 @@ impl Engine {
         let value = match &top {
             Kont::BinLeft { op, left, right } => {
                 let left_value = self.eval(left)?;
-                self.push_kont(|| Kont::BinRight {
+                let right_value = self.eval_with_kont(right, || Kont::BinRight {
                     op: *op,
                     left: left_value.clone(),
                     right: right.clone(),
-                });
-                let right_value = self.eval(right)?;
-                self.pop_kont();
+                })?;
                 binary(*op, left_value, right_value)?
             }
             Kont::BinRight { op, left, right } => {
@@ -177,28 +175,18 @@ impl Engine {
                 then_value,
                 else_value,
             } => match self.eval(condition)? {
-                CValue::Bool(true) => {
-                    self.push_kont(|| Kont::IfThen {
-                        then_value: then_value.clone(),
-                    });
-                    let value = self.eval(then_value)?;
-                    self.pop_kont();
-                    value
-                }
-                CValue::Bool(false) => {
-                    self.push_kont(|| Kont::IfElse {
-                        else_value: else_value.clone(),
-                    });
-                    let value = self.eval(else_value)?;
-                    self.pop_kont();
-                    value
-                }
+                CValue::Bool(true) => self.eval_with_kont(then_value, || Kont::IfThen {
+                    then_value: then_value.clone(),
+                })?,
+                CValue::Bool(false) => self.eval_with_kont(else_value, || Kont::IfElse {
+                    else_value: else_value.clone(),
+                })?,
                 _ => return Err(fault("type", "if condition must be Bool")),
             },
             Kont::IfThen { then_value } => self.eval(then_value)?,
             Kont::IfElse { else_value } => self.eval(else_value)?,
             Kont::CallArgs { callee, done, rest } => {
-                self.finish_call_args(callee.clone(), done.clone(), rest.clone(), None)?
+                self.finish_call_args(callee.clone(), done.clone(), rest.as_slice(), None)?
             }
             Kont::FnCall { name, done, rest } => {
                 self.finish_fn_call(name.clone(), done.clone(), rest.clone(), None)?
@@ -207,7 +195,7 @@ impl Engine {
                 as_tuple,
                 done,
                 rest,
-            } => self.finish_seq_items(*as_tuple, done.clone(), rest.clone(), None)?,
+            } => self.finish_seq_items(*as_tuple, done.clone(), rest.as_slice(), None)?,
             Kont::RecordFields {
                 type_path,
                 done,
@@ -219,7 +207,7 @@ impl Engine {
                 self.finish_record_fields(
                     type_path.clone(),
                     done.clone(),
-                    rest.clone(),
+                    rest,
                     Some((current.clone(), value)),
                 )?
             }
@@ -236,13 +224,11 @@ impl Engine {
                 spread_head,
             } => {
                 let h = self.eval(head)?;
-                self.push_kont(|| Kont::ConsAfterHead {
+                let t = self.eval_with_kont(tail, || Kont::ConsAfterHead {
                     head: h.clone(),
                     tail: tail.clone(),
                     spread_head: *spread_head,
-                });
-                let t = self.eval(tail)?;
-                self.pop_kont();
+                })?;
                 join_values(h, t, *spread_head)?
             }
             Kont::ConsAfterHead {
@@ -294,13 +280,11 @@ impl Engine {
         };
         let value = match &top {
             Kont::BinLeft { op, right, .. } => {
-                self.push_kont(|| Kont::BinRight {
+                let right_value = self.eval_with_kont(right, || Kont::BinRight {
                     op: *op,
                     left: incoming.clone(),
                     right: right.clone(),
-                });
-                let right_value = self.eval(right)?;
-                self.pop_kont();
+                })?;
                 binary(*op, incoming, right_value)?
             }
             Kont::BinRight { op, left, .. } => binary(*op, left.clone(), incoming)?,
@@ -309,27 +293,17 @@ impl Engine {
                 else_value,
                 ..
             } => match incoming {
-                CValue::Bool(true) => {
-                    self.push_kont(|| Kont::IfThen {
-                        then_value: then_value.clone(),
-                    });
-                    let value = self.eval(then_value)?;
-                    self.pop_kont();
-                    value
-                }
-                CValue::Bool(false) => {
-                    self.push_kont(|| Kont::IfElse {
-                        else_value: else_value.clone(),
-                    });
-                    let value = self.eval(else_value)?;
-                    self.pop_kont();
-                    value
-                }
+                CValue::Bool(true) => self.eval_with_kont(then_value, || Kont::IfThen {
+                    then_value: then_value.clone(),
+                })?,
+                CValue::Bool(false) => self.eval_with_kont(else_value, || Kont::IfElse {
+                    else_value: else_value.clone(),
+                })?,
                 _ => return Err(fault("type", "if condition must be Bool")),
             },
             Kont::IfThen { .. } | Kont::IfElse { .. } | Kont::EvalExpr { .. } => incoming,
             Kont::CallArgs { callee, done, rest } => {
-                self.finish_call_args(callee.clone(), done.clone(), rest.clone(), Some(incoming))?
+                self.finish_call_args(callee.clone(), done.clone(), rest.as_slice(), Some(incoming))?
             }
             Kont::FnCall { name, done, rest } => {
                 self.finish_fn_call(name.clone(), done.clone(), rest.clone(), Some(incoming))?
@@ -338,7 +312,7 @@ impl Engine {
                 as_tuple,
                 done,
                 rest,
-            } => self.finish_seq_items(*as_tuple, done.clone(), rest.clone(), Some(incoming))?,
+            } => self.finish_seq_items(*as_tuple, done.clone(), rest.as_slice(), Some(incoming))?,
             Kont::RecordFields {
                 type_path,
                 done,
@@ -348,7 +322,7 @@ impl Engine {
             } => self.finish_record_fields(
                 type_path.clone(),
                 done.clone(),
-                rest.clone(),
+                rest,
                 Some((current.clone(), incoming)),
             )?,
             Kont::IndexAfterSeq { seq, .. } => match incoming {
@@ -359,13 +333,11 @@ impl Engine {
             Kont::ConsLeft {
                 tail, spread_head, ..
             } => {
-                self.push_kont(|| Kont::ConsAfterHead {
+                let t = self.eval_with_kont(tail, || Kont::ConsAfterHead {
                     head: incoming.clone(),
                     tail: tail.clone(),
                     spread_head: *spread_head,
-                });
-                let t = self.eval(tail)?;
-                self.pop_kont();
+                })?;
                 join_values(incoming, t, *spread_head)?
             }
             Kont::ConsAfterHead {

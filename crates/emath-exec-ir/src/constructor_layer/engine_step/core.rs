@@ -21,20 +21,8 @@ impl Engine {
     }
 
     // The kont stack is remaining work for a suspended evaluation to
-    // resume. An evaluation under `facts_only_memo` never suspends, so
-    // it keeps no stack: building each node clones expression subtrees.
-    // Every pop then finds the stack empty, which nothing but resume reads.
-    pub(in crate::constructor_layer) fn push_kont(&mut self, kont: impl FnOnce() -> Kont) {
-        if self.facts_only_memo {
-            return;
-        }
-        if let Some(frame) = self.frames.last_mut() {
-            // Unboxed: the kont stack churns one node per engine step;
-            // per-node heap boxes were a malloc/free pair each step.
-            frame.kont.push(kont());
-        }
-    }
-
+    // resume. It is filled only while a failed evaluation unwinds (see
+    // `eval_with_konts`) and drained only by resume.
     pub(in crate::constructor_layer) fn pop_kont(&mut self) -> Option<Kont> {
         self.frames.last_mut()?.kont.pop()
     }
@@ -53,20 +41,48 @@ impl Engine {
         expr: &Expr,
         pending: impl FnOnce() -> Kont,
     ) -> Result<CValue, ConstructorError> {
-        let position = self
-            .frames
-            .len()
-            .checked_sub(1)
-            .map(|index| (index, self.frames[index].kont.len()));
+        self.eval_with_konts(expr, || std::iter::once(pending()))
+    }
+
+    /// Evaluates `expr` with `pending` as the work that waits on it. The
+    /// resume records are only read by `snapshot`, which runs after a
+    /// failed evaluation, so they are built on the failure path alone:
+    /// building them per step cloned whole expression trees every step.
+    pub(in crate::constructor_layer) fn eval_with_konts<I: IntoIterator<Item = Kont>>(
+        &mut self,
+        expr: &Expr,
+        pending: impl FnOnce() -> I,
+    ) -> Result<CValue, ConstructorError> {
+        let position = self.kont_position();
         let result = self.eval(expr);
-        if result.is_err() && !self.facts_only_memo {
-            if let Some((index, depth)) = position {
-                // Insert below the child's pending work, in the original caller
-                // frame even when exhaustion left nested call frames above it.
-                self.frames[index].kont.insert(depth, pending());
-            }
+        if result.is_err() {
+            self.insert_konts(position, pending);
         }
         result
+    }
+
+    pub(in crate::constructor_layer) fn kont_position(&self) -> Option<(usize, usize)> {
+        let index = self.frames.len().checked_sub(1)?;
+        Some((index, self.frames[index].kont.len()))
+    }
+
+    pub(in crate::constructor_layer) fn insert_konts<I: IntoIterator<Item = Kont>>(
+        &mut self,
+        position: Option<(usize, usize)>,
+        pending: impl FnOnce() -> I,
+    ) {
+        if self.facts_only_memo {
+            return;
+        }
+        let Some((index, depth)) = position else {
+            return;
+        };
+        // Insert below the child's pending work, in the original caller
+        // frame even when exhaustion left nested call frames above it.
+        if let Some(frame) = self.frames.get_mut(index) {
+            let depth = depth.min(frame.kont.len());
+            frame.kont.splice(depth..depth, pending());
+        }
     }
 
     pub(in crate::constructor_layer) fn eval_fresh(
@@ -346,7 +362,7 @@ impl Engine {
                 self.eval_record_direct(type_path, fields)
             }
             ExprKind::Record { type_path, fields } => {
-                self.finish_record_fields(type_path.clone(), BTreeMap::new(), fields.clone(), None)
+                self.finish_record_fields(type_path.clone(), BTreeMap::new(), fields, None)
             }
             ExprKind::SequenceCons {
                 head,
@@ -354,20 +370,16 @@ impl Engine {
                 spread_head,
             } => {
                 let spread_head = *spread_head;
-                self.push_kont(|| Kont::ConsLeft {
+                let h = self.eval_with_kont(head, || Kont::ConsLeft {
                     head: head.clone(),
                     tail: tail.clone(),
                     spread_head,
-                });
-                let h = self.eval(head)?;
-                self.pop_kont();
-                self.push_kont(|| Kont::ConsAfterHead {
+                })?;
+                let t = self.eval_with_kont(tail, || Kont::ConsAfterHead {
                     head: h.clone(),
                     tail: tail.clone(),
                     spread_head,
-                });
-                let t = self.eval(tail)?;
-                self.pop_kont();
+                })?;
                 join_values(h, t, spread_head)
             }
             ExprKind::Index { value, indices } => {
@@ -378,15 +390,13 @@ impl Engine {
                 let Some(index_expr) = indices.first() else {
                     return Err(fault("invalid_index", "missing index"));
                 };
-                self.push_kont(|| Kont::IndexAfterSeq {
+                let CValue::Int(i) = self.eval_with_kont(index_expr, || Kont::IndexAfterSeq {
                     seq: seq.clone(),
                     index: Box::new(index_expr.clone()),
-                });
-                let CValue::Int(i) = self.eval(index_expr)? else {
-                    self.pop_kont();
+                })?
+                else {
                     return Err(fault("type", "index must be Int"));
                 };
-                self.pop_kont();
                 index_seq(seq, i)
             }
             ExprKind::Call { function, args } => self.eval_call(function, args),
@@ -547,13 +557,11 @@ impl Engine {
                 else_arm,
             } => {
                 if let Some(subject) = subject {
-                    self.push_kont(|| Kont::MatchWaiting {
+                    let scrutinee = self.eval_with_kont(subject, || Kont::MatchWaiting {
                         subject: subject.clone(),
                         arms: arms.clone(),
                         else_arm: else_arm.clone(),
-                    });
-                    let scrutinee = self.eval(subject)?;
-                    self.pop_kont();
+                    })?;
                     return self.choose_match(scrutinee, arms, else_arm);
                 }
                 self.eval_cases_arms(arms, else_arm)

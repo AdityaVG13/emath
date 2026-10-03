@@ -129,15 +129,12 @@ impl Engine {
                 frame.kont.clear();
             }
             self.set_frame_next("body");
-            self.push_kont(|| Kont::EvalExpr {
-                expr: Rc::new(clos.body.clone()),
-            });
+            let position = self.kont_position();
             self.refresh_frame();
             let outcome =
                 stacker::maybe_grow(1024 * 1024, 4 * 1024 * 1024, || self.eval_tail(&clos.body));
             match outcome {
                 Ok(EvalTail::Value(value)) => {
-                    self.pop_kont();
                     self.env = saved;
                     self.remember_closure(&clos, &args, value.clone());
                     return Ok(value);
@@ -146,7 +143,6 @@ impl Engine {
                     callee,
                     args: next_args,
                 }) => {
-                    self.pop_kont();
                     match callee {
                         CValue::Closure(next) => {
                             clos = next;
@@ -165,7 +161,6 @@ impl Engine {
                     }
                 }
                 Ok(EvalTail::Call { name, args: vals }) => {
-                    self.pop_kont();
                     let decl =
                         self.functions.get(&name).cloned().ok_or_else(|| {
                             fault("unbound", format!("unknown function `{name}`"))
@@ -188,9 +183,13 @@ impl Engine {
                     return Ok(value);
                 }
                 Err(err) => {
-                    // The kont stays on any fault (resume bookkeeping
-                    // matches the pre-seam application path, which
-                    // popped only on success).
+                    // Any fault leaves the body as remaining work (resume
+                    // bookkeeping matches the pre-seam application path).
+                    self.insert_konts(position, || {
+                        std::iter::once(Kont::EvalExpr {
+                            expr: Rc::new(clos.body.clone()),
+                        })
+                    });
                     self.env = saved;
                     return Err(err);
                 }

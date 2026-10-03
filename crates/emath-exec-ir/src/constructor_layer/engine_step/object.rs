@@ -78,14 +78,12 @@ impl Engine {
         packed_expr: &Expr,
         body: &Expr,
     ) -> Result<CValue, ConstructorError> {
-        self.push_kont(|| Kont::OpenAfterPacked {
+        let packed = self.eval_with_kont(packed_expr, || Kont::OpenAfterPacked {
             type_name: type_name.to_string(),
             param: param.to_string(),
             packed: Box::new(packed_expr.clone()),
             body: Box::new(body.clone()),
-        });
-        let packed = self.eval(packed_expr)?;
-        self.pop_kont();
+        })?;
         self.finish_open(type_name, param, body, packed)
     }
 
@@ -124,13 +122,9 @@ impl Engine {
         };
         let saved = self.env.clone();
         self.env.insert(param.to_string(), opened);
-        self.push_kont(|| Kont::EvalExpr {
+        let result = self.eval_with_kont(body, || Kont::EvalExpr {
             expr: Rc::new(body.clone()),
         });
-        let result = self.eval(body);
-        if result.is_ok() {
-            self.pop_kont();
-        }
         self.env = saved;
         result
     }
@@ -143,20 +137,14 @@ impl Engine {
     ) -> Result<CValue, ConstructorError> {
         for (cond, value) in arms {
             if self.pattern_binds(&scrutinee, cond)? {
-                self.push_kont(|| Kont::EvalExpr {
+                return self.eval_with_kont(value, || Kont::EvalExpr {
                     expr: Rc::new(value.clone()),
                 });
-                let result = self.eval(value)?;
-                self.pop_kont();
-                return Ok(result);
             }
         }
-        self.push_kont(|| Kont::EvalExpr {
+        self.eval_with_kont(else_arm, || Kont::EvalExpr {
             expr: Rc::new(else_arm.clone()),
-        });
-        let result = self.eval(else_arm)?;
-        self.pop_kont();
-        Ok(result)
+        })
     }
 
     pub(in crate::constructor_layer) fn eval_cases_arms(
@@ -164,42 +152,22 @@ impl Engine {
         arms: &[(Expr, Expr)],
         else_arm: &Expr,
     ) -> Result<CValue, ConstructorError> {
-        if self.facts_only_memo {
-            // No kont stack to resume from: test the arms in place.
-            for (cond, value) in arms {
-                let cond_value = self.eval(cond)?;
-                if self.cases_cond_taken(&cond_value)? {
-                    return self.eval(value);
-                }
-            }
-            return self.eval(else_arm);
-        }
-        let mut rest: Vec<(Expr, Expr)> = arms.to_vec();
-        while !rest.is_empty() {
-            let (cond, value) = rest.remove(0);
-            self.push_kont(|| Kont::CasesArm {
+        for (i, (cond, value)) in arms.iter().enumerate() {
+            let cond_value = self.eval_with_kont(cond, || Kont::CasesArm {
                 cond: Box::new(cond.clone()),
                 value: Box::new(value.clone()),
-                rest: rest.clone(),
+                rest: arms[i + 1..].to_vec(),
                 else_arm: Box::new(else_arm.clone()),
-            });
-            let cond_value = self.eval(&cond)?;
-            self.pop_kont();
+            })?;
             if self.cases_cond_taken(&cond_value)? {
-                self.push_kont(|| Kont::EvalExpr {
+                return self.eval_with_kont(value, || Kont::EvalExpr {
                     expr: Rc::new(value.clone()),
                 });
-                let result = self.eval(&value)?;
-                self.pop_kont();
-                return Ok(result);
             }
         }
-        self.push_kont(|| Kont::EvalExpr {
+        self.eval_with_kont(else_arm, || Kont::EvalExpr {
             expr: Rc::new(else_arm.clone()),
-        });
-        let result = self.eval(else_arm)?;
-        self.pop_kont();
-        Ok(result)
+        })
     }
 
     pub(in crate::constructor_layer) fn cases_cond_taken(&self, value: &CValue) -> Result<bool, ConstructorError> {

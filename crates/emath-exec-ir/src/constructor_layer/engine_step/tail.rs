@@ -1,6 +1,31 @@
 use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, Rc, BTreeMap, Arc};
 use super::prelude::project_field;
 
+/// An expression waiting in a resume record: evaluated in place, and
+/// shared into the record only when one is built.
+pub(in crate::constructor_layer) trait PendingExpr {
+    fn expr(&self) -> &Expr;
+    fn shared(&self) -> Rc<Expr>;
+}
+
+impl PendingExpr for Expr {
+    fn expr(&self) -> &Expr {
+        self
+    }
+    fn shared(&self) -> Rc<Expr> {
+        Rc::new(self.clone())
+    }
+}
+
+impl PendingExpr for Rc<Expr> {
+    fn expr(&self) -> &Expr {
+        self
+    }
+    fn shared(&self) -> Rc<Expr> {
+        self.clone()
+    }
+}
+
 impl Engine {
     pub(in crate::constructor_layer) fn eval_tail(
         &mut self,
@@ -82,22 +107,29 @@ impl Engine {
         pending: impl Fn(Vec<CValue>, Vec<Rc<Expr>>) -> Kont,
     ) -> Result<Vec<CValue>, ConstructorError> {
         let mut done = Vec::with_capacity(args.len());
-        if self.facts_only_memo {
-            for arg in args {
-                done.push(self.eval(arg)?);
-            }
-            return Ok(done);
-        }
-        for (i, arg) in args.iter().enumerate() {
-            self.push_kont(|| {
-                pending(done.clone(), args[i + 1..].iter().map(|expr| Rc::new(expr.clone())).collect())
-            });
-            self.push_kont(|| Kont::EvalExpr { expr: Rc::new(arg.clone()) });
-            done.push(self.eval(arg)?);
-            self.pop_kont();
-            self.pop_kont();
-        }
+        self.eval_pending_items(&mut done, args, pending)?;
         Ok(done)
+    }
+
+    /// Items left to right into `done`. While one evaluates, the work
+    /// waiting on it is `pending(done, rest)` with the item itself above
+    /// it; those records are built only if the evaluation fails.
+    pub(in crate::constructor_layer) fn eval_pending_items<E: PendingExpr>(
+        &mut self,
+        done: &mut Vec<CValue>,
+        items: &[E],
+        pending: impl Fn(Vec<CValue>, Vec<Rc<Expr>>) -> Kont,
+    ) -> Result<(), ConstructorError> {
+        for (i, item) in items.iter().enumerate() {
+            let value = self.eval_with_konts(item.expr(), || {
+                [
+                    pending(done.clone(), items[i + 1..].iter().map(PendingExpr::shared).collect()),
+                    Kont::EvalExpr { expr: item.shared() },
+                ]
+            })?;
+            done.push(value);
+        }
+        Ok(())
     }
 
     /// Machine buffer-carrier ops:
@@ -223,37 +255,24 @@ impl Engine {
                 CValue::Sequence(std::sync::Arc::new(done))
             });
         }
-        self.finish_seq_items(
-            as_tuple,
-            Vec::new(),
-            items.iter().map(|expr| Rc::new(expr.clone())).collect(),
-            None,
-        )
+        self.finish_seq_items(as_tuple, Vec::with_capacity(items.len()), items, None)
     }
 
-    pub(in crate::constructor_layer) fn finish_seq_items(
+    pub(in crate::constructor_layer) fn finish_seq_items<E: PendingExpr>(
         &mut self,
         as_tuple: bool,
         mut done: Vec<CValue>,
-        rest: Vec<Rc<Expr>>,
+        rest: &[E],
         incoming: Option<CValue>,
     ) -> Result<CValue, ConstructorError> {
         if let Some(value) = incoming {
             done.push(value);
         }
-        let mut rest = rest;
-        while !rest.is_empty() {
-            let next = rest.remove(0);
-            self.push_kont(|| Kont::SeqItems {
-                as_tuple,
-                done: done.clone(),
-                rest: rest.clone(),
-            });
-            self.push_kont(|| Kont::EvalExpr { expr: next.clone() });
-            done.push(self.eval(&next)?);
-            self.pop_kont();
-            self.pop_kont();
-        }
+        self.eval_pending_items(&mut done, rest, |done, rest| Kont::SeqItems {
+            as_tuple,
+            done,
+            rest,
+        })?;
         Ok(if as_tuple {
             CValue::Tuple(done)
         } else {
@@ -265,27 +284,28 @@ impl Engine {
         &mut self,
         type_path: Vec<String>,
         mut done: BTreeMap<String, CValue>,
-        mut rest: Vec<(String, Expr)>,
+        rest: &[(String, Expr)],
         incoming: Option<(String, CValue)>,
     ) -> Result<CValue, ConstructorError> {
         if let Some((name, value)) = incoming {
             done.insert(name, value);
         }
-        while !rest.is_empty() {
-            let (name, value) = rest.remove(0);
-            self.push_kont(|| Kont::RecordFields {
-                type_path: type_path.clone(),
-                done: done.clone(),
-                current: name.clone(),
-                current_expr: Box::new(value.clone()),
-                rest: rest.clone(),
-            });
-            self.push_kont(|| Kont::EvalExpr {
-                expr: Rc::new(value.clone()),
-            });
-            done.insert(name, self.eval(&value)?);
-            self.pop_kont();
-            self.pop_kont();
+        for (i, (name, value)) in rest.iter().enumerate() {
+            let field = self.eval_with_konts(value, || {
+                [
+                    Kont::RecordFields {
+                        type_path: type_path.clone(),
+                        done: done.clone(),
+                        current: name.clone(),
+                        current_expr: Box::new(value.clone()),
+                        rest: rest[i + 1..].to_vec(),
+                    },
+                    Kont::EvalExpr {
+                        expr: Rc::new(value.clone()),
+                    },
+                ]
+            })?;
+            done.insert(name.clone(), field);
         }
         self.finish_record(type_path, done)
     }
