@@ -529,10 +529,22 @@ pub(super) fn view_of(
         fragment_package(term, mint_scope(next_ref, scopes, binder))
     };
     match &expr.kind {
-        ExprKind::Int(text) | ExprKind::Float(text) => view_record(
+        ExprKind::Int(text) => view_record(
             "Literal",
             BTreeMap::from([("value".into(), parse_int(text).unwrap_or_else(|_| cint(0)))]),
         ),
+        // The literal's value, not rounded to the current world: make
+        // spells it back as a float literal, which each world reads again.
+        ExprKind::Float(text) => {
+            let cleaned = text.trim_end_matches("f64").trim_end_matches("Float64");
+            view_record(
+                "Literal",
+                BTreeMap::from([(
+                    "value".into(),
+                    CValue::Float64(cleaned.parse::<f64>().unwrap_or(f64::NAN)),
+                )]),
+            )
+        }
         ExprKind::Rational { numer, denom } => {
             let value = match (parse_exact(numer), parse_exact(denom)) {
                 (Ok(num), Ok(den)) if !den.is_zero() => CValue::Rat { num, den }
