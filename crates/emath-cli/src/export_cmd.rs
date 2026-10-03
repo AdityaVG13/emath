@@ -7,9 +7,16 @@
 //! proves every translated example. Declarations Lean cannot take are
 //! named with the reason, and the rest still export.
 //!
+//! A function that calls `certify_equal` or `certify_equal_from`
+//! becomes laws: theorems that the two quoted sequences agree at every
+//! `n`, proved by the law library (`Law.lean`) on Mathlib. Such a
+//! project uses one shared, prebuilt Mathlib (see `mathlib_packages`);
+//! `--check` fetches Mathlib's cache there once and never compiles it.
+//!
 //! Exit: 0 everything translated (and, with `--check`, Lean accepted);
-//! 3 something was not translated, or `lake` is missing; 1 Lean
-//! rejected the project; 2 a source does not admit; 4 a write failed.
+//! 3 something was not translated, a law was not proven, or `lake` or
+//! prebuilt Mathlib is missing; 1 Lean rejected the project (a wrong
+//! example or law); 2 a source does not admit; 4 a write failed.
 
 mod lean;
 
@@ -82,7 +89,8 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         eprintln!("error: no .emath files under {}", path.display());
         return EXIT_USAGE;
     }
-    let export = match lean::export(&roots, &base) {
+    let mathlib = mathlib_packages();
+    let export = match lean::export(&roots, &base, &mathlib) {
         Ok(export) => export,
         Err(message) => {
             eprintln!("error: E-EXPORT-SOURCE: {message}");
@@ -101,12 +109,13 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         }
     }
     println!(
-        "exported {} source files to {}: {} functions, {} examples, {} library examples",
+        "exported {} source files to {}: {} functions, {} examples, {} library examples, {} laws",
         export.sources,
         out.display(),
         export.functions,
         export.examples,
-        export.library_examples
+        export.library_examples,
+        export.laws
     );
     for refusal in &export.refusals {
         println!("{refusal}");
@@ -114,6 +123,12 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     let translated = if export.refusals.is_empty() { EXIT_OK } else { EXIT_PARTIAL };
     if !request.check {
         return translated;
+    }
+    if export.laws > 0
+        && let Err(reason) = prebuilt_mathlib(&out, &mathlib)
+    {
+        println!("lean: not checked: {reason}");
+        return EXIT_TOOLCHAIN;
     }
     let output = match Command::new("lake").arg("build").current_dir(&out).output() {
         Ok(output) => output,
@@ -125,21 +140,109 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     let log = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
     if output.status.success() {
         println!(
-            "lean: accepted ({} examples and {} library examples proved by the kernel)",
-            export.examples, export.library_examples
+            "lean: accepted ({} examples, {} library examples and {} laws proved by the kernel)",
+            export.examples, export.library_examples, export.laws
         );
         return translated;
     }
-    println!("lean: rejected");
+    let at = |lean: &str, line: usize| log.contains(&format!("{lean}:{line}:"));
+    let mut rejected = Vec::new();
+    let mut unproven = Vec::new();
     for site in &export.sites {
-        let hit = (site.first_line..=site.last_line)
-            .any(|line| log.contains(&format!("{}:{line}:", site.lean)));
-        if hit {
-            println!("rejected: {}", site.what);
+        if (site.first_line..=site.last_line).any(|line| at(&site.lean, line)) {
+            rejected.push(site.what.clone());
         }
     }
+    // An order bound that fails leaves the check without its point
+    // count, so the check's own error then says nothing about the law.
+    // A check only refutes when `emath_check` names a point where the
+    // kernel proved the sides differ.
+    for site in &export.law_sites {
+        let check = format!("{}:{}:", site.lean, site.check_line);
+        let counterexample = log
+            .lines()
+            .filter(|line| line.contains(&check))
+            .find_map(|line| line.split_once("the two sides differ at ").map(|(_, at)| at.trim().to_string()));
+        if site.order_lines.iter().any(|&line| at(&site.lean, line)) {
+            unproven.push(format!("{}: Lean found no order bound for a side", site.what));
+        } else if let Some(point) = counterexample {
+            rejected.push(format!("{}: the two sides differ at {point}", site.what));
+        } else if at(&site.lean, site.check_line) {
+            unproven.push(format!("{}: Lean could not evaluate the sides at the checked points", site.what));
+        } else if (site.first_line..=site.last_line).any(|line| at(&site.lean, line)) {
+            rejected.push(format!("{}: Lean does not accept the law's statement", site.what));
+        }
+    }
+    if rejected.is_empty() && !unproven.is_empty() {
+        println!("lean: not proven");
+    } else if rejected.is_empty() {
+        println!("lean: failed outside the translated examples and laws; see the log below");
+    } else {
+        println!("lean: rejected");
+    }
+    for what in &rejected {
+        println!("rejected: {what}");
+    }
+    for what in &unproven {
+        println!("unproven: {what}");
+    }
     println!("{log}");
-    EXIT_REFUSED
+    if rejected.is_empty() && !unproven.is_empty() { EXIT_PARTIAL } else { EXIT_REFUSED }
+}
+
+/// The shared Mathlib packages: `EMATH_LEAN_MATHLIB`, else
+/// `~/.cache/emath/lean-mathlib`, so every export reuses one download.
+/// Absolute, because Lake reads the path from the project folder.
+fn mathlib_packages() -> PathBuf {
+    let dir = match std::env::var_os("EMATH_LEAN_MATHLIB") {
+        Some(dir) => PathBuf::from(dir),
+        None => std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join(".cache/emath/lean-mathlib"),
+    };
+    if dir.is_absolute() {
+        dir
+    } else {
+        std::env::current_dir().map(|cwd| cwd.join(&dir)).unwrap_or(dir)
+    }
+}
+
+/// Makes sure the Mathlib modules the law library imports are built,
+/// fetching Mathlib's prebuilt cache once if they are not. Compiling
+/// Mathlib from source takes hours of every core, so this refuses
+/// rather than let `lake build` start it.
+fn prebuilt_mathlib(out: &Path, packages: &Path) -> Result<(), String> {
+    let built = || {
+        Command::new("lake")
+            .args(["build", "--no-build"])
+            .args(lean::law_imports())
+            .current_dir(out)
+            .output()
+            .map(|output| output.status.success())
+            .map_err(|error| format!("cannot run `lake` ({error}); install Lean with elan"))
+    };
+    // A missing Mathlib is cloned by the first `lake` call; say so first.
+    let present = packages.join("mathlib").is_dir();
+    if !present {
+        println!("lean: fetching Mathlib and its prebuilt cache into {} (once, several GB)", packages.display());
+    }
+    if present && built()? {
+        return Ok(());
+    }
+    if present {
+        println!("lean: fetching Mathlib's prebuilt cache into {}", packages.display());
+    }
+    let fetched = Command::new("lake")
+        .args(["exe", "cache", "get"])
+        .current_dir(out)
+        .status()
+        .map_err(|error| format!("cannot run `lake` ({error}); install Lean with elan"))?;
+    if fetched.success() && built()? {
+        return Ok(());
+    }
+    Err(format!(
+        "Mathlib in {} is not prebuilt and its cache could not be fetched; run `lake exe cache get` in {}",
+        packages.display(),
+        out.display()
+    ))
 }
 
 /// Every `.emath` file under `dir`, skipping hidden directories (run

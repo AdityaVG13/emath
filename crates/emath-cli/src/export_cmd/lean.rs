@@ -7,8 +7,10 @@
 //! library functions the embedded prelude (`Prelude.lean`) defines.
 //! Every authored `example` becomes a theorem the Lean kernel proves by
 //! evaluation (`decide +kernel`), so a wrong value is a Lean error.
-//! Anything else is refused by name, with the declarations that depend
-//! on it; the rest of the file still translates.
+//! A function calling `certify_equal(_from)` becomes law theorems
+//! instead (see `law`). Anything else is refused by name, with the
+//! declarations that depend on it; the rest of the file still
+//! translates.
 //!
 //! Semantics: `/` is always exact rational division, and integer
 //! literals are typed `Int` unless a typed neighbour fixes their type,
@@ -27,17 +29,59 @@ use emath_core::tree::{
 use emath_exec_ir::constructor_emir::section_typed_fields;
 
 pub(crate) const PRELUDE: &str = include_str!("Prelude.lean");
+/// The law library; only a project that certifies laws gets it, and
+/// with it a Mathlib dependency.
+pub(crate) const LAW: &str = include_str!("Law.lean");
+/// Mathlib v4.34.1 and its dependencies at fixed revisions, with
+/// `@PACKAGES_DIR@` for the shared package directory. Lake takes the
+/// manifest's `packagesDir` over the lakefile's, so both must name it,
+/// or Lake clones a fresh Mathlib beside the project and compiles it.
+const MANIFEST: &str = include_str!("lake-manifest.json");
 pub(crate) const TOOLCHAIN: &str = "leanprover/lean4:v4.34.1\n";
-pub(crate) const LAKEFILE: &str = "name = \"emath_export\"\n\
-defaultTargets = [\"Emath\", \"Export\"]\n\
-\n\
-[[lean_lib]]\n\
-name = \"Emath\"\n\
-globs = [\"Emath.+\"]\n\
-\n\
-[[lean_lib]]\n\
-name = \"Export\"\n\
-globs = [\"Export.+\"]\n";
+/// Letters, digits and `_`, not starting with a digit: a name Lean (and
+/// a Lake glob) reads as one identifier, keywords aside.
+fn plain(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// The Mathlib modules `Law.lean` imports.
+pub(crate) fn law_imports() -> Vec<&'static str> {
+    LAW.lines().filter_map(|line| line.strip_prefix("import ")).filter(|module| module.starts_with("Mathlib.")).collect()
+}
+
+fn quoted(text: &str) -> String {
+    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// The libraries list their modules, so files an earlier export left
+/// (an `Emath/Law.lean`, the Lean file of a deleted source) are not
+/// built: they may need Mathlib this project does not require. A Lake
+/// glob cannot spell a name such as `my-model`; then `Export` takes
+/// every file under it.
+fn lakefile(mathlib: Option<&Path>, sources: &[&str]) -> String {
+    let stems: Vec<&str> = sources.iter().map(|rel| rel.strip_suffix(".emath").unwrap_or(rel)).collect();
+    let export_globs = if stems.iter().all(|stem| stem.split('/').all(plain)) {
+        stems.iter().map(|stem| quoted(&format!("Export.{}", stem.replace('/', ".")))).collect::<Vec<_>>().join(", ")
+    } else {
+        "\"Export.+\"".to_string()
+    };
+    let (packages, law, require) = match mathlib {
+        None => (String::new(), "", String::new()),
+        Some(packages) => (
+            format!("packagesDir = {}\n", quoted(&packages.to_string_lossy())),
+            ", \"Emath.Law\"",
+            "\n[[require]]\nname = \"mathlib\"\ngit = \"https://github.com/leanprover-community/mathlib4\"\n\
+             rev = \"v4.34.1\"\n"
+                .to_string(),
+        ),
+    };
+    format!(
+        "name = \"emath_export\"\n{packages}defaultTargets = [\"Emath\", \"Export\"]\n\n\
+         [[lean_lib]]\nname = \"Emath\"\nglobs = [\"Emath.Prelude\", \"Emath.Checks\"{law}]\n\n\
+         [[lean_lib]]\nname = \"Export\"\nglobs = [{export_globs}]\n{require}"
+    )
+}
 
 /// The Lean type of a translated value, so that where an `Int` meets a
 /// `Rat` (the branches of an `if`, list items, a call argument) the
@@ -171,6 +215,17 @@ pub(crate) struct ExampleSite {
     pub what: String,
 }
 
+/// One certified law as a theorem: the lines of its two order bounds and
+/// of its check at the first points.
+pub(crate) struct LawSite {
+    pub lean: String,
+    pub first_line: usize,
+    pub order_lines: [usize; 2],
+    pub check_line: usize,
+    pub last_line: usize,
+    pub what: String,
+}
+
 #[derive(Default)]
 pub(crate) struct Export {
     /// (path relative to the output directory, contents).
@@ -180,7 +235,12 @@ pub(crate) struct Export {
     pub functions: usize,
     pub examples: usize,
     pub library_examples: usize,
+    pub laws: usize,
     pub sites: Vec<ExampleSite>,
+    pub law_sites: Vec<LawSite>,
+    /// Each translated function's qualified Lean name and the user
+    /// functions it calls.
+    calls: BTreeMap<String, BTreeSet<String>>,
 }
 
 struct Source {
@@ -210,16 +270,25 @@ enum Target {
 
 /// Name resolution for one file: its own functions, its sibling
 /// imports, the library modules it uses, then the prelude.
+#[derive(Default)]
 struct Names {
+    namespace: String,
     targets: BTreeMap<String, Target>,
     library: BTreeMap<String, String>,
     used_prelude: BTreeSet<String>,
+    /// Qualified names of the user functions resolved since last cleared.
+    called: BTreeSet<String>,
 }
 
 impl Names {
     fn resolve(&mut self, name: &str) -> Result<(String, Ty), String> {
         match self.targets.get(name) {
-            Some(Target::Lean(lean, ty)) => return Ok((lean.clone(), ty.clone())),
+            Some(Target::Lean(lean, ty)) => {
+                let qualified =
+                    if lean.contains('.') { lean.clone() } else { format!("{}.{lean}", self.namespace) };
+                self.called.insert(qualified);
+                return Ok((lean.clone(), ty.clone()));
+            }
             Some(Target::Refused) => return Err(format!("calls `{name}`, which is not translated")),
             None => {}
         }
@@ -235,8 +304,9 @@ impl Names {
 }
 
 /// Translate `roots` (absolute `.emath` paths under `base`) and every
-/// sibling user file they reach.
-pub(crate) fn export(roots: &[PathBuf], base: &Path) -> Result<Export, String> {
+/// sibling user file they reach. A project with laws depends on the
+/// Mathlib packages in `mathlib`.
+pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path) -> Result<Export, String> {
     let mut sources: BTreeMap<PathBuf, Source> = BTreeMap::new();
     let mut order = Vec::new();
     let mut visiting = BTreeSet::new();
@@ -270,7 +340,19 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path) -> Result<Export, String> {
     export.files.insert(0, ("Emath/Checks.lean".to_string(), checks));
     export.files.insert(0, ("Emath/Prelude.lean".to_string(), PRELUDE.to_string()));
     export.files.insert(0, ("lean-toolchain".to_string(), TOOLCHAIN.to_string()));
-    export.files.insert(0, ("lakefile.toml".to_string(), LAKEFILE.to_string()));
+    let rels: Vec<&str> = order.iter().map(|path| sources[path].rel.as_str()).collect();
+    if export.laws > 0 {
+        let manifest = MANIFEST.replace("\"@PACKAGES_DIR@\"", &quoted(&mathlib.to_string_lossy()));
+        export.files.insert(0, ("Emath/Law.lean".to_string(), LAW.to_string()));
+        export.files.insert(0, ("lake-manifest.json".to_string(), manifest));
+        export.files.insert(0, ("lakefile.toml".to_string(), lakefile(Some(mathlib), &rels)));
+    } else {
+        // Replaces the Mathlib manifest an earlier export with laws wrote.
+        let manifest = "{\"version\": \"1.2.0\",\n \"packagesDir\": \".lake/packages\",\n \"packages\": [],\n \
+                        \"name\": \"emath_export\",\n \"lakeDir\": \".lake\",\n \"fixedToolchain\": false}\n";
+        export.files.insert(0, ("lake-manifest.json".to_string(), manifest.to_string()));
+        export.files.insert(0, ("lakefile.toml".to_string(), lakefile(None, &rels)));
+    }
     Ok(export)
 }
 
@@ -379,11 +461,7 @@ fn translate_file(
     export: &mut Export,
 ) -> Result<FileTranslation, String> {
     let module = lean_module(&source.rel);
-    let mut names = Names {
-        targets: BTreeMap::new(),
-        library: BTreeMap::new(),
-        used_prelude: BTreeSet::new(),
-    };
+    let mut names = Names { namespace: module.clone(), ..Names::default() };
     let mut imports = vec!["Emath.Prelude".to_string()];
     for (selection, file) in &source.local_uses {
         let imported = &modules[file];
@@ -412,8 +490,9 @@ fn translate_file(
 
     let mut refusals = Vec::new();
     let mut body = String::new();
-    let own: Vec<&Declaration> = functions(&source.tree).collect();
-    let own_names: BTreeSet<String> = own.iter().map(|decl| decl.name.clone()).collect();
+    let own_names: BTreeSet<String> = functions(&source.tree).map(|decl| decl.name.clone()).collect();
+    let (certifiers, own): (Vec<&Declaration>, Vec<&Declaration>) =
+        functions(&source.tree).partition(|decl| !certify_calls(decl, &names).is_empty());
     for item in &source.tree.items {
         if let Item::Declaration(decl) = item
             && decl.as_kind != "function"
@@ -425,13 +504,16 @@ fn translate_file(
         }
     }
     let mut translated = BTreeMap::new();
-    let order = ordered(&own, &own_names, &mut |decl, reason| {
+    let plain_names: BTreeSet<String> = own.iter().map(|decl| decl.name.clone()).collect();
+    let order = ordered(&own, &plain_names, &mut |decl, reason| {
         refusals.push(format!("not translated: {} `{}`: {reason}", source.rel, decl.name));
     });
     for decl in order {
+        names.called.clear();
         match function(decl, &mut names) {
             Ok((text, signature)) => {
                 body.push_str(&text);
+                export.calls.insert(format!("{module}.{}", ident(&decl.name)), std::mem::take(&mut names.called));
                 names.targets.insert(decl.name.clone(), Target::Lean(ident(&decl.name), signature.clone()));
                 translated.insert(decl.name.clone(), signature);
                 export.functions += 1;
@@ -444,6 +526,26 @@ fn translate_file(
     }
     for name in &own_names {
         names.targets.entry(name.clone()).or_insert(Target::Refused);
+    }
+    let mut laws = Vec::new();
+    for decl in &certifiers {
+        for case in examples(decl) {
+            refusals.push(format!(
+                "not translated: {} example <{}> of `{}`: a function that certifies laws becomes the laws, not a Lean value",
+                source.rel, case.label, decl.name
+            ));
+        }
+        for (k, (call, args)) in certify_calls(decl, &names).into_iter().enumerate() {
+            let what = format!("{} law {} of `{}`", source.rel, k + 1, decl.name);
+            let name = format!("{}.law_{}", ident(&decl.name), k + 1);
+            match law(&name, call, args, &mut names, &export.calls) {
+                Ok(text) => laws.push((text, what)),
+                Err(reason) => refusals.push(format!("not translated: {what}: {reason}")),
+            }
+        }
+    }
+    if !laws.is_empty() {
+        imports.push("Emath.Law".to_string());
     }
 
     let mut text = format!(
@@ -481,6 +583,19 @@ fn translate_file(
                 Err(reason) => refusals.push(format!("not translated: {what}: {reason}")),
             }
         }
+    }
+    for (law, what) in laws {
+        let first_line = text.lines().count() + 1;
+        text.push_str(&law);
+        export.law_sites.push(LawSite {
+            lean: lean_path.clone(),
+            first_line,
+            order_lines: [first_line + LAW_LINES[0], first_line + LAW_LINES[1]],
+            check_line: first_line + LAW_LINES[2],
+            last_line: text.lines().count(),
+            what,
+        });
+        export.laws += 1;
     }
     text.push_str(&format!("end {module}\n"));
     let namespace = module.clone();
@@ -562,38 +677,13 @@ fn collect_stmt_names(stmt: &emath_core::tree::Stmt, names: &mut BTreeSet<String
 }
 
 fn collect_names(expr: &Expr, names: &mut BTreeSet<String>) {
-    match &expr.kind {
-        ExprKind::Path { segments, .. } => {
-            if let Some(first) = segments.first() {
-                names.insert(first.clone());
-            }
+    visit(expr, &mut |expr| {
+        if let ExprKind::Path { segments, .. } = &expr.kind
+            && let Some(first) = segments.first()
+        {
+            names.insert(first.clone());
         }
-        ExprKind::Call { function, args } => {
-            collect_names(function, names);
-            args.iter().for_each(|arg| collect_names(arg, names));
-        }
-        ExprKind::Index { value, indices } => {
-            collect_names(value, names);
-            indices.iter().for_each(|index| collect_names(index, names));
-        }
-        ExprKind::Unary { value, .. } => collect_names(value, names),
-        ExprKind::Binary { left, right, .. } => {
-            collect_names(left, names);
-            collect_names(right, names);
-        }
-        ExprKind::If { condition, then_value, else_value } => {
-            collect_names(condition, names);
-            collect_names(then_value, names);
-            collect_names(else_value, names);
-        }
-        ExprKind::List(items) => items.iter().for_each(|item| collect_names(item, names)),
-        ExprKind::FunctionAbs { body, .. } => collect_names(body, names),
-        ExprKind::SequenceCons { head, tail, .. } => {
-            collect_names(head, names);
-            collect_names(tail, names);
-        }
-        _ => {}
-    }
+    });
 }
 
 /// The Lean definition and its signature.
@@ -750,6 +840,139 @@ fn theorem(
     ))
 }
 
+const CERTIFY: &[&str] = &["certify_equal", "certify_equal_from", "certify_all", "certify_all_from"];
+
+/// The `search.certify` calls in a function's definitions, in order.
+fn certify_calls<'a>(decl: &'a Declaration, names: &Names) -> Vec<(&'a str, &'a [Expr])> {
+    let mut calls = Vec::new();
+    for section in decl.sections().filter(|section| section.name == "definitions") {
+        for stmt in &section.suite.statements {
+            let StmtKind::Assign { value, .. } = &stmt.kind else {
+                continue;
+            };
+            visit(value, &mut |expr| {
+                if let ExprKind::Call { function, args } = &expr.kind
+                    && let ExprKind::Path { segments, generics: None } = &function.kind
+                    && let [name] = segments.as_slice()
+                    && CERTIFY.contains(&name.as_str())
+                    && names.library.get(name).is_some_and(|module| module == "search.certify")
+                {
+                    calls.push((name.as_str(), args.as_slice()));
+                }
+            });
+        }
+    }
+    calls
+}
+
+/// Lines of a law theorem's two order bounds and its check, after its
+/// first line.
+const LAW_LINES: [usize; 3] = [4, 5, 6];
+
+/// `certify_equal(quote(function n in Int: left), quote(...: right), limit)`
+/// (or `certify_equal_from` with a start) as `∀ n ≥ start, left = right`,
+/// proved by bounding each side's order (`emath_order`, unfolding the
+/// user functions it reaches) and checking the first points.
+fn law(
+    name: &str,
+    call: &str,
+    args: &[Expr],
+    names: &mut Names,
+    calls: &BTreeMap<String, BTreeSet<String>>,
+) -> Result<String, String> {
+    let (left, right, start) = match (call, args) {
+        ("certify_equal", [left, right, _]) => (left, right, 0),
+        ("certify_equal_from", [left, right, start, _]) => match &start.kind {
+            ExprKind::Int(digits) => (
+                left,
+                right,
+                digits.replace('_', "").parse::<u64>().map_err(|_| "the start is too large".to_string())?,
+            ),
+            _ => return Err("the start must be a whole-number literal".into()),
+        },
+        ("certify_all" | "certify_all_from", _) => {
+            return Err(format!("`{call}` (a law at every parameter point) has no Lean translation yet"));
+        }
+        _ => return Err(format!("`{call}` takes two quoted functions and a limit")),
+    };
+    let mut side = |quoted: &Expr| -> Result<(String, String), String> {
+        let (param, domain, body) = match &quoted.kind {
+            ExprKind::Quote { body } => match &body.kind {
+                ExprKind::FunctionAbs { param, domain, body } => (param, domain, body),
+                _ => return Err("a side is not `quote(function n in Int: ...)`".into()),
+            },
+            ExprKind::QuoteBind { param, domain, body } => (param, domain, body),
+            _ => return Err("a side is not `quote(function n in Int: ...)`".into()),
+        };
+        if domain_type(domain)? != Ty::Int {
+            return Err("a side's variable is not over `Int`".into());
+        }
+        names.called.clear();
+        let mut ctx = Ctx { names, scope: vec![(param.clone(), Ty::Int)] };
+        let (text, level, ty) = ctx.expr(body, false)?;
+        if !matches!(ty, Ty::Int | Ty::Rat | Ty::Lit) {
+            return Err("a side's value is not a number".into());
+        }
+        let (text, _) = coerce(text, level, &ty, &Ty::Rat);
+        let mut reached = BTreeSet::new();
+        let mut pending: Vec<String> = ctx.names.called.iter().cloned().collect();
+        while let Some(function) = pending.pop() {
+            if reached.insert(function.clone()) {
+                pending.extend(calls.get(&function).into_iter().flatten().cloned());
+            }
+        }
+        let unfold = reached.into_iter().collect::<Vec<_>>().join(", ");
+        Ok((format!("(fun ({} : Int) => {text}) (n₀ : Int)", ident(param)), unfold))
+    };
+    let (left, left_unfold) = side(left)?;
+    let (right, right_unfold) = side(right)?;
+    let (from, condition) = if start == 0 {
+        (String::new(), String::new())
+    } else {
+        (format!("_from {start}"), format!(" {start} ≤ n₀ →"))
+    };
+    // Keep in step with LAW_LINES.
+    Ok(format!(
+        "theorem {name} : ∀ n₀ : ℕ,{condition}\n    {left} =\n      {right} :=\n  \
+         Emath.Law.eq_of_order{from}\n    (by emath_order [{left_unfold}])\n    \
+         (by emath_order [{right_unfold}])\n    (by emath_check {start})\n\n"
+    ))
+}
+
+/// `f` on `expr` and every expression inside it, outermost first.
+fn visit<'a>(expr: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
+    f(expr);
+    match &expr.kind {
+        ExprKind::Call { function, args } => {
+            visit(function, f);
+            args.iter().for_each(|arg| visit(arg, f));
+        }
+        ExprKind::Index { value, indices } => {
+            visit(value, f);
+            indices.iter().for_each(|index| visit(index, f));
+        }
+        ExprKind::Unary { value, .. } => visit(value, f),
+        ExprKind::Binary { left, right, .. } => {
+            visit(left, f);
+            visit(right, f);
+        }
+        ExprKind::If { condition, then_value, else_value } => {
+            visit(condition, f);
+            visit(then_value, f);
+            visit(else_value, f);
+        }
+        ExprKind::List(items) => items.iter().for_each(|item| visit(item, f)),
+        ExprKind::FunctionAbs { body, .. } | ExprKind::Quote { body } | ExprKind::QuoteBind { body, .. } => {
+            visit(body, f)
+        }
+        ExprKind::SequenceCons { head, tail, .. } => {
+            visit(head, f);
+            visit(tail, f);
+        }
+        _ => {}
+    }
+}
+
 /// `Emath/Checks.lean`: the library's own authored examples for every
 /// prelude function the export used, run against the prelude.
 fn library_checks(
@@ -770,11 +993,7 @@ fn library_checks(
             }
             let output = outputs.remove(0);
             for case in examples(decl) {
-                let mut names = Names {
-                    targets: BTreeMap::new(),
-                    library: BTreeMap::new(),
-                    used_prelude: BTreeSet::new(),
-                };
+                let mut names = Names::default();
                 let callee = format!("Emath.{}", decl.name);
                 if let Ok(theorem) = theorem(&decl.name, &callee, &params, &output, &case, &mut names) {
                     let first_line = text.lines().count() + 1;
@@ -1126,9 +1345,7 @@ fn atom_type(ty: String) -> String {
 /// A Lean identifier for an emath name: keywords and anything Lean
 /// would not read as one plain identifier go inside `«»`.
 fn ident(name: &str) -> String {
-    let plain = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-    if plain && !LEAN_KEYWORDS.contains(&name) {
+    if plain(name) && !LEAN_KEYWORDS.contains(&name) {
         name.to_string()
     } else {
         format!("«{name}»")

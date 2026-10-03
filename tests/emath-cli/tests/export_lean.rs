@@ -14,6 +14,14 @@
 //! Lean needs one type (an `if`, a list, a cons, a fold's start), and
 //! the whole folder must still check. The `--check` half needs `lake`
 //! on PATH.
+//!
+//! Laws: with `law/certify.emath` beside the chain, its two
+//! `certify_equal` calls become theorems. The chain against its closed
+//! form is proven; the running sum against n(n - 1)/2 is reported
+//! unproven (exit 3), not rejected; a closed form at the wrong point is
+//! rejected with the n where the sides differ (exit 1). Exported again
+//! without the laws into the same folder, the chain checks without
+//! Mathlib. This half also needs prebuilt Mathlib.
 
 mod common;
 
@@ -54,6 +62,17 @@ fn copy_tree(from: &Path, to: &Path) {
 
 fn lake_available() -> bool {
     Command::new("lake").arg("--version").output().is_ok_and(|out| out.status.success())
+}
+
+/// The shared Mathlib packages `emath export lean` uses, when already
+/// prebuilt: the test must not start a multi-gigabyte download.
+fn prebuilt_mathlib() -> Option<PathBuf> {
+    let dir = std::env::var_os("EMATH_LEAN_MATHLIB")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache/emath/lean-mathlib")))?;
+    dir.join("mathlib/.lake/build/lib/lean/Mathlib/LinearAlgebra/Charpoly/Basic.olean")
+        .is_file()
+        .then_some(dir)
 }
 
 #[test]
@@ -100,6 +119,55 @@ fn export_lean() {
         let out_arg = out.to_string_lossy().to_string();
         let (text, code) = emath(&dir, &["export", "lean", "proj/chain", "--out", &out_arg, "--check"]);
         probe.demand("chain-accepted", code == EXIT_OK as i32 && text.contains("lean: accepted"), format!("exit {code}\n{text}"));
+
+        if let Some(mathlib) = prebuilt_mathlib() {
+            let certify = dir.join("proj/chain/certify.emath");
+            std::fs::copy(fixtures.join("law/certify.emath"), &certify).expect("copy certify");
+            let laws = dir.join("laws");
+            let laws_arg = laws.to_string_lossy().to_string();
+            let check = || {
+                let out = Command::new(emath_bin())
+                    .args(["export", "lean", "proj/chain", "--out", &laws_arg, "--check"])
+                    .current_dir(&dir)
+                    .env("EMATH_ROOT", workspace())
+                    .env("EMATH_LEAN_MATHLIB", &mathlib)
+                    .output()
+                    .expect("run emath");
+                let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+                (text, out.status.code().unwrap_or(-1))
+            };
+            let (text, code) = check();
+            probe.demand(
+                "law-proven-beside-unproven",
+                code == EXIT_PARTIAL as i32
+                    && text.contains("lean: not proven")
+                    && text.contains("unproven: certify.emath law 2 of `certified`")
+                    && !text.contains("law 1 of")
+                    && !text.contains("rejected:"),
+                format!("exit {code}\n{text}"),
+            );
+            let source = std::fs::read_to_string(&certify).expect("read certify");
+            std::fs::write(&certify, source.replace("mean_closed(1 / 2, 1 / 4, n)", "mean_closed(1 / 2, 1 / 5, n)"))
+                .expect("write wrong law");
+            let (text, code) = check();
+            probe.demand(
+                "wrong-law-rejected",
+                code == EXIT_REFUSED as i32
+                    && text.contains("rejected: certify.emath law 1 of `certified`: the two sides differ at n = "),
+                format!("exit {code}\n{text}"),
+            );
+            // Without its laws the folder needs no Mathlib, even where
+            // the last export left `Law.lean` and the laws' Lean file.
+            std::fs::remove_file(&certify).expect("remove certify");
+            let (text, code) = emath(&dir, &["export", "lean", "proj/chain", "--out", &laws_arg, "--check"]);
+            probe.demand(
+                "stale-laws-not-built",
+                code == EXIT_OK as i32 && text.contains("lean: accepted"),
+                format!("exit {code}\n{text}"),
+            );
+        } else {
+            eprintln!("export_lean: no prebuilt Mathlib (EMATH_LEAN_MATHLIB or ~/.cache/emath/lean-mathlib); the law half did not run");
+        }
 
         let found = dir.join("proj/chain/found.emath");
         let source = std::fs::read_to_string(&found).expect("read found");

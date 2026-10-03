@@ -1,0 +1,17 @@
+# Two laws for every n >= 0, stated as search.certify states them: the
+# chain against its closed form at one parameter point, and a running
+# sum of t against n(n - 1)/2. Both hold and emath certifies both; the
+# second is outside the Lean law library's order rules (a product of
+# two sequences of order two).
+use model
+use found
+use fold.reduce
+use search.certify
+
+emath function certified:
+    inputs:
+        limit: Int
+    outputs:
+        result: sequence(Certificate)
+    definitions:
+        result = [certify_equal(quote(function n in Int: mean_on(1 / 2, 1 / 4, n)), quote(function n in Int: mean_closed(1 / 2, 1 / 4, n)), limit), certify_equal(quote(function n in Int: fold(function acc in Rat: function t in Int: acc + t, 0 / 1, range(0, n))), quote(function n in Int: n * (n - 1) / 2), limit)]
