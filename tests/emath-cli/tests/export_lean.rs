@@ -7,7 +7,8 @@
 //! review: every translatable declaration is written, the two refused
 //! ones are named with their reason (exit 3), Lean never runs, and the
 //! model's Lean text matches the reviewed golden
-//! `tests/fixtures/export_lean/golden/model.lean`. With `--check`
+//! `tests/fixtures/export_lean/golden/model.lean`. A folder holding a
+//! file emath refuses exports nothing (exit 2). With `--check`
 //! Lean's kernel checks every authored example: the chain folder is
 //! accepted, and the same folder with one wrong expected value is
 //! rejected naming that example. `mixed.emath` joins Int and Rat where
@@ -35,7 +36,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use common::emath_bin;
-use emath_cli::{EXIT_OK, EXIT_PARTIAL, EXIT_REFUSED};
+use emath_cli::{EXIT_ADMISSION, EXIT_OK, EXIT_PARTIAL, EXIT_REFUSED};
 use emath_test_harness::Probe;
 
 fn workspace() -> PathBuf {
@@ -110,6 +111,22 @@ fn export_lean() {
     let model = std::fs::read_to_string(lean.join("Export/chain/model.lean")).unwrap_or_default();
     let golden = std::fs::read_to_string(fixtures.join("golden/model.lean")).unwrap_or_default();
     probe.demand("model-matches-golden", model == golden, model);
+
+    // A file emath refuses exports nothing, though each declaration in
+    // it would translate: here an import collides with a local name.
+    let unadmitted = dir.join("unadmitted");
+    std::fs::create_dir_all(&unadmitted).expect("create unadmitted");
+    std::fs::write(
+        unadmitted.join("clash.emath"),
+        "use exact.modular\n\nemath function int_rem:\n    inputs:\n        value: Int\n        modulus: Int\n    outputs:\n        result: Int\n    definitions:\n        result = 5\n",
+    )
+    .expect("write clash");
+    let (text, code) = emath(&dir, &["export", "lean", "unadmitted"]);
+    probe.demand(
+        "unadmitted-file-refused",
+        code == EXIT_ADMISSION as i32 && text.contains("does not admit: E-NAME-022") && !unadmitted.join("lean").exists(),
+        format!("exit {code}\n{text}"),
+    );
 
     if lake_available() {
         // `mixed.emath` joins Int and Rat in an `if`, a list, a cons and

@@ -431,6 +431,16 @@ fn load(
     if diagnostics.has_errors() {
         return Err(format!("{}: does not parse; run `emath check` on it", path.display()));
     }
+    // Lean must never accept a file emath refuses.
+    let (admission, _, _) = crate::run_check(path);
+    if let Some(error) = admission.errors().next() {
+        return Err(format!(
+            "{}: does not admit: {}: {}; run `emath check` on it",
+            path.display(),
+            error.code,
+            error.message
+        ));
+    }
     let rel = relative(path, base)
         .ok_or_else(|| format!("{} is outside the exported folder {}", path.display(), base.display()))?;
     let mut local_uses = Vec::new();
