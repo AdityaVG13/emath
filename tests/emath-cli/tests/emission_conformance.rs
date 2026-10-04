@@ -3098,6 +3098,7 @@ use engine_worlds::{viewed_names, recursive_names, borrowed_text, cyclic_names, 
 use engine_worlds::callback_work;
 use engine_worlds::expected_seed;
 use engine_worlds::{long_entry, mapped_codes};
+use engine_worlds::{sequence_code, curried_sequence_code, module_sequence_code, sequence_callable, negated_callable};
 
 fn code(body: emath_rt::code_tree::CodeTree) -> emath_rt::code::ExprCode {
     use emath_rt::{code::open_expr, code_tree::{CodeTree, TreeDomain}};
@@ -3118,6 +3119,47 @@ fn main() {
     });
     let add = term(TreeBinary::Add, 2);
     let mul = term(TreeBinary::Mul, 3);
+    let negative = negated_callable(add.clone(), 3);
+    if negative != Ok(-5) {
+        failures += 1;
+        println!("DIFF evaluated_value_negates EMITTED {negative:?}; VM = -5");
+    }
+    let sequence_program = emath_rt::code::open_expr(
+        vec![],
+        CodeTree::Closure {
+            param: "xs".into(),
+            domain: emath_rt::code_tree::TreeDomain::Sequence("sequence(Int)".into()),
+            body: Box::new(CodeTree::Binary {
+                op: TreeBinary::Eq,
+                left: Box::new(CodeTree::Call {
+                    function: Box::new(CodeTree::Path(vec!["shifted_sequence".into()])),
+                    args: vec![CodeTree::Path(vec!["xs".into()])],
+                }),
+                right: Box::new(CodeTree::Tuple(vec![
+                    CodeTree::Literal(CodeValue::Int(2)),
+                    CodeTree::Literal(CodeValue::Int(3)),
+                ])),
+            }),
+        },
+        None,
+        Default::default(),
+    );
+    let sequence_check = sequence_callable(sequence_program)
+        .and_then(|f| Ok(f(&vec![1, 2])? && !f(&vec![2, 1])?));
+    if sequence_check != Ok(true) {
+        failures += 1;
+        println!("DIFF runtime_sequence_module_callable EMITTED {sequence_check:?}; VM = true");
+    }
+    for (name, got) in [
+        ("sequence_code", sequence_code(0)),
+        ("curried_sequence_code", curried_sequence_code(0)),
+        ("module_sequence_code", module_sequence_code(0)),
+    ] {
+        if got != Ok(true) {
+            failures += 1;
+            println!("DIFF {name} EMITTED {got:?}; VM = true");
+        }
+    }
     if wide_boundary(2) != Ok(true) {
         failures += 1;
         println!("DIFF wide_boundary; VM = true");
@@ -6899,4 +6941,37 @@ fn emission_conformance_derivative() {
         "emitted derivative disagrees with the VM on:\n{}",
         diffs.join("\n")
     );
+}
+
+#[test]
+fn emission_conformance_learning_and_exploration_workflows() {
+    let learning = r#"
+use learn::*;
+fn main() -> Result<(), String> {
+    let learned = Learns(0)?;
+    assert_eq!(learned.count, 4);
+    assert_eq!(learned.rounds, vec![1, 1, 2, 2]);
+    assert_eq!(learned.next, vec![78, 144, 6084, 46368]);
+    println!("learning: four rules, two rounds, held-out predictions match");
+    Ok(())
+}
+"#;
+    assert!(run_lane_with_work(
+        "tests/fixtures/keep/learn.emath", learning, 50_000_000,
+    ).is_empty());
+    let exploration = r#"
+use explore::*;
+fn main() -> Result<(), String> {
+    let explored = Explores(0)?;
+    assert_eq!(explored.round_two, vec![364, 13, 300, 6084, 376, 89, 46368, 20736]);
+    assert!(explored.round_three > 20);
+    assert!(explored.commute && explored.law && explored.faster);
+    assert!(explored.guarded && explored.refuted);
+    println!("exploration: proposals, laws, guarded rewrites and refutation match");
+    Ok(())
+}
+"#;
+    assert!(run_lane_with_work(
+        "tests/fixtures/keep/explore.emath", exploration, 32_000_000,
+    ).is_empty());
 }

@@ -24,12 +24,11 @@
 // observable-value parity pins carry the cross-lane proof).
 //
 // No-claim boundaries (the emitted subset): trees carry the scalar
-// expression shapes - literals, paths, scalar calls, binary/unary
-// ops, sequences, branches. `Closure`/`Index`/`Quotation`/`Record`/
-// `Recur`/`Cases` node kinds refuse by name at reconstruction.
-// Scalar evaluation supports module calls carried by the callable
-// table; structured evaluation also preserves tuples, lazy branches
-// and tuple indexing. Global references refuse by name.
+// expression shapes, lexical closures, recursion, sequences, and
+// checked indexing. Quotation, record-expression, and cases nodes
+// remain outside reconstruction. Callable evaluation preserves curried
+// captures and calls only module entries carried by the adapter tables.
+// Unsupported calls and global references refuse by name.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -474,12 +473,14 @@ pub struct ModuleTable {
     /// crosses as scalars: the tree evaluator's route into module code
     /// (a run-time formula calling a module function).
     pub callables: &'static [(&'static str, ModuleCallable)],
+    pub node_callables: &'static [(&'static str, ModuleNodeCallable)],
 }
 
 /// A module function's compiled entry adapted to the scalar union:
 /// arguments project checked onto the declared parameter carriers, the
 /// result wraps back into the union.
 pub type ModuleCallable = fn(&[CodeValue]) -> Result<CodeValue, String>;
+pub type ModuleNodeCallable = fn(&[NodeValue]) -> Result<NodeValue, String>;
 
 impl ModuleTable {
     /// The empty table (no module callables).
@@ -487,6 +488,7 @@ impl ModuleTable {
         globals: &[],
         stamps: &[],
         callables: &[],
+        node_callables: &[],
     };
 
     /// The compiled entry adapter of module function `name`, when the
@@ -1730,7 +1732,61 @@ pub fn evaluate_node_tree(tree: &CodeTree, module: &ModuleTable) -> Result<NodeV
 #[derive(Clone)]
 enum TreeValue {
     Scalar(CodeValue),
+    Structured(Rc<NodeValue>),
     Callable(Rc<TreeClosure>),
+}
+
+/// A data value or a partially applied lexical function. Function frames
+/// retain immutable captures without exposing them as serializable nodes.
+#[derive(Clone)]
+pub struct EvaluatedValue(TreeValue);
+
+impl std::fmt::Debug for EvaluatedValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            TreeValue::Scalar(value) => value.fmt(f),
+            TreeValue::Structured(value) => value.fmt(f),
+            TreeValue::Callable(_) => f.write_str("<function>"),
+        }
+    }
+}
+
+impl EvaluatedValue {
+    pub fn apply(&self, arguments: &[NodeValue], module: &ModuleTable) -> Result<Self, String> {
+        let mut value = self.0.clone();
+        for argument in arguments {
+            value = value.apply(TreeValue::from_node(argument.clone()), module)?;
+        }
+        Ok(Self(value))
+    }
+
+    pub fn to_node(&self) -> Result<NodeValue, String> {
+        self.0.clone().node()
+    }
+
+    pub fn to_scalar(&self) -> Result<CodeValue, String> {
+        self.0.clone().scalar()
+    }
+}
+
+pub(super) fn evaluate_value_tree(
+    tree: &CodeTree, module: &ModuleTable,
+) -> Result<EvaluatedValue, String> {
+    evaluate_tree_value(tree, &BTreeMap::new(), module).map(EvaluatedValue)
+}
+
+fn node_domain_admits(domain: &str, value: &NodeValue) -> bool {
+    if let Some(inner) = domain.strip_prefix("sequence(").and_then(|s| s.strip_suffix(')')) {
+        return matches!(value, NodeValue::Sequence(values) | NodeValue::Tuple(values)
+            if values.iter().all(|value| node_domain_admits(inner, value)));
+    }
+    match value {
+        NodeValue::Scalar(value) => TreeDomain::Scalar(domain.to_string()).admits(value),
+        NodeValue::Text(_) => matches!(domain, "Str" | "Text"),
+        NodeValue::Record(name, _) => name == domain,
+        NodeValue::Code(_) => domain == "Code",
+        _ => false,
+    }
 }
 
 struct TreeClosure {
@@ -1765,22 +1821,37 @@ fn scalar_memo_key(value: &TreeValue) -> Option<(u8, i128, i128)> {
         TreeValue::Scalar(CodeValue::Int(value)) => Some((0, i128::from(*value), 1)),
         TreeValue::Scalar(CodeValue::Rat((num, den))) => Some((1, *num, *den)),
         TreeValue::Scalar(CodeValue::Bool(value)) => Some((2, i128::from(*value), 1)),
-        TreeValue::Callable(_) => None,
+        TreeValue::Structured(_) | TreeValue::Callable(_) => None,
     }
 }
 
 impl TreeValue {
+    fn from_node(value: NodeValue) -> Self {
+        match value {
+            NodeValue::Scalar(value) => Self::Scalar(value),
+            value => Self::Structured(Rc::new(value)),
+        }
+    }
+
+    fn node(self) -> Result<NodeValue, String> {
+        match self {
+            Self::Scalar(value) => Ok(NodeValue::Scalar(value)),
+            Self::Structured(value) => Ok((*value).clone()),
+            Self::Callable(_) => Err(String::from("type: function value is not a data node")),
+        }
+    }
+
     fn scalar(self) -> Result<CodeValue, String> {
         match self {
             Self::Scalar(value) => Ok(value),
+            Self::Structured(value) => value.to_scalar(),
             Self::Callable(_) => Err(String::from("type: function value is not a scalar")),
         }
     }
 
     fn apply(self, argument: Self, module: &ModuleTable) -> Result<Self, String> {
         let Self::Callable(function) = self else {
-            let value = self.scalar()?;
-            return Err(format!("type: value is not callable: {value}"));
+            return Err(String::from("type: value is not callable"));
         };
         match &argument {
             Self::Scalar(scalar) if !function.domain.admits(scalar) => return Err(format!(
@@ -1789,6 +1860,11 @@ impl TreeValue {
             )),
             Self::Callable(_) if function.domain != TreeDomain::Unknown => return Err(format!(
                 "type: closure domain `{}` does not admit a function argument", function.domain,
+            )),
+            Self::Structured(value) if function.domain != TreeDomain::Unknown
+                && !node_domain_admits(&function.domain.to_string(), value) => return Err(format!(
+                "type: closure domain `{}` does not admit the structured argument",
+                function.domain,
             )),
             _ => {}
         }
@@ -1855,6 +1931,21 @@ fn evaluate_tree_value(
             if let CodeTree::Path(segments) = &**function {
                 let name = segments.join(".");
                 if !inputs.contains_key(&name) {
+                    if name == "length" && args.len() == 1 {
+                        let value = evaluate_tree_value(&args[0], inputs, module)?.node()?;
+                        let length = match value {
+                            NodeValue::Sequence(values) | NodeValue::Tuple(values) => values.len(),
+                            _ => return Err(String::from("type: length requires a sequence")),
+                        };
+                        return i64::try_from(length).map(|n| TreeValue::Scalar(CodeValue::Int(n)))
+                            .map_err(|_| String::from("overflow: sequence length exceeds Int carrier"));
+                    }
+                    if let Some((_, callable)) = module.node_callables.iter().find(|(entry, _)| *entry == name) {
+                        let values = args.iter().map(|arg|
+                            evaluate_tree_value(arg, inputs, module)?.node()
+                        ).collect::<Result<Vec<_>, _>>()?;
+                        return callable(&values).map(TreeValue::from_node);
+                    }
                     let callable = module.callable(&name).ok_or_else(|| format!(
                         "tree: call `{name}` is not emitted in the scalar tree evaluator"
                     ))?;
@@ -1878,7 +1969,15 @@ fn evaluate_tree_value(
             )
         }
         CodeTree::Binary { op, left, right } => {
-            let left = evaluate_tree_value(left, inputs, module)?.scalar()?;
+            let left = evaluate_tree_value(left, inputs, module)?;
+            if matches!(op, TreeBinary::Eq | TreeBinary::Ne) {
+                let right = evaluate_tree_value(right, inputs, module)?;
+                let equal = node_eq(left.node()?, right.node()?)?;
+                return Ok(TreeValue::Scalar(CodeValue::Bool(
+                    if *op == TreeBinary::Eq { equal } else { !equal },
+                )));
+            }
+            let left = left.scalar()?;
             if *op == TreeBinary::And && !super::code::code_as_bool(&left)? {
                 return Ok(TreeValue::Scalar(CodeValue::Bool(false)));
             }
@@ -1898,9 +1997,19 @@ fn evaluate_tree_value(
                 op: *op, value: Box::new(CodeTree::Literal(value)),
             }, &BTreeMap::new(), module).map(TreeValue::Scalar)
         }
-        CodeTree::Tuple(_) | CodeTree::Index { .. } => Err(String::from(
-            "tree: structured values are not emitted in the scalar tree evaluator",
-        )),
+        CodeTree::Tuple(values) => values.iter()
+            .map(|value| evaluate_tree_value(value, inputs, module)?.node())
+            .collect::<Result<Vec<_>, _>>()
+            .map(|values| TreeValue::from_node(NodeValue::Sequence(values))),
+        CodeTree::Index { container, indices } => {
+            let value = evaluate_tree_value(container, inputs, module)?.node()?;
+            let index = indices.first().ok_or_else(|| String::from("invalid_index: missing index"))?;
+            let index = evaluate_tree_value(index, inputs, module)?.scalar()?;
+            let CodeValue::Int(index) = index else {
+                return Err(String::from("type: index must be Int"));
+            };
+            value.index(index).map(TreeValue::from_node)
+        }
     }
 }
 

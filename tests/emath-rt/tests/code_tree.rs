@@ -432,6 +432,7 @@ fn probe() {
             globals: &[("f", false)],
             stamps: &[("f", 42)],
             callables: &[],
+            node_callables: &[],
         };
         let calls_f = CodeTree::Call {
             function: Box::new(CodeTree::Path(vec!["f".to_string()])),
@@ -451,6 +452,7 @@ fn probe() {
             globals: &[("f", false)],
             stamps: &[("f", 43)],
             callables: &[],
+            node_callables: &[],
         };
         match verify_deps(&std::collections::BTreeMap::from([("f".to_string(), 42u64)]), &changed) {
             Ok(()) => {
@@ -996,6 +998,7 @@ fn probe() {
             globals: &[("triple", false)],
             stamps: &[("triple", 7)],
             callables: &[("triple", triple)],
+            node_callables: &[],
         };
         let call = |name: &str, arg: CodeTree| CodeTree::Call {
             function: Box::new(CodeTree::Path(vec![name.to_string()])),

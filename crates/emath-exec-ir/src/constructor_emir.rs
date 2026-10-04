@@ -1753,6 +1753,20 @@ impl Lowerer {
                     signature,
                 }))
             }
+            ExprKind::QuoteBind { param, domain, body } => {
+                let function = Expr {
+                    kind: ExprKind::FunctionAbs {
+                        param: param.clone(),
+                        domain: domain.clone(),
+                        body: body.clone(),
+                    },
+                    source: expr.source.clone(),
+                };
+                self.expr(&Expr {
+                    kind: ExprKind::Quote { body: Box::new(function) },
+                    source: expr.source.clone(),
+                })
+            }
             ExprKind::Quote { body } => {
                 // Quote emission: two template shapes share one
                 // predicate (admission and the unresolved walk can
@@ -1849,7 +1863,12 @@ impl Lowerer {
                     // this same arm - the dual-representation law.
                     let mut free = BTreeSet::new();
                     collect_free_names(body, "", &mut free);
-                    let free: Vec<String> = free.into_iter().collect();
+                    let mut called = BTreeMap::new();
+                    collect_call_sites(body, &mut called);
+                    let free: Vec<String> = free.into_iter().filter(|name| {
+                        !(name == "length" && called.contains_key(name)
+                            && !self.module_stamps.contains_key(name))
+                    }).collect();
                     let tree = crate::tree_distill::distill_tree(body)?;
                     let deps: BTreeMap<String, u64> = free
                         .iter()
@@ -2423,8 +2442,16 @@ fn collect_unresolved(expr: &Expr, out: &mut Vec<String>) {
                 out.push("quote".into());
             }
         }
-        ExprKind::QuoteBind { .. } => {
-            out.push("quote".into());
+        ExprKind::QuoteBind { param, domain, body } => {
+            let function = Expr {
+                kind: ExprKind::FunctionAbs {
+                    param: param.clone(), domain: domain.clone(), body: body.clone(),
+                },
+                source: expr.source.clone(),
+            };
+            if emitted_quote_carrier(&function).is_none() {
+                out.push("quote".into());
+            }
         }
         ExprKind::Call { function, args } => {
             if is_refuse_quote_call(function, args) {

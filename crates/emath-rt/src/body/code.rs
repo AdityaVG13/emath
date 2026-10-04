@@ -468,6 +468,14 @@ impl ExprCode {
     ) -> Result<super::code_tree::NodeValue, String> {
         evaluate_node_expr(self, module)
     }
+
+    pub fn evaluate_value(
+        &self,
+        module: &super::code_tree::ModuleTable,
+    ) -> Result<super::code_tree::EvaluatedValue, String> {
+        guard_closed(self, module)?;
+        super::code_tree::evaluate_value_tree(&self.tree, module)
+    }
 }
 
 impl core::fmt::Debug for ExprCode {

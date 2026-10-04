@@ -352,6 +352,21 @@ pub(crate) fn emit_constructor_entry_abi(
         let projected = crate::codegen_render::cell_into(&rendered, &declared)
             .ok_or_else(|| BackendError::UnsupportedType(format!("buffer output carrier `{signature}` is not emitted")))?;
         (render_ty(&declared.rust_ty()?), projected, declared)
+    } else if result_kind == ValueKind::Evaluated {
+        let Some((output_name, signature)) = output else {
+            return Err(BackendError::UnsupportedType(
+                "an evaluated value needs a declared output carrier".into(),
+            ));
+        };
+        let declared = ValueKind::from_signature(signature);
+        let _wrapper = SelfWrapperScope::enter(declared.clone(), wrapper_carriers.clone());
+        let value = value_expr(program, &input_names, &[], &kinds)?;
+        let projected = crate::codegen_render::numeric_boundary_value(
+            &value, &result_kind, &declared, output_name,
+        ).ok_or_else(|| BackendError::UnsupportedType(format!(
+            "evaluated output `{output_name}` has no projection onto `{signature}`"
+        )))?;
+        (render_ty(&declared.rust_ty()?), render_expr(&projected), declared)
     } else if result_kind == ValueKind::CodeValue {
         let Some((output_name, signature)) = output else {
             return Err(BackendError::UnsupportedType(

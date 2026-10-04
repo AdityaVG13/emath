@@ -331,6 +331,7 @@ pub(crate) enum ValueKind {
     /// value. Typed boundaries project it checked onto the declared
     /// carrier.
     CodeValue,
+    Evaluated,
     /// The node-record family:
     /// the dynamic values `quote.view` produces and authored
     /// structural code consumes - node records (tag records are
@@ -379,6 +380,7 @@ impl ValueKind {
                 "BigInt" => ValueKind::BigInt,
                 "Code" => ValueKind::ExprCode,
                 "CodeValue" => ValueKind::CodeValue,
+                "Evaluated" => ValueKind::Evaluated,
                 // The dynamic node family: a Fragment package record
                 // and the unparameterized (heterogeneous) sequence.
                 "Fragment" | "Sequence" | "Node" => ValueKind::Node,
@@ -472,6 +474,7 @@ impl ValueKind {
             )),
             Self::ExprCode => Ty::Named("emath_rt::code::ExprCode".into()),
             Self::CodeValue => Ty::Named("emath_rt::code::CodeValue".into()),
+            Self::Evaluated => Ty::Named("emath_rt::code_tree::EvaluatedValue".into()),
             Self::Node => Ty::Named("emath_rt::code_tree::NodeValue".into()),
             Self::DenseLayout(_) => Ty::Named("emath_rt::DenseLayout".into()),
             Self::Program => Ty::Named(
@@ -531,7 +534,7 @@ impl ValueKind {
 pub(super) fn union_promotable(kind: &ValueKind) -> bool {
     matches!(
         kind,
-        ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
+        ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node | ValueKind::Cell | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
     )
 }
 
@@ -539,8 +542,8 @@ pub(super) fn union_promotable(kind: &ValueKind) -> bool {
 pub(super) fn union_pair(kinds: &[ValueKind], left: EmirValue, right: EmirValue) -> bool {
     let left_kind = kind_at(kinds, left);
     let right_kind = kind_at(kinds, right);
-    (matches!(left_kind, ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell) && union_promotable(&right_kind))
-        || (matches!(right_kind, ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell)
+    (matches!(left_kind, ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node | ValueKind::Cell) && union_promotable(&right_kind))
+        || (matches!(right_kind, ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node | ValueKind::Cell)
             && union_promotable(&left_kind))
 }
 
@@ -814,6 +817,7 @@ fn kind_signature(kind: &ValueKind) -> Option<String> {
         ValueKind::Text => "Text".into(),
         ValueKind::ExprCode => "Code".into(),
         ValueKind::CodeValue => "CodeValue".into(),
+        ValueKind::Evaluated => "Evaluated".into(),
         ValueKind::Buffer => "Buffer".into(),
         ValueKind::Unit => "Unit".into(),
         ValueKind::Code(carrier) => format!("Code<{}>", kind_signature(carrier)?),
@@ -1381,8 +1385,8 @@ fn register_is_call_self(program: &EmirProgram, value: EmirValue) -> bool {
 pub(super) fn join_arm_kinds(left: ValueKind, right: ValueKind) -> ValueKind {
     match (left, right) {
         (ValueKind::Cell, typed) | (typed, ValueKind::Cell) if typed != ValueKind::Other => typed,
-        (ValueKind::CodeValue | ValueKind::Node, typed)
-        | (typed, ValueKind::CodeValue | ValueKind::Node)
+        (ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node, typed)
+        | (typed, ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node)
             if matches!(typed, ValueKind::I64 | ValueKind::Rational | ValueKind::ExactInt | ValueKind::Bool) =>
         {
             typed
@@ -1653,12 +1657,12 @@ pub(super) fn kind_of_op(
             },
             ValueKind::ExprCode | ValueKind::Node => match applied {
                 Some(emath_exec_ir::CodeApplication::Union(arity)) => ValueKind::Closure {
-                    params: vec![ValueKind::CodeValue; usize::from(*arity)],
-                    result: Box::new(ValueKind::CodeValue),
+                    params: vec![ValueKind::Node; usize::from(*arity)],
+                    result: Box::new(ValueKind::Evaluated),
                 },
                 Some(emath_exec_ir::CodeApplication::Declared(signature)) => {
                     if signature.starts_with("Fn<") {
-                        declared_scalar_arrow(signature).unwrap_or(ValueKind::Other)
+                        ValueKind::from_signature(signature)
                     } else {
                         ValueKind::from_signature(signature)
                     }
@@ -1675,6 +1679,9 @@ pub(super) fn kind_of_op(
             let mut kind = kind_at(kinds, *program);
             let mut remaining = inputs.len();
             while remaining > 0 {
+                if kind == ValueKind::Evaluated {
+                    return ValueKind::Evaluated;
+                }
                 let ValueKind::Closure { params, result } = kind else {
                     return ValueKind::Other;
                 };
@@ -2062,7 +2069,7 @@ pub(super) fn kind_of_op(
                 ValueKind::F64
             }
         }
-        EmirOp::Neg(value) if matches!(kind_at(kinds, *value), ValueKind::Node | ValueKind::Cell) => ValueKind::CodeValue,
+        EmirOp::Neg(value) if matches!(kind_at(kinds, *value), ValueKind::Evaluated | ValueKind::Node | ValueKind::Cell) => ValueKind::CodeValue,
         EmirOp::Neg(value) => kind_at(kinds, *value),
         // The union lane: comparisons and boolean combinators over a
         // joinable union pair compute the union (a Bool-valued
@@ -2087,7 +2094,7 @@ pub(super) fn kind_of_op(
             }
         }
         EmirOp::Not(value) => {
-            if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell) {
+            if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node | ValueKind::Cell) {
                 ValueKind::CodeValue
             } else {
                 ValueKind::Bool
@@ -2320,7 +2327,7 @@ pub(super) fn cmp_expr(
         // equality (`2 == 2/1` is true), mixed kinds never equal.
         // The other side is Int/Rat/Bool/union, or an exact Int that
         // narrows checked onto the union's i64 (`to_code_value`).
-        (ValueKind::CodeValue | ValueKind::Cell, _) | (_, ValueKind::CodeValue | ValueKind::Cell) => {
+        (ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Cell, _) | (_, ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Cell) => {
             let lift = |value, kind| {
                 to_code_value(operand(program, value), kind)
                     .map_err(|error| BackendError::UnsupportedType(format!("union comparison: {error}")))
@@ -2578,7 +2585,7 @@ pub(super) fn i64_or_f64_bin(
 
 /// Reconcile different representations of admitted numeric values at a fixed
 /// native slot. None means this boundary needs no numeric representation change.
-pub(super) fn numeric_boundary_value(
+pub(crate) fn numeric_boundary_value(
     expression: &Expr,
     from: &ValueKind,
     to: &ValueKind,
@@ -2624,6 +2631,39 @@ pub(super) fn numeric_boundary_value(
                 render_expr(expression), bindings.join(", "), arguments.join(", "),
                 render_expr(&converted),
             )))
+        }
+        (ValueKind::Evaluated, target) => {
+            if let ValueKind::Closure { params, result } = target {
+                let mut bindings = Vec::new();
+                let mut arguments = Vec::new();
+                for (index, kind) in params.iter().enumerate() {
+                    let name = format!("__evaluated_arg_{index}");
+                    let ty = crate::rust_ir::render::render_ty(&kind.rust_ty().ok()?);
+                    let borrowed = !kind.is_copy();
+                    bindings.push(format!("{name}: {}{ty}", if borrowed { "&" } else { "" }));
+                    arguments.push(render_expr(&to_node(Expr::Raw(name), kind).ok()?));
+                }
+                let output = numeric_boundary_value(
+                    &Expr::Raw("__evaluated_result".into()), from, result, slot,
+                )?;
+                let ty = crate::rust_ir::render::render_ty(&target.rust_ty().ok()?);
+                return Some(Expr::Raw(format!(
+                    "{{ let __evaluated = ({}).clone(); let __adapter: {ty} = std::rc::Rc::new(move |{}| {{ let __evaluated_result = __evaluated.apply(&[{}], &__EMATH_MODULE_TABLE)?; Ok({}) }}); __adapter }}",
+                    render_expr(expression), bindings.join(", "), arguments.join(", "),
+                    render_expr(&output),
+                )));
+            }
+            if *target == ValueKind::Node {
+                return Some(Expr::Raw(format!("({}).to_node()?", render_expr(expression))));
+            }
+            let scalar = Expr::Raw(format!("({}).to_scalar()?", render_expr(expression)));
+            if *target == ValueKind::CodeValue {
+                return Some(scalar);
+            }
+            numeric_boundary_value(&scalar, &ValueKind::CodeValue, target, slot)
+                .or_else(|| super::node_into(
+                    &format!("({}).to_node()?", render_expr(expression)), target,
+                ).map(Expr::Raw))
         }
         (ValueKind::Cell, target) => super::cell_into(&render_expr(expression), target).map(Expr::Raw),
         (ValueKind::ExactInt, ValueKind::I64) => Some(coerce_to_ty(

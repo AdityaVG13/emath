@@ -330,6 +330,12 @@ reproduces the VM's walk records arm for arm:
   pairs per closure instance. Keys preserve Int/Rat/Bool carrier identity.
   Module calls, nested function bodies, higher-order arguments, and faults
   do not enter this cache. Reference-engine cost measurements are unchanged.
+- `ExprCode::evaluate_value` keeps partially applied functions in an
+  `EvaluatedValue`, rather than projecting them prematurely onto a scalar.
+  Its arguments cross as checked node data; sequence binder domains check
+  every element. Curried stages retain earlier sequence captures. Sequence
+  equality, length, and checked indexing compute in this callable tree lane.
+  Function values cannot be serialized as data nodes.
 - `CodeTree::Closure` records its binder domain (`TreeDomain`, the
   VM's `DomainShape` in artifact vocabulary; distillation reuses the
   VM's `domain_shape_of_expr`). The view does not expose it (the VM's
@@ -345,6 +351,8 @@ reproduces the VM's walk records arm for arm:
   the table does not carry keeps `tree: call `{f}` is not emitted in
   the scalar tree evaluator`. `ModuleTable` is `Copy` (all `'static`
   slices), so an applied-evaluate callable captures it by value.
+  `node_callables` additionally maps data-carrier entries through checked
+  node arguments/results, including sequence parameters and results.
 - `node_items` yields a family `Sequence`'s or `Tuple`'s items (the
   call-marshal bridge into a declared sequence parameter); any other
   value refuses `type: expected a sequence value`.

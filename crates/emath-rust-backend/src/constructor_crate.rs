@@ -333,7 +333,7 @@ pub fn emit_constructor_crate(
     }
     // Run-time code reaches module functions no emitted program calls
     // (a formula handed in as a `Code` input may name any of them): when
-    // any lowered program evaluates code, every scalar-ABI function of
+    // any lowered program evaluates code, every data-ABI function of
     // the merged tree - imported ones included - joins as a helper root,
     // so the module table carries its adapter. Helpers never make the
     // crate not runnable; one that cannot emit is skipped.
@@ -348,7 +348,7 @@ pub fn emit_constructor_crate(
             };
             if decl.as_kind != "function"
                 || lowered.contains_key(&decl.name)
-                || !declared_scalar_abi(decl, &objects)
+                || !declared_node_abi(decl, &objects)
             {
                 continue;
             }
@@ -398,7 +398,7 @@ pub fn emit_constructor_crate(
         // table carries the EMITTED entry carrier, so a caller's
         // `CallSibling` register kind must match what the emitted
         // entry actually returns.
-        let sibling_kind = if matches!(body_kind, ValueKind::CodeValue | ValueKind::Cell)
+        let sibling_kind = if matches!(body_kind, ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Cell)
             || crate::codegen_render::kind_is_degenerate(&body_kind)
         {
             declared_output(&tree, name, &objects)
@@ -648,13 +648,19 @@ pub fn emit_constructor_crate(
         // emitted entry whose ABI crosses as scalars (a run-time
         // formula calling a module function runs its compiled entry).
         let mut callables = Vec::new();
+        let mut node_callables = Vec::new();
         for (name, inputs, abi) in &emitted_entries {
             if let Some(adapter) = scalar_entry_adapter(name, inputs, abi) {
                 rust.push_str(&adapter);
                 callables.push(format!("({name:?}, emath_callable_{name})"));
             }
+            if let Some(adapter) = node_entry_adapter(name, inputs, abi) {
+                rust.push_str(&adapter);
+                node_callables.push(format!("({name:?}, emath_node_callable_{name})"));
+            }
         }
         let callables = callables.join(", ");
+        let node_callables = node_callables.join(", ");
         let globals = module_table
             .iter()
             .map(|(name, opaque, _)| format!("({name:?}, {opaque})"))
@@ -666,7 +672,7 @@ pub fn emit_constructor_crate(
             .collect::<Vec<_>>()
             .join(", ");
         rust.push_str(&format!(
-            "#[allow(dead_code)]\nstatic __EMATH_MODULE_TABLE: emath_rt::code_tree::ModuleTable = emath_rt::code_tree::ModuleTable {{ globals: &[{globals}], stamps: &[{stamps}], callables: &[{callables}] }};\n\n"
+            "#[allow(dead_code)]\nstatic __EMATH_MODULE_TABLE: emath_rt::code_tree::ModuleTable = emath_rt::code_tree::ModuleTable {{ globals: &[{globals}], stamps: &[{stamps}], callables: &[{callables}], node_callables: &[{node_callables}] }};\n\n"
         ));
     }
     // The definition table: the
@@ -862,25 +868,24 @@ fn contains_code_evaluate(program: &emath_exec_ir::EmirProgram) -> bool {
     })
 }
 
-/// Whether a function declares a scalar ABI (Int/Rat/Bool inputs and
-/// one Int/Rat/Bool output) - the carriers a module-callable adapter
-/// crosses.
-fn declared_scalar_abi(
+/// Whether a function declares data carriers that a node-callable adapter
+/// can cross. Callable parameters themselves are not data nodes.
+fn declared_node_abi(
     decl: &emath_core::tree::Declaration,
     objects: &std::collections::BTreeSet<String>,
 ) -> bool {
-    let scalar = |ty: &emath_core::tree::TypeExpr| {
-        matches!(
-            emath_exec_ir::constructor_emir::constructor_type_signature(ty, objects).as_deref(),
-            Some("Int" | "Rat" | "Bool")
-        )
+    let node = |ty: &emath_core::tree::TypeExpr| {
+        emath_exec_ir::constructor_emir::constructor_type_signature(ty, objects)
+            .is_some_and(|signature| crate::codegen_render::node_family(
+                &ValueKind::from_signature(&signature),
+            ))
     };
     let outputs = emath_exec_ir::constructor_emir::section_typed_fields(decl, "outputs");
     outputs.len() == 1
-        && scalar(&outputs[0].1)
+        && node(&outputs[0].1)
         && emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs")
             .iter()
-            .all(|(_, ty)| scalar(ty))
+            .all(|(_, ty)| node(ty))
 }
 
 /// A module function's compiled entry adapted to the scalar union for
@@ -927,6 +932,34 @@ fn scalar_entry_adapter(
     Some(format!(
         "#[allow(dead_code)]\nfn emath_callable_{name}(__args: &[emath_rt::code::CodeValue]) -> Result<emath_rt::code::CodeValue, String> {{\n    if __args.len() != {arity} {{\n        return Err(format!(\"type: `{name}` expects {arity} argument(s), got {{}}\", __args.len()));\n    }}\n    Ok(emath_rt::code::CodeValue::{wrap}(crate::{target}({})?))\n}}\n\n",
         args.join(", ")
+    ))
+}
+
+fn node_entry_adapter(
+    name: &str,
+    inputs: &[(String, Option<String>)],
+    abi: &EntryAbi,
+) -> Option<String> {
+    if abi.inputs.len() != inputs.len() {
+        return None;
+    }
+    let mut bindings = Vec::new();
+    let mut arguments = Vec::new();
+    for (index, kind) in abi.inputs.iter().enumerate() {
+        let argument = format!("__node_argument_{index}");
+        let value = crate::codegen_render::node_into(&format!("__args[{index}]"), kind)?;
+        bindings.push(format!("let {argument} = {value};"));
+        arguments.push(argument);
+    }
+    let value = crate::codegen_render::to_node(
+        crate::Expr::Raw("__node_result".into()), &abi.result,
+    ).ok()?;
+    let value = crate::rust_ir::render::render_expr(&value);
+    let target = internal_entry_name(name);
+    let arity = abi.inputs.len();
+    Some(format!(
+        "#[allow(dead_code)]\nfn emath_node_callable_{name}(__args: &[emath_rt::code_tree::NodeValue]) -> Result<emath_rt::code_tree::NodeValue, String> {{\n    if __args.len() != {arity} {{ return Err(format!(\"type: `{name}` expects {arity} argument(s), got {{}}\", __args.len())); }}\n    {}\n    let __node_result = crate::{target}({})?;\n    Ok({value})\n}}\n\n",
+        bindings.join("\n    "), arguments.join(", "),
     ))
 }
 

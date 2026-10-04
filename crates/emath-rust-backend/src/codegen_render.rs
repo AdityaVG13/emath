@@ -69,6 +69,7 @@ pub(crate) fn replace_ident_prefix(
 pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError> {
     Ok(match kind {
         ValueKind::CodeValue => expr,
+        ValueKind::Evaluated => Expr::Raw(format!("({}).to_scalar()?", render_expr(&expr))),
         ValueKind::Cell => Expr::Raw(format!("({}).scalar()?", render_expr(&expr))),
         ValueKind::Node => Expr::Raw(format!("({}).to_scalar()?", render_expr(&expr))),
         ValueKind::I64 => Expr::Raw(format!(
@@ -129,7 +130,7 @@ pub(crate) fn engine_crosses(kind: &ValueKind) -> bool {
 /// The node-record family is closed under sequences: a family-joinable
 /// element, or a nested sequence of one, folds inductively (the walk's
 /// lists of all-made argument lists are `sequence(sequence(Code))`).
-fn node_family(kind: &ValueKind) -> bool {
+pub(crate) fn node_family(kind: &ValueKind) -> bool {
     match kind {
         ValueKind::Node
         | ValueKind::ExprCode
@@ -184,13 +185,13 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError
             let folded = to_node(Expr::Raw(String::from("item")), element)?;
             if carries_exact_int(element) {
                 return Ok(Expr::Raw(format!(
-                    "emath_rt::code_tree::NodeValue::Sequence(({}).into_iter().map(|item| Ok::<_, String>({})).collect::<Result<Vec<_>, String>>()?)",
+                    "emath_rt::code_tree::NodeValue::Sequence(({}).iter().cloned().map(|item| Ok::<_, String>({})).collect::<Result<Vec<_>, String>>()?)",
                     render_expr(&expr),
                     render_expr(&folded)
                 )));
             }
             Expr::Raw(format!(
-                "emath_rt::code_tree::NodeValue::Sequence(({}).into_iter().map(|item| {}).collect::<Vec<_>>())",
+                "emath_rt::code_tree::NodeValue::Sequence(({}).iter().cloned().map(|item| {}).collect::<Vec<_>>())",
                 render_expr(&expr),
                 render_expr(&folded)
             ))
@@ -887,6 +888,16 @@ pub(crate) fn op_expr(
             // `(f)(a)?` yields the next callable (boxed), which the
             // following stage calls.
 
+            if kind_at(kinds, *callee_value) == ValueKind::Evaluated {
+                let args = inputs.iter().map(|value|
+                    to_node(operand(program, *value), &kind_at(kinds, *value))
+                        .map(|value| render_expr(&value))
+                ).collect::<Result<Vec<_>, _>>()?.join(", ");
+                return Ok(Expr::Raw(format!(
+                    "({}).apply(&[{args}], &__EMATH_MODULE_TABLE)?",
+                    render_expr(&operand(program, *callee_value)),
+                )));
+            }
             let ValueKind::Closure { .. } = kind_at(kinds, *callee_value) else {
                 return Err(BackendError::UnsupportedType(format!(
                     "closure call requires a callee with a declared signature, found {:?} from {}",
@@ -1612,8 +1623,16 @@ pub(crate) fn op_expr(
                         let Some(ValueKind::Closure { params, result }) =
                             declared_scalar_arrow(signature)
                         else {
-                            return Err(BackendError::UnsupportedType(format!(
-                                "an evaluated quoted function crosses only a scalar arrow, not `{signature}`"
+                            let kind = ValueKind::from_signature(signature);
+                            let converted = numeric_boundary_value(
+                                &Expr::Raw("__evaluated".into()),
+                                &ValueKind::Evaluated, &kind, "evaluated result",
+                            ).ok_or_else(|| BackendError::UnsupportedType(format!(
+                                "an evaluated quoted function has no adapter onto `{signature}`"
+                            )))?;
+                            return Ok(Expr::Raw(format!(
+                                "{{ let __evaluated = ({target}).evaluate_value(&__EMATH_MODULE_TABLE)?; {} }}",
+                                render_expr(&converted),
                             )));
                         };
                         let bindings = params
@@ -1663,19 +1682,19 @@ pub(crate) fn op_expr(
                     // union parameter per applied argument.
                     Some(emath_exec_ir::CodeApplication::Union(arity)) => {
                         let params = (0..*arity)
-                            .map(|index| format!("__apply_{index}: emath_rt::code::CodeValue"))
+                            .map(|index| format!("__apply_{index}: &emath_rt::code_tree::NodeValue"))
                             .collect::<Vec<_>>()
                             .join(", ");
                         let names = (0..*arity)
-                            .map(|index| format!("__apply_{index}"))
+                            .map(|index| format!("__apply_{index}.clone()"))
                             .collect::<Vec<_>>()
                             .join(", ");
                         let callable = callable_ty(
-                            &vec![ValueKind::CodeValue; usize::from(*arity)],
-                            &ValueKind::CodeValue,
+                            &vec![ValueKind::Node; usize::from(*arity)],
+                            &ValueKind::Evaluated,
                         )?;
                         Ok(Expr::Raw(format!(
-                            "{{ let __applied = ({}).evaluate_callable(&__EMATH_MODULE_TABLE)?; let __applied: std::rc::Rc<{callable}> = std::rc::Rc::new(move |{params}| __applied(&[{names}])); __applied }}",
+                            "{{ let __applied = ({}).evaluate_value(&__EMATH_MODULE_TABLE)?; let __applied: std::rc::Rc<{callable}> = std::rc::Rc::new(move |{params}| __applied.apply(&[{names}], &__EMATH_MODULE_TABLE)); __applied }}",
                             target
                         )))
                     }

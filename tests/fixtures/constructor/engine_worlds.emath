@@ -187,6 +187,54 @@ emath function local_label:
             given label = "y"
             expect result == false
 
+emath function sequence_code:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        term = quote xs in sequence(Int): xs == [1, 2]
+        result = quote.evaluate(term)([1, 2]) and not quote.evaluate(term)([2, 1])
+    tests:
+        example <sequence_arguments_preserve_values>:
+            given unused = 0
+            expect result == true
+
+emath function curried_sequence_code:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        term = quote xs in sequence(Int): function ys in sequence(Int): length(xs) == length(ys)
+        checker = quote.evaluate(term)
+        result = checker([1, 2])([8, 9]) and not checker([1, 2])([8])
+    tests:
+        example <partial_application_keeps_sequence_capture>:
+            given unused = 0
+            expect result == true
+
+emath function shifted_sequence:
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = map(function x in Int: x + 1, xs)
+
+emath function module_sequence_code:
+    inputs:
+        unused: Int
+    outputs:
+        result: Bool
+    definitions:
+        term = quote xs in sequence(Int): shifted_sequence(xs) == [2, 3]
+        result = quote.evaluate(term)([1, 2]) and not quote.evaluate(term)([2, 1])
+    tests:
+        example <quoted_sequence_call_reaches_module_entry>:
+            given unused = 0
+            expect result == true
+
 emath function code_callable:
     inputs:
         term: Code
@@ -201,6 +249,34 @@ emath function code_callable:
         example <recursive_quoted_function>:
             given term = quote(recur f in Int -> Int: function n in Int: if n <= 1: n else: f(n - 1) + f(n - 2))
             expect result(12) == 144
+
+emath function sequence_callable:
+    inputs:
+        term: Code
+    outputs:
+        result: sequence(Int) -> Bool
+    definitions:
+        result = quote.evaluate(term)
+    tests:
+        example <runtime_sequence_module_callable>:
+            given term = quote xs in sequence(Int): shifted_sequence(xs) == [2, 3]
+            expect result([1, 2]) == true
+            expect result([2, 1]) == false
+
+emath function negated_callable:
+    inputs:
+        term: Code
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        f = quote.evaluate(term)
+        result = -f(x)
+    tests:
+        example <evaluated_value_negates_as_a_scalar>:
+            given term = quote n in Int: n + 2
+            given x = 3
+            expect result == -5
 
 emath function nested_template:
     inputs:

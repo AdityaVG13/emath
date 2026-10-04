@@ -20,8 +20,9 @@ Every module artifact compiles offline. This is a compilation census,
 not a claim that every user workflow executes within every native carrier.
 Full workflow probes pass deterministic neural training, learning, and
 exploration (including engine-authored work measurements). Formula search
-reaches the bounded rational carrier; conjecture retains an undeclared
-callable-signature refusal.
+reaches the bounded rational carrier. Conjecture now compiles with structured,
+curried callable checks, but its full workflow reaches native i64 arithmetic
+overflow. Neither boundary is a complete native workflow claim.
 Their authored reference-engine examples pass.
 
 ## Native mutable buffers
@@ -148,14 +149,12 @@ predicts the rendered Rust type:
   `CallSibling` edges) target the body fn so a run's mint never restarts
   mid-run (the VM mints once per query).
 - Applied evaluate: `CodeEvaluate { applied: Some(Union(n)) }` over a
-  bare `Code` kinds as a closure of `n` union parameters yielding the
-  union and renders `evaluate_callable(&__EMATH_MODULE_TABLE)?` spread
-  over an `Rc<dyn Fn(CodeValue, ..)>`; scalar arguments wrap into the
-  union at the call. `Declared(sig)` kinds as the declared arrow when it
-  is one stage of scalar (Int/Rat/Bool) parameters with a scalar result
-  (`declared_scalar_arrow`), rendering the same callable behind an
-  adapter: arguments wrap into the union, the result projects checked
-  (`evaluated result` slot); any other arrow refuses by name.
+  bare expression `Code` takes `n` checked node arguments and retains an
+  `EvaluatedValue` result, which can be data or a curried function.
+  Further `CallValue` stages apply this value without guessing a scalar
+  carrier. Typed output, branch, and integer-operation boundaries project
+  checked. `Declared(sig)` uses the scalar adapter when possible, otherwise
+  a node-data adapter following each declared arrow stage.
 - Module callables: when the crate emits `__EMATH_MODULE_TABLE`, every
   emitted entry whose ABI is scalar (Int/Rat/Bool parameters and
   result) also gets an adapter `emath_callable_<name>` in the table's
@@ -164,12 +163,15 @@ predicts the rendered Rust type:
   wraps into the union, and a tree-lane entry is called through its
   body fn. The rt tree evaluator reaches module code only through these.
   When any lowered program evaluates code (`CodeEvaluate` at any depth),
-  every merged-tree function with a declared scalar ABI - imported ones
+  every merged-tree function with a declared data ABI - imported ones
   included, and ones no emitted program calls - joins the emission as a
   helper root, so a run-time formula can reach it (a formula handed in
   as a `Code` input may name any of them). Helpers never make the crate
   not runnable; one that cannot emit is skipped and its run-time call
   refuses by name.
+- Data-carrier module entries also get node-callable adapters, so quoted
+  sequence programs call compiled module entries with checked sequence
+  arguments/results. Helper discovery follows these declared data carriers.
 - Call-marshal bridge (`node_into`): a node-family value crossing into
   a declared `Code` parameter unwraps/rebuilds through `node_as_code`,
   and into a declared sequence of code (`sequence(Code)`,
