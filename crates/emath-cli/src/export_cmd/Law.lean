@@ -695,6 +695,40 @@ theorem HasOrder.fold_acc_int {a k : ℕ} (f : ℤ → ℤ → ℤ) (init : ℤ)
   rw [fold_acc_eq_int f hf init lo n]
   push_cast; rfl
 
+theorem fold_range_succ {β : Type} (f : β → ℤ → β) (init : β) (lo : ℤ) (n : ℕ) :
+    Emath.fold f init (Emath.range lo ((n + 1 : ℕ) : ℤ)) =
+      f (Emath.fold f init (Emath.range lo (n : ℤ))) (lo + n) := by
+  simp only [Emath.fold, Emath.range, Int.toNat_natCast]
+  rw [List.range_succ, List.map_append, List.foldl_append]
+  rfl
+
+/-- A loop whose step is `x(t + 1) = c x(t) + g(t)` has `g`'s order and
+one more, the root `c`. -/
+theorem HasOrder.of_affine {a k : ℕ} {u g : ℕ → ℚ} (c : ℚ) (hu : ∀ n, u (n + 1) = c * u n + g n)
+    (hg : HasOrder a k g) : HasOrder a (k + 1) u := by
+  obtain ⟨q, hq, hqd, hqa⟩ := hg
+  refine ⟨q * (X - C c), hq.mul (monic_X_sub_C c), ?_, ?_⟩
+  · rw [hq.natDegree_mul (monic_X_sub_C c), natDegree_X_sub_C]; omega
+  · have hstep : aeval shift (X - C c : ℚ[X]) u = g := by
+      funext n; simp [shift, hu n]
+    unfold Ann at *
+    rw [← mul_assoc, map_mul, Module.End.mul_apply, hstep, hqa]
+
+/-- `fold(function acc: function t: c acc + h(t), init, range(lo, n))`,
+the coefficient read off the step as `f 1 0 - f 0 0`. -/
+theorem HasOrder.fold_affine {a k : ℕ} (f : ℚ → ℤ → ℚ) (init : ℚ) (lo : ℤ)
+    (hf : ∀ acc t, f acc t = (f 1 0 - f 0 0) * acc + f 0 t)
+    (hh : HasOrder a k (fun t : ℕ => f 0 (lo + t))) :
+    HasOrder a (k + 1) (fun n : ℕ => Emath.fold f init (Emath.range lo n)) :=
+  HasOrder.of_affine (f 1 0 - f 0 0) (fun n => by rw [fold_range_succ, hf]) hh
+
+theorem HasOrder.fold_affine_int {a k : ℕ} (f : ℤ → ℤ → ℤ) (init : ℤ) (lo : ℤ)
+    (hf : ∀ acc t, f acc t = (f 1 0 - f 0 0) * acc + f 0 t)
+    (hh : HasOrder a k (fun t : ℕ => ((f 0 (lo + t) : ℤ) : ℚ))) :
+    HasOrder a (k + 1) (fun n : ℕ => ((Emath.fold f init (Emath.range lo n) : ℤ) : ℚ)) :=
+  HasOrder.of_affine ((f 1 0 - f 0 0 : ℤ) : ℚ)
+    (fun n => by rw [fold_range_succ, hf]; push_cast; rfl) hh
+
 theorem sum_tabulate_eq (f : ℤ → ℤ) (n : ℕ) :
     Emath.sum (Emath.tabulate f n) = ∑ t ∈ Finset.range n, f t := by
   induction n with
@@ -829,6 +863,68 @@ theorem HasOrder.eventually {a k : ℕ} {u : ℕ → ℚ} (m : ℕ) (w : ℕ →
       _ = (aeval shift p * shift ^ m) w := by rw [hs]; rfl
       _ = 0 := by rw [aeval_comm_shift_pow, Module.End.mul_apply, hqa, map_zero]
 
+/-- A sequence whose values from `m` on are another's of order `k` has
+order `k + m`. -/
+theorem HasOrder.unshift {a k : ℕ} {u : ℕ → ℚ} (m : ℕ) (hw : HasOrder a k (fun n => u (n + m))) :
+    HasOrder a (k + m) u := by
+  obtain ⟨q, hq, hqd, hqa⟩ := hw
+  refine ⟨q * X ^ m, hq.mul (monic_X_pow m), ?_, ?_⟩
+  · rw [hq.natDegree_mul (monic_X_pow m), natDegree_X_pow]; omega
+  · have hs : (shift ^ m) u = fun n => u (n + m) := by funext n; rw [shift_pow_apply]
+    rw [← mul_assoc]
+    unfold Ann at *
+    rw [map_mul, map_pow, aeval_X, Module.End.mul_apply, hs, hqa]
+
+/-- `F(n + j)` with `j ≥ 0` keeps `F(n)`'s order. -/
+theorem HasOrder.arg_add {a k : ℕ} (F : ℤ → ℚ) (j : ℤ) (hj : 0 ≤ j)
+    (h : HasOrder a k (fun m : ℕ => F m)) : HasOrder a k (fun n : ℕ => F ((n : ℤ) + j)) := by
+  convert h.shift_by j.toNat using 2 with n
+  congr 1; omega
+
+theorem HasOrder.arg_add_left {a k : ℕ} (F : ℤ → ℚ) (j : ℤ) (hj : 0 ≤ j)
+    (h : HasOrder a k (fun m : ℕ => F m)) : HasOrder a k (fun n : ℕ => F (j + (n : ℤ))) := by
+  simpa only [add_comm] using HasOrder.arg_add F j hj h
+
+/-- `F(n - j)` with `j ≥ 0` is `F`'s values from `n = j` on: `j` more. -/
+theorem HasOrder.arg_sub {a k : ℕ} (F : ℤ → ℚ) (j : ℤ) (hj : 0 ≤ j)
+    (h : HasOrder a k (fun m : ℕ => F m)) :
+    HasOrder a (k + j.toNat) (fun n : ℕ => F ((n : ℤ) - j)) := by
+  refine HasOrder.unshift j.toNat ?_
+  convert h using 2 with n
+  congr 1; omega
+
+open Lean Meta Elab Tactic in
+/-- On `HasOrder a k (fun n => body)` where `body` reads `n` only as
+`↑n + j`, `j + ↑n` or `↑n - j` for one `j` not reading `n`: the order of
+`body` read at `↑n`, by `arg_add` or `arg_sub`, `0 ≤ j` decided. -/
+elab "emath_shift" : tactic => withMainContext do
+  let goal ← instantiateMVars (← getMainTarget)
+  let some (_, _, u) := goal.app3? ``HasOrder | throwError "emath_shift: not a HasOrder goal"
+  let .lam n ty body bi := u | throwError "emath_shift: not a function"
+  let found ← withLocalDecl n bi ty fun t => do
+    let body := body.instantiate1 t
+    let reads (e : Expr) := e.containsFVar t.fvarId!
+    let isN (e : Expr) := e.isAppOfArity ``Nat.cast 3 && e.appArg!.isFVarOf t.fvarId!
+    let shifted (e : Expr) : Bool :=
+      (e.isAppOfArity ``HAdd.hAdd 6 || e.isAppOfArity ``HSub.hSub 6) &&
+        ((isN (e.getArg! 4) && !reads (e.getArg! 5)) ||
+          (e.isAppOfArity ``HAdd.hAdd 6 && isN (e.getArg! 5) && !reads (e.getArg! 4)))
+    let some site := body.find? shifted | throwError "emath_shift: no shifted argument"
+    let abst ← kabstract body site
+    if (abst.instantiate1 (mkConst ``Unit.unit)).containsFVar t.fvarId! then
+      throwError "emath_shift: reads n outside one shifted argument"
+    let F := Expr.lam `m (mkConst ``Int) abst .default
+    let (rule, j) :=
+      if site.isAppOfArity ``HSub.hSub 6 then (``HasOrder.arg_sub, site.getArg! 5)
+      else if isN (site.getArg! 4) then (``HasOrder.arg_add, site.getArg! 5)
+      else (``HasOrder.arg_add_left, site.getArg! 4)
+    return (rule, F, j)
+  let (rule, F, j) := found
+  let F ← Term.exprToSyntax F
+  let j ← Term.exprToSyntax j
+  let rule := mkIdent rule
+  evalTactic (← `(tactic| apply ($rule:ident $F:term $j:term (by decide))))
+
 open Lean Meta Elab Tactic in
 /-- On `HasOrder a k (fun n => if decide (x ~ y) = true then a else b)`
 where one of `x`, `y` does not read `n` (call it `K`): a comparison of
@@ -961,17 +1057,20 @@ macro_rules
         | with_reducible exact HasOrder.const _
         | with_reducible exact HasOrder.cast_nat
         | with_reducible exact HasOrder.rat_pow _
-        | (with_reducible apply HasOrder.rat_pow_add); decide +kernel
-        | (with_reducible apply HasOrder.rat_pow_add_left); decide +kernel
-        | (with_reducible apply HasOrder.rat_pow_sub); decide +kernel
-        | (with_reducible apply HasOrder.fold_acc); (intro acc t; beta_reduce; ring)
-        | (with_reducible apply HasOrder.fold_acc_int); (intro acc t; beta_reduce; ring)
+        | (with_reducible apply HasOrder.rat_pow_add); (first | decide +kernel | exact Or.inr (by decide))
+        | (with_reducible apply HasOrder.rat_pow_add_left); (first | decide +kernel | exact Or.inr (by decide))
+        | (with_reducible apply HasOrder.rat_pow_sub); (first | decide +kernel | exact Or.inr (by decide))
+        | (with_reducible apply HasOrder.fold_acc); (intro acc t; beta_reduce; ring1)
+        | (with_reducible apply HasOrder.fold_acc_int); (intro acc t; beta_reduce; ring1)
+        | (with_reducible apply HasOrder.fold_affine); (intro acc t; beta_reduce; ring1)
+        | (with_reducible apply HasOrder.fold_affine_int); (intro acc t; beta_reduce; ring1)
         | with_reducible apply HasOrder.sum_tabulate
         | (with_reducible apply HasOrder.int_quot); emath_divides
         | emath_readout; all_goals (first | decide | (intros; emath_lin; done) | (intros; emath_linz; done) | emath_linear [] | emath_linear [$defs,*])
         | (with_reducible apply HasOrder.if_true); (first | decide +kernel | exact decide_eq_true ‹_›)
         | (with_reducible apply HasOrder.if_false); (first | decide +kernel | exact decide_eq_false ‹_›)
         | emath_branch
+        | emath_shift
         | emath_readout_through [$defs,*]
         | with_reducible apply HasOrder.add
         | with_reducible apply HasOrder.sub

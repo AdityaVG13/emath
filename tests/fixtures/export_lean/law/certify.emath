@@ -10,7 +10,9 @@
 # of Int programs, which Lean reads as rationals:
 # Cassini's identity over a loop on Int pairs, squares summed by an Int
 # accumulator against an exact quotient, and cubes summed by
-# sum(tabulate(...)) against a square of one, and an Int branch on n.
+# sum(tabulate(...)) against a square of one, and an Int branch on n;
+# loops x(k + 1) = c x(k) + g(k) with c != 1 (2^n - 1, and 2 - 2/2^n);
+# Fibonacci read at n + 2, 1 + n and n - 1.
 use model
 use found
 use fold.reduce
@@ -46,4 +48,4 @@ emath function certify:
     outputs:
         result: sequence(Certificate)
     definitions:
-        result = [certify_equal(quote(function n in Int: fib_pair(n)[0] * (fib_pair(n)[0] + fib_pair(n)[1]) - fib_pair(n)[1] * fib_pair(n)[1]), quote(function n in Int: rat_pow(0 - 1, n + 1)), limit), certify_equal(quote(function n in Int: fold(function acc in Int: function t in Int: acc + t * t, 0, range(0, n))), quote(function n in Int: int_quot(n * (n - 1) * (2 * n - 1), 6)), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: i * i * i, n))), quote(function n in Int: int_quot(n * (n - 1), 2) * int_quot(n * (n - 1), 2)), limit), certify_equal(quote(function n in Int: if n == 0: 1 else: n * n), quote(function n in Int: if n < 1: 1 else: n * n), limit)]
+        result = [certify_equal(quote(function n in Int: fib_pair(n)[0] * (fib_pair(n)[0] + fib_pair(n)[1]) - fib_pair(n)[1] * fib_pair(n)[1]), quote(function n in Int: rat_pow(0 - 1, n + 1)), limit), certify_equal(quote(function n in Int: fold(function acc in Int: function t in Int: acc + t * t, 0, range(0, n))), quote(function n in Int: int_quot(n * (n - 1) * (2 * n - 1), 6)), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: i * i * i, n))), quote(function n in Int: int_quot(n * (n - 1), 2) * int_quot(n * (n - 1), 2)), limit), certify_equal(quote(function n in Int: if n == 0: 1 else: n * n), quote(function n in Int: if n < 1: 1 else: n * n), limit), certify_equal(quote(function n in Int: fold(function a in Int: function k in Int: 2 * a + 1, 0, range(0, n))), quote(function n in Int: rat_pow(2, n) - 1), limit), certify_equal(quote(function n in Int: fold(function a in Rat: function k in Int: a / 2 + 1, 0 / 1, range(0, n))), quote(function n in Int: 2 - 2 * rat_pow(1 / 2, n)), limit), certify_equal(quote(function n in Int: fib_pair(n + 2)[0]), quote(function n in Int: fib_pair(n)[0] + fib_pair(1 + n)[0]), limit), certify_equal(quote(function n in Int: fib_pair(n - 1)[0]), quote(function n in Int: if n < 1: 0 else: fib_pair(n)[1] - fib_pair(n)[0]), limit)]
