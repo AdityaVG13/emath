@@ -208,7 +208,7 @@ Run the law function to see emath's own certificate:
 
 ```console
 $ emath run docs/guide/examples/sequences/laws.emath --function laws --set limit=100000
-[Certificate(points=5, proven=true, start=0), Certificate(points=9, proven=true, start=0)]
+[Certificate(exhausted=false, points=5, proven=true, start=0), Certificate(exhausted=false, points=9, proven=true, start=0)]
 $ emath run docs/guide/examples/sequences/laws.emath --function geometric_law --set limit=100000
 ParameterCertificate(conditions=[], evaluations=7, points=3, proven=true, sides=[], start=0)
 ```
@@ -219,16 +219,44 @@ ParameterCertificate(conditions=[], evaluations=7, points=3, proven=true, sides=
   force agreement everywhere.
 - `proven=false` with `points=0`: emath could not bound a side. The law
   may still be true, but emath has no proof of it. See [Limits](#limits).
-- `proven=false` with `points > 0`: the sides differ at some checked
-  point, or a side did not finish within `limit`.
+- `proven=false` with `exhausted=true`: a side did not finish within
+  `limit` at some checked point. Raise `limit` and run it again.
+- `proven=false` with `points > 0` and `exhausted=false`: the sides
+  differ at a checked point. The law is false.
 
 `limit` is the work budget for evaluating each side at each point. It
 is not a range of `n`. If it is too small, a true law comes back
-`proven=false`. For example, Cassini's identity above is not proven
-with `limit=1000`, but is with `100000`. A small `limit` can only lose
-a proof; it never makes a false law look proven. `emath export lean`
+`proven=false` with `exhausted=true`. A small `limit` can only lose a
+proof; it never makes a false law look proven. `emath export lean`
 certifies with its own large budget, so the value you pass only
 matters for `emath run`.
+
+[`docs/guide/examples/limit.emath`](examples/limit.emath) shows this
+with Cassini's identity:
+
+```emath
+emath function cassini:
+    # F(n + 1)^2 - F(n) F(n + 2) = (-1)^n, with the given limit
+    inputs:
+        limit: Int
+    outputs:
+        result: Certificate
+    definitions:
+        result = certify_equal(quote(function n in Int: fib(n + 1) * fib(n + 1) - fib(n) * fib(n + 2)), quote(function n in Int: rat_pow(0 - 1, n)), limit)
+    tests:
+        example <too_small>:
+            given limit = 1000
+            expect result.proven == false
+            expect result.exhausted == true
+        example <enough>:
+            given limit = 100000
+            expect result.proven == true
+            expect result.exhausted == false
+```
+
+`certify_all` returns a `ParameterCertificate`, which has no
+`exhausted` field yet. If one of its laws is unexpectedly not proven,
+try a larger `limit`.
 
 ### What Lean does with a law
 
@@ -318,7 +346,7 @@ rejected: guess.emath law 1 of `laws`: the two sides differ at n = 0
 | `not translated: ... example of F: a function that certifies laws becomes the laws` | An example on a law function | Remove the example. The laws themselves are checked |
 | `unproven: ... : Lean found no order bound for a side` | The law's shape is outside what the law library proves | See [Limits](#limits). This does not mean the law is false |
 | `unproven: ... : Lean ran out of time or recursion depth before deciding it` | The kernel gave up on a big computation | Use a smaller example. Very large values (around a million loop steps) are beyond the kernel |
-| `unproven: ... : Lean proves it, but emath does not certify it` | Lean's total arithmetic proved something emath faults on (such as a division by 0) | Treat it as unproven. Check the law for a division by something that can be 0 |
+| `unproven: ... : Lean proves it, but emath does not certify it` | emath found no bound for a side, or a side faults in emath (such as a division by 0) where Lean's total arithmetic does not | Treat it as unproven. Run the law in emath: `points=0` means no bound, so rewrite the side; otherwise look for a division by something that can be 0 |
 | `unproven: ... : emath does not certify it, and Lean did not check it` | Another file it imports failed to build | Fix the failure reported for that file |
 | `rejected: ... example <x> of F` | The kernel computed a different value than the example expects | The example, or the Lean translation, is wrong. Compare with `emath test` |
 | `rejected: ... law k of F: the two sides differ at n = m` | The law is false at `n = m` | Fix the law |
@@ -350,6 +378,9 @@ bounding recurrence orders. A side can contain:
 
 - polynomials in `n`;
 - `rat_pow(c, n)` with `c` not depending on `n`, and `rat_pow(c, n + j)`;
+- `int_pow(c, n)` and `int_pow(c, n + j)` with `j >= 0` (a negative
+  exponent faults in emath, so `int_pow(c, n - 1)` has no bound; write
+  it with `certify_equal_from` and a start, or use `rat_pow`);
 - `sum(tabulate(function i in Int: e, n))`;
 - `fold` over `range(lo, n)` (or `range(lo, n + j)`), where the step is
   linear in the loop state. This covers running sums, affine updates
@@ -362,7 +393,7 @@ bounding recurrence orders. A side can contain:
   `n + 1`.
 
 Outside this shape, the law comes back unproven, not false. Examples:
-dividing by an expression in `n`, `int_pow` (use `rat_pow` in laws),
+dividing by an expression in `n`, `int_pow(c, n - j)`,
 a branch whose condition depends on `n` in any way other than comparing
 `n` with a fixed number, and a loop
 step that is nonlinear in the state (such as `x -> x * x`).

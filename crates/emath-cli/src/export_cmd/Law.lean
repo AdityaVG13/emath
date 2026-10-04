@@ -193,6 +193,26 @@ theorem HasOrder.rat_pow (c : ℚ) : HasOrder 0 1 (fun n : ℕ => Emath.rat_pow 
     funext n; simp [Emath.rat_pow]
   rw [this]; exact HasOrder.geom c
 
+/-- `int_pow(c, n)`: emath faults on a negative exponent, so only `n`
+and `n + j` with `j ≥ 0` are read. -/
+theorem HasOrder.int_pow (c : ℤ) : HasOrder 0 1 (fun n : ℕ => ((Emath.int_pow c (n : ℤ) : ℤ) : ℚ)) := by
+  have : (fun n : ℕ => ((Emath.int_pow c (n : ℤ) : ℤ) : ℚ)) = (fun n => (c : ℚ) ^ n) := by
+    funext n; simp [Emath.int_pow]
+  rw [this]; exact HasOrder.geom _
+
+theorem HasOrder.int_pow_add (c j : ℤ) (h : 0 ≤ j) :
+    HasOrder 0 1 (fun n : ℕ => ((Emath.int_pow c ((n : ℤ) + j) : ℤ) : ℚ)) := by
+  have : (fun n : ℕ => ((Emath.int_pow c ((n : ℤ) + j) : ℤ) : ℚ)) =
+      (fun n => (c : ℚ) ^ j.toNat * (c : ℚ) ^ n) := by
+    funext n
+    simp only [Emath.int_pow, Int.cast_pow]
+    rw [show ((n : ℤ) + j).toNat = j.toNat + n by omega, pow_add]
+  rw [this]; exact (HasOrder.geom _).const_mul _
+
+theorem HasOrder.int_pow_add_left (c j : ℤ) (h : 0 ≤ j) :
+    HasOrder 0 1 (fun n : ℕ => ((Emath.int_pow c (j + (n : ℤ)) : ℤ) : ℚ)) := by
+  simpa only [add_comm] using HasOrder.int_pow_add c j h
+
 theorem rat_pow_eq_zpow {c : ℚ} (hc : c ≠ 0) (e : ℤ) : Emath.rat_pow c e = c ^ e := by
   unfold Emath.rat_pow
   split_ifs with he
@@ -1095,6 +1115,9 @@ macro_rules
         | (with_reducible apply HasOrder.rat_pow_add); (first | decide +kernel | exact Or.inr (by decide))
         | (with_reducible apply HasOrder.rat_pow_add_left); (first | decide +kernel | exact Or.inr (by decide))
         | (with_reducible apply HasOrder.rat_pow_sub); (first | decide +kernel | exact Or.inr (by decide))
+        | with_reducible exact HasOrder.int_pow _
+        | (with_reducible apply HasOrder.int_pow_add); decide +kernel
+        | (with_reducible apply HasOrder.int_pow_add_left); decide +kernel
         | (with_reducible apply HasOrder.fold_acc); (intro acc t; beta_reduce; ring1)
         | (with_reducible apply HasOrder.fold_acc_int); (intro acc t; beta_reduce; ring1)
         | (with_reducible apply HasOrder.fold_affine); (intro acc t; beta_reduce; ring1)

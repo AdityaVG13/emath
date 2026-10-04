@@ -77,7 +77,7 @@ ok four --
 | Learn the syntax of an emath program | [Quick start](../../language/QUICKSTART.md), then [the language README](../../language/README.md) |
 | Look up any command and its flags | [MANUAL.md](../../MANUAL.md), or `emath help COMMAND` |
 | Find a library function | `emath api --search "words"` |
-| Understand an error | The message says what to change. For command-line codes, `emath explain E-CODE`; language codes are described in [the reference](../../language/reference/README.md) |
+| Understand an error code | `emath explain E-CODE` (for example `emath explain E-NAME-025`) |
 | Run a simulation | The template [`language/templates/simulation.emath`](../../language/templates/simulation.emath) |
 | Run a discovery loop (`dream`) | [Discovery](../../language/DISCOVERY.md) |
 | Know what computes and what is refused | [CAPABILITY.md](../../language/CAPABILITY.md) |
@@ -140,8 +140,8 @@ them.
   fix. Add `--work N`.
 - Prefer exact types (`Int`, `Rat`) for anything you want to prove.
   Floats do not export to Lean.
-- `proven=false` is not "false". Read `points`: 0 means emath could
-  not bound a side, more than 0 means a checked point disagreed or ran
-  out of `limit`.
+- `proven=false` is not "false". `exhausted=true` means raise `limit`.
+  `points=0` means emath could not bound a side. Only `points > 0`
+  with `exhausted=false` means the sides really differ.
 - Run `emath help COMMAND` for the flags of any command.
   `emath capabilities --json` gives the full machine-readable contract.

@@ -189,7 +189,7 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         .map(|(site, _)| {
             if output.status.success() || elaborated(&site.lean) {
                 format!(
-                    "{}: Lean proves it, but emath does not certify it (Lean's arithmetic is total where emath's faults)",
+                    "{}: Lean proves it, but emath does not certify it (emath found no bound for a side, or a side faults in emath where Lean's arithmetic is total)",
                     site.what
                 )
             } else {

@@ -204,10 +204,10 @@ emath function Certifies:
     tests:
         example <proves_only_what_it_can_bound>:
             given unused = 0
-            expect orders == [5, 2, 4, 0 - 1, 3]
+            expect orders == [5, 2, 4, 4, 3]
             expect degrees == [4, 0 - 1, 0 - 1, 0 - 1, 2]
             expect proven == [true, false, false, true, true, false, false, false, false]
-            expect points == [5, 4, 0, 5, 4, 0, 0, 6, 7]
+            expect points == [5, 4, 4, 5, 4, 0, 0, 6, 7]
 
 emath function CertifiesModels:
     inputs:

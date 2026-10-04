@@ -1,0 +1,32 @@
+# What `limit` does in a law: it is the work each side may spend at each
+# checked point. Too small, and a true law is not proven, with
+# exhausted = true saying a larger limit may prove it.
+use search.certify
+use analysis.powers.{rat_pow}
+use fold.reduce
+
+emath function fib:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function p in sequence(Int): function k in Int: [p[1], p[0] + p[1]], [0, 1], range(0, n))[0]
+
+emath function cassini:
+    # F(n + 1)^2 - F(n) F(n + 2) = (-1)^n, with the given limit
+    inputs:
+        limit: Int
+    outputs:
+        result: Certificate
+    definitions:
+        result = certify_equal(quote(function n in Int: fib(n + 1) * fib(n + 1) - fib(n) * fib(n + 2)), quote(function n in Int: rat_pow(0 - 1, n)), limit)
+    tests:
+        example <too_small>:
+            given limit = 1000
+            expect result.proven == false
+            expect result.exhausted == true
+        example <enough>:
+            given limit = 100000
+            expect result.proven == true
+            expect result.exhausted == false

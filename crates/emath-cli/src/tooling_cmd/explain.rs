@@ -149,6 +149,36 @@ pub(super) const DIAGNOSTIC_ROWS: [(&str, &str, &str, &str); 20] = [
 /// lists the whole registry in stable order. A miss refuses with the
 /// known namespaces and points compiler-emitted codes at
 /// `language/reference/` (the language owns those diagnostics).
+/// The code registry: each code the compiler and tools emit, most with a
+/// one-line meaning (`- `CODE`: meaning`, continued on indented lines).
+/// `crates/emath-hir/tests/registry_complete.rs` keeps every emitted code
+/// in it.
+const CODE_REGISTRY: &str = include_str!("../../../../implementation/ERROR_CODES.md");
+
+/// What a language (compiler-emitted) code means: `Some(Some(meaning))`
+/// when the registry describes it, `Some(None)` when it only lists it.
+fn language_code(code: &str) -> Option<Option<String>> {
+    let head = format!("- `{code}`:");
+    let mut lines = CODE_REGISTRY.lines();
+    while let Some(line) = lines.next() {
+        if let Some(rest) = line.strip_prefix(&head) {
+            let mut meaning = rest.trim().to_string();
+            for more in lines.by_ref() {
+                if !more.starts_with("  ") || more.trim().is_empty() {
+                    break;
+                }
+                meaning.push(' ');
+                meaning.push_str(more.trim());
+            }
+            return Some(Some(meaning));
+        }
+    }
+    CODE_REGISTRY.contains(&format!("| `{code}` |")).then_some(None)
+}
+
+const LANGUAGE_FIX: &str =
+    "the message printed with this code names the place and what to change; edit, then run `emath check FILE` again";
+
 fn explain_code_cmd(code: Option<&str>, json: bool) -> CliExit {
     let Some(code) = code else {
         // List mode: every registry code, one per line; JSON emits the
@@ -178,7 +208,7 @@ fn explain_code_cmd(code: Option<&str>, json: bool) -> CliExit {
             for (code, title, _, _) in DIAGNOSTIC_ROWS {
                 println!("{code}\t{title}");
             }
-            println!("compiler-emitted E-* codes: see language/reference/");
+            println!("language codes (E-TYPE-002, ...): `emath explain CODE` explains each");
         }
         return EXIT_OK;
     };
@@ -194,6 +224,12 @@ fn explain_code_cmd(code: Option<&str>, json: bool) -> CliExit {
             out.string("title", title);
             out.string("cause", cause);
             out.string("remediation", remediation);
+        } else if let Some(meaning) = language_code(code) {
+            out.bool("known", true);
+            out.string("code", code);
+            out.string("source", "language");
+            out.string("title", meaning.as_deref().unwrap_or("emitted by the emath compiler; no description yet"));
+            out.string("remediation", LANGUAGE_FIX);
         } else {
             out.bool("known", false);
             out.string("code", code);
@@ -223,10 +259,15 @@ fn explain_code_cmd(code: Option<&str>, json: bool) -> CliExit {
         println!("  fix:   {remediation}");
         return EXIT_OK;
     }
+    if let Some(meaning) = language_code(code) {
+        println!("{code}: {}", meaning.as_deref().unwrap_or("emitted by the emath compiler; no description yet"));
+        println!("  fix:   {LANGUAGE_FIX}");
+        return EXIT_OK;
+    }
     eprintln!("error: E-CLI-USAGE: unknown diagnostic code `{code}`");
-    eprintln!("  what:  the CLI registry covers only codes emath-cli itself emits");
-    eprintln!("  where: compiler-emitted E-* codes are documented in language/reference/");
-    eprintln!("  fix:   run `emath explain --list-codes` for the registry");
+    eprintln!("  what:  no emath command or language check emits this code");
+    eprintln!("  where: implementation/ERROR_CODES.md lists every code");
+    eprintln!("  fix:   check the spelling; `emath explain --list-codes` lists the command-line codes");
     EXIT_USAGE
 }
 

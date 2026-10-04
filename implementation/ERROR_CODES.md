@@ -723,6 +723,9 @@ Capability cells (`crates/emath-ir/src/capability.rs`, schema
 
 - `E-NAME-021`: Exports must be `public` (also: empty operator
   symbol refused in notation mount).
+- `E-NAME-025`: a function from a `use`d file is private: it is not on
+  that file's `exports:` line (a file without one exports nothing). Add
+  the name to its `exports:` line, or call a name it exports.
 
 ### Packages (`crates/emath-schema`, `crates/emath-sema`)
 

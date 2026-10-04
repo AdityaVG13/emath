@@ -64,8 +64,8 @@ Notes:
 - The examples are values worked out by hand:
   $S(4) = 0 + 2 + 8 + 24 = 34$. They catch a wrong definition before
   you spend time on it.
-- Powers use `rat_pow` and the sum is a `Rat`. Laws about powers can
-  be proved with `rat_pow` but not with `int_pow`.
+- Powers use `rat_pow`, so the sum is a `Rat`. With `Int` throughout,
+  `int_pow(2, k)` works the same way.
 
 Check it:
 
@@ -124,7 +124,7 @@ emath function laws:
 
 ```console
 $ emath run docs/guide/examples/problem/closed_form.emath --function laws --set limit=100000
-[Certificate(points=5, proven=true, start=0)]
+[Certificate(exhausted=false, points=5, proven=true, start=0)]
 ```
 
 `proven=true` is a proof for every $n \ge 0$, not a test of a few
@@ -136,13 +136,14 @@ sequence is 0 at five consecutive points, it is 0 everywhere. emath
 checks those 5 points (`points=5`).
 
 `limit` is the work budget for evaluating each side at each point. If
-a true law comes back `proven=false` with `points` above 0, try a
-larger `limit` first.
+a law comes back `proven=false` with `exhausted=true`, a side ran out
+of that budget: raise `limit` and run it again.
 
-A wrong guess, $(n-1)\,2^n + 2$, comes back not proven:
+A wrong guess, $(n-1)\,2^n + 2$, comes back not proven, with
+`exhausted=false`: the sides were computed and they differ.
 
 ```
-[Certificate(points=5, proven=false, start=0)]
+[Certificate(exhausted=false, points=5, proven=false, start=0)]
 ```
 
 `proven=false` with `points=0` means something else. emath could not
@@ -204,8 +205,9 @@ Setup, every flag, and every message are on the
    `lean: accepted` means the Lean kernel proved the same claims
    independently.
 6. **When it fails:**
-   - `proven=false` with `points > 0`: the guess is wrong, or `limit`
-     is too small.
+   - `proven=false` with `exhausted=true`: `limit` is too small.
+   - `proven=false` with `points > 0` and `exhausted=false`: the guess
+     is wrong.
    - `proven=false` with `points=0`: the shape is not supported.
      Rewrite the sides.
    - Lean's `rejected` gives a counterexample. `unproven` gives a
