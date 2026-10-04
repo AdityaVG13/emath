@@ -118,6 +118,13 @@ fn export_lean() {
         text.clone(),
     );
     probe.demand("recursion-translates", !text.contains("recursive.emath"), text.clone());
+    probe.demand(
+        "objects-and-library-functions-translate",
+        text.lines().filter(|line| line.contains("objects.emath")).collect::<Vec<_>>()
+            == ["not translated: objects.emath `twice_weight`: a `Rat` value stands where `Int` is declared, which Lean cannot hold"]
+            && lean.join("Export/lib/fold/reduce.lean").is_file(),
+        text.clone(),
+    );
     probe.demand("lean-not-run", !lean.join(".lake").exists(), text.clone());
     let model = std::fs::read_to_string(lean.join("Export/chain/model.lean")).unwrap_or_default();
     let golden = std::fs::read_to_string(fixtures.join("golden/model.lean")).unwrap_or_default();

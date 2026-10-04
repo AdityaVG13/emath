@@ -120,8 +120,11 @@ enum Ty {
     /// The outputs of a function with several, as the Lean structure of
     /// that (qualified) name: its fields and their types.
     Record(String, Vec<(String, Ty)>),
-    /// A type parameter of a generic prelude function.
+    /// A type parameter of a generic function's signature, bound at
+    /// each call.
     Var(u8),
+    /// A type parameter inside the generic function declaring it.
+    Param(String),
     /// An integer literal left bare: a neighbour fixes its type.
     Lit,
     Unknown,
@@ -164,10 +167,43 @@ fn join(a: &Ty, b: &Ty) -> Ty {
     }
 }
 
+/// Whether a `from` value can only become a `to` by dropping a
+/// fraction. emath checks a declared type only at a function's
+/// outputs, so a `Rat` it passes as an `Int` argument stays a `Rat`;
+/// Lean has no such value.
+fn narrows(from: &Ty, to: &Ty) -> bool {
+    match (from, to) {
+        (Ty::Rat, Ty::Int) => true,
+        (Ty::List(from), Ty::List(to)) => narrows(from, to),
+        (Ty::Fn(from_in, from_out), Ty::Fn(to_in, to_out)) => narrows(to_in, from_in) || narrows(from_out, to_out),
+        (Ty::Record(_, from_fields), Ty::Record(_, to_fields)) => from_fields.iter().any(|(name, from)| {
+            to_fields.iter().any(|(other, to)| other == name && narrows(from, to))
+        }),
+        _ => false,
+    }
+}
+
+/// `coerce`, refusing a value that would narrow.
+fn fit(text: String, level: u8, from: &Ty, to: &Ty) -> Result<(String, u8), String> {
+    if narrows(from, to) {
+        return Err(format!(
+            "a `{}` value stands where `{}` is declared, which Lean cannot hold",
+            render(from),
+            render(to)
+        ));
+    }
+    Ok(coerce(text, level, from, to))
+}
+
 /// `text` (of type `from`) as a value of type `to`.
 fn coerce(text: String, level: u8, from: &Ty, to: &Ty) -> (String, u8) {
     match (from, to) {
-        (Ty::Int, Ty::Rat) => (format!("({} : Rat)", paren(text, level, LEVEL_CONS)), LEVEL_ATOM),
+        // Ascribed `Rat` alone, a call to a generic function elaborates
+        // against `Rat` and its `Int` arguments no longer fit.
+        (Ty::Int, Ty::Rat) if level > LEVEL_ATOM => {
+            (format!("(({} : Int) : Rat)", paren(text, level, LEVEL_CONS)), LEVEL_ATOM)
+        }
+        (Ty::Int, Ty::Rat) => (format!("({text} : Rat)"), LEVEL_ATOM),
         (Ty::List(x), Ty::List(y)) if **x == Ty::Int && **y == Ty::Rat => (
             format!("List.map (fun (x : Int) => (x : Rat)) {}", paren(text, level, LEVEL_ATOM)),
             LEVEL_APP,
@@ -239,19 +275,81 @@ fn render(ty: &Ty) -> String {
             format!("{domain} → {}", render(codomain))
         }
         Ty::Record(name, _) => name.clone(),
+        Ty::Param(name) => ident(name),
         Ty::Var(_) | Ty::Lit | Ty::Unknown => "_".into(),
     }
 }
 
+/// `ty` with the type parameters `generics` names as call-site
+/// variables.
+fn generalize(ty: &Ty, generics: &[String]) -> Ty {
+    match ty {
+        Ty::Param(name) => match generics.iter().position(|generic| generic == name) {
+            Some(index) => Ty::Var(u8::try_from(index).unwrap_or(u8::MAX)),
+            None => ty.clone(),
+        },
+        Ty::List(element) => list(generalize(element, generics)),
+        Ty::Fn(domain, codomain) => {
+            Ty::Fn(Box::new(generalize(domain, generics)), Box::new(generalize(codomain, generics)))
+        }
+        other => other.clone(),
+    }
+}
+
+fn has_param(ty: &Ty) -> bool {
+    match ty {
+        Ty::Param(_) => true,
+        Ty::List(element) => has_param(element),
+        Ty::Fn(domain, codomain) => has_param(domain) || has_param(codomain),
+        Ty::Record(_, fields) => fields.iter().any(|(_, ty)| has_param(ty)),
+        _ => false,
+    }
+}
+
+/// Every word token of Lean with the Mathlib modules `Law.lean`
+/// imports (`Parser.getTokenTable`, Lean 4.34.1), plus `obtain` and
+/// `rec`: a field or binder spelled as one of these ends the
+/// declaration it appears in.
 const LEAN_KEYWORDS: &[&str] = &[
-    "abbrev", "at", "attribute", "axiom", "break", "by", "calc", "catch", "class", "continue",
-    "decreasing_by", "def", "deriving", "do", "else", "end", "example", "exists", "export",
-    "extends", "finally", "for", "forall", "from", "fun", "have", "if", "import", "in", "include",
-    "inductive", "instance", "lemma", "let", "local", "macro", "match", "mut", "namespace",
-    "nomatch", "nofun", "noncomputable", "notation", "obtain", "omit", "opaque", "open", "partial",
-    "private", "protected", "rec", "return", "section", "set_option", "show", "sorry", "structure",
-    "suffices", "syntax", "termination_by", "then", "theorem", "try", "unless", "universe",
-    "using", "variable", "where", "with", "Prop", "Sort", "Type",
+    "abbrev", "add_aesop_rules", "add_decl_doc", "alias", "assert_not_exists", "assert_not_imported",
+    "assumeInstancesCommuteDummy", "at", "attribute", "axiom", "bif", "binder_predicate", "break",
+    "builtin_cbv_simproc", "builtin_cbv_simproc_decl", "builtin_dsimproc", "builtin_dsimproc_decl",
+    "builtin_grind_propagator", "builtin_initialize", "builtin_simproc", "builtin_simproc_decl", "by",
+    "by_elab", "calc", "catch", "cbv_eval", "cbv_simproc", "cbv_simproc_decl", "class", "coinductive",
+    "coinductive_fixpoint", "continue", "dbg_trace", "declare_aesop_rule_sets",
+    "declare_bitwise_int_theorems", "declare_bitwise_uint_theorems", "declare_command_config_elab",
+    "declare_command_config_elab_legacy", "declare_config_elab", "declare_config_elab_legacy",
+    "declare_core_config_elab", "declare_int_theorems", "declare_simp_like_tactic",
+    "declare_sint_simprocs", "declare_syntax_cat", "declare_term_config_elab", "declare_uint_simprocs",
+    "declare_uint_theorems", "decreasing_by", "def", "def_eval_config_item", "def_wanted", "deprecate",
+    "deprecated_module", "deprecated_syntax", "deriving", "do", "docs_to_verso", "dsimproc",
+    "dsimproc_decl", "elab", "elab_rules", "elab_stx_quot", "else", "end", "erase_aesop_rules",
+    "eval_prec", "eval_prio", "example", "exists", "export", "extend_docs", "extends", "finally",
+    "for", "forall", "from", "fun", "generalizing", "GL", "grind_annotated", "grind_pattern",
+    "grind_propagator", "guard_min_heartbeats", "have", "haveI", "hiding", "idbg", "if", "import",
+    "in", "include", "include_str", "inductive", "inductive_fixpoint", "inferInstanceAs", "infix",
+    "infixl", "infixr", "init_grind_norm", "init_quot", "initialize", "initialize_simps_projections",
+    "insert_to_additive_translation", "insert_to_dual_translation", "instance", "instance_wanted",
+    "irreducible_def", "kerodon", "leading_parser", "lemma", "let", "let_delayed", "let_expr",
+    "let_fun", "let_impl_detail", "let_tmp", "letI", "library_note", "local", "logNamedError",
+    "logNamedErrorAt", "logNamedWarning", "logNamedWarningAt", "macro", "macro_rules", "match",
+    "match_expr", "matches", "max_prec", "meta", "mk_iff_of_inductive_prop", "mod_cast", "mut",
+    "mutual", "namespace", "nat_lit", "no_index", "nofun", "nomatch", "noncomputable", "nonrec",
+    "norm_cast_add_elim", "notation", "notation3", "obtain", "omit", "opaque", "open", "partial",
+    "partial_fixpoint", "PiType", "postfix", "prefix", "private", "proof_wanted", "Prop", "protected",
+    "public", "rec", "recommended_spelling", "register_builtin_option", "register_error_explanation",
+    "register_grind_attr", "register_hint", "register_label_attr", "register_linter_set",
+    "register_option", "register_parser_alias", "register_simp_attr", "register_sym_dsimp",
+    "register_sym_simp", "register_tactic_tag", "renaming", "repeat", "return", "run_cmd", "run_elab",
+    "run_meta", "says", "scoped", "seal", "section", "set_library_suggestions", "set_option", "show",
+    "show_panel_widgets", "show_term", "show_term_elab", "simproc", "simproc_decl", "sorry", "Sort",
+    "stacks", "StateRefT", "structure", "sudo", "suffices", "syntax", "tactic_alt", "tactic_extension",
+    "tactic_name", "tactic_tag", "termination_by", "then", "theorem", "theorem_wanted", "throwError",
+    "throwErrorAt", "throwNamedError", "throwNamedErrorAt", "to", "to_additive_name_hint",
+    "to_dual_insert_cast", "to_dual_insert_cast_fun", "to_dual_name_hint", "trailing_parser", "try",
+    "Type", "unif_hint", "universe", "unless", "unlock_limits", "unsafe", "unseal", "unset_option",
+    "until", "using", "variable", "variables", "whatsnew", "where", "while", "with",
+    "with_annotate_term", "with_weak_namespace", "without_expected_type",
 ];
 
 /// One authored example as a theorem, for naming Lean's verdict.
@@ -322,6 +420,11 @@ struct Source {
     local_uses: Vec<(UseTree, PathBuf)>,
     /// (dotted path, selection, file) for each library module.
     library_uses: Vec<(String, UseTree, PathBuf)>,
+    /// A library module outside the exported folder: its functions
+    /// translate for the files that use it, its examples and laws do not.
+    library: bool,
+    /// Why emath refuses a library module: nothing in it translates.
+    refused: Option<String>,
 }
 
 /// What a file's translation offers to files that `use` it.
@@ -332,6 +435,15 @@ struct Module {
     /// Translated functions and their signatures.
     translated: BTreeMap<String, Ty>,
     functions: BTreeSet<String>,
+    /// Translated objects (its own and those it sees), by emath name.
+    objects: BTreeMap<String, Ty>,
+    library: bool,
+    /// The `use` path of a library module.
+    display: String,
+    /// Why each function that did not translate did not.
+    reasons: BTreeMap<String, String>,
+    /// The functions it imports, for an `exports:` that passes them on.
+    imported: BTreeMap<String, Target>,
 }
 
 #[derive(Clone)]
@@ -340,7 +452,9 @@ enum Target {
     /// A function of the recursive group being translated, by Lean
     /// name: calls go to its fuel form, spending one fuel.
     Fuel(String, Ty),
-    Refused,
+    /// Not translated; a library function carries why, as no refusal
+    /// names it otherwise.
+    Refused(Option<String>),
 }
 
 /// Name resolution for one file: its own functions, its sibling
@@ -353,6 +467,8 @@ struct Names {
     used_prelude: BTreeSet<String>,
     /// Qualified names of the user functions resolved since last cleared.
     called: BTreeSet<String>,
+    /// The translated `emath object`s in scope, by emath name.
+    objects: BTreeMap<String, Ty>,
 }
 
 /// emath's machine integer operations. A call by one of these names
@@ -382,7 +498,8 @@ impl Names {
                 self.called.insert(format!("{}.{lean}", self.namespace));
                 return Ok((format!("{lean}.fuel {FUEL}"), ty.clone()));
             }
-            Some(Target::Refused) => return Err(format!("calls `{name}`, which is not translated")),
+            Some(Target::Refused(Some(reason))) => return Err(reason.clone()),
+            Some(Target::Refused(None)) => return Err(format!("calls `{name}`, which is not translated")),
             None => {}
         }
         if let Some(ty) = prelude_signature(name) {
@@ -404,12 +521,12 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path) -> Result<E
     let mut order = Vec::new();
     let mut visiting = BTreeSet::new();
     for root in roots {
-        load(root, base, &mut sources, &mut order, &mut visiting)?;
+        load(root, None, base, &mut sources, &mut order, &mut visiting)?;
     }
     let mut libraries: BTreeMap<PathBuf, SyntaxTree> = BTreeMap::new();
     let mut modules: BTreeMap<PathBuf, Module> = BTreeMap::new();
     let mut export = Export {
-        sources: order.len(),
+        sources: order.iter().filter(|path| !sources[*path].library).count(),
         ..Export::default()
     };
     let mut used_prelude = BTreeSet::new();
@@ -449,8 +566,12 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path) -> Result<E
     Ok(export)
 }
 
+/// Loads `path` and what it uses, callees first into `order`. `library`:
+/// the dotted path of a library module, which translates under `lib/`
+/// unless it lies in the exported folder.
 fn load(
     path: &Path,
+    library: Option<&str>,
     base: &Path,
     sources: &mut BTreeMap<PathBuf, Source>,
     order: &mut Vec<PathBuf>,
@@ -462,42 +583,49 @@ fn load(
     if !visiting.insert(path.to_path_buf()) {
         return Err(format!("{}: cyclic import", path.display()));
     }
+    let library = library.filter(|_| relative(path, base).is_none());
     let text = std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let (tree, diagnostics) = emath_syntax::parse_str(&text);
     if diagnostics.has_errors() {
         return Err(format!("{}: does not parse; run `emath check` on it", path.display()));
     }
-    // Lean must never accept a file emath refuses.
+    // Lean must never accept a file emath refuses. emath admits a file
+    // that uses a library module it would refuse on its own; that
+    // module's functions then do not translate.
     let (admission, _, _) = crate::run_check(path);
-    if let Some(error) = admission.errors().next() {
-        return Err(format!(
-            "{}: does not admit: {}: {}; run `emath check` on it",
-            path.display(),
-            error.code,
-            error.message
-        ));
+    let refused = admission.errors().next().map(|error| format!("does not admit: {}: {}", error.code, error.message));
+    if let Some(refused) = &refused
+        && library.is_none()
+    {
+        return Err(format!("{}: {refused}; run `emath check` on it", path.display()));
     }
-    let rel = relative(path, base)
-        .ok_or_else(|| format!("{} is outside the exported folder {}", path.display(), base.display()))?;
+    let rel = match library {
+        Some(dotted) => format!("lib/{}.emath", dotted.replace('.', "/")),
+        None => relative(path, base)
+            .ok_or_else(|| format!("{} is outside the exported folder {}", path.display(), base.display()))?,
+    };
     let mut local_uses = Vec::new();
     let mut library_uses = Vec::new();
-    for item in &tree.items {
+    for item in tree.items.iter().filter(|_| refused.is_none()) {
         let Item::Use { path: use_path, tree: selection, .. } = item else {
             continue;
         };
-        let (file, library) = emath_exec_ir::constructor_layer::resolve_use(&tree, use_path, path)
+        let (file, is_library) = emath_exec_ir::constructor_layer::resolve_use(&tree, use_path, path)
             .map_err(|error| format!("{rel}: {}: {}", error.code, error.message))?;
-        if library {
-            library_uses.push((use_path.join("."), selection.clone(), file));
-        } else {
-            let file = file.canonicalize().unwrap_or(file);
-            load(&file, base, sources, order, visiting)?;
-            local_uses.push((selection.clone(), file));
+        let file = file.canonicalize().unwrap_or(file);
+        let dotted = use_path.join(".");
+        load(&file, is_library.then_some(dotted.as_str()), base, sources, order, visiting)?;
+        if is_library {
+            library_uses.push((dotted, selection.clone(), file.clone()));
         }
+        local_uses.push((selection.clone(), file));
     }
     visiting.remove(path);
     order.push(path.to_path_buf());
-    sources.insert(path.to_path_buf(), Source { path: path.to_path_buf(), text, rel, tree, local_uses, library_uses });
+    sources.insert(
+        path.to_path_buf(),
+        Source { path: path.to_path_buf(), text, rel, tree, local_uses, library_uses, library: library.is_some(), refused },
+    );
     Ok(())
 }
 
@@ -572,15 +700,31 @@ fn translate_file(
             .exports
             .clone()
             .unwrap_or_else(|| imported.functions.iter().cloned().collect());
+        // What a used file imports is visible here too, as in emath; the
+        // file's own selection takes precedence.
+        for (name, target) in &imported.imported {
+            names.targets.entry(name.clone()).or_insert_with(|| target.clone());
+        }
         // Imported names stay qualified: an imported file's private
         // functions may share a name with this file's.
         for (local, name) in selected(selection, available.into_iter()) {
+            // The prelude's own Lean definitions of these, checked
+            // against the library's examples, stay the ones called.
+            if imported.library && prelude_signature(&name).is_some() {
+                continue;
+            }
             let target = match imported.translated.get(&name) {
                 Some(ty) => Target::Lean(format!("{}.{}", imported.namespace, ident(&name)), ty.clone()),
-                None => Target::Refused,
+                None if let Some(target) = imported.imported.get(&name) => target.clone(),
+                // Its refusal is not reported on its own.
+                None if imported.library => Target::Refused(imported.reasons.get(&name).map(|reason| {
+                    format!("calls `{name}` from `{}`, which does not translate: {reason}", imported.display)
+                })),
+                None => Target::Refused(None),
             };
             names.targets.insert(local, target);
         }
+        names.objects.extend(imported.objects.iter().map(|(name, ty)| (name.clone(), ty.clone())));
         imports.push(imported.module.clone());
     }
     for (display, selection, file) in &source.library_uses {
@@ -598,7 +742,7 @@ fn translate_file(
         functions(&source.tree).partition(|decl| !certify_calls(decl, &names).is_empty());
     for item in &source.tree.items {
         if let Item::Declaration(decl) = item
-            && decl.as_kind != "function"
+            && !matches!(decl.as_kind.as_str(), "function" | "object")
         {
             refusals.push(format!(
                 "not translated: {} `{}`: an emath {} has no Lean translation yet",
@@ -606,11 +750,44 @@ fn translate_file(
             ));
         }
     }
+    // An object's fields may name objects declared after it.
+    let mut pending: Vec<&Declaration> = source
+        .tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Declaration(decl) if decl.as_kind == "object" && source.refused.is_none() => Some(decl),
+            _ => None,
+        })
+        .collect();
+    loop {
+        let before = pending.len();
+        let mut failed = Vec::new();
+        for decl in pending {
+            match object(decl, &names) {
+                Ok((text, ty)) => {
+                    body.push_str(&text);
+                    names.objects.insert(decl.name.clone(), ty);
+                }
+                Err(reason) => failed.push((decl, reason)),
+            }
+        }
+        if failed.len() == before {
+            for (decl, reason) in failed {
+                refusals.push(format!("not translated: {} `{}`: {reason}", source.rel, decl.name));
+            }
+            break;
+        }
+        pending = failed.into_iter().map(|(decl, _)| decl).collect();
+    }
     let mut translated = BTreeMap::new();
+    let mut reasons = BTreeMap::new();
     let plain_names: BTreeSet<String> = own.iter().map(|decl| decl.name.clone()).collect();
     for (group, recursive) in ordered(&own, &plain_names) {
         names.called.clear();
-        let result = if recursive {
+        let result = if let Some(refused) = &source.refused {
+            Err(format!("its module {refused}"))
+        } else if recursive {
             recursive_group(&group, &mut names)
         } else {
             function(group[0], &mut names).map(|(text, signature)| (text, vec![signature]))
@@ -623,19 +800,20 @@ fn translate_file(
                     export.calls.insert(format!("{module}.{}", ident(&decl.name)), called.clone());
                     names.targets.insert(decl.name.clone(), Target::Lean(ident(&decl.name), signature.clone()));
                     translated.insert(decl.name.clone(), signature);
-                    export.functions += 1;
+                    export.functions += usize::from(!source.library);
                 }
             }
             Err(reason) => {
                 for decl in &group {
                     refusals.push(format!("not translated: {} `{}`: {reason}", source.rel, decl.name));
-                    names.targets.insert(decl.name.clone(), Target::Refused);
+                    reasons.insert(decl.name.clone(), reason.clone());
+                    names.targets.insert(decl.name.clone(), Target::Refused(None));
                 }
             }
         }
     }
-    for name in &own_names {
-        names.targets.entry(name.clone()).or_insert(Target::Refused);
+    for name in own_names.iter().filter(|name| !translated.contains_key(*name)) {
+        names.targets.insert(name.clone(), Target::Refused(None));
     }
     let visible = visible(&names);
     for decl in &own {
@@ -647,7 +825,7 @@ fn translate_file(
         }
     }
     let mut laws = Vec::new();
-    for decl in &certifiers {
+    for decl in certifiers.iter().filter(|_| !source.library) {
         for case in examples(decl) {
             refusals.push(format!(
                 "not translated: {} example <{}> of `{}`: a function that certifies laws becomes the laws, not a Lean value",
@@ -684,12 +862,12 @@ fn translate_file(
     text.push_str(&body);
     let with_examples: BTreeSet<String> = own
         .iter()
-        .filter(|decl| translated.contains_key(&decl.name) && !examples(decl).is_empty())
+        .filter(|decl| !source.library && translated.contains_key(&decl.name) && !examples(decl).is_empty())
         .map(|decl| decl.name.clone())
         .collect();
     let faults = if with_examples.is_empty() { BTreeMap::new() } else { emath_faults(source, &with_examples)? };
     for decl in &own {
-        if !translated.contains_key(&decl.name) {
+        if !with_examples.contains(&decl.name) {
             continue;
         }
         let params = section_typed_fields(decl, "inputs");
@@ -737,6 +915,12 @@ fn translate_file(
     }
     text.push_str(&format!("end {module}\n"));
     let namespace = module.clone();
+    let imported = names
+        .targets
+        .iter()
+        .filter(|(name, _)| !own_names.contains(*name))
+        .map(|(name, target)| (name.clone(), target.clone()))
+        .collect();
     Ok((
         Module {
             namespace,
@@ -744,9 +928,16 @@ fn translate_file(
             exports: exports(&source.tree),
             translated,
             functions: own_names,
+            objects: names.objects.clone(),
+            library: source.library,
+            display: source.rel.strip_prefix("lib/").and_then(|rel| rel.strip_suffix(".emath")).unwrap_or(&source.rel).replace('/', "."),
+            reasons,
+            imported,
         },
         text,
-        refusals,
+        // A library function that does not translate is named where a
+        // user function calls it.
+        if source.library { Vec::new() } else { refusals },
         names.used_prelude,
     ))
 }
@@ -847,8 +1038,39 @@ fn collect_names(expr: &Expr, names: &mut BTreeSet<String>) {
 }
 
 /// The Lean definition and its signature.
+/// Runs `f` with `decl`'s type parameters in scope as types.
+fn with_generics<R>(
+    decl: &Declaration,
+    names: &mut Names,
+    f: impl FnOnce(&mut Names) -> Result<R, String>,
+) -> Result<R, String> {
+    if decl.generics.iter().any(|generic| generic.bound.is_some()) {
+        return Err("a bounded type parameter has no Lean translation yet".into());
+    }
+    let saved: Vec<(String, Option<Ty>)> = decl
+        .generics
+        .iter()
+        .map(|generic| {
+            let old = names.objects.insert(generic.name.clone(), Ty::Param(generic.name.clone()));
+            (generic.name.clone(), old)
+        })
+        .collect();
+    let result = f(names);
+    for (name, old) in saved.into_iter().rev() {
+        match old {
+            Some(ty) => names.objects.insert(name, ty),
+            None => names.objects.remove(&name),
+        };
+    }
+    result
+}
+
 fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), String> {
-    let shape = shape(decl, &names.namespace)?;
+    with_generics(decl, names, |names| function_body(decl, names))
+}
+
+fn function_body(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), String> {
+    let shape = shape(decl, names)?;
     let body = definitions(decl, &shape, names)?;
     let text = format!(
         "{}def {}{} : {} :=\n{}  {}\n\n",
@@ -866,6 +1088,7 @@ fn function(decl: &Declaration, names: &mut Names) -> Result<(String, Ty), Strin
 /// structure `f.Out` when it has several, as emath returns several
 /// outputs as a record with those fields) and that structure's text.
 struct Shape {
+    generics: Vec<String>,
     params: Vec<(String, Ty)>,
     outputs: Vec<(String, Ty)>,
     output: Ty,
@@ -873,19 +1096,49 @@ struct Shape {
 }
 
 impl Shape {
+    /// Type parameters are implicit, each `Inhabited` for `default`
+    /// and `Emath.index`; Lean infers them at each call.
     fn binders(&self) -> String {
-        self.params.iter().map(|(name, ty)| format!(" ({} : {})", ident(name), render(ty))).collect()
+        let generics: String = self
+            .generics
+            .iter()
+            .map(|name| format!(" {{{} : Type}} [Inhabited {}]", ident(name), ident(name)))
+            .collect();
+        let params: String =
+            self.params.iter().map(|(name, ty)| format!(" ({} : {})", ident(name), render(ty))).collect();
+        format!("{generics}{params}")
     }
 
     fn signature(&self) -> Ty {
-        arrows(self.params.iter().map(|(_, ty)| ty.clone()).collect(), self.output.clone())
+        let signature = arrows(self.params.iter().map(|(_, ty)| ty.clone()).collect(), self.output.clone());
+        generalize(&signature, &self.generics)
     }
 }
 
-fn shape(decl: &Declaration, namespace: &str) -> Result<Shape, String> {
+/// An `emath object` as a Lean structure of its representation's
+/// fields, and its type.
+fn object(decl: &Declaration, names: &Names) -> Result<(String, Ty), String> {
     if !decl.generics.is_empty() {
-        return Err("generic functions have no Lean translation yet".into());
+        return Err("generic objects have no Lean translation yet".into());
     }
+    for section in decl.sections() {
+        if section.name != "representation" {
+            return Err(format!("section `{}:` has no Lean translation", section.name));
+        }
+    }
+    let mut fields = Vec::new();
+    for (name, ty) in section_typed_fields(decl, "representation") {
+        fields.push((name, lean_type(&ty, &names.objects)?));
+    }
+    if fields.is_empty() {
+        return Err("an object without fields has no Lean translation".into());
+    }
+    let text = structure_text(&ident(&decl.name), &fields);
+    Ok((text, Ty::Record(format!("{}.{}", names.namespace, ident(&decl.name)), fields)))
+}
+
+fn shape(decl: &Declaration, names: &Names) -> Result<Shape, String> {
+    let namespace = &names.namespace;
     for section in decl.sections() {
         if !matches!(section.name.as_str(), "inputs" | "outputs" | "definitions" | "tests") {
             return Err(format!("section `{}:` has no Lean translation", section.name));
@@ -893,27 +1146,50 @@ fn shape(decl: &Declaration, namespace: &str) -> Result<Shape, String> {
     }
     let mut params = Vec::new();
     for (name, ty) in section_typed_fields(decl, "inputs") {
-        params.push((name, lean_type(&ty)?));
+        params.push((name, lean_type(&ty, &names.objects)?));
     }
     let mut outputs = Vec::new();
     for (name, ty) in section_typed_fields(decl, "outputs") {
-        outputs.push((name, lean_type(&ty)?));
+        outputs.push((name, lean_type(&ty, &names.objects)?));
     }
     let mut structure = String::new();
     let output = match outputs.as_slice() {
         [] => return Err("a function without outputs has no Lean translation".into()),
         [(_, ty)] => ty.clone(),
+        _ if !decl.generics.is_empty() => {
+            return Err("a generic function with several outputs has no Lean translation yet".into());
+        }
         _ => {
             let local = format!("{}.Out", ident(&decl.name));
-            structure.push_str(&format!("structure {local} where\n"));
-            for (name, ty) in &outputs {
-                structure.push_str(&format!("  {} : {}\n", ident(name), render(ty)));
-            }
-            structure.push_str("deriving DecidableEq, Inhabited\n\n");
+            structure = structure_text(&local, &outputs);
             Ty::Record(format!("{namespace}.{local}"), outputs.clone())
         }
     };
-    Ok(Shape { params, outputs, output, structure })
+    let generics = decl.generics.iter().map(|generic| generic.name.clone()).collect();
+    Ok(Shape { generics, params, outputs, output, structure })
+}
+
+/// A Lean structure with `fields`, with decidable equality where every
+/// field has it (no function inside).
+fn structure_text(name: &str, fields: &[(String, Ty)]) -> String {
+    let mut text = format!("structure {name} where\n");
+    for (field, ty) in fields {
+        text.push_str(&format!("  {} : {}\n", ident(field), render(ty)));
+    }
+    let decidable = fields.iter().all(|(_, ty)| decidable(ty));
+    text.push_str(if decidable { "deriving DecidableEq, Inhabited\n\n" } else { "deriving Inhabited\n\n" });
+    text
+}
+
+/// Whether Lean decides equality of `ty`: not of functions, nor of a
+/// type parameter (emath compares neither).
+fn decidable(ty: &Ty) -> bool {
+    match ty {
+        Ty::Fn(..) | Ty::Param(_) => false,
+        Ty::List(element) => decidable(element),
+        Ty::Record(_, fields) => fields.iter().all(|(_, ty)| decidable(ty)),
+        _ => true,
+    }
 }
 
 /// A function's definitions as Lean `let` lines and its result.
@@ -946,7 +1222,7 @@ fn definitions(decl: &Declaration, shape: &Shape, names: &mut Names) -> Result<D
         let Some(result_ty) = assigned.get(output) else {
             return Err(format!("output `{output}` is never defined"));
         };
-        results.push((output, coerce(ident(output), LEVEL_ATOM, result_ty, ty).0));
+        results.push((output, fit(ident(output), LEVEL_ATOM, result_ty, ty)?.0));
     }
     let result = match results.as_slice() {
         [(_, result)] => result.clone(),
@@ -972,14 +1248,14 @@ const FUEL: &str = "«emath fuel»";
 fn recursive_group(group: &[&Declaration], names: &mut Names) -> Result<(String, Vec<Ty>), String> {
     let mut shapes = Vec::new();
     for decl in group {
-        let shape = shape(decl, &names.namespace)?;
+        let shape = with_generics(decl, names, |names| shape(decl, names))?;
         names.targets.insert(decl.name.clone(), Target::Fuel(ident(&decl.name), shape.signature()));
         shapes.push(shape);
     }
     let mut text: String = shapes.iter().map(|shape| shape.structure.as_str()).collect();
     let mut defs = Vec::new();
     for (decl, shape) in group.iter().zip(&shapes) {
-        let body = definitions(decl, shape, names)?;
+        let body = with_generics(decl, names, |names| definitions(decl, shape, names))?;
         defs.push(format!(
             "def {}.fuel ({FUEL} : Nat){} : {} :=\n  match {FUEL} with\n  | 0 => default\n  | {FUEL} + 1 =>\n{}    {}\n",
             ident(&decl.name),
@@ -1193,9 +1469,9 @@ fn theorem(
             .find(|(given, _)| given == param)
             .ok_or_else(|| format!("the example does not give `{param}`"))?;
         let (value, level, value_ty) = ctx.expr(value, false)?;
-        match lean_type(ty) {
+        match lean_type(ty, &ctx.names.objects) {
             Ok(ty) => {
-                let (value, _) = coerce(value, level, &value_ty, &ty);
+                let (value, _) = fit(value, level, &value_ty, &ty)?;
                 lines.push(format!("let {} : {} := {value}", ident(param), render(&ty)));
                 scope.push((param.clone(), ty));
             }
@@ -1211,7 +1487,8 @@ fn theorem(
     match outputs {
         [(output, output_ty)] => {
             lines.push(format!("let {} := {call}", ident(output)));
-            ctx.scope.push((output.clone(), lean_type(output_ty).unwrap_or(Ty::Unknown)));
+            let ty = lean_type(output_ty, &ctx.names.objects).unwrap_or(Ty::Unknown);
+            ctx.scope.push((output.clone(), ty));
         }
         _ => {
             // Not an emath name, so no given or output shadows it.
@@ -1219,7 +1496,8 @@ fn theorem(
             lines.push(format!("let {record} := {call}"));
             for (output, output_ty) in outputs {
                 lines.push(format!("let {} := {record}.{}", ident(output), ident(output)));
-                ctx.scope.push((output.clone(), lean_type(output_ty).unwrap_or(Ty::Unknown)));
+                let ty = lean_type(output_ty, &ctx.names.objects).unwrap_or(Ty::Unknown);
+                ctx.scope.push((output.clone(), ty));
             }
         }
     }
@@ -1300,7 +1578,7 @@ fn law(
             ExprKind::QuoteBind { param, domain, body } => (param, domain, body),
             _ => return Err("a side is not `quote(function n in Int: ...)`".into()),
         };
-        if domain_type(domain)? != Ty::Int {
+        if domain_type(domain, &names.objects)? != Ty::Int {
             return Err("a side's variable is not over `Int`".into());
         }
         names.called.clear();
@@ -1392,12 +1670,12 @@ fn law_all(
         return Err("the sides do not open with the same parameters and then n".into());
     }
     for (_, domain) in left_binders[..k].iter().chain(&right_binders[..k]) {
-        if domain_type(domain)? != Ty::Rat {
+        if domain_type(domain, &names.objects)? != Ty::Rat {
             return Err("a parameter is not over `Rat`".into());
         }
     }
     for (_, domain) in [left_binders[k], right_binders[k]] {
-        if domain_type(domain)? != Ty::Int {
+        if domain_type(domain, &names.objects)? != Ty::Int {
             return Err("a side's last variable is not over `Int`".into());
         }
     }
@@ -1574,7 +1852,7 @@ fn visible(names: &Names) -> BTreeMap<String, String> {
         .filter_map(|(local, target)| match target {
             Target::Lean(lean, _) if lean.contains('.') => Some((local.clone(), lean.clone())),
             Target::Lean(lean, _) => Some((local.clone(), format!("{}.{lean}", names.namespace))),
-            Target::Fuel(..) | Target::Refused => None,
+            Target::Fuel(..) | Target::Refused(_) => None,
         })
         .collect()
 }
@@ -2059,6 +2337,9 @@ impl Ctx<'_> {
             ExprKind::Unary { op: UnaryOp::Pos, value } => self.expr(value, bare),
             ExprKind::Unary { op: UnaryOp::Neg, value } => {
                 let (value, ty) = self.operand(value, bare || is_literal(value), LEVEL_ATOM)?;
+                if has_param(&ty) {
+                    return Err("arithmetic on a generic value has no Lean translation".into());
+                }
                 Ok((format!("-{value}"), LEVEL_APP, ty))
             }
             ExprKind::Unary { op: UnaryOp::Not, value } => {
@@ -2119,7 +2400,7 @@ impl Ctx<'_> {
                 ))
             }
             ExprKind::FunctionAbs { param, domain, body } => {
-                let ty = domain_type(domain)?;
+                let ty = domain_type(domain, &self.names.objects)?;
                 self.scope.push((param.clone(), ty.clone()));
                 let body = self.expr(body, false);
                 self.scope.pop();
@@ -2129,6 +2410,30 @@ impl Ctx<'_> {
                     LEVEL_OPEN,
                     Ty::Fn(Box::new(ty), Box::new(body_ty)),
                 ))
+            }
+            ExprKind::Record { type_path, fields } => {
+                let name = type_path.join(".");
+                let Some(Ty::Record(lean, declared)) = self.names.objects.get(&name).cloned() else {
+                    return Err(format!("type `{name}` has no Lean translation"));
+                };
+                if fields.len() != declared.len() {
+                    return Err(format!("a `{name}` record that does not give each field once has no Lean translation"));
+                }
+                let mut parts = Vec::new();
+                for (field, field_ty) in &declared {
+                    let Some((_, value)) = fields.iter().find(|(given, _)| given == field) else {
+                        return Err(format!("a `{name}` record without field `{field}` has no Lean translation"));
+                    };
+                    let (text, level, ty) = if is_literal(value) && !has_division(value) && matches!(field_ty, Ty::Int | Ty::Rat)
+                    {
+                        let (text, _, _) = self.expr(value, true)?;
+                        (format!("({text} : {})", render(field_ty)), LEVEL_ATOM, field_ty.clone())
+                    } else {
+                        self.expr(value, false)?
+                    };
+                    parts.push(format!("{} := {}", ident(field), fit(text, level, &ty, field_ty)?.0));
+                }
+                Ok((format!("({{ {} }} : {lean})", parts.join(", ")), LEVEL_ATOM, Ty::Record(lean, declared)))
             }
             other => Err(format!("{} has no Lean translation", construct(other))),
         }
@@ -2151,11 +2456,20 @@ impl Ctx<'_> {
                     Ok((text, level, ty))
                 }
             },
-            [value, field]
-                if let Some(Ty::Record(_, fields)) = self.local(value)
-                    && let Some((_, ty)) = fields.iter().find(|(name, _)| name == field) =>
-            {
-                Ok((format!("{}.{}", ident(value), ident(field)), LEVEL_ATOM, ty.clone()))
+            [value, path @ ..] if let Some(Ty::Record(..)) = self.local(value) => {
+                let mut text = ident(value);
+                let mut ty = self.local(value).expect("a record local");
+                for field in path {
+                    let Ty::Record(_, fields) = &ty else {
+                        return Err(format!("field `.{field}` has no Lean translation"));
+                    };
+                    let Some((_, field_ty)) = fields.iter().find(|(name, _)| name == field) else {
+                        return Err(format!("field `.{field}` has no Lean translation"));
+                    };
+                    text = format!("{text}.{}", ident(field));
+                    ty = field_ty.clone();
+                }
+                Ok((text, LEVEL_ATOM, ty))
             }
             [value, field] if self.local(value).is_some() => match field.as_str() {
                 "numer" | "denom" | "length" => {
@@ -2170,6 +2484,48 @@ impl Ctx<'_> {
     /// Each argument is cast to its parameter's type; a generic
     /// parameter takes the type its first argument fixes.
     fn call(&mut self, function: &Expr, args: &[Expr]) -> Result<Out, String> {
+        // emath faults here. An example that reaches it is not exported
+        // and a law must hold in emath too, so Lean's total stand-in is
+        // never compared with an emath value.
+        if let ExprKind::Path { segments, generics: None } = &function.kind
+            && let [name] = segments.as_slice()
+            && name == "constructor_refuse"
+            && self.local(name).is_none()
+            && !self.names.targets.contains_key(name)
+        {
+            return Ok(("default".into(), LEVEL_ATOM, Ty::Unknown));
+        }
+        // `value.field` on a value that is not a name parses as
+        // `field(value)`. emath projects the field unless `field` names
+        // a function; a local closure is applied only when the value
+        // has no such field.
+        if let ExprKind::Path { segments, generics: None } = &function.kind
+            && let [name] = segments.as_slice()
+            && let [value] = args
+            && (self.local(name).is_some()
+                || !(self.names.targets.contains_key(name)
+                    || prelude_signature(name).is_some()
+                    || self.names.library.contains_key(name)))
+        {
+            let called = self.names.called.clone();
+            let (text, level, ty) = self.expr(value, false)?;
+            if let Ty::Record(_, fields) = &ty
+                && let Some((_, field_ty)) = fields.iter().find(|(field, _)| field == name)
+            {
+                return Ok((format!("{}.{}", paren(text, level, LEVEL_ATOM), ident(name)), LEVEL_ATOM, field_ty.clone()));
+            }
+            match (&ty, name.as_str()) {
+                (Ty::List(_), "length") => {
+                    return Ok((format!("Emath.length {}", paren(text, level, LEVEL_ATOM)), LEVEL_APP, Ty::Int));
+                }
+                (Ty::Int | Ty::Rat, "numer" | "denom") => {
+                    let (text, level) = coerce(text, level, &ty, &Ty::Rat);
+                    return Ok((format!("Emath.{name} {}", paren(text, level, LEVEL_ATOM)), LEVEL_APP, Ty::Int));
+                }
+                _ => {}
+            }
+            self.names.called = called;
+        }
         let (mut text, mut signature) = match &function.kind {
             ExprKind::Path { segments, generics: None } if segments.len() == 1 => {
                 let (text, _, ty) = self.path(segments)?;
@@ -2197,7 +2553,7 @@ impl Ctx<'_> {
                 self.expr(arg, false)?
             };
             unify(&param, &ty, &mut bound);
-            let (arg_text, level) = coerce(arg_text, level, &ty, &substitute(&param, &bound));
+            let (arg_text, level) = fit(arg_text, level, &ty, &substitute(&param, &bound))?;
             text.push(' ');
             text.push_str(&paren(arg_text, level, LEVEL_ATOM));
             signature = rest;
@@ -2215,12 +2571,27 @@ impl Ctx<'_> {
         let arithmetic = |ctx: &mut Self, symbol: &str, level: u8| -> Result<Out, String> {
             let (l, left_ty) = ctx.operand(left, left_bare, level)?;
             let (r, right_ty) = ctx.operand(right, right_bare, level - 1)?;
+            if has_param(&left_ty) || has_param(&right_ty) {
+                return Err("arithmetic on a generic value has no Lean translation".into());
+            }
             Ok((format!("{l} {symbol} {r}"), level, join(&left_ty, &right_ty)))
         };
+        // Lean casts an `Int` operand to `Rat` itself, but not inside a
+        // list or a record.
         let relation = |ctx: &mut Self, symbol: &str| -> Result<Out, String> {
-            let (l, _, _) = ctx.expr(left, left_bare)?;
-            let (r, _, _) = ctx.expr(right, right_bare)?;
-            Ok((format!("decide ({l} {symbol} {r})"), LEVEL_APP, Ty::Bool))
+            let (l, l_level, l_ty) = ctx.expr(left, left_bare)?;
+            let (r, r_level, r_ty) = ctx.expr(right, right_bare)?;
+            let ty = join(&l_ty, &r_ty);
+            if !decidable(&ty) || !decidable(&l_ty) || !decidable(&r_ty) {
+                return Err("comparing functions or generic values has no Lean translation".into());
+            }
+            let (l, l_level) = if matches!(ty, Ty::List(_) | Ty::Record(..)) { coerce(l, l_level, &l_ty, &ty) } else { (l, l_level) };
+            let (r, r_level) = if matches!(ty, Ty::List(_) | Ty::Record(..)) { coerce(r, r_level, &r_ty, &ty) } else { (r, r_level) };
+            Ok((
+                format!("decide ({} {symbol} {})", paren(l, l_level, LEVEL_CONS), paren(r, r_level, LEVEL_CONS)),
+                LEVEL_APP,
+                Ty::Bool,
+            ))
         };
         match op {
             BinaryOp::Add => arithmetic(self, "+", LEVEL_ADD),
@@ -2229,12 +2600,12 @@ impl Ctx<'_> {
             BinaryOp::Div => {
                 // emath `/` is exact rational division, whatever the
                 // operands' types.
-                let l = if is_literal(left) && !has_division(left) {
-                    format!("({} : Rat)", self.expr(left, true)?.0)
-                } else {
-                    format!("({} : Rat)", self.expr(left, false)?.0)
-                };
-                let (r, _) = self.operand(right, is_literal(right), LEVEL_ATOM.max(LEVEL_MUL - 1))?;
+                let (l, l_level, l_ty) = self.expr(left, is_literal(left) && !has_division(left))?;
+                let l = if l_ty == Ty::Int { coerce(l, l_level, &l_ty, &Ty::Rat).0 } else { format!("({l} : Rat)") };
+                let (r, r_ty) = self.operand(right, is_literal(right), LEVEL_ATOM.max(LEVEL_MUL - 1))?;
+                if has_param(&l_ty) || has_param(&r_ty) {
+                    return Err("arithmetic on a generic value has no Lean translation".into());
+                }
                 Ok((format!("{l} / {r}"), LEVEL_MUL, Ty::Rat))
             }
             BinaryOp::Eq => relation(self, "="),
@@ -2296,7 +2667,7 @@ fn construct(kind: &ExprKind) -> &'static str {
     }
 }
 
-fn lean_type(ty: &TypeExpr) -> Result<Ty, String> {
+fn lean_type(ty: &TypeExpr, objects: &BTreeMap<String, Ty>) -> Result<Ty, String> {
     match &ty.kind {
         TypeKind::Path { segments, generic_args } => {
             let name = segments.last().map(String::as_str).unwrap_or("");
@@ -2304,19 +2675,21 @@ fn lean_type(ty: &TypeExpr) -> Result<Ty, String> {
                 ("Int" | "Nat", []) => Ok(Ty::Int),
                 ("Rat", []) => Ok(Ty::Rat),
                 ("Bool", []) => Ok(Ty::Bool),
-                ("sequence", [GenericArg::Type(element)]) => Ok(list(lean_type(element)?)),
+                ("sequence", [GenericArg::Type(element)]) => Ok(list(lean_type(element, objects)?)),
+                (_, []) if segments.len() == 1 && let Some(ty) = objects.get(name) => Ok(ty.clone()),
                 _ => Err(format!("type `{}` has no Lean translation", segments.join("."))),
             }
         }
-        TypeKind::Fn { domain, codomain } => {
-            Ok(Ty::Fn(Box::new(lean_type(domain)?), Box::new(lean_type(codomain)?)))
-        }
+        TypeKind::Fn { domain, codomain } => Ok(Ty::Fn(
+            Box::new(lean_type(domain, objects)?),
+            Box::new(lean_type(codomain, objects)?),
+        )),
         _ => Err("this type has no Lean translation".into()),
     }
 }
 
 /// The type a closure's `in` domain names.
-fn domain_type(domain: &Expr) -> Result<Ty, String> {
+fn domain_type(domain: &Expr, objects: &BTreeMap<String, Ty>) -> Result<Ty, String> {
     match &domain.kind {
         ExprKind::Path { segments, generics } => {
             let name = segments.last().map(String::as_str).unwrap_or("");
@@ -2324,16 +2697,19 @@ fn domain_type(domain: &Expr) -> Result<Ty, String> {
                 ("Int" | "Nat", None) => Ok(Ty::Int),
                 ("Rat", None) => Ok(Ty::Rat),
                 ("Bool", None) => Ok(Ty::Bool),
-                ("sequence", Some([GenericArg::Type(element)])) => Ok(list(lean_type(element)?)),
+                ("sequence", Some([GenericArg::Type(element)])) => Ok(list(lean_type(element, objects)?)),
+                (_, None) if segments.len() == 1 && let Some(ty) = objects.get(name) => Ok(ty.clone()),
                 _ => Err(format!("domain `{}` has no Lean translation", segments.join("."))),
             }
         }
-        ExprKind::Call { function, args } => match (&function.kind, args.as_slice()) {
-            (ExprKind::Path { segments, .. }, [element]) if segments.len() == 1 && segments[0] == "sequence" => {
-                Ok(list(domain_type(element)?))
+        ExprKind::Call { function: head, args: elements } | ExprKind::Index { value: head, indices: elements } => {
+            match (&head.kind, elements.as_slice()) {
+                (ExprKind::Path { segments, .. }, [element]) if segments.len() == 1 && segments[0] == "sequence" => {
+                    Ok(list(domain_type(element, objects)?))
+                }
+                _ => Err("this domain has no Lean translation".into()),
             }
-            _ => Err("this domain has no Lean translation".into()),
-        },
+        }
         _ => Err("this domain has no Lean translation".into()),
     }
 }
@@ -2342,10 +2718,20 @@ fn atom_type(ty: String) -> String {
     if ty.contains(' ') { format!("({ty})") } else { ty }
 }
 
+/// Names the translation itself writes unqualified: an emath name
+/// spelled as one would shadow it, so it takes a `'` (which no emath
+/// name contains).
+const LEAN_RESERVED: &[&str] = &[
+    "decide", "default", "List", "Int", "Rat", "Bool", "Nat", "Type", "true", "false", "Inhabited",
+    "DecidableEq", "Emath", "Export",
+];
+
 /// A Lean identifier for an emath name: keywords and anything Lean
 /// would not read as one plain identifier go inside `«»`.
 fn ident(name: &str) -> String {
-    if plain(name) && !LEAN_KEYWORDS.contains(&name) {
+    if LEAN_RESERVED.contains(&name) {
+        format!("{name}'")
+    } else if plain(name) && !LEAN_KEYWORDS.contains(&name) {
         name.to_string()
     } else {
         format!("«{name}»")

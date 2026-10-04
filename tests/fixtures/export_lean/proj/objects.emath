@@ -1,0 +1,103 @@
+# Objects become Lean structures, and the library functions a file
+# uses translate with it (`filter` and `map` are generic).
+use fold.reduce
+
+# `from` and `until` are Lean keywords.
+emath object Window:
+    representation:
+        found: Bool
+        from: Int
+        until: Int
+        weight: Rat
+
+emath object Span:
+    representation:
+        inner: Window
+        count: Int
+
+emath function widest:
+    inputs:
+        windows: sequence[Window]
+    outputs:
+        result: Span
+    definitions:
+        open = filter(function w in Window: w.found, windows)
+        widths = map(function w in Window: w.until - w.from, open)
+        best = fold(function acc in Window: function w in Window: if w.until - w.from > acc.until - acc.from: w else: acc, Window: {found: false, from: 0, until: 0, weight: 0}, open)
+        result = Span: {inner: best, count: length(widths)}
+    tests:
+        example <two_open>:
+            given windows = [Window: {found: true, from: 1, until: 4, weight: 1 / 2}, Window: {found: false, from: 0, until: 9, weight: 1}, Window: {found: true, from: 2, until: 7, weight: 3}]
+            expect result.inner.until == 7
+            expect result.count == 2
+            expect result.inner.weight == 3
+
+# A field of a call's value; a refusal in a branch the example skips.
+emath function widest_weight:
+    inputs:
+        windows: sequence[Window]
+    outputs:
+        result: Rat
+    definitions:
+        result = if length(windows) == 0: constructor_refuse(quote(no_windows)) else: widest(windows).inner.weight
+    tests:
+        example <one>:
+            given windows = [Window: {found: true, from: 0, until: 2, weight: 5 / 3}]
+            expect result == 5 / 3
+
+# `decide` and `default` name what the Lean translation writes itself;
+# an element of an Int list divided is a Rat.
+emath function decide:
+    inputs:
+        xs: sequence(Int)
+        i: Int
+    outputs:
+        result: Rat
+    definitions:
+        default = xs[i] / 2
+        result = if default == 1: default else: constructor_refuse(quote(not_two))
+    tests:
+        example <halved>:
+            given xs = [5, 2]
+            given i = 1
+            expect result == 1
+
+# emath checks a declared type only at outputs: a Rat field passed as
+# an Int argument is still a Rat, which Lean cannot hold.
+emath function twice:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 2 * n
+
+emath function twice_weight:
+    inputs:
+        windows: sequence[Window]
+    outputs:
+        result: Int
+    definitions:
+        best = widest(windows)
+        weight = best.inner.weight
+        result = twice(weight)
+    tests:
+        example <whole>:
+            given windows = [Window: {found: true, from: 0, until: 2, weight: 3}]
+            expect result == 6
+
+# A comparison of a whole `if`, and of a list of Int with one of Rat.
+emath function compared:
+    inputs:
+        c: Bool
+        b: Bool
+    outputs:
+        result: Bool
+    definitions:
+        halves = map(function v in Int: v / 2, [2, 4])
+        result = (if c: true else: b) == false and halves == [1, 2]
+    tests:
+        example <chosen_true>:
+            given c = true
+            given b = false
+            expect result == false
