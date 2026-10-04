@@ -126,16 +126,17 @@ them.
 | Code | Meaning |
 | --- | --- |
 | 0 | Done |
-| 1 | A test or checker rejected a claim (`emath test` had a failing example, `export lean --check` found a false example or law) |
-| 2 | The file does not pass `emath check` (syntax, type, or input error) |
+| 1 | A test or checker rejected a claim (`emath test` had a failing example, `export lean --check` found a false example or law, `emath fmt` found non-canonical layout) |
+| 2 | The file does not pass `emath check` (syntax, type, or input error). Every command that reads a program says so the same way |
 | 3 | Partial: out of work (`budget_exhausted`), suspended, not translated, not proven, or a tool is missing |
 | 4 | A fault or named refusal while running, or a file could not be written |
 | 5 | An incompatible or corrupt checkpoint |
 
 ## Tips for agents
 
-- Run `emath check` after every edit. It is fast and names the
-  declaration and definition at fault.
+- Run `emath check` after every edit. It is fast and prints
+  `file:line:column` for each problem (`line` and `column` with
+  `--json`).
 - Always pass `--function F` to `emath run`.
 - Give inputs with `--set name=value`. Rationals are written `1/3`,
   lists `'[1, 2, 3]'`.

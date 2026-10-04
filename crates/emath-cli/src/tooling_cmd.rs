@@ -14,7 +14,7 @@ use emath_sema::CompilerSession;
 use crate::{
     CliExit, EXIT_ADMISSION, EXIT_FAULT, EXIT_IO, EXIT_OK, EXIT_REFUSED, EXIT_SAFETY,
     EXIT_TOOLCHAIN, EXIT_USAGE, ExplainRequest, artifact_check, json_diagnostic_entry,
-    print_diagnostics, print_json_diagnostics,
+    print_json_diagnostics,
 };
 
 mod doctor;

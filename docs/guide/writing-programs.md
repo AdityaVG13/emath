@@ -102,7 +102,7 @@ with `fold` (see [Lists](#lists)).
 
 A function may call itself or another function in the same file. Make
 sure every call gets closer to a base case. A runaway recursion stops
-with `budget_exhausted`, not a crash.
+with `recursion_depth_exceeded` or `budget_exhausted`, not a crash.
 
 ```emath
 emath function harmonic:
@@ -116,9 +116,11 @@ emath function harmonic:
 ```
 
 Calls that still have work to do after they return, like
-`1 / n + harmonic(n - 1)`, may nest at most 256 deep. Past that, emath
-stops with `recursion_depth_exceeded`. To go deeper, carry the running
-result in an input so that the call is the whole result, or use `fold`:
+`1 / n + harmonic(n - 1)`, may nest up to 10,000 deep. Past that, emath
+stops with `recursion_depth_exceeded`. Each pending call holds roughly
+20 to 70 KB of memory until it returns. To go deeper, or to save that
+memory, carry the running result in an input so that the call is the
+whole result, or use `fold`:
 
 ```emath
 emath function sum_to:
@@ -330,6 +332,6 @@ Every `example` sets the inputs with `given` and checks results with
 | A list is one item too long or too short | `range(start, count)` takes a count | `range(1, n)` is `1, ..., n` |
 | `E-NAME-025` | The module does not export that name | Read the names the message lists |
 | `unbound `p.x`` when running with `--set` | `--set` cannot build an object | Pass objects through a test or a builder function |
-| `recursion_depth_exceeded` | More than 256 nested calls that still have work to do | Carry the result in an input, or use `fold` |
+| `recursion_depth_exceeded` | More than 10,000 nested calls that still have work to do | Carry the result in an input, or use `fold` |
 
 `emath explain CODE` describes any error code.

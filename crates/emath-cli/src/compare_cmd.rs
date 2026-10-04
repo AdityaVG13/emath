@@ -27,7 +27,7 @@ use emath_exec_ir::constructor_layer::{
 };
 use emath_exec_ir::exact_int::ExactInt;
 
-use crate::{CliExit, EXIT_IO, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
+use crate::{CliExit, EXIT_ADMISSION, EXIT_IO, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
 
 pub(crate) const USAGE: &str = "compare <file.emath> --function F [--set name=value] [--grid name=v1,v2,... | name=LO..HI | name=LO..HI/N] [--world reference|exact|float64|float32|bfloat16|int64|interval|affine] [--work N] [--json]";
 
@@ -237,11 +237,16 @@ pub(crate) fn run(request: CompareRequest) -> CliExit {
         language_id,
         source_id: emath_core::content_id_of_str(&source).0,
     };
-    let (tree, diagnostics) = emath_syntax::parse_str(&source);
-    if diagnostics.has_errors() {
-        crate::print_diagnostics(&diagnostics);
-        return EXIT_REFUSED;
-    }
+    let tree = match crate::cli_json::admitted_tree(&request.path, &source) {
+        Ok(tree) => tree,
+        Err(refusal) => {
+            if request.json {
+                return refuse(true, &refusal.code, &refusal.message, EXIT_ADMISSION);
+            }
+            eprintln!("{}", refusal.text);
+            return EXIT_ADMISSION;
+        }
+    };
     let declared = declared_inputs(&tree, &request.function);
     let points = match grid_points(&request) {
         Ok(points) => points,

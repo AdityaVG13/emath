@@ -4,6 +4,7 @@ pub(super) fn fault(code: &str, message: impl Into<String>) -> ConstructorError 
     ConstructorError {
         code: code.into(),
         message: message.into(),
+        span: None,
     }
 }
 

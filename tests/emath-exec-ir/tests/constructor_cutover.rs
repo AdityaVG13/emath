@@ -3083,9 +3083,9 @@ emath function NamedTailWalk:
                 p.fail("tail-scales", err.to_string());
             }
         }
-        match evaluate_function(&tree, "NonTailWalk", &BTreeMap::from([("n".into(), int(300))])) {
+        match evaluate_function(&tree, "NonTailWalk", &BTreeMap::from([("n".into(), int(10_001))])) {
             Ok(_) => {
-                p.fail("nontail-caps", "300-level non-tail walk returned a value");
+                p.fail("nontail-caps", "10001-level non-tail walk returned a value");
             }
             Err(err) => {
                 p.demand(
@@ -3095,9 +3095,12 @@ emath function NamedTailWalk:
                 );
             }
         }
-        match evaluate_function(&tree, "NonTailWalk", &BTreeMap::from([("n".into(), int(250))])) {
+        // Non-tail recursion thousands deep computes: the native stack
+        // grows on the heap, so the cap is a runaway guard, not a limit
+        // ordinary recursive definitions run into.
+        match evaluate_function(&tree, "NonTailWalk", &BTreeMap::from([("n".into(), int(9_000))])) {
             Ok(value) => {
-                p.eq("nontail-under-cap-computes", value, int(257));
+                p.eq("nontail-under-cap-computes", value, int(9_007));
             }
             Err(err) => {
                 p.fail("nontail-under-cap-computes", err.to_string());

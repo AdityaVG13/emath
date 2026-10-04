@@ -20,6 +20,7 @@ fn shape(message: impl Into<String>) -> ConstructorError {
     ConstructorError {
         code: "E-KEEP-SHAPE".into(),
         message: message.into(),
+        span: None,
     }
 }
 
@@ -77,6 +78,7 @@ fn keep_use(message: impl Into<String>) -> ConstructorError {
     ConstructorError {
         code: "E-KEEP-USE".into(),
         message: message.into(),
+        span: None,
     }
 }
 
@@ -260,6 +262,7 @@ pub fn place_definition(
                 return Err(ConstructorError {
                     code: "E-KEEP-EXISTS".into(),
                     message: format!("the library already defines `{name}` with different content"),
+                    span: None,
                 });
             }
             let mut out: Vec<&str> = lines[..start].to_vec();
@@ -273,6 +276,7 @@ pub fn place_definition(
                 return Err(ConstructorError {
                     code: "E-KEEP-LIBRARY".into(),
                     message: "the file has no `exports:` line; it is not a kept library".into(),
+                    span: None,
                 })
             }
         },

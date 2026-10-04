@@ -1,7 +1,7 @@
 //! Authored constructor tests. Leftover generated-crate execution stays
 //! on disk (RULE 1) and is not dispatched.
 
-use super::{Path, CliExit, EXIT_USAGE, print_diagnostics, EXIT_ADMISSION, EXIT_REFUSED, EXIT_OK, EXIT_FAULT};
+use super::{Path, CliExit, EXIT_USAGE, EXIT_ADMISSION, EXIT_REFUSED, EXIT_OK, EXIT_FAULT};
 
 /// Run `tests:` examples through the constructor evaluator. `work`
 /// raises the per-example budget (`--work N`), so large-instance rows
@@ -18,8 +18,9 @@ pub(crate) fn test_cmd(file: &Path, _out: &Path, work: Option<u64>) -> CliExit {
         }
     };
     let (tree, diagnostics) = emath_syntax::parse_str(&source);
+    let name = file.display().to_string();
     if diagnostics.has_errors() {
-        print_diagnostics(&diagnostics);
+        crate::cli_json::print_diagnostics_in(&diagnostics, &name, &source);
         return EXIT_ADMISSION;
     }
     let report = match work {
@@ -50,7 +51,7 @@ pub(crate) fn test_cmd(file: &Path, _out: &Path, work: Option<u64>) -> CliExit {
             }
         }
         Err(error) => {
-            eprintln!("error: {}: {}", error.code, error.message);
+            eprintln!("{}", crate::cli_json::error_text(&error.code, &error.message, &name, &source, error.span));
             // Admission refusals carry `E-` codes (the test lane admits
             // like `check`); raw fault names are execution faults.
             if error.code.starts_with("E-") {

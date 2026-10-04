@@ -7,7 +7,7 @@ pub(super) fn checked_package(path: &Path, json: bool) -> Result<SemanticPackage
         .map_err(|error| diagnostic(json, EXIT_USAGE, "E-PKG-080", &format!("{error:?}")))?;
     let result = session.check(loaded.file);
     if result.diagnostics.has_errors() {
-        crate::print_diagnostics(&result.diagnostics);
+        crate::cli_json::print_diagnostics_from(&result.diagnostics, &session.store);
         if json {
             let mut out = JsonWriter::object();
             out.string("schema_version", "emath.constructor.v1");
@@ -40,7 +40,7 @@ pub(super) fn planned_package(path: &Path, json: bool) -> Result<SemanticPackage
         .map_err(|error| diagnostic(json, EXIT_USAGE, "E-PKG-080", &format!("{error:?}")))?;
     let result = session.plan(loaded.file);
     if result.diagnostics.has_errors() {
-        crate::print_diagnostics(&result.diagnostics);
+        crate::cli_json::print_diagnostics_from(&result.diagnostics, &session.store);
         if json {
             let mut out = JsonWriter::object();
             out.string("schema_version", "emath.constructor.v1");

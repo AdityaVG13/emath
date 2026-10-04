@@ -312,6 +312,22 @@ impl fmt::Display for CValue {
 pub struct ConstructorError {
     pub code: String,
     pub message: String,
+    /// Where in the admitted file the error is, when known. Only
+    /// admission of the file's own declarations sets it, so it always
+    /// indexes that file's text, never an imported module's.
+    pub span: Option<emath_core::Span>,
+}
+
+impl ConstructorError {
+    /// Attach `span` unless a more precise one is already set or `span`
+    /// is the empty default of a synthesized node.
+    #[must_use]
+    pub fn at(mut self, span: emath_core::Span) -> Self {
+        if self.span.is_none() && span.end > span.start {
+            self.span = Some(span);
+        }
+        self
+    }
 }
 
 impl fmt::Display for ConstructorError {
@@ -675,7 +691,11 @@ pub const CHECKPOINT_SCHEMA: &str = "emath.constructor-checkpoint.v2";
 pub const CHECKPOINT_ABI: &str = "constructor-layer/continuation-abi";
 pub const ACCOUNTING_VERSION: &str = "constructor-layer/accounting.v1";
 pub const IMAGE_IDENTITY: &str = "constructor-layer";
-const MAX_CALL_DEPTH: u32 = 256;
+/// Nested calls that still have work pending. Each costs native stack
+/// (about 17 KiB optimized, 73 KiB in a debug build), which `stacker`
+/// grows on the heap, so this is a guard against runaway recursion, not
+/// a stack-safety bound: the cap costs at most ~0.2 GB (0.7 GB debug).
+const MAX_CALL_DEPTH: u32 = 10_000;
 
 impl Default for Checkpoint {
     fn default() -> Self {

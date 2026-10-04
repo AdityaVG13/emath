@@ -4,7 +4,7 @@ use super::{
     CliExit, CompilerSession, EXIT_ADMISSION, EXIT_FAULT, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, Path,
     PathBuf, PlanInspection, PlannerConfig, PlanningOutcome, ProviderRegistry, RegistryConfig,
     assign_once, emit_provider_trait, exit_from_diagnostics, lift_missing, plan_json_document,
-    print_diagnostics, refuse_coded, refuse_malformed_project_lock, register_native_rust,
+    refuse_coded, refuse_malformed_project_lock, register_native_rust,
     run_planner, take_nonflag_value,
 };
 use emath_core::Diagnostics;
@@ -74,7 +74,7 @@ fn merge_constructor_admit(source: &str, path: Option<&Path>, diagnostics: &mut 
         diagnostics.error(
             emath_exec_ir::constructor_layer::constructor_admit_code(&error.code),
             format!("{}: {}", error.code, error.message),
-            emath_core::Span::default(),
+            error.span.unwrap_or_default(),
         );
     }
 }
@@ -104,7 +104,7 @@ pub fn plan(path: &Path, json: bool) -> CliExit {
     };
     let result = session.plan(package.file);
     if !result.diagnostics.is_empty() {
-        print_diagnostics(&result.diagnostics);
+        crate::cli_json::print_diagnostics_from(&result.diagnostics, &session.store);
     }
     if json {
         println!(
@@ -227,7 +227,7 @@ pub fn build(request: BuildRequest) -> CliExit {
         };
         let check_result = session.check(package.file);
         if check_result.diagnostics.has_errors() {
-            crate::print_diagnostics(&check_result.diagnostics);
+            crate::cli_json::print_diagnostics_from(&check_result.diagnostics, &session.store);
             if json {
                 let items: Vec<String> = check_result
                     .diagnostics
@@ -308,7 +308,7 @@ pub fn explain_inspections(path: &Path) -> Result<Vec<PlanInspection>, CliExit> 
         return Err(EXIT_USAGE);
     };
     let result = session.plan(package.file);
-    crate::print_diagnostics(&result.diagnostics);
+    crate::cli_json::print_diagnostics_from(&result.diagnostics, &session.store);
     if result.diagnostics.has_errors() {
         return Err(EXIT_REFUSED);
     }
@@ -405,7 +405,7 @@ pub fn planner_cmd(request: PlannerRequest) -> CliExit {
     };
     let result = session.plan(package.file);
     if result.diagnostics.has_errors() {
-        print_diagnostics(&result.diagnostics);
+        crate::cli_json::print_diagnostics_from(&result.diagnostics, &session.store);
         return EXIT_REFUSED;
     }
     let mut registry = ProviderRegistry::new(RegistryConfig::static_only());
@@ -499,11 +499,20 @@ fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit
             ));
         }
     };
-    let (tree, diagnostics) = emath_syntax::parse_str(&source);
-    if diagnostics.has_errors() {
-        crate::print_diagnostics(&diagnostics);
-        return Some(EXIT_ADMISSION);
-    }
+    let tree = match crate::cli_json::admitted_tree(spec, &source) {
+        Ok(tree) => tree,
+        Err(refusal) => {
+            eprintln!("{}", refusal.text);
+            if json {
+                crate::print_json_diagnostics(
+                    "build",
+                    false,
+                    &[crate::json_diagnostic_entry(&refusal.code, "error", &refusal.message)],
+                );
+            }
+            return Some(EXIT_ADMISSION);
+        }
+    };
     // One emitter, two callers: `emath build` and the loop host's
     // `export-native` share constructor_crate so their artifact
     // crates are byte-identical by construction.

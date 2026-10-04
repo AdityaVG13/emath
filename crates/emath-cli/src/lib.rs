@@ -91,7 +91,7 @@ pub const EXIT_CHECKPOINT: CliExit = CliExit::Safety;
 /// What each exit code means, for help and `capabilities --json`.
 pub const EXIT_MEANINGS: [(CliExit, &str); 6] = [
     (EXIT_OK, "ok: the command completed"),
-    (EXIT_REFUSED, "rejected: a test or checker rejected a claim (`test`, `export lean --check`), or a command refused its input"),
+    (EXIT_REFUSED, "rejected: a test or checker rejected a claim (`test`, `export lean --check`, `fmt`), or a command refused a well-formed request (for example resuming a saved run whose source changed)"),
     (EXIT_ADMISSION, "admission: syntax, type, input, or usage error"),
     (EXIT_PARTIAL, "partial: unmet, suspended, out of work, not translated, not proven, or a tool is missing"),
     (EXIT_FAULT, "fault: execution fault or named refusal, or a file could not be read or written"),

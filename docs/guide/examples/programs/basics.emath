@@ -105,7 +105,7 @@ emath function harmonic:
 
 emath function sum_to:
     # 1 + 2 + ... + n, carrying the running total in `acc`. The call is
-    # the whole result, so it may go deeper than 256 calls.
+    # the whole result, so it may go deeper than 10,000 calls.
     inputs:
         n: Int
         acc: Int

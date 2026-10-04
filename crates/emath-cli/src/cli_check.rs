@@ -1,6 +1,6 @@
 //! `emath check`: admission, data verification, and source reading.
 
-use super::{Path, CliExit, refuse_malformed_project_lock, run_check, print_diagnostics, check_json_document, exit_from_diagnostics, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_IO, run_check_source, CompilerSession, Diagnostics, refuse_coded, EXIT_REFUSED};
+use super::{Path, CliExit, refuse_malformed_project_lock, run_check, check_json_document, exit_from_diagnostics, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_IO, run_check_source, CompilerSession, Diagnostics, refuse_coded, EXIT_REFUSED};
 
 /// `check <file> [--verify-data] [--json]`: parse + admit, no codegen.
 /// `--verify-data` re-hashes every
@@ -18,14 +18,15 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
     if verify_data && !diagnostics.has_errors() {
         verify_declared_data(&path, &mut diagnostics);
     }
+    let source = std::fs::read_to_string(&path).unwrap_or_default();
     let meaning_id = if diagnostics.has_errors() {
         None
     } else {
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|source| admitted_meaning_id(&path, &source))
+        admitted_meaning_id(&path, &source)
     };
-    print_diagnostics(&diagnostics);
+    let name = path.display().to_string();
+    let lines = crate::cli_json::source_lines(&name, &source);
+    crate::cli_json::print_diagnostics_in(&diagnostics, &name, &source);
     if !json && !units_profiles.is_empty() {
         // pack-table: the effective honesty declaration, printed
         // deterministically in source order (admission order).
@@ -45,6 +46,7 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
                 &diagnostics,
                 meaning_id.as_ref().map(emath_core::MeaningId::as_str),
                 &units_profiles,
+                Some(&lines),
             )
         );
     }
@@ -93,7 +95,8 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
     } else {
         admitted_meaning_id(Path::new("<stdin>"), &source)
     };
-    print_diagnostics(&diagnostics);
+    let lines = crate::cli_json::source_lines("<stdin>", &source);
+    crate::cli_json::print_diagnostics_in(&diagnostics, "<stdin>", &source);
     if !json && !units_profiles.is_empty() {
         // pack-table, same contract as file mode.
         for (declaration, profile) in &units_profiles {
@@ -109,6 +112,7 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
                 &diagnostics,
                 meaning_id.as_ref().map(emath_core::MeaningId::as_str),
                 &units_profiles,
+                Some(&lines),
             )
         );
     }

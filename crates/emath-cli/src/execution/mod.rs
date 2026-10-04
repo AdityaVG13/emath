@@ -433,7 +433,13 @@ fn text(doc: &JsonValue, name: &str) -> Result<String, String> {
 }
 
 pub(crate) fn diagnostic(json: bool, exit: CliExit, code: &str, message: &str) -> CliExit {
-    eprintln!("error: {code}: {message}");
+    diagnostic_with(json, exit, code, message, &format!("error: {code}: {message}"))
+}
+
+/// [`diagnostic`] with the stderr text given (for example with a source
+/// location from [`crate::cli_json::error_text`]).
+pub(crate) fn diagnostic_with(json: bool, exit: CliExit, code: &str, message: &str, text: &str) -> CliExit {
+    eprintln!("{text}");
     if json {
         let mut out = JsonWriter::object();
         out.string("schema_version", "emath.constructor.v1");

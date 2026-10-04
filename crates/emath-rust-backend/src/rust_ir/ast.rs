@@ -274,4 +274,7 @@ pub const RUST_KEYWORDS: &[&str] = &[
     "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
     "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where",
     "while", "async", "await", "dyn",
+    // Reserved for future use: still not legal identifiers.
+    "abstract", "become", "box", "do", "final", "gen", "macro", "override", "priv", "try",
+    "typeof", "unsized", "virtual", "yield",
 ];

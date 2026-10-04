@@ -1,6 +1,6 @@
 //! The `emath fmt` / `emath fmt-value` formatting commands.
 
-use super::{CliExit, EXIT_ADMISSION, EXIT_USAGE, EXIT_REFUSED, EXIT_OK, Path, CompilerSession, EXIT_IO, print_diagnostics};
+use super::{CliExit, EXIT_ADMISSION, EXIT_USAGE, EXIT_REFUSED, EXIT_OK, Path, CompilerSession, EXIT_IO};
 
 /// `fmt <file>`: canonical-form check via the lossless formatter;
 /// canonical only on byte-for-byte round-trip, else refusal + diff.
@@ -115,9 +115,9 @@ pub(crate) fn fmt_cmd(file: &Path) -> CliExit {
         return EXIT_IO;
     };
     let result = session.check(package.file);
-    print_diagnostics(&result.diagnostics);
+    crate::cli_json::print_diagnostics_from(&result.diagnostics, &session.store);
     if result.diagnostics.has_errors() {
-        return EXIT_REFUSED;
+        return EXIT_ADMISSION;
     }
     let limits = emath_core::limits::Limits::default();
     let lossless = emath_syntax::parse_lossless(&package.text, package.file, &limits);
@@ -163,8 +163,8 @@ fn fmt_stdin() -> CliExit {
     let limits = emath_core::limits::Limits::default();
     let lossless = emath_syntax::parse_lossless(&source, emath_core::FileId(0), &limits);
     if lossless.diagnostics.has_errors() {
-        print_diagnostics(&lossless.diagnostics);
-        return EXIT_REFUSED;
+        crate::cli_json::print_diagnostics_in(&lossless.diagnostics, "<stdin>", &source);
+        return EXIT_ADMISSION;
     }
     let canonical = emath_syntax::format(&lossless.tree, &lossless.comments);
     if canonical == source {

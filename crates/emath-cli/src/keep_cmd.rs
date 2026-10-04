@@ -20,7 +20,7 @@ use emath_exec_ir::constructor_layer::{
     prepare_module, NamedProgram, Placed, DEFAULT_WORK,
 };
 
-use crate::{CliExit, EXIT_FAULT, EXIT_IO, EXIT_OK, EXIT_REFUSED};
+use crate::{CliExit, EXIT_ADMISSION, EXIT_FAULT, EXIT_IO, EXIT_OK, EXIT_REFUSED};
 
 pub(crate) const USAGE: &str =
     "keep <file.emath> --function F [--name NAME] --to <library.emath> [--set name=value] [--work N] [--overwrite]";
@@ -90,11 +90,13 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
         Ok(text) => text,
         Err(err) => return refuse("E-CLI-IO", format!("cannot read {}: {err}", request.path.display()), EXIT_IO),
     };
-    let (tree, diagnostics) = emath_syntax::parse_str(&source);
-    if diagnostics.has_errors() {
-        crate::print_diagnostics(&diagnostics);
-        return EXIT_REFUSED;
-    }
+    let tree = match crate::cli_json::admitted_tree(&request.path, &source) {
+        Ok(tree) => tree,
+        Err(refusal) => {
+            eprintln!("{}", refusal.text);
+            return EXIT_ADMISSION;
+        }
+    };
     let inputs: BTreeMap<_, _> = request
         .given
         .iter()

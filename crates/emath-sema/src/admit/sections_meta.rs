@@ -202,7 +202,7 @@ fn check_constructor_user_file(
         // per defect.
         let already_reported = diagnostics.errors().any(|d| d.code == code);
         if !already_reported {
-            diagnostics.error(code, err.message, tree.source);
+            diagnostics.error(code, err.message, err.span.unwrap_or(tree.source));
         }
     }
     CheckResult {

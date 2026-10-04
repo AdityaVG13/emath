@@ -812,16 +812,16 @@ emath function Fact:
         match evaluate_function(
             &tree,
             "Fact",
-            &BTreeMap::from([("n".into(), CValue::Int(ExactInt::from(300i128)))]),
+            &BTreeMap::from([("n".into(), CValue::Int(ExactInt::from(10_001i128)))]),
         ) {
             Ok(_) => {
-                p.demand("2", false, "fact 300 must refuse at the depth bound");
+                p.demand("2", false, "fact 10001 must refuse at the depth bound");
             }
             Err(err) => {
                 p.eq("2", err.code.as_str(), "recursion_depth_exceeded");
                 p.demand(
                     "3",
-                    err.message.contains("256") && err.message.contains("Fact"),
+                    err.message.contains("10000") && err.message.contains("Fact"),
                     format!("depth fault must name the limit and the frame: {}", err.message),
                 );
             }

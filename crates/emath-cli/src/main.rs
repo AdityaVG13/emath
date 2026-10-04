@@ -8,11 +8,10 @@ fn main() -> ExitCode {
     // Install the source-parser backend once per process.
     emath_syntax::install_source_parser();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    // Evaluation recurses natively per authored call (~50 KiB of stack each
-    // at the observed worst case), so the documented call-depth budget of
-    // 256 must fire as `recursion_depth_exceeded` well before the process
-    // stack ends. The default 8 MiB main-thread stack dies near 200 nested
-    // calls; 64 MiB covers 256 frames plus expression-nesting headroom.
+    // Evaluation recurses natively per authored call and grows its stack
+    // on the heap (`stacker`) at each call. Deep expression nesting
+    // between calls does not pass a growth point, so the worker still
+    // starts with a large stack for that headroom.
     let worker = std::thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
         .spawn(move || run_cli(&args))

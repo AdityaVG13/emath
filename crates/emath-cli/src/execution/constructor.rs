@@ -1,9 +1,16 @@
 use super::{RunRequest, CliExit, EXIT_ADMISSION, diagnostic, EXIT_PARTIAL, EXIT_FAULT, EXIT_OK, JsonWriter, BTreeMap, content_id_of_str, Path, EXIT_USAGE, parse_json_document, JsonValue};
 
+/// Report an evaluation error, located in the source when it carries a span.
+fn fail(request: &RunRequest, source: &str, err: &emath_exec_ir::constructor_layer::ConstructorError) -> CliExit {
+    let name = request.path.display().to_string();
+    let text = crate::cli_json::error_text(&err.code, &err.message, &name, source, err.span);
+    super::diagnostic_with(request.json, error_exit(&err.code), &err.code, &err.message, &text)
+}
+
 pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Option<CliExit> {
     let (tree, diagnostics) = emath_syntax::parse_str(source);
     if diagnostics.has_errors() {
-        crate::print_diagnostics(&diagnostics);
+        crate::cli_json::print_diagnostics_in(&diagnostics, &request.path.display().to_string(), source);
         return Some(EXIT_ADMISSION);
     }
     let constructor_only = tree.items.iter().all(|item| match item {
@@ -50,12 +57,16 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
         };
         match evaluated {
             Ok(report) => Some(report),
-            Err(err) => {
-                return Some(diagnostic(request.json, error_exit(&err.code), &err.code, &err.message));
-            }
+            Err(err) => return Some(fail(request, source, &err)),
         }
     };
     if let Some(name) = &request.function {
+        // The same admission `check` and `test` run, so a mistyped file is
+        // a located admission error, not a runtime fault in the entry.
+        if let Err(mut err) = emath_exec_ir::constructor_layer::admit_tree_at(&tree, Some(&request.path)) {
+            err.code = emath_exec_ir::constructor_layer::constructor_admit_code(&err.code).to_string();
+            return Some(fail(request, source, &err));
+        }
         if request.work_set {
             return Some(run_constructor_budgeted(request, source, &tree, name, &inputs));
         }
@@ -83,9 +94,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
             // faulted; surface the fault instead of masking it as a missing
             // entry.
             Err(err) if err.code == "unbound" && err.message == format!("unknown function `{name}`") => {}
-            Err(err) => {
-                return Some(diagnostic(request.json, error_exit(&err.code), &err.code, &err.message));
-            }
+            Err(err) => return Some(fail(request, source, &err)),
         }
         if let Ok(receipt) = emath_exec_ir::constructor_layer::evaluate_query_at(
             &tree,
@@ -182,7 +191,7 @@ pub(super) fn run_constructor_budgeted(
                     EXIT_PARTIAL,
                 );
             }
-            diagnostic(request.json, error_exit(&err.code), &err.code, &err.message)
+            fail(request, source, &err)
         }
     }
 }

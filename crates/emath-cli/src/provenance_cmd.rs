@@ -7,7 +7,7 @@ use emath_sema::CompilerSession;
 
 use crate::{
     CliExit, EXIT_REFUSED, EXIT_USAGE, json_diagnostic_entry, json_diagnostics_entries,
-    print_diagnostics, print_json_diagnostics,
+    print_json_diagnostics,
 };
 
 /// Render every admitted binding provenance edge in deterministic order.
@@ -30,7 +30,7 @@ pub fn provenance_explanation(path: &Path, json: bool) -> Result<String, CliExit
     };
     let result = session.check(package.file);
     if result.diagnostics.has_errors() {
-        print_diagnostics(&result.diagnostics);
+        crate::cli_json::print_diagnostics_from(&result.diagnostics, &session.store);
         if json {
             print_json_diagnostics(
                 "explain",

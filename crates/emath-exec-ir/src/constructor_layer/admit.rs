@@ -394,7 +394,7 @@ pub(super) fn admit_query(engine: &Engine, decl: &Declaration) -> Result<(), Con
 
 fn in_declaration(decl: &Declaration, mut err: ConstructorError) -> ConstructorError {
     err.message = format!("in `{}`: {}", decl.name, err.message);
-    err
+    err.at(decl.head_source)
 }
 
 fn admit_function_body(engine: &Engine, decl: &Declaration) -> Result<(), ConstructorError> {
@@ -417,7 +417,8 @@ fn admit_function_body(engine: &Engine, decl: &Declaration) -> Result<(), Constr
             return Err(fault(
                 "type",
                 format!("definition `{name}` does not have the declared output type: declared {declared}, got {got}"),
-            ));
+            )
+            .at(expr.source));
         }
         types.insert(name, got);
     }
@@ -585,7 +586,12 @@ pub(super) fn admit_tests(
 }
 
 impl Engine {
+    /// The innermost expression that fails names the error's location.
     pub(super) fn infer(&self, types: &BTreeMap<String, CType>, expr: &Expr) -> Result<CType, ConstructorError> {
+        self.infer_expr(types, expr).map_err(|err| err.at(expr.source))
+    }
+
+    fn infer_expr(&self, types: &BTreeMap<String, CType>, expr: &Expr) -> Result<CType, ConstructorError> {
         match &expr.kind {
             ExprKind::Int(_) => Ok(CType::Int),
             ExprKind::Rational { .. } => Ok(CType::Rat),

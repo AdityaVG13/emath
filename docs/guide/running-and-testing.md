@@ -25,19 +25,23 @@ $ echo $?
 0
 ```
 
-No output means the file is fine. A problem prints its code and the
-declaration it is in, and exits 2:
+No output means the file is fine. A problem prints the file, line, and
+column, the code, and the line with a marker under the spot, and
+exits 2:
 
 ```console
 $ emath check bad.emath
-E-TYPE-012 in `bad`: definition `result` does not have the declared output type: declared Int, got Rat (0:0)
+bad.emath:7:18: E-TYPE-012: in `bad`: definition `result` does not have the declared output type: declared Int, got Rat
+          result = n / 2
+                   ^~~~~
 ```
 
-The numbers in parentheses are an internal position, not a line
-number. Use the declaration and definition names in the message to
-find the spot. `emath explain E-TYPE-012` describes the code. With
-`--json`, the result is a document with an `admitted` field and a
-`diagnostics` list:
+`emath explain E-TYPE-012` describes the code. `test`, `run`,
+`compare`, `keep`, `build`, and `fmt` check the file the same way
+before they do anything else, so a broken file gets the same message
+and exit 2 from all of them. With `--json`, the result is a document
+with an `admitted` field and a `diagnostics` list. Each diagnostic has
+`line` and `column` when it points at a spot in the file:
 
 ```json
 {
@@ -49,6 +53,8 @@ find the spot. `emath explain E-TYPE-012` describes the code. With
   "diagnostics": [
 {
   "code": "E-TYPE-012",
+  "line": 7,
+  "column": 18,
   "severity": "error",
   "message": "in `bad`: definition `result` does not have the declared output type: declared Int, got Rat"
 }

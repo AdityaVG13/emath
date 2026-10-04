@@ -1,6 +1,6 @@
 //! Artifact inspection: verify, inspect, diff, fingerprinting.
 
-use super::{Path, CliExit, artifact_check, EXIT_USAGE, EXIT_REFUSED, JsonWriter, EXIT_OK, EXIT_IO, CompilerSession, print_diagnostics};
+use super::{Path, CliExit, artifact_check, EXIT_USAGE, EXIT_REFUSED, JsonWriter, EXIT_OK, EXIT_IO, CompilerSession};
 
 /// `verify <dir>`: independent artifact re-verification.
 pub(crate) fn verify_cmd(dir: &Path) -> CliExit {
@@ -125,7 +125,7 @@ pub(super) fn fingerprint(file: &Path) -> Result<emath_core::ContentId, ()> {
         return Err(());
     };
     let result = session.check(package.file);
-    print_diagnostics(&result.diagnostics);
+    crate::cli_json::print_diagnostics_from(&result.diagnostics, &session.store);
     if result.diagnostics.has_errors() {
         return Err(());
     }

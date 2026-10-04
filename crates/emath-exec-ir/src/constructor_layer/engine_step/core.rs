@@ -15,6 +15,7 @@ impl Engine {
             return Err(ConstructorError {
                 code: "budget_exhausted".into(),
                 message: "work budget exhausted".into(),
+                span: None,
             });
         }
         Ok(())
