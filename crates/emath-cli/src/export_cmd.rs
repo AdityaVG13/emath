@@ -157,7 +157,10 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         }
     };
     let log = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-    let at = |lean: &str, line: usize| log.contains(&format!("{lean}:{line}:"));
+    // Only errors place a verdict on a site; a linter warning on a
+    // proved theorem's line says nothing about it.
+    let error_log: String = log.lines().filter(|line| line.starts_with("error:")).collect::<Vec<_>>().join("\n");
+    let at = |lean: &str, line: usize| error_log.contains(&format!("{lean}:{line}:"));
     let uncertified: Vec<String> = export
         .law_sites
         .iter()
@@ -184,7 +187,7 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     // time or depth budget, Lean never decided the claim either way.
     let errors = |lean: &str, lines: std::ops::RangeInclusive<usize>| -> Vec<&str> {
         let marks: Vec<String> = lines.map(|line| format!("{lean}:{line}:")).collect();
-        log.lines().filter(|text| marks.iter().any(|mark| text.contains(mark.as_str()))).collect()
+        error_log.lines().filter(|text| marks.iter().any(|mark| text.contains(mark.as_str()))).collect()
     };
     let out_of_budget = |errors: &[&str]| {
         !errors.is_empty()
@@ -212,7 +215,7 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     // the hypotheses allow).
     for site in &export.law_sites {
         let check = format!("{}:{}:", site.lean, site.check_line);
-        let counterexample = log
+        let counterexample = error_log
             .lines()
             .filter(|line| line.contains(&check))
             .find_map(|line| line.split_once("the two sides differ at ").map(|(_, at)| at.trim().to_string()));

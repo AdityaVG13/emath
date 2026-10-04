@@ -6,10 +6,11 @@
 # against 1 - 1/2^n; and n / 0 against 0, which Lean's total division
 # proves but emath refuses (it faults). certified_all: the chain against its closed form at every
 # parameter point where the closed form computes (1 - (a - b) != 0).
-# certified_int: laws of Int programs, which Lean reads as rationals:
+# certify (named like its file, which Lean's linter warns about): laws
+# of Int programs, which Lean reads as rationals:
 # Cassini's identity over a loop on Int pairs, squares summed by an Int
 # accumulator against an exact quotient, and cubes summed by
-# sum(tabulate(...)) against a square of one.
+# sum(tabulate(...)) against a square of one, and an Int branch on n.
 use model
 use found
 use fold.reduce
@@ -39,10 +40,10 @@ emath function fib_pair:
     definitions:
         result = fold(function p in sequence(Int): function k in Int: [p[1], p[0] + p[1]], [0, 1], range(0, n))
 
-emath function certified_int:
+emath function certify:
     inputs:
         limit: Int
     outputs:
         result: sequence(Certificate)
     definitions:
-        result = [certify_equal(quote(function n in Int: fib_pair(n)[0] * (fib_pair(n)[0] + fib_pair(n)[1]) - fib_pair(n)[1] * fib_pair(n)[1]), quote(function n in Int: rat_pow(0 - 1, n + 1)), limit), certify_equal(quote(function n in Int: fold(function acc in Int: function t in Int: acc + t * t, 0, range(0, n))), quote(function n in Int: int_quot(n * (n - 1) * (2 * n - 1), 6)), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: i * i * i, n))), quote(function n in Int: int_quot(n * (n - 1), 2) * int_quot(n * (n - 1), 2)), limit)]
+        result = [certify_equal(quote(function n in Int: fib_pair(n)[0] * (fib_pair(n)[0] + fib_pair(n)[1]) - fib_pair(n)[1] * fib_pair(n)[1]), quote(function n in Int: rat_pow(0 - 1, n + 1)), limit), certify_equal(quote(function n in Int: fold(function acc in Int: function t in Int: acc + t * t, 0, range(0, n))), quote(function n in Int: int_quot(n * (n - 1) * (2 * n - 1), 6)), limit), certify_equal(quote(function n in Int: sum(tabulate(function i in Int: i * i * i, n))), quote(function n in Int: int_quot(n * (n - 1), 2) * int_quot(n * (n - 1), 2)), limit), certify_equal(quote(function n in Int: if n == 0: 1 else: n * n), quote(function n in Int: if n < 1: 1 else: n * n), limit)]

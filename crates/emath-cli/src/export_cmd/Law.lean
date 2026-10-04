@@ -981,7 +981,7 @@ macro_rules
         | with_reducible apply HasOrder.neg
         | with_reducible apply HasOrder.mul
         | simp only [Int.cast_add, Int.cast_sub, Int.cast_mul, Int.cast_neg, Int.cast_zero,
-            Int.cast_one, Int.cast_ofNat]
+            Int.cast_one, Int.cast_ofNat, Int.cast_ite]
         | emath_unfold [$defs,*]))
 
 end Emath.Law

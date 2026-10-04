@@ -218,7 +218,7 @@ fn export_lean() {
                     && !text.contains("law 1 of")
                     && !text.contains("law 2 of")
                     && !text.contains("law 4 of")
-                    && !text.contains("certified_int")
+                    && !text.contains("of `certify`")
                     && !text.contains("not translated")
                     && !text.contains("rejected:"),
                 format!("exit {code}\n{text}"),
