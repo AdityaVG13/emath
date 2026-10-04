@@ -137,6 +137,70 @@ fn run_lane_skips_module_suite_for_function_runs() {
     p.finish();
 }
 
+/// An entry that exists but faults on a name inside its body (here an
+/// object input `--set` cannot build) reports that fault, not "no
+/// constructor entry". A truly unknown entry still says so.
+#[test]
+fn run_lane_reports_body_faults_not_a_missing_entry() {
+    let mut p = Probe::new("run --function reports a fault inside the entry, not a missing entry");
+    let src = std::env::temp_dir().join(format!("emath-run-entry-{}.emath", std::process::id()));
+    std::fs::write(
+        &src,
+        "emath object Point:
+    representation:
+        x: Rat
+
+emath function first_x:
+    inputs:
+        points: sequence(Point)
+    outputs:
+        result: Rat
+    definitions:
+        result = points[0].x
+
+emath function forever:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = forever(n + 1)
+",
+    )
+    .expect("write source");
+    let path = src.to_string_lossy().to_string();
+    let (text, code) = common::cli(&["run", &path, "--function", "first_x", "--set", "points=[{x: 1}]"]);
+    p.eq("not a missing entry", text.contains("no constructor entry"), false);
+    p.eq("fault exit", code, emath_cli::EXIT_FAULT as i32);
+    let (text, code) = common::cli(&["run", &path, "--function", "missing", "--set", "n=1"]);
+    p.contains("unknown entry", &text, "no constructor entry `missing`");
+    p.eq("unknown entry exit", code, emath_cli::EXIT_ADMISSION as i32);
+    // Running out of work is a partial answer, as on every other lane.
+    let (text, code) = common::cli(&["run", &path, "--function", "forever", "--set", "n=0"]);
+    p.contains("budget", &text, "budget_exhausted");
+    p.eq("budget exit", code, emath_cli::EXIT_PARTIAL as i32);
+
+    // A name the imported module does not export is an admission error,
+    // whether `check` or `run --function` finds it.
+    let dir = std::env::temp_dir().join(format!("emath-run-private-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    std::fs::write(
+        dir.join("hidden.emath"),
+        "emath function helper:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = n\n",
+    )
+    .expect("write module");
+    let main = dir.join("main.emath");
+    std::fs::write(
+        &main,
+        "use hidden\n\nemath function f:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = helper(n)\n",
+    )
+    .expect("write main");
+    let (text, code) = common::cli(&["run", &main.to_string_lossy(), "--function", "f", "--set", "n=1"]);
+    p.contains("private name", &text, "E-NAME-025");
+    p.eq("private name exit", code, emath_cli::EXIT_ADMISSION as i32);
+    p.finish();
+}
+
 /// The other side of the same hunk: without `--function` the run lane
 /// DOES evaluate the module suite, and `--work` is the budget that
 /// evaluation runs under. Two demands pin it: a generous `--work` runs

@@ -151,10 +151,10 @@ and use `emath run`.
 | Code | Meaning |
 | --- | --- |
 | `0` | The command completed |
-| `1` | A checker rejected a claim (`export lean --check` found a false example or law) |
+| `1` | A test or checker rejected a claim (`emath test` had a failing example, `export lean --check` found a false example or law), or an older command refused its input |
 | `2` | Admission failure: syntax, type, or input |
-| `3` | Unmet, partial, or suspended answer |
-| `4` | Execution or backend fault |
+| `3` | Unmet, partial, or suspended answer, including `budget_exhausted` |
+| `4` | Execution fault (including a named refusal such as `constructor_refuse`), or a file could not be read or written |
 | `5` | Incompatible or corrupt checkpoint |
 
 ## JSON receipts

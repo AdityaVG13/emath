@@ -40,6 +40,24 @@ fn catalog_contract() {
             p.demand(format!("{command}-summary"), command_summary(command).is_some(), "summary");
             p.demand(format!("{command}-help"), command_help_text(command).is_some(), "help");
         }
+        // Help must describe the codes commands really return: a
+        // partial answer exits EXIT_PARTIAL, an admission error
+        // EXIT_ADMISSION, a fault EXIT_FAULT, a bad checkpoint
+        // EXIT_CHECKPOINT, a rejected Lean claim EXIT_REFUSED.
+        let help = command_help_text("run").unwrap_or_default();
+        let caps = emath_cli::catalog::capabilities_json();
+        for (exit, word) in [
+            (emath_cli::EXIT_REFUSED, "rejected"),
+            (emath_cli::EXIT_ADMISSION, "admission"),
+            (emath_cli::EXIT_PARTIAL, "partial"),
+            (emath_cli::EXIT_FAULT, "fault"),
+            (emath_cli::EXIT_CHECKPOINT, "checkpoint"),
+        ] {
+            let code = exit as u8;
+            let line = help.lines().find(|line| line.trim_start().starts_with(&format!("{code} "))).unwrap_or("");
+            p.demand(format!("help-exit-{code}"), line.to_lowercase().contains(word), line.to_string());
+            p.demand(format!("capabilities-exit-{code}"), caps.contains(&format!("\"code\": \"{code}\"")), "listed");
+        }
     });
     p.case("extracted-refuse", |p| {
         for token in [

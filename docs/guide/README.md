@@ -74,16 +74,18 @@ ok four --
 | --- | --- |
 | Solve a math problem: find a formula and prove it | [solving-a-problem.md](solving-a-problem.md) |
 | Prove my examples and laws in Lean | [lean.md](lean.md) |
-| Learn the syntax of an emath program | [Quick start](../../language/QUICKSTART.md), then [the language README](../../language/README.md) |
+| Write a program: functions, lists, objects, imports, tests | [writing-programs.md](writing-programs.md) |
+| Check, test, run, compare, and build a program | [running-and-testing.md](running-and-testing.md) |
 | Look up any command and its flags | [MANUAL.md](../../MANUAL.md), or `emath help COMMAND` |
 | Find a library function | `emath api --search "words"` |
 | Understand an error code | `emath explain E-CODE` (for example `emath explain E-NAME-025`) |
-| Run a simulation | The template [`language/templates/simulation.emath`](../../language/templates/simulation.emath) |
-| Run a discovery loop (`dream`) | [Discovery](../../language/DISCOVERY.md) |
-| Know what computes and what is refused | [CAPABILITY.md](../../language/CAPABILITY.md) |
+| Run a simulation | The template `language/templates/simulation.emath` in your emath install |
+| Run a discovery loop (`dream`) | `language/DISCOVERY.md` in your emath install |
+| Know what computes and what is refused | `language/CAPABILITY.md` in your emath install |
 
-Pages on writing programs, running and testing, dream, and simulations
-are coming to this guide. Until then, the links above cover them.
+Pages on dream and simulations are coming to this guide. The
+`language/` folder ships with emath (`EMATH_ROOT` points at the folder
+that contains it) and holds the full language reference.
 
 ## A program in one screen
 
@@ -124,15 +126,16 @@ them.
 | Code | Meaning |
 | --- | --- |
 | 0 | Done |
-| 1 | A checker rejected a claim (`export lean --check` found a false example or law) |
+| 1 | A test or checker rejected a claim (`emath test` had a failing example, `export lean --check` found a false example or law) |
 | 2 | The file does not pass `emath check` (syntax, type, or input error) |
-| 3 | Partial: something was refused, not translated, not proven, or a tool is missing |
-| 4 | A fault while running, or a file could not be written |
+| 3 | Partial: out of work (`budget_exhausted`), suspended, not translated, not proven, or a tool is missing |
+| 4 | A fault or named refusal while running, or a file could not be written |
 | 5 | An incompatible or corrupt checkpoint |
 
 ## Tips for agents
 
-- Run `emath check` after every edit. It is fast and names the line.
+- Run `emath check` after every edit. It is fast and names the
+  declaration and definition at fault.
 - Always pass `--function F` to `emath run`.
 - Give inputs with `--set name=value`. Rationals are written `1/3`,
   lists `'[1, 2, 3]'`.

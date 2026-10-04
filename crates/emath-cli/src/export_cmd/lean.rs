@@ -1132,9 +1132,25 @@ fn object(decl: &Declaration, names: &Names) -> Result<(String, Ty), String> {
     if !decl.generics.is_empty() {
         return Err("generic objects have no Lean translation yet".into());
     }
+    // emath refuses to build an object that breaks an invariant. That
+    // refusal is a fault like `constructor_refuse`: an example that hits
+    // it is not exported, and a law must hold in emath first. So Lean
+    // gets the structure without the check, as with a refusal.
+    let mut invariants = Vec::new();
     for section in decl.sections() {
-        if section.name != "representation" {
-            return Err(format!("section `{}:` has no Lean translation", section.name));
+        match section.name.as_str() {
+            "representation" => {}
+            "invariants" => {
+                for stmt in &section.suite.statements {
+                    match &stmt.kind {
+                        StmtKind::Assign { target, .. } if target.segments.len() == 1 => {
+                            invariants.push(target.segments[0].clone());
+                        }
+                        _ => return Err("an invariant that is not `name = predicate` has no Lean translation".into()),
+                    }
+                }
+            }
+            other => return Err(format!("section `{other}:` has no Lean translation")),
         }
     }
     let mut fields = Vec::new();
@@ -1144,7 +1160,15 @@ fn object(decl: &Declaration, names: &Names) -> Result<(String, Ty), String> {
     if fields.is_empty() {
         return Err("an object without fields has no Lean translation".into());
     }
-    let text = structure_text(&ident(&decl.name), &fields);
+    let mut text = String::new();
+    if !invariants.is_empty() {
+        text.push_str(&format!(
+            "-- emath checks the invariant {} when it builds a `{}`; Lean does not.\n",
+            invariants.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", "),
+            decl.name
+        ));
+    }
+    text.push_str(&structure_text(&ident(&decl.name), &fields));
     Ok((text, Ty::Record(format!("{}.{}", names.namespace, ident(&decl.name)), fields)))
 }
 

@@ -63,17 +63,10 @@ pub fn capabilities_json() -> String {
     }
     root.objects("commands", &command_objects);
 
-    let exit_codes: &[(&str, &str)] = &[
-        ("0", "ok - command completed its declared operation"),
-        ("2", "admission - syntax, type, or input admission failure"),
-        ("3", "partial - unmet, partial, or suspended requested answer"),
-        ("4", "fault - execution or backend fault"),
-        ("5", "checkpoint - incompatible or corrupt checkpoint"),
-    ];
     let mut exit_code_objects = Vec::new();
-    for (code, meaning) in exit_codes {
+    for (exit, meaning) in crate::EXIT_MEANINGS {
         let mut obj = JsonWriter::object();
-        obj.string("code", code);
+        obj.string("code", &(exit as u8).to_string());
         obj.string("meaning", meaning);
         exit_code_objects.push(obj.finish());
     }

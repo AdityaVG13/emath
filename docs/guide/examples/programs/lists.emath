@@ -1,0 +1,62 @@
+# Lists (`sequence(T)`): literals, indexing, building, and the
+# fold.reduce tools. Another file in this folder is imported by name.
+use fold.reduce
+use basics.{gcd}
+
+exports: squares, running_total, gcd_all, prepend
+
+emath function squares:
+    # range(start, count) is start, start + 1, ..., start + count - 1.
+    inputs:
+        n: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = map(function k in Int: k * k, range(1, n))
+    tests:
+        example <four>:
+            given n = 4
+            expect result == [1, 4, 9, 16]
+            expect length(result) == 4
+            expect result[3] == 16
+
+emath function running_total:
+    # fold carries a value through the list. Here it is a list itself.
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        step = function acc in sequence(Int): function x in Int: concat(acc, [x + (if length(acc) == 0: 0 else: acc[length(acc) - 1])])
+        result = fold(step, [], xs)
+    tests:
+        example <ones>:
+            given xs = [1, 1, 1, 1]
+            expect result == [1, 2, 3, 4]
+
+emath function gcd_all:
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function g in Int: function x in Int: gcd(g, x), 0, xs)
+    tests:
+        example <three>:
+            given xs = [12, 18, 30]
+            expect result == 6
+
+emath function prepend:
+    # `[x, ..xs]` puts x in front of xs.
+    inputs:
+        x: Int
+        xs: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = [x, ..xs]
+    tests:
+        example <zero>:
+            given x = 0
+            given xs = [1, 2]
+            expect result == [0, 1, 2]

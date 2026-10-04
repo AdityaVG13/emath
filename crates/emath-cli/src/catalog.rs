@@ -611,9 +611,11 @@ pub fn command_help_text(command: &str) -> Option<String> {
         out.push('\n');
     }
 
-    out.push_str(
-        "Exit Codes:\n  0    Ok (operation succeeded)\n  1    Refused (mathematical / admission error)\n  2    Usage (syntax or argument error)\n  3    Toolchain (missing rustc/cargo/tools)\n  4    Io (file not found / read/write error)\n  5    Safety (overwrite guard refusal)\n\n",
-    );
+    out.push_str("Exit Codes:\n");
+    for (exit, meaning) in crate::EXIT_MEANINGS {
+        out.push_str(&format!("  {}    {meaning}\n", exit as u8));
+    }
+    out.push('\n');
     out.push_str(
         "Environment Conventions:\n  NO_COLOR=1          Suppress ANSI colors and formatting (https://no-color.org)\n  TERM=dumb           Suppress terminal styling and interactive codes\n  CI=1                Force non-interactive batch mode\n\n",
     );
@@ -665,12 +667,9 @@ pub fn command_help_json(command: &str) -> Option<String> {
     obj.strings("examples", &ex_strings);
 
     let mut exits = emath_core::JsonWriter::object();
-    exits.string("0", "Ok (operation succeeded)");
-    exits.string("1", "Refused (mathematical / admission error)");
-    exits.string("2", "Usage (syntax or argument error)");
-    exits.string("3", "Toolchain (missing rustc/cargo/tools)");
-    exits.string("4", "Io (file not found / read/write error)");
-    exits.string("5", "Safety (overwrite guard refusal)");
+    for (exit, meaning) in crate::EXIT_MEANINGS {
+        exits.string(&(exit as u8).to_string(), meaning);
+    }
     let exits_body = exits.finish();
     obj.object_field("exit_codes", exits_body.trim());
 
@@ -736,14 +735,8 @@ Aliases (single-letter & shorthand)
   caps -> capabilities  guide -> robot-docs   tr -> triage
   n -> next
 
-Exit codes (constructor layer)
-  0  completed constructor value or successful inspect/help
-  1  a checker rejected a claim (export lean --check)
-  2  admission (syntax, type, input, or extracted-token refusal)
-  3  unmet, partial, or suspended requested answer
-  4  execution or backend fault
-  5  incompatible or corrupt checkpoint
-
+Exit codes
+{}
 Environment conventions
   NO_COLOR=1          Suppress all ANSI colors and formatting (https://no-color.org)
   TERM=dumb           Suppress terminal styling and interactive codes
@@ -767,7 +760,8 @@ Rules
   - JSON is deterministic (in-tree writer). stdout is data; stderr is diagnostics.
   - ANSI escapes are automatically suppressed when piped, under NO_COLOR, or with TERM=dumb.
 ",
-        version_text()
+        version_text(),
+        crate::EXIT_MEANINGS.iter().map(|(exit, meaning)| format!("  {}  {meaning}\n", *exit as u8)).collect::<String>()
     )
 }
 

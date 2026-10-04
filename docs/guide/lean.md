@@ -142,7 +142,9 @@ emath runs each example before exporting it. An example that faults in
 emath (dividing by zero, reading past the end of a list) is not
 exported. Lean's arithmetic would accept it: in Lean, `x / 0 = 0` and
 `17 % 0 = 17`. Exporting it would let Lean prove something emath
-refuses.
+refuses. The same holds for `constructor_refuse` and for an object
+that breaks one of its `invariants:`. Lean gets the object as a plain
+structure, with a comment naming the invariants it does not check.
 
 **What does not translate.** Quoted code (`quote`, `Code`), floats and
 decimal literals, text, sets, records, tuples, quantities with units,

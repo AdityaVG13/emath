@@ -197,7 +197,7 @@ Setup, every flag, and every message are on the
    print small cases.
 3. **Guess.** Look for a pattern: subtract, divide, take differences.
    (To have emath search for formulas, see `search.synthesis` in
-   [Discovery](../../language/DISCOVERY.md).)
+   `language/DISCOVERY.md` in your emath install.)
 4. **Prove in emath.** State the guess with `certify_equal` (or
    `certify_all` for laws with parameters) and run it. `proven=true`
    is a proof.

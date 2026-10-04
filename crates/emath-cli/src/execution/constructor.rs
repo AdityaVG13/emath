@@ -51,20 +51,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
         match evaluated {
             Ok(report) => Some(report),
             Err(err) => {
-                return Some(diagnostic(
-                    request.json,
-                    if err.code.starts_with("E-") {
-                        EXIT_ADMISSION
-                    } else if err.code == "incompatible_checkpoint" {
-                        crate::EXIT_CHECKPOINT
-                    } else if err.code == "budget_exhausted" {
-                        EXIT_PARTIAL
-                    } else {
-                        EXIT_FAULT
-                    },
-                    &err.code,
-                    &err.message,
-                ));
+                return Some(diagnostic(request.json, error_exit(&err.code), &err.code, &err.message));
             }
         }
     };
@@ -89,18 +76,15 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
                     EXIT_OK,
                 ));
             }
-            // `unbound` is the unknown-entry code: fall through to the query
-            // lookup and the E-RUN-ENTRY refusal. Any other error means the
-            // entry EXISTS and its evaluation faulted; surface the fault
-            // instead of masking it as a missing entry.
-            Err(err) if err.code == "unbound" => {}
+            // Only the entry itself being unknown falls through to the query
+            // lookup and the E-RUN-ENTRY refusal. Any other error, including
+            // an `unbound` name inside the body (an input that did not parse
+            // as a value), means the entry EXISTS and its evaluation
+            // faulted; surface the fault instead of masking it as a missing
+            // entry.
+            Err(err) if err.code == "unbound" && err.message == format!("unknown function `{name}`") => {}
             Err(err) => {
-                return Some(diagnostic(
-                    request.json,
-                    EXIT_FAULT,
-                    &err.code,
-                    &err.message,
-                ));
+                return Some(diagnostic(request.json, error_exit(&err.code), &err.code, &err.message));
             }
         }
         if let Ok(receipt) = emath_exec_ir::constructor_layer::evaluate_query_at(
@@ -198,11 +182,21 @@ pub(super) fn run_constructor_budgeted(
                     EXIT_PARTIAL,
                 );
             }
-            if err.code == "incompatible_checkpoint" {
-                return diagnostic(request.json, crate::EXIT_CHECKPOINT, &err.code, &err.message);
-            }
-            diagnostic(request.json, EXIT_FAULT, &err.code, &err.message)
+            diagnostic(request.json, error_exit(&err.code), &err.code, &err.message)
         }
+    }
+}
+
+/// The exit code for an evaluation error: the same on every run lane.
+fn error_exit(code: &str) -> CliExit {
+    if code.starts_with("E-") {
+        EXIT_ADMISSION
+    } else if code == "incompatible_checkpoint" {
+        crate::EXIT_CHECKPOINT
+    } else if code == "budget_exhausted" {
+        EXIT_PARTIAL
+    } else {
+        EXIT_FAULT
     }
 }
 
@@ -318,16 +312,7 @@ pub(super) fn constructor_step(request: &RunRequest) -> Option<CliExit> {
                     EXIT_PARTIAL,
                 ));
             }
-            Some(diagnostic(
-                request.json,
-                if err.code == "incompatible_checkpoint" {
-                    crate::EXIT_CHECKPOINT
-                } else {
-                    EXIT_FAULT
-                },
-                &err.code,
-                &err.message,
-            ))
+            Some(diagnostic(request.json, error_exit(&err.code), &err.code, &err.message))
         }
     }
 }

@@ -1,0 +1,18 @@
+# A test may demand a refusal. emath checks it, but Lean has no value
+# to prove, so this file is not part of an exported project.
+
+emath function safe_mean:
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: Rat
+    definitions:
+        n = length(xs)
+        result = if n == 0: constructor_refuse(quote(empty_list)) else: int_sum(xs) / n
+    tests:
+        example <three>:
+            given xs = [1, 2, 4]
+            expect result == 7 / 3
+        example <empty>:
+            given xs = []
+            expect diagnostic.code == empty_list

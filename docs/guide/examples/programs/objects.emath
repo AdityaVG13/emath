@@ -1,0 +1,69 @@
+# Objects are records with typed fields. Build one with
+# `Name: {field: value}` and read a field with `value.field`.
+use fold.reduce
+
+exports: Point, Box, centroid, bounding_box, far_points
+
+emath object Point:
+    representation:
+        x: Rat
+        y: Rat
+
+emath object Box:
+    # Objects may hold other objects. An invariant is checked every
+    # time a Box is built; a Box that breaks it is refused.
+    representation:
+        low: Point
+        high: Point
+    invariants:
+        ordered = low.x <= high.x and low.y <= high.y
+
+emath function centroid:
+    inputs:
+        points: sequence(Point)
+    outputs:
+        result: Point
+    definitions:
+        n = length(points)
+        sx = fold(function acc in Rat: function p in Point: acc + p.x, 0, points)
+        sy = fold(function acc in Rat: function p in Point: acc + p.y, 0, points)
+        result = if n == 0: constructor_refuse(quote(no_points)) else: Point: {x: sx / n, y: sy / n}
+    tests:
+        example <triangle>:
+            given points = [Point: {x: 0, y: 0}, Point: {x: 3, y: 0}, Point: {x: 0, y: 3}]
+            expect result.x == 1
+            expect result.y == 1
+
+emath function bounding_box:
+    inputs:
+        points: sequence(Point)
+    outputs:
+        result: Box
+    definitions:
+        first = points[0]
+        grow = function b in Box: function p in Point: Box: {low: Point: {x: if p.x < b.low.x: p.x else: b.low.x, y: if p.y < b.low.y: p.y else: b.low.y}, high: Point: {x: if p.x > b.high.x: p.x else: b.high.x, y: if p.y > b.high.y: p.y else: b.high.y}}
+        result = fold(grow, Box: {low: first, high: first}, points)
+    tests:
+        example <three>:
+            given points = [Point: {x: 1, y: 5}, Point: {x: -2, y: 0}, Point: {x: 4, y: 1 / 2}]
+            expect result.low.x == -2
+            expect result.low.y == 0
+            expect result.high == Point: {x: 4, y: 5}
+
+emath function far_points:
+    # map and filter take anonymous functions. A function may use names
+    # from around it, like `r2` here.
+    inputs:
+        points: sequence(Point)
+        r: Rat
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        r2 = r * r
+        far = filter(function p in Point: p.x * p.x + p.y * p.y > r2, points)
+        result = map(function p in Point: p.x, far)
+    tests:
+        example <outside_unit>:
+            given points = [Point: {x: 1 / 2, y: 0}, Point: {x: 2, y: 1}, Point: {x: 0, y: 1}, Point: {x: -3, y: 0}]
+            given r = 1
+            expect result == [2, -3]

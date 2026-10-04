@@ -1,0 +1,120 @@
+# Functions: inputs, outputs, definitions, branches, recursion,
+# several outputs, refusals, and tests.
+exports: gcd, divide, mean, clamp, digit_sum, harmonic, sum_to
+
+emath function gcd:
+    # Euclid's algorithm. A function may call itself.
+    inputs:
+        a: Int
+        b: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if b == 0: a else: gcd(b, int_rem(a, b))
+    tests:
+        example <twelve_eighteen>:
+            given a = 12
+            given b = 18
+            expect result == 6
+
+emath function divide:
+    # Several outputs: the caller gets a record with fields q and r.
+    inputs:
+        a: Int
+        b: Int
+    outputs:
+        q: Int
+        r: Int
+    definitions:
+        q = int_quot(a, b)
+        r = a - b * q
+    tests:
+        example <seventeen_by_five>:
+            given a = 17
+            given b = 5
+            expect q == 3
+            expect r == 2
+
+emath function mean:
+    # `/` on two Int values gives an exact Rat, never a rounded number.
+    # An empty list has no mean, so the function refuses by name.
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: Rat
+    definitions:
+        n = length(xs)
+        result = if n == 0: constructor_refuse(quote(empty_list)) else: int_sum(xs) / n
+    tests:
+        example <three>:
+            given xs = [1, 2, 4]
+            expect result == 7 / 3
+            expect result.numer == 7
+            expect result.denom == 3
+
+emath function clamp:
+    # Helper names in `definitions:` are local. Define a name before
+    # the rows that use it.
+    inputs:
+        x: Rat
+        low: Rat
+        high: Rat
+    outputs:
+        result: Rat
+    definitions:
+        capped = if x > high: high else: x
+        result = if x < low: low else: capped
+    tests:
+        example <inside>:
+            given x = 1 / 2
+            given low = 0
+            given high = 1
+            expect result == 1 / 2
+        example <above>:
+            given x = 3
+            given low = 0
+            given high = 1
+            expect result == 1
+
+emath function digit_sum:
+    # Calls a function with several outputs and reads its fields.
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        d = divide(n, 10)
+        result = if n < 10: n else: d.r + digit_sum(d.q)
+    tests:
+        example <year>:
+            given n = 2025
+            expect result == 9
+
+emath function harmonic:
+    # 1 + 1/2 + ... + 1/n, exactly.
+    inputs:
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = if n <= 0: 0 else: 1 / n + harmonic(n - 1)
+    tests:
+        example <four>:
+            given n = 4
+            expect result == 25 / 12
+
+emath function sum_to:
+    # 1 + 2 + ... + n, carrying the running total in `acc`. The call is
+    # the whole result, so it may go deeper than 256 calls.
+    inputs:
+        n: Int
+        acc: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 0: acc else: sum_to(n - 1, acc + n)
+    tests:
+        example <thousand>:
+            given n = 1000
+            given acc = 0
+            expect result == 500500

@@ -3,13 +3,16 @@
 use fold.reduce
 use discrete.sieve
 
-# `from` and `until` are Lean keywords.
+# `from` and `until` are Lean keywords. emath checks the invariant;
+# the Lean structure has none.
 emath object Window:
     representation:
         found: Bool
         from: Int
         until: Int
         weight: Rat
+    invariants:
+        ordered = from <= until
 
 emath object Span:
     representation:

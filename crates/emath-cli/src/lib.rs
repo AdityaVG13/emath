@@ -62,15 +62,10 @@ use emath_provider_api::{ProviderRegistry, RegistryConfig};
 use emath_sema::CompilerSession;
 use std::path::{Path, PathBuf};
 
-/// Host process exit code mapping (the constitution):
-/// - 0: command completed its declared operation
-/// - 2: syntax/type/input admission failure
-/// - 3: executed with an unmet, partial, or suspended answer
-/// - 4: execution/backend fault
-/// - 5: incompatible or corrupt checkpoint
-///
-/// Legacy names remain so existing call sites compile. Constructor-layer
-/// commands must use the constitution numbers, not historical "refused=1".
+/// Host process exit codes; `EXIT_MEANINGS` below says what each means.
+/// The variant names are historical: use the `EXIT_*` constants, whose
+/// names carry the current meaning (`EXIT_PARTIAL` is 3, not a toolchain
+/// error).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CliExit {
@@ -92,6 +87,16 @@ pub const EXIT_ADMISSION: CliExit = CliExit::Usage;
 pub const EXIT_PARTIAL: CliExit = CliExit::Toolchain;
 pub const EXIT_FAULT: CliExit = CliExit::Io;
 pub const EXIT_CHECKPOINT: CliExit = CliExit::Safety;
+
+/// What each exit code means, for help and `capabilities --json`.
+pub const EXIT_MEANINGS: [(CliExit, &str); 6] = [
+    (EXIT_OK, "ok: the command completed"),
+    (EXIT_REFUSED, "rejected: a test or checker rejected a claim (`test`, `export lean --check`), or a command refused its input"),
+    (EXIT_ADMISSION, "admission: syntax, type, input, or usage error"),
+    (EXIT_PARTIAL, "partial: unmet, suspended, out of work, not translated, not proven, or a tool is missing"),
+    (EXIT_FAULT, "fault: execution fault or named refusal, or a file could not be read or written"),
+    (EXIT_CHECKPOINT, "checkpoint: incompatible or corrupt checkpoint"),
+];
 
 pub fn exit_from_diagnostics(has_errors: bool) -> CliExit {
     if has_errors { EXIT_ADMISSION } else { EXIT_OK }
