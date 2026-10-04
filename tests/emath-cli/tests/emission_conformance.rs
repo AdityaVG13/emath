@@ -57,6 +57,74 @@ use common::cli;
 
 mod common;
 
+const BUFFER_DRIVER: &str = r#"
+use buffer_sieve::*;
+
+fn main() {
+    let mut failures = 0;
+    macro_rules! pin {
+        ($name:literal, $call:expr, $expected:expr) => {
+            if $call != Ok($expected) {
+                println!("DIFF {}", $name);
+                failures += 1;
+            }
+        };
+    }
+    macro_rules! refuses {
+        ($name:literal, $call:expr, $code:literal) => {
+            if !$call.is_err_and(|error| error.starts_with($code)) {
+                println!("DIFF {}", $name);
+                failures += 1;
+            }
+        };
+    }
+    pin!("sieve_10", SieveSum(10), 17);
+    pin!("sieve_30", SieveSum(30), 129);
+    pin!("sieve_100", SieveSum(100), 1060);
+    pin!("aliased_write", AliasedCells(2), true);
+    refuses!("negative_size", ReadCell(-1, 0), "invalid_index");
+    refuses!("allocation_bound", ReadCell(4_000_001, 0), "overflow");
+    refuses!("empty_read", ReadCell(0, 0), "invalid_index");
+    refuses!("negative_read", ReadCell(2, -1), "invalid_index");
+    refuses!("read_past_end", ReadCell(2, 2), "invalid_index");
+    refuses!("negative_write", CheckedWrite(-1), "invalid_index");
+    refuses!("write_past_end", CheckedWrite(2), "invalid_index");
+    pin!("heterogeneous_cell", TextCell(1), String::from("changed"));
+    pin!("float_cell", FloatCell(1.25), 1.25);
+    pin!("ratio_cell", RatCell(3), (3, 1));
+    refuses!("wrong_cell_carrier", WrongCell(1), "type");
+    pin!("sequence_snapshot", SequenceCell(1), 9);
+    pin!("nested_alias", NestedCell(2), true);
+    pin!("eager_named_write", BoundWrite(1), true);
+    pin!("lazy_inline_write", LazyWrite(false), false);
+    pin!("selected_inline_write", LazyWrite(true), true);
+    let term = emath_rt::code::open_expr(
+        vec![],
+        emath_rt::code_tree::CodeTree::Literal(emath_rt::code::CodeValue::Bool(true)),
+        None,
+        Default::default(),
+    );
+    pin!("quoted_scalar_cell", QuotedCell(term), true);
+    pin!("float_cell_comparison", FloatCompare(1.25), true);
+    refuses!("wide_size_bound", WideSize(0), "overflow");
+    refuses!("wide_read_bound", WideRead(0), "invalid_index");
+    pin!("exact_integer_cell", PowerCell(3), true);
+    pin!("different_exact_integer_cell", PowerCell(4), false);
+    refuses!("dynamic_size_bound", CellSizeBound(0), "overflow");
+    refuses!("dynamic_read_bound", CellIndexBound(false), "invalid_index");
+    refuses!("dynamic_write_bound", CellIndexBound(true), "invalid_index");
+    if failures != 0 {
+        panic!("{failures} buffer rows disagree with the VM");
+    }
+}
+"#;
+
+#[test]
+fn emission_conformance_buffer() {
+    let diffs = run_lane("tests/fixtures/constructor/buffer_sieve.emath", BUFFER_DRIVER);
+    assert!(diffs.is_empty(), "native buffer rows disagree: {diffs:?}");
+}
+
 /// Workspace root (tests/emath-cli/tests -> tests/emath-cli -> repo).
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")

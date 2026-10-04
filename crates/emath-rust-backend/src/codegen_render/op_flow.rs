@@ -349,7 +349,7 @@ pub(super) fn authored_control_expr(
             // A union-valued condition (a boolean combinator inside an
             // expression template or quoted frame) projects to bool
             // checked - the same law as the Select arm.
-            let condition = if matches!(kind_at(kinds, *condition), ValueKind::CodeValue | ValueKind::Node) {
+            let condition = if matches!(kind_at(kinds, *condition), ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell) {
                 format!(
                     "emath_rt::code::code_as_bool(&{})?",
                     render_expr(&super::to_code_value(operand(program, *condition), &kind_at(kinds, *condition))?)

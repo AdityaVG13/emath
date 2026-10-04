@@ -69,6 +69,7 @@ pub(crate) fn replace_ident_prefix(
 pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError> {
     Ok(match kind {
         ValueKind::CodeValue => expr,
+        ValueKind::Cell => Expr::Raw(format!("({}).scalar()?", render_expr(&expr))),
         ValueKind::Node => Expr::Raw(format!("({}).to_scalar()?", render_expr(&expr))),
         ValueKind::I64 => Expr::Raw(format!(
             "emath_rt::code::CodeValue::Int({})",
@@ -336,6 +337,49 @@ pub(crate) fn op_expr(
     kinds: &[ValueKind],
 ) -> Result<Expr, BackendError> {
     match op {
+        EmirOp::BufferCreate { size, fill } => Ok(Expr::Raw(format!(
+            "emath_rt::buffer::Buffer::new({}, {})?",
+            render_expr(&typed_operand(program, *size, ValueKind::ExactInt, kinds)),
+            cell_value(operand(program, *fill), &kind_at(kinds, *fill))?,
+        ))),
+        EmirOp::BufferWrite { buffer, index, value } => {
+            let source = operand(program, *buffer);
+            let source_kind = kind_at(kinds, *buffer);
+            let source = if source_kind == ValueKind::Cell {
+                cell_into(&render_expr(&source), &ValueKind::Buffer)
+                    .ok_or_else(|| BackendError::UnsupportedType("buffer write carrier".into()))?
+            } else if source_kind == ValueKind::Buffer {
+                render_expr(&source)
+            } else {
+                return Err(BackendError::UnsupportedType("buffer_set expects a buffer".into()));
+            };
+            Ok(Expr::Raw(format!(
+                "({source}).write({}, {})?",
+                render_expr(&typed_operand(program, *index, ValueKind::ExactInt, kinds)),
+                cell_value(operand(program, *value), &kind_at(kinds, *value))?,
+            )))
+        }
+        EmirOp::VectorIndex { vector, index }
+            if matches!(kind_at(kinds, *vector), ValueKind::Buffer | ValueKind::Cell) =>
+        {
+            let method = if kind_at(kinds, *vector) == ValueKind::Buffer { "read" } else { "index" };
+            Ok(Expr::Raw(format!(
+                "({}).{method}({})?",
+                render_expr(&operand(program, *vector)),
+                render_expr(&typed_operand(program, *index, ValueKind::ExactInt, kinds)),
+            )))
+        }
+        EmirOp::VectorLength(value)
+            if matches!(kind_at(kinds, *value), ValueKind::Buffer | ValueKind::Cell) =>
+        {
+            let is_buffer = kind_at(kinds, *value) == ValueKind::Buffer;
+            let source = render_expr(&operand(program, *value));
+            Ok(Expr::Raw(if is_buffer {
+                format!("({source}).len()?")
+            } else {
+                format!("({source}).field(\"length\")?.get::<i64>()?")
+            }))
+        }
         EmirOp::CallFrame {
             body,
             inputs,
@@ -568,6 +612,12 @@ pub(crate) fn op_expr(
             }
         }
         EmirOp::RecordField { record, field } => {
+            if kind_at(kinds, *record) == ValueKind::Buffer && field == "length" {
+                return Ok(Expr::Raw(format!("({}).len()?", render_expr(&operand(program, *record)))));
+            }
+            if kind_at(kinds, *record) == ValueKind::Cell {
+                return Ok(Expr::Raw(format!("({}).field({field:?})?", render_expr(&operand(program, *record)))));
+            }
             // A field off a node value is the family's dynamic
             // projection - a typed refusal on a missing field, never
             // a silent default (the VM's `project_field` law).
@@ -2158,6 +2208,52 @@ pub(crate) fn node_into(expression: &str, target: &ValueKind) -> Option<String> 
         }
         _ => None,
     }
+}
+
+/// Preserve a native value's concrete carrier while exposing immutable
+/// structural projections. Nested buffer handles clone their identity.
+fn cell_value(expression: Expr, kind: &ValueKind) -> Result<String, BackendError> {
+    let source = render_expr(&expression);
+    if *kind == ValueKind::Cell {
+        return Ok(format!("({source}).clone()"));
+    }
+    let ty = crate::rust_ir::render::render_ty(&kind.rust_ty()?);
+    let owned = if *kind == ValueKind::Text {
+        format!("({source}).to_string()")
+    } else {
+        format!("<{ty} as Clone>::clone(&({source}))")
+    };
+    let metadata = match kind {
+        ValueKind::Vector(element) => {
+            let item = cell_value(Expr::Raw("__buffer_item".into()), element)?;
+            format!(".with_items(__buffer_value.iter().map(|__buffer_item| {item}).collect())")
+        }
+        ValueKind::Record(name) => {
+            let layout = record_layout(name)
+                .ok_or_else(|| BackendError::UnsupportedType(format!("buffer record `{name}` has no layout")))?;
+            let mut fields = Vec::new();
+            for (name, signature) in layout {
+                let field = Expr::Raw(format!("__buffer_value.{}", escape_ident(&name)));
+                let value = cell_value(field, &ValueKind::from_signature(&signature))?;
+                fields.push(format!("(String::from({name:?}), {value})"));
+            }
+            format!(".with_fields(vec![{}].into_iter().collect())", fields.join(", "))
+        }
+        _ => String::new(),
+    };
+    Ok(format!("{{ let __buffer_value: {ty} = {owned}; emath_rt::buffer::CellValue::new(__buffer_value.clone()){metadata} }}"))
+}
+
+pub(crate) fn cell_into(expression: &str, target: &ValueKind) -> Option<String> {
+    if *target == ValueKind::Cell {
+        return Some(format!("({expression}).clone()"));
+    }
+    if let ValueKind::Vector(element) = target {
+        let item = cell_into("__buffer_item", element)?;
+        return Some(format!("({expression}).sequence()?.into_iter().map(|__buffer_item| -> Result<_, String> {{ Ok({item}) }}).collect::<Result<Vec<_>, String>>()?"));
+    }
+    let ty = crate::rust_ir::render::render_ty(&target.rust_ty().ok()?);
+    Some(format!("({expression}).get::<{ty}>()?"))
 }
 
 fn literal_frame_expr(

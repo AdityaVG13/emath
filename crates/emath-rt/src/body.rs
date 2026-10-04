@@ -12,6 +12,9 @@ include!("body/bigmod.rs");
 include!("body/numeric.rs");
 include!("body/unit_interval.rs");
 include!("body/exact.rs");
+pub mod buffer {
+    include!("body/buffer.rs");
+}
 pub mod exact_int {
     include!("body/exact_int.rs");
 }

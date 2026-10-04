@@ -48,6 +48,8 @@ impl EmirOp {
             Self::SetContains { .. } => "set-contains",
             Self::RecordCreate { .. } => "record-create",
             Self::ListCreate(_) => "list-create",
+            Self::BufferCreate { .. } => "buffer-create",
+            Self::BufferWrite { .. } => "buffer-write",
             Self::RecordField { .. } => "record-field",
             Self::Branch { .. } => "branch",
             Self::Iterate { .. } => "iterate",

@@ -60,10 +60,10 @@ pub(super) fn eval_op(
         }
         // The engine call names a module function; the constructor VM
         // runs those directly, so this interpreter never needs one.
-        EmirOp::EngineCall { .. } => Err(EvalFault::CarrierRefused {
+        EmirOp::BufferCreate { .. } | EmirOp::BufferWrite { .. } | EmirOp::EngineCall { .. } => Err(EvalFault::CarrierRefused {
             op: op.name(),
             detail: String::from(
-                "engine call; constructor-lowered programs run in the constructor VM",
+                "constructor-carried operation; constructor-lowered programs run in the constructor VM",
             ),
         }),
         // A sibling entry call is emission-lane: the interpreter has

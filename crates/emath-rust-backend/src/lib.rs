@@ -342,7 +342,17 @@ pub(crate) fn emit_constructor_entry_abi(
     // The expression-template boundary: the union collapses onto the
     // declared carrier through the checked projection; without a
     // declared scalar output there is no carrier to collapse onto.
-    let (result_ty, body, result_carrier) = if result_kind == ValueKind::CodeValue {
+    let (result_ty, body, result_carrier) = if result_kind == ValueKind::Cell {
+        let Some((_, signature)) = output else {
+            return Err(BackendError::UnsupportedType("a buffer cell result requires a declared output carrier".into()));
+        };
+        let declared = ValueKind::from_signature(signature);
+        let _wrapper = SelfWrapperScope::enter(declared.clone(), wrapper_carriers.clone());
+        let rendered = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
+        let projected = crate::codegen_render::cell_into(&rendered, &declared)
+            .ok_or_else(|| BackendError::UnsupportedType(format!("buffer output carrier `{signature}` is not emitted")))?;
+        (render_ty(&declared.rust_ty()?), projected, declared)
+    } else if result_kind == ValueKind::CodeValue {
         let Some((output_name, signature)) = output else {
             return Err(BackendError::UnsupportedType(
                 "an expression-template result needs a declared Int/Rat/Bool output to project its carrier".into(),

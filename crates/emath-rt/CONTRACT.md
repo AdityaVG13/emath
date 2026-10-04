@@ -16,6 +16,27 @@ the generated language image. The implementation is shared two ways:
 
 Layer: foundation (std-only, no other emath crates).
 
+## Mutable buffer carrier
+
+`body/buffer.rs` supplies `Buffer` and `CellValue`, embedded in generated
+artifacts. A cloned buffer handle shares its mutable storage. A read snapshots
+the cell value; a nested buffer handle retains its shared identity. Cells hold
+heterogeneous cloneable native values, with immutable sequence/record metadata
+for checked projections. Typed use checks the actual carrier, including
+Int/Rat/Bool projections from quoted scalar values. Float and Text retain their
+native carriers rather than entering the quoted scalar union.
+
+Creation accepts nonnegative exact machine indices and caps storage at
+4,000,000 cells. Invalid sizes and indices refuse `invalid_index`; a size
+above the cell bound refuses `overflow`. Reads and writes check bounds.
+Typed carrier mismatches refuse `type`, and narrowing an integer to i64
+remains checked. Operations are synchronous and single-threaded; this is
+mutable storage, not a mathematical algorithm or a persistence format.
+Buffer equality has no value semantics and is refused by the backend.
+Conformance: `emission_conformance_buffer` runs authored sieve, aliasing,
+heterogeneous cells, snapshots, eager/lazy writes, and named bound refusals
+against the constructor VM.
+
 ## Exact integer comparison
 
 Ordering compares Small/Small directly as i128. Wide magnitudes are borrowed;
@@ -132,7 +153,7 @@ fixed order).
 
 ## Cancellation behavior
 
-None: all kernels are synchronous pure functions. Higher-order drivers run
+None: kernels and storage operations are synchronous. Higher-order drivers run
 to completion; budgets are enforced by callers.
 
 ## Unsafe boundary

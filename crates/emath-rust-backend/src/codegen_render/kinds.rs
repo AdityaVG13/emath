@@ -306,11 +306,14 @@ pub(crate) enum ValueKind {
     F64,
     Rational,
     Bool,
-    /// Stage-2 (emath-t63iz): exact big field element (`emath_rt::UBig`).
+    Unit,
+    Buffer,
+    Cell,
+    /// Exact big field element (`emath_rt::UBig`).
     BigInt,
     Text,
     Program,
-    /// The artifact Code carrier (emath-npky7): a quoted unary
+    /// The artifact Code carrier: a quoted unary
     /// program compiled once into a closure factory
     /// (`emath_rt::code::Code<V>`), instantiated over the template's
     /// declared scalar carrier (the boxed kind). Open until
@@ -369,6 +372,8 @@ impl ValueKind {
                 "Float64" => ValueKind::F64,
                 "Rat" => ValueKind::Rational,
                 "Bool" => ValueKind::Bool,
+                "Unit" => ValueKind::Unit,
+                "Buffer" => ValueKind::Buffer,
                 "Text" => ValueKind::Text,
                 "Program" => ValueKind::Program,
                 "BigInt" => ValueKind::BigInt,
@@ -457,6 +462,9 @@ impl ValueKind {
             Self::Complex => Ty::Named("(f64, f64)".into()),
             Self::Rational => Ty::Named("emath_rt::ExactRatio".into()),
             Self::Bool => Ty::Bool,
+            Self::Unit => Ty::Unit,
+            Self::Buffer => Ty::Named("emath_rt::buffer::Buffer".into()),
+            Self::Cell => Ty::Named("emath_rt::buffer::CellValue".into()),
             Self::Text => Ty::Named("String".into()),
             Self::Code(carrier) => Ty::Named(format!(
                 "emath_rt::code::Code<{}>",
@@ -511,7 +519,7 @@ impl ValueKind {
     pub(crate) fn is_copy(&self) -> bool {
         matches!(
             self,
-            Self::I64 | Self::F64 | Self::Rational | Self::Bool | Self::Complex | Self::CodeValue
+            Self::I64 | Self::F64 | Self::Rational | Self::Bool | Self::Unit | Self::Complex | Self::CodeValue
         )
     }
 }
@@ -523,7 +531,7 @@ impl ValueKind {
 pub(super) fn union_promotable(kind: &ValueKind) -> bool {
     matches!(
         kind,
-        ValueKind::CodeValue | ValueKind::Node | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
+        ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
     )
 }
 
@@ -531,8 +539,8 @@ pub(super) fn union_promotable(kind: &ValueKind) -> bool {
 pub(super) fn union_pair(kinds: &[ValueKind], left: EmirValue, right: EmirValue) -> bool {
     let left_kind = kind_at(kinds, left);
     let right_kind = kind_at(kinds, right);
-    (matches!(left_kind, ValueKind::CodeValue | ValueKind::Node) && union_promotable(&right_kind))
-        || (matches!(right_kind, ValueKind::CodeValue | ValueKind::Node)
+    (matches!(left_kind, ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell) && union_promotable(&right_kind))
+        || (matches!(right_kind, ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell)
             && union_promotable(&left_kind))
 }
 
@@ -626,6 +634,12 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
     let Some(signature) = declared else {
         return kind;
     };
+    if kind == ValueKind::Cell {
+        let target = ValueKind::from_signature(signature);
+        if !matches!(target, ValueKind::Other) {
+            return target;
+        }
+    }
     if kind_is_degenerate(&kind) {
         let declared_kind = ValueKind::from_signature(signature);
         if !matches!(declared_kind, ValueKind::Other) {
@@ -800,6 +814,8 @@ fn kind_signature(kind: &ValueKind) -> Option<String> {
         ValueKind::Text => "Text".into(),
         ValueKind::ExprCode => "Code".into(),
         ValueKind::CodeValue => "CodeValue".into(),
+        ValueKind::Buffer => "Buffer".into(),
+        ValueKind::Unit => "Unit".into(),
         ValueKind::Code(carrier) => format!("Code<{}>", kind_signature(carrier)?),
         ValueKind::BigInt => "BigInt".into(),
         ValueKind::Complex => "Complex".into(),
@@ -1364,6 +1380,7 @@ fn register_is_call_self(program: &EmirProgram, value: EmirValue) -> bool {
 /// same join. Every pair the law cannot fold is unrepresentable.
 pub(super) fn join_arm_kinds(left: ValueKind, right: ValueKind) -> ValueKind {
     match (left, right) {
+        (ValueKind::Cell, typed) | (typed, ValueKind::Cell) if typed != ValueKind::Other => typed,
         (ValueKind::CodeValue | ValueKind::Node, typed)
         | (typed, ValueKind::CodeValue | ValueKind::Node)
             if matches!(typed, ValueKind::I64 | ValueKind::Rational | ValueKind::ExactInt | ValueKind::Bool) =>
@@ -1461,6 +1478,8 @@ pub(super) fn kind_of_op(
         | EmirOp::MatrixRows(_)
         | EmirOp::MatrixCols(_) => ValueKind::I64,
         EmirOp::ConstExactInt(_) => ValueKind::ExactInt,
+        EmirOp::BufferCreate { .. } => ValueKind::Buffer,
+        EmirOp::BufferWrite { .. } => ValueKind::Unit,
         EmirOp::ExactIntCall { .. } => ValueKind::ExactInt,
         EmirOp::IntegerQuotient(left, right) => {
             if kind_at(kinds, *left) == ValueKind::ExactInt
@@ -1508,6 +1527,11 @@ pub(super) fn kind_of_op(
             }
         }
         EmirOp::RecordField { record, field } => {
+            match kind_at(kinds, *record) {
+                ValueKind::Buffer if field == "length" => return ValueKind::I64,
+                ValueKind::Cell => return ValueKind::Cell,
+                _ => {}
+            }
             // A field off a node value stays in the node family
             // (dynamic records: the field's own kind is a runtime
             // fact); a field off a typed record keeps the declared
@@ -1899,6 +1923,7 @@ pub(super) fn kind_of_op(
             },
         )),
         EmirOp::VectorIndex { vector, .. } => match kind_at(kinds, *vector) {
+            ValueKind::Buffer | ValueKind::Cell => ValueKind::Cell,
             ValueKind::Vector(element) => *element,
             ValueKind::Matrix(element) => ValueKind::Vector(element),
             // Indexing a node sequence (the walk's `node.args[0]`)
@@ -2037,7 +2062,7 @@ pub(super) fn kind_of_op(
                 ValueKind::F64
             }
         }
-        EmirOp::Neg(value) if kind_at(kinds, *value) == ValueKind::Node => ValueKind::CodeValue,
+        EmirOp::Neg(value) if matches!(kind_at(kinds, *value), ValueKind::Node | ValueKind::Cell) => ValueKind::CodeValue,
         EmirOp::Neg(value) => kind_at(kinds, *value),
         // The union lane: comparisons and boolean combinators over a
         // joinable union pair compute the union (a Bool-valued
@@ -2062,7 +2087,7 @@ pub(super) fn kind_of_op(
             }
         }
         EmirOp::Not(value) => {
-            if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node) {
+            if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell) {
                 ValueKind::CodeValue
             } else {
                 ValueKind::Bool
@@ -2176,6 +2201,8 @@ pub(super) fn typed_operand(
 ) -> Expr {
     let expr = operand(program, value);
     match (operand_kind(kinds, value), want) {
+        (ValueKind::Cell, target) => super::cell_into(&render_expr(&expr), &target)
+            .map(Expr::Raw).unwrap_or(expr),
         (ValueKind::I64, ValueKind::F64) => as_f64(expr),
         (ValueKind::F64, ValueKind::I64) => as_i64(expr),
         // The VM's mixed Int/Float64 widening (`CValue::Int::to_f64`).
@@ -2224,6 +2251,33 @@ pub(super) fn cmp_expr(
 ) -> Result<Expr, BackendError> {
     let lk = operand_kind(kinds, left);
     let rk = operand_kind(kinds, right);
+    if lk == ValueKind::Buffer || rk == ValueKind::Buffer {
+        return Err(BackendError::UnsupportedType("buffer_equality_refused".into()));
+    }
+    if (lk == ValueKind::Cell && !union_promotable(&rk) && rk != ValueKind::Node)
+        || (rk == ValueKind::Cell && !union_promotable(&lk) && lk != ValueKind::Node)
+    {
+        let target = if lk == ValueKind::Cell { &rk } else { &lk };
+        if !matches!(target, ValueKind::F64 | ValueKind::Text) {
+            return Err(BackendError::UnsupportedType(format!(
+                "buffer comparison cannot represent {target:?}"
+            )));
+        }
+        let project = |value, kind: &ValueKind| -> Result<Expr, BackendError> {
+            let expression = operand(program, value);
+            if *kind == ValueKind::Cell {
+                super::cell_into(&render_expr(&expression), target).map(Expr::Raw)
+                    .ok_or_else(|| BackendError::UnsupportedType("buffer comparison carrier".into()))
+            } else {
+                Ok(expression)
+            }
+        };
+        return Ok(Expr::Bin {
+            op,
+            left: Box::new(project(left, &lk)?),
+            right: Box::new(project(right, &rk)?),
+        });
+    }
     Ok(match (&lk, &rk) {
         // The node family:
         // structural comparison over the dynamic records - tags by
@@ -2266,7 +2320,7 @@ pub(super) fn cmp_expr(
         // equality (`2 == 2/1` is true), mixed kinds never equal.
         // The other side is Int/Rat/Bool/union, or an exact Int that
         // narrows checked onto the union's i64 (`to_code_value`).
-        (ValueKind::CodeValue, _) | (_, ValueKind::CodeValue) => {
+        (ValueKind::CodeValue | ValueKind::Cell, _) | (_, ValueKind::CodeValue | ValueKind::Cell) => {
             let lift = |value, kind| {
                 to_code_value(operand(program, value), kind)
                     .map_err(|error| BackendError::UnsupportedType(format!("union comparison: {error}")))
@@ -2531,6 +2585,7 @@ pub(super) fn numeric_boundary_value(
     slot: &str,
 ) -> Option<Expr> {
     match (from, to) {
+        (ValueKind::Cell, target) => super::cell_into(&render_expr(expression), target).map(Expr::Raw),
         (ValueKind::ExactInt, ValueKind::I64) => Some(coerce_to_ty(
             expression.clone(),
             ValueKind::ExactInt,

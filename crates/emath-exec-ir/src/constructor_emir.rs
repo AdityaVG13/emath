@@ -1234,15 +1234,21 @@ impl Lowerer {
             let value = self.expr(&args[0])?;
             return Ok(self.push(EmirOp::VectorLength(value)));
         }
-        // Fence: buffer-carrier
-        // ops are constructor-VM machine seams, not emitted math. The
-        // named refusal keeps emission honest instead of emitting a
-        // call the artifact cannot honor.
-        if machine_buffer_basename(&called).is_some() {
-            return Err(
-                "buffer carrier ops run in the constructor VM; they are not emitted in this cut"
-                    .into(),
-            );
+        if let Some(op) = machine_buffer_basename(&called) {
+            return match (op, args.len()) {
+                ("buffer", 2) => {
+                    let size = self.expr(&args[0])?;
+                    let fill = self.expr(&args[1])?;
+                    Ok(self.push(EmirOp::BufferCreate { size, fill }))
+                }
+                ("buffer_set", 3) => {
+                    let buffer = self.expr(&args[0])?;
+                    let index = self.expr(&args[1])?;
+                    let value = self.expr(&args[2])?;
+                    Ok(self.push(EmirOp::BufferWrite { buffer, index, value }))
+                }
+                _ => Err(format!("invalid arity for buffer operation `{op}`")),
+            };
         }
         if let Some(op) = machine_int_basename(&called) {
             let mut inputs = Vec::new();
@@ -1561,7 +1567,7 @@ impl Lowerer {
                     .map_err(|_| format!("float literal is not Float64: {text}"))?;
                 Ok(self.push(EmirOp::ConstF64(value.to_bits())))
             }
-            // A Str literal lowers to the text constant op (e6gvs): the
+            // A Str literal lowers to the text constant op: the
             // carrier evaluates in the emitted program exactly as it
             // does in the constructor VM; dropping the arm demoted
             // every Str-bearing module to symbolic (not-runnable).
@@ -1580,6 +1586,35 @@ impl Lowerer {
                     UnaryOp::Not => Ok(self.push(EmirOp::Not(value))),
                     UnaryOp::Pos => Ok(value),
                 }
+            }
+            ExprKind::Binary { op: op @ (BinaryOp::And | BinaryOp::Or), left, right } => {
+                // The source, not SSA use counts, determines laziness.
+                // Named definitions are already bound in this frame;
+                // only the right inline expression enters a lazy arm.
+                let condition = self.expr(left)?;
+                let checked = Expr {
+                    kind: ExprKind::Unary {
+                        op: UnaryOp::Not,
+                        value: Box::new(Expr {
+                            kind: ExprKind::Unary { op: UnaryOp::Not, value: right.clone() },
+                            source: right.source,
+                        }),
+                    },
+                    source: right.source,
+                };
+                let right_body = self.nested(&checked)?;
+                let constant = Expr {
+                    kind: ExprKind::Bool(*op == BinaryOp::Or),
+                    source: expr.source,
+                };
+                let constant_body = self.nested(&constant)?;
+                let (then_body, else_body) = if *op == BinaryOp::And {
+                    (right_body, constant_body)
+                } else {
+                    (constant_body, right_body)
+                };
+                let args = self.captured_args();
+                Ok(self.push(EmirOp::Branch { condition, args, then_body, else_body }))
             }
             ExprKind::Binary { op, left, right } => {
                 let left = self.expr(left)?;
@@ -2663,8 +2698,9 @@ fn type_signature(ty: &TypeExpr, objects: &BTreeSet<String>, vars: &[String]) ->
                 "Bool" => Some("Bool".into()),
                 "Float64" => Some("Float64".into()),
                 "Text" => Some("Text".into()),
+                "buffer" => Some("Buffer".into()),
                 // `Str` is the authored spelling of the text carrier
-                // (e6gvs): the interchange signature stays `Text`, the
+                // interchange signature stays `Text`, the
                 // form the backend's kind parser already carries.
                 "Str" => Some("Text".into()),
                 // Bare `Code` is the expression template (open

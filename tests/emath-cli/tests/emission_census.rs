@@ -6,9 +6,8 @@
 //! `emath build --json` each one, and offline-compile every crate that
 //! reports `runnable: true`. The gate law is `runnable implies compiles`
 //! - a module the emitter claims must actually build with no network and
-//! no dependencies. Not-runnable modules are the named refusal lanes
-//! (unknown-value carriers, quote.view, non-authored records); their
-//! COUNT is pinned so a module silently losing runnable status fails the
+//! no dependencies. Not-runnable modules must report named refusals; their
+//! count is pinned so a module silently losing runnable status fails the
 //! gate and forces a conscious update, with the drift named.
 //!
 //! Determinism: modules walk in sorted order and report sorted; the
@@ -29,7 +28,7 @@ use std::sync::mpsc;
 
 mod common;
 
-/// The pinned not-runnable census: one named refusal lane remains.
+/// The pinned not-runnable census: every module now emits runnable Rust.
 /// Update this number only when a lane's capability genuinely changes.
 /// History: 15 until
 /// the operator-tag-witness pass, which unblocked analysis/autodiff,
@@ -202,10 +201,11 @@ mod common;
 /// derivative emits and compiles offline with its 35 authored rows
 /// still green in the VM and 33 conformance rows pinning emitted == VM
 /// (two rows' givens - `xs[i]`, a nested quote - are outside the
-/// distilled tree subset and stay VM-only, labeled). Remaining 1:
-/// sieve (buffer carrier ops are VM-only in this cut - an intentional
-/// fence, `machine_buffer_basename`).
-const NOT_RUNNABLE_PINNED: usize = 1;
+/// distilled tree subset and stay VM-only, labeled). 1 -> 0 with generic
+/// native buffers: shared heterogeneous cells, checked bounds, sequenced
+/// writes, and source-correct lazy Boolean arms. Sieve emits and compiles
+/// offline; the buffer conformance lane executes its authored algorithm.
+const NOT_RUNNABLE_PINNED: usize = 0;
 
 /// Default compile-lane count (the sweep's `-P 4`); `EMATH_EMIT_LANES`
 /// overrides it.

@@ -398,7 +398,7 @@ pub fn emit_constructor_crate(
         // table carries the EMITTED entry carrier, so a caller's
         // `CallSibling` register kind must match what the emitted
         // entry actually returns.
-        let sibling_kind = if body_kind == ValueKind::CodeValue
+        let sibling_kind = if matches!(body_kind, ValueKind::CodeValue | ValueKind::Cell)
             || crate::codegen_render::kind_is_degenerate(&body_kind)
         {
             declared_output(&tree, name, &objects)

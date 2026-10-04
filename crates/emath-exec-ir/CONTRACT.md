@@ -61,6 +61,21 @@ not a concrete expectation and binds at the actual call site.
 
 ## Stable instruction boundary
 
+Constructor emission lowers `buffer(size, fill)` and
+`buffer_set(buffer, index, value)` to generic `BufferCreate` and
+`BufferWrite` operations. Operand enumeration includes all storage inputs;
+writes remain effectful even when their unit result is unused. Buffer
+indexing and length use the existing indexing and length instructions.
+These constructor-carried operations refuse in the ordinary EMIR interpreter;
+the constructor VM retains its own shared-cell implementation.
+
+Source `and`/`or` lower to lazy branch programs. Only an inline right-hand
+expression enters the selected child; already-bound named definitions remain
+eager and ordered. Both sides retain Bool admission checks. This is necessary
+for write/read order and for skipped inline writes, not a use-count heuristic.
+Conformance: `emission_conformance_buffer` compares native execution with the
+constructor VM, including named writes and inline lazy arms.
+
 `EmirOp` contains only:
 
 - literal and input/state load instructions;
@@ -377,7 +392,7 @@ runtime Refuse (the same fault the VM raises when a branch takes
 it), so authored transformation modules that name their boundary
 in unexercised else-branches still lower.
 
-Closure-valued defs (emath-49o8): `base.field` and `f(x)` parse as
+Closure-valued defs: `base.field` and `f(x)` parse as
 the same one-argument call, so a def must be KNOWN closure-valued for
 a later `f(x)` to lower as `CallValue` instead of `RecordField`.
 Besides function literals, arrow-name aliases, single-arrow-output
@@ -444,7 +459,7 @@ Retired builtin spellings refuse by name at the constructor
 admission lane (`retired_builtin` -> `E-TYPE-010`, after every
 legitimate name source so an authored object, function, or query
 with the same name still admits): `grad`'s Wengert tape was retired
-by the constitution (emath-xx0x.1) and differentiation is authored
+by the constitution and differentiation is authored
 (`analysis.autodiff` / `analysis.derivative`, the exact Rat tier).
 The mathematical kernel files stay on disk undisturbed per the
 constitution's step 7 - on disk but never dispatched; the sema
@@ -502,7 +517,7 @@ This crate does not claim that every authored capability has local reference byt
 The live interpreter is `src/interp.rs` (`mod helpers` / `mod value` only).
 The compiled optimizer is the no-rewrite `optimize.rs` plus `ops_impl.rs`
 name metadata. Undeclared leftover interpreter/optimizer files were deleted
-on 2026-09-04 with user authorization (`emath-5gz4o`).
+on 2026-09-04 with user authorization.
 
 
 ## Authored structured programs

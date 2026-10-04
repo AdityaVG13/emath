@@ -23,3 +23,291 @@ emath function SieveSum:
         example <below_hundred>:
             given limit = 100
             expect result == 1060
+
+emath function WriteCell:
+    inputs:
+        flags: buffer
+        at: Int
+    outputs:
+        result: Int
+    definitions:
+        wrote = buffer_set(flags, at, true)
+        result = 17
+
+emath function AliasedCells:
+    inputs:
+        size: Int
+    outputs:
+        result: Bool
+    definitions:
+        flags = buffer(size, false)
+        alias = flags
+        wrote = WriteCell(alias, 1)
+        result = flags[1] and flags.length == size and wrote == 17
+    tests:
+        example <writes_through_a_call_and_alias>:
+            given size = 2
+            expect result == true
+
+emath function ReadCell:
+    inputs:
+        size: Int
+        at: Int
+    outputs:
+        result: Bool
+    definitions:
+        flags = buffer(size, false)
+        result = flags[at]
+    tests:
+        example <negative_size>:
+            given size = -1
+            given at = 0
+            expect diagnostic.code == invalid_index
+        example <allocation_bound>:
+            given size = 4000001
+            given at = 0
+            expect diagnostic.code == overflow
+        example <empty_read>:
+            given size = 0
+            given at = 0
+            expect diagnostic.code == invalid_index
+        example <negative_read>:
+            given size = 2
+            given at = -1
+            expect diagnostic.code == invalid_index
+        example <read_past_end>:
+            given size = 2
+            given at = 2
+            expect diagnostic.code == invalid_index
+
+emath function CheckedWrite:
+    inputs:
+        at: Int
+    outputs:
+        result: Bool
+    definitions:
+        flags = buffer(2, false)
+        wrote = WriteCell(flags, at)
+        result = flags[0]
+    tests:
+        example <negative_write>:
+            given at = -1
+            expect diagnostic.code == invalid_index
+        example <write_past_end>:
+            given at = 2
+            expect diagnostic.code == invalid_index
+
+emath function TextCell:
+    inputs:
+        size: Int
+    outputs:
+        result: Str
+    definitions:
+        cells = buffer(size, false)
+        wrote = buffer_set(cells, 0, "changed")
+        result = cells[0]
+    tests:
+        example <cells_can_change_carrier>:
+            given size = 1
+            expect result == "changed"
+
+emath function FloatCell:
+    inputs:
+        value: Float64
+    outputs:
+        result: Float64
+    definitions:
+        cells = buffer(1, value)
+        result = cells[0]
+    tests:
+        example <binary64_roundtrip>:
+            given value = 1.25
+            expect result == 1.25
+
+emath function RatCell:
+    inputs:
+        value: Int
+    outputs:
+        result: Rat
+    definitions:
+        cells = buffer(1, value)
+        result = cells[0]
+    tests:
+        example <integer_cell_widens_exactly>:
+            given value = 3
+            expect result == 3 / 1
+
+emath function WrongCell:
+    inputs:
+        size: Int
+    outputs:
+        result: Bool
+    definitions:
+        cells = buffer(size, 7)
+        result = cells[0]
+    tests:
+        example <wrong_scalar_carrier_refuses>:
+            given size = 1
+            expect diagnostic.code == type
+
+emath function SequenceCell:
+    inputs:
+        size: Int
+    outputs:
+        result: Int
+    definitions:
+        cells = buffer(size, [2, 3])
+        before = cells[0]
+        wrote = buffer_set(cells, 0, [5, 7])
+        result = before[0] + cells[0][1]
+    tests:
+        example <reads_are_value_snapshots>:
+            given size = 1
+            expect result == 9
+
+emath function NestedCell:
+    inputs:
+        size: Int
+    outputs:
+        result: Bool
+    definitions:
+        inner = buffer(1, false)
+        outer = buffer(size, inner)
+        alias = outer[0]
+        wrote = WriteCell(alias, 0)
+        result = inner[0]
+    tests:
+        example <nested_buffer_alias_is_shared>:
+            given size = 2
+            expect result == true
+
+emath function BoundWrite:
+    inputs:
+        size: Int
+    outputs:
+        result: Bool
+    definitions:
+        flags = buffer(size, false)
+        wrote = WriteCell(flags, 0)
+        ignored = false and wrote == 17
+        result = flags[0]
+    tests:
+        example <named_definition_stays_eager>:
+            given size = 1
+            expect result == true
+
+emath function LazyWrite:
+    inputs:
+        enabled: Bool
+    outputs:
+        result: Bool
+    definitions:
+        flags = buffer(1, false)
+        ignored = enabled and WriteCell(flags, 0) == 17
+        result = flags[0]
+    tests:
+        example <inline_right_arm_stays_lazy>:
+            given enabled = false
+            expect result == false
+        example <inline_right_arm_runs_when_selected>:
+            given enabled = true
+            expect result == true
+
+emath function QuotedCell:
+    inputs:
+        term: Code
+    outputs:
+        result: Bool
+    definitions:
+        cells = buffer(1, quote.evaluate(term))
+        result = cells[0]
+    tests:
+        example <quoted_scalar_keeps_its_carrier>:
+            given term = quote(true)
+            expect result == true
+
+emath function FloatCompare:
+    inputs:
+        value: Float64
+    outputs:
+        result: Bool
+    definitions:
+        cells = buffer(1, value)
+        result = cells[0] == value
+    tests:
+        example <float_cells_compare_as_floats>:
+            given value = 1.25
+            expect result == true
+
+emath function WideSize:
+    inputs:
+        unit: Int
+    outputs:
+        result: Int
+    definitions:
+        cells = buffer(int_pow(2, 63), false)
+        result = cells.length
+    tests:
+        example <wide_positive_size_hits_the_allocation_bound>:
+            given unit = 0
+            expect diagnostic.code == overflow
+
+emath function WideRead:
+    inputs:
+        unit: Int
+    outputs:
+        result: Bool
+    definitions:
+        cells = buffer(1, false)
+        result = cells[int_pow(2, 63)]
+    tests:
+        example <wide_read_index_refuses_by_name>:
+            given unit = 0
+            expect diagnostic.code == invalid_index
+
+emath function PowerCell:
+    inputs:
+        exponent: Int
+    outputs:
+        result: Bool
+    definitions:
+        cells = buffer(1, int_pow(2, exponent))
+        result = cells[0] == 8
+    tests:
+        example <exact_integer_cells_use_numeric_value>:
+            given exponent = 3
+            expect result == true
+        example <different_exact_integer_cell>:
+            given exponent = 4
+            expect result == false
+
+emath function CellSizeBound:
+    inputs:
+        unit: Int
+    outputs:
+        result: Int
+    definitions:
+        sizes = buffer(1, int_pow(2, 63))
+        cells = buffer(sizes[0], false)
+        result = cells.length
+    tests:
+        example <dynamic_size_checks_the_allocation_bound>:
+            given unit = 0
+            expect diagnostic.code == overflow
+
+emath function CellIndexBound:
+    inputs:
+        write: Bool
+    outputs:
+        result: Bool
+    definitions:
+        indices = buffer(1, int_pow(2, 63))
+        cells = buffer(1, false)
+        result = if write: (function unused in _: cells[0])(buffer_set(cells, indices[0], true)) else: cells[indices[0]]
+    tests:
+        example <dynamic_read_index_checks_bounds>:
+            given write = false
+            expect diagnostic.code == invalid_index
+        example <dynamic_write_index_checks_bounds>:
+            given write = true
+            expect diagnostic.code == invalid_index

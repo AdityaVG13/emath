@@ -109,6 +109,9 @@ pub enum EmirOp {
     },
     /// Preserve element carriers without numeric widening.
     ListCreate(Vec<EmirValue>),
+    /// Shared heterogeneous mutable cells; allocation and writes may refuse.
+    BufferCreate { size: EmirValue, fill: EmirValue },
+    BufferWrite { buffer: EmirValue, index: EmirValue, value: EmirValue },
     RecordField { record: EmirValue, field: String },
     VectorCreate(Vec<EmirValue>),
     VectorLength(EmirValue),

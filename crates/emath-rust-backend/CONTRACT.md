@@ -15,8 +15,37 @@ Rust backend: universal EMIR and artifact contracts to deterministic Rust via th
 
 Code/node carrier support is pinned by the expanded
 `emission_conformance_engine_worlds` fixture and the complete
-`emission_census`: 141 modules, one non-runnable lane (`discrete/sieve`).
-The pin remains one, and every claimed-runnable artifact compiles offline.
+`emission_census`: 141 modules, zero non-runnable lanes.
+Every module artifact compiles offline. This is a compilation census,
+not a claim that every user workflow executes within every native carrier.
+Full workflow probes pass deterministic neural training. The curated learning
+workflow still refuses recursive quoted functions; exploration exposes a
+wide-vector closure ABI mismatch; formula search reaches the bounded rational
+carrier; conjecture retains an undeclared callable-signature refusal.
+Their authored reference-engine examples pass.
+
+## Native mutable buffers
+
+Generic buffer creation, writes, reads, and length emit shared `Buffer`
+handles and heterogeneous `CellValue` snapshots. The authored sieve is
+translated through these operations, with no sieve-specific Rust or engine
+fallback. Writes stay sequenced even when their unit result is unused.
+Typed calls, results, fields, and indices project cells checked; record/sequence
+metadata supports structural projection. Nested buffer handles remain shared.
+Exact integer sizes and indices reach the checked machine-index boundary
+without first narrowing to i64.
+
+Float/Text cells retain their ordinary native carriers. Quoted scalar cells
+project under the existing Int/Rat/Bool law; this does not add Float/Text to
+`CodeValue`. Buffer comparisons refuse `buffer_equality_refused`.
+Dynamic cell comparisons retain the existing scalar-union limits; typed
+Float/Text comparisons project checked. Other comparison carriers refuse
+during emission rather than assuming their Rust types implement value equality.
+`emission_conformance_buffer` runs the authored algorithm and carrier/bounds
+rows against the constructor VM. Native buffers do not cross the existing
+engine bridge or acquire native checkpoint serialization through this change.
+
+## Native Code and numeric carriers
 
 - Code, nested Code records/sequences, and shared arbitrary-precision integers
   cross the existing reference-engine bridge. Cost and WorldAnswer records use

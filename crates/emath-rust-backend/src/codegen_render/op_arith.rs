@@ -63,7 +63,7 @@ pub(super) fn op_arith_exprs(
         }
     }
     if let EmirOp::Neg(value) = op {
-        if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node) {
+        if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell) {
             return Ok(Expr::Raw(format!(
                 "emath_rt::code::code_neg(&{})?",
                 render_expr(&to_code_value(operand(program, *value), &kind_at(kinds, *value))?)
@@ -71,7 +71,7 @@ pub(super) fn op_arith_exprs(
         }
     }
     if let EmirOp::Not(value) = op {
-        if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node) {
+        if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node | ValueKind::Cell) {
             return Ok(Expr::Raw(format!(
                 "emath_rt::code::CodeValue::Bool(emath_rt::code::code_not(&{})?)",
                 render_expr(&to_code_value(operand(program, *value), &kind_at(kinds, *value))?)

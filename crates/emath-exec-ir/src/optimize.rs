@@ -111,6 +111,8 @@ pub fn operand_registers(op: &EmirOp, out: &mut Vec<EmirValue>) {
             out.extend(elements.iter().copied());
         }
         EmirOp::VectorIndex { vector, index } => out.extend([*vector, *index]),
+        EmirOp::BufferCreate { size, fill } => out.extend([*size, *fill]),
+        EmirOp::BufferWrite { buffer, index, value } => out.extend([*buffer, *index, *value]),
         EmirOp::MatrixIndex { matrix, row, col } => out.extend([*matrix, *row, *col]),
         EmirOp::MatrixPack { rows, cols, data } => out.extend([*rows, *cols, *data]),
         EmirOp::TensorPack { shape, data } => out.extend([*shape, *data]),
