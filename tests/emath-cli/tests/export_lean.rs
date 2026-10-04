@@ -121,7 +121,10 @@ fn export_lean() {
     probe.demand(
         "objects-and-library-functions-translate",
         text.lines().filter(|line| line.contains("objects.emath")).collect::<Vec<_>>()
-            == ["not translated: objects.emath `twice_weight`: a `Rat` value stands where `Int` is declared, which Lean cannot hold"]
+            == [
+                "not translated: objects.emath `twice_weight`: a `Rat` value stands where `Int` is declared, which Lean cannot hold",
+                "not translated: objects.emath `prime_sum`: calls `SumPrimesBelow` from `discrete.sieve`, which does not translate: `buffer` has no Lean translation",
+            ]
             && lean.join("Export/lib/fold/reduce.lean").is_file(),
         text.clone(),
     );

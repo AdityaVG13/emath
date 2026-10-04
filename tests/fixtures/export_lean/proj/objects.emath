@@ -1,6 +1,7 @@
 # Objects become Lean structures, and the library functions a file
 # uses translate with it (`filter` and `map` are generic).
 use fold.reduce
+use discrete.sieve
 
 # `from` and `until` are Lean keywords.
 emath object Window:
@@ -101,3 +102,13 @@ emath function compared:
             given c = true
             given b = false
             expect result == false
+
+# A library function that does not translate refuses its caller with
+# the root reason, not the chain of calls inside the library.
+emath function prime_sum:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = SumPrimesBelow(n)

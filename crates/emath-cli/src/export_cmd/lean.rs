@@ -718,7 +718,7 @@ fn translate_file(
                 None if let Some(target) = imported.imported.get(&name) => target.clone(),
                 // Its refusal is not reported on its own.
                 None if imported.library => Target::Refused(imported.reasons.get(&name).map(|reason| {
-                    format!("calls `{name}` from `{}`, which does not translate: {reason}", imported.display)
+                    format!("calls `{name}` from `{}`, which does not translate: {}", imported.display, root_cause(reason))
                 })),
                 None => Target::Refused(None),
             };
@@ -807,7 +807,11 @@ fn translate_file(
                 for decl in &group {
                     refusals.push(format!("not translated: {} `{}`: {reason}", source.rel, decl.name));
                     reasons.insert(decl.name.clone(), reason.clone());
-                    names.targets.insert(decl.name.clone(), Target::Refused(None));
+                    // A library's refusals are not reported on their own.
+                    let target = source.library.then(|| {
+                        format!("calls `{}`, which does not translate: {}", decl.name, root_cause(&reason))
+                    });
+                    names.targets.insert(decl.name.clone(), Target::Refused(target));
                 }
             }
         }
@@ -2716,6 +2720,11 @@ fn domain_type(domain: &Expr, objects: &BTreeMap<String, Ty>) -> Result<Ty, Stri
 
 fn atom_type(ty: String) -> String {
     if ty.contains(' ') { format!("({ty})") } else { ty }
+}
+
+/// The innermost reason of a chain of refused calls.
+fn root_cause(reason: &str) -> &str {
+    reason.rsplit_once(", which does not translate: ").map_or(reason, |(_, root)| root)
 }
 
 /// Names the translation itself writes unqualified: an emath name
