@@ -149,6 +149,29 @@ fn export_lean() {
         format!("exit {code}\n{text}"),
     );
 
+    // An example past emath's default work budget is not a fault: the
+    // refusal says so, and `--work` lets it through, as in `emath test`.
+    let heavy = dir.join("heavy");
+    std::fs::create_dir_all(&heavy).expect("create heavy");
+    std::fs::write(
+        heavy.join("loop.emath"),
+        "use fold.reduce\n\nemath function loop_sum:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = fold(function acc in Int: function k in Int: acc + k, 0, range(0, n))\n    tests:\n        example <big>:\n            given n = 200000\n            expect result == 19999900000\n",
+    )
+    .expect("write heavy");
+    let (text, code) = emath(&dir, &["export", "lean", "heavy"]);
+    probe.demand(
+        "budget-named-with-work",
+        code == EXIT_PARTIAL as i32 && text.contains("example <big> of `loop_sum`: it runs out of emath's work budget") && text.contains("--work"),
+        format!("exit {code}\n{text}"),
+    );
+    let (text, code) = emath(&dir, &["export", "lean", "heavy", "--work", "100000000"]);
+    probe.demand(
+        "work-admits-heavy-example",
+        code == EXIT_OK as i32
+            && std::fs::read_to_string(heavy.join("lean/Export/loop.lean")).is_ok_and(|lean| lean.contains("19999900000")),
+        format!("exit {code}\n{text}"),
+    );
+
     if lake_available() {
         // `mixed.emath` joins Int and Rat in an `if`, a list, a cons and
         // a fold's start, as emath does; Lean must accept the same file.

@@ -516,7 +516,9 @@ impl Names {
 /// Translate `roots` (absolute `.emath` paths under `base`) and every
 /// sibling user file they reach. A project with laws depends on the
 /// Mathlib packages in `mathlib`.
-pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path) -> Result<Export, String> {
+/// `work` is the budget each example runs under in emath (`--work`), as
+/// in `emath test`; `None` is emath's default.
+pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path, work: Option<u64>) -> Result<Export, String> {
     let mut sources: BTreeMap<PathBuf, Source> = BTreeMap::new();
     let mut order = Vec::new();
     let mut visiting = BTreeSet::new();
@@ -540,7 +542,7 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path) -> Result<E
             }
         }
         let (module, lean, refusals, used) =
-            translate_file(source, &modules, &libraries, &mut export)?;
+            translate_file(source, &modules, &libraries, &mut export, work)?;
         export.refusals.extend(refusals);
         used_prelude.extend(used);
         export.files.push((lean_path(&source.rel), lean));
@@ -690,6 +692,7 @@ fn translate_file(
     modules: &BTreeMap<PathBuf, Module>,
     libraries: &BTreeMap<PathBuf, SyntaxTree>,
     export: &mut Export,
+    work: Option<u64>,
 ) -> Result<FileTranslation, String> {
     let module = lean_module(&source.rel);
     let mut names = Names { namespace: module.clone(), ..Names::default() };
@@ -869,7 +872,7 @@ fn translate_file(
         .filter(|decl| !source.library && translated.contains_key(&decl.name) && !examples(decl).is_empty())
         .map(|decl| decl.name.clone())
         .collect();
-    let faults = if with_examples.is_empty() { BTreeMap::new() } else { emath_faults(source, &with_examples)? };
+    let faults = if with_examples.is_empty() { BTreeMap::new() } else { emath_faults(source, &with_examples, work)? };
     for decl in &own {
         if !with_examples.contains(&decl.name) {
             continue;
@@ -882,7 +885,11 @@ fn translate_file(
             let key = (decl.name.clone(), (!case.loose).then_some(index));
             index += usize::from(!case.loose);
             if let Some(code) = faults.get(&key) {
-                refusals.push(format!("not translated: {what}: it faults in emath (`{code}`), so it has no value to prove"));
+                refusals.push(if code == "budget_exhausted" {
+                    format!("not translated: {what}: it runs out of emath's work budget (`budget_exhausted`); raise it with --work")
+                } else {
+                    format!("not translated: {what}: it faults in emath (`{code}`), so it has no value to prove")
+                });
                 continue;
             }
             match theorem(&decl.name, &ident(&decl.name), &params, &outputs, &case, &mut names) {
@@ -1346,6 +1353,7 @@ fn examples(decl: &Declaration) -> Vec<Case> {
 fn emath_faults(
     source: &Source,
     exported: &BTreeSet<String>,
+    work: Option<u64>,
 ) -> Result<BTreeMap<(String, Option<usize>), String>, String> {
     let mut tree = source.tree.clone();
     for item in &mut tree.items {
@@ -1375,7 +1383,11 @@ fn emath_faults(
             }
         }
     }
-    let report = emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(&source.path)).map_err(|error| {
+    let report = match work {
+        Some(limit) => emath_exec_ir::constructor_layer::evaluate_tree_budgeted_at(&tree, Some(&source.path), limit),
+        None => emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(&source.path)),
+    }
+    .map_err(|error| {
         format!("{}: emath could not run its examples: {}: {}", source.rel, error.code, error.message)
     })?;
     let mut faults = BTreeMap::new();

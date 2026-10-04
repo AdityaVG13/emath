@@ -181,7 +181,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         }
         "loop" => "loop <file.emath> [--target StepFn] [--budget N] [--script path]",
         "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--worlds w1,w2,...] [--detach] | dream watch|resume|fork|export <run> | dream list",
-        "export" => "export lean <file.emath|dir> [--out <dir>] [--check]",
+        "export" => "export lean <file.emath|dir> [--out <dir>] [--check] [--work N]",
         "keep" => "keep <file.emath> --function F [--name NAME] --to <library.emath> [--set name=value] [--work N] [--overwrite]",
         "compare" => "compare <file.emath> --function F [--set name=value] [--grid name=v1,v2,... | name=LO..HI | name=LO..HI/N] [--world reference|exact|float64|float32|bfloat16|int64|interval|affine] [--work N] [--json]",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
@@ -296,7 +296,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
             "launch a research run as a background driver writing `.emath/runs/<name>/` and watch it live in a terminal dashboard; `watch`, `resume`, `fork`, `list`, `export` operate on runs; detaching never stops the run"
         }
         "export" => {
-            "translate a file or a whole folder of emath functions and their examples into a Lean 4 project (`lean/` beside the sources unless `--out`); untranslatable declarations are named with the reason; without `--check` only the files are written, for review; `--check` runs `lake build`, where the Lean kernel proves every example"
+            "translate a file or a whole folder of emath functions and their examples into a Lean 4 project (`lean/` beside the sources unless `--out`); untranslatable declarations are named with the reason; without `--check` only the files are written, for review; `--check` runs `lake build`, where the Lean kernel proves every example; `--work N` sets the emath work budget each example runs under, as in `emath test`"
         }
         "keep" => {
             "evaluate a function that returns a closed quoted program and write it into a library file as an ordinary `emath function` with its source and content id; different existing text refuses without `--overwrite`"
@@ -801,7 +801,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "-h",
         ],
         "loop" => &["--target", "--budget", "--script", "--help", "-h"],
-        "export" => &["--out", "-o", "--check", "--help", "-h"],
+        "export" => &["--out", "-o", "--check", "--work", "--help", "-h"],
         "keep" => &["--function", "--name", "--to", "--set", "--work", "--overwrite", "--help", "-h"],
         "compare" => &["--function", "--set", "--grid", "--world", "--work", "--json", "--help", "-h"],
         "dream" => &[

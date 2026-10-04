@@ -28,13 +28,15 @@ use std::process::{Command, Stdio};
 
 use crate::{CliExit, EXIT_ADMISSION, EXIT_IO, EXIT_OK, EXIT_PARTIAL, EXIT_REFUSED, EXIT_TOOLCHAIN, EXIT_USAGE};
 
-pub(crate) const USAGE: &str = "export lean <file.emath|dir> [--out <dir>] [--check]";
+pub(crate) const USAGE: &str = "export lean <file.emath|dir> [--out <dir>] [--check] [--work N]";
 
 #[derive(Clone, Debug)]
 pub(crate) struct ExportRequest {
     pub path: PathBuf,
     pub out: Option<PathBuf>,
     pub check: bool,
+    /// Each example's emath work budget, as `emath test --work`.
+    pub work: Option<u64>,
 }
 
 impl ExportRequest {
@@ -42,6 +44,7 @@ impl ExportRequest {
         let mut positionals = Vec::new();
         let mut out = None;
         let mut check = false;
+        let mut work = None;
         let mut i = 0;
         while i < rest.len() {
             match rest[i].as_str() {
@@ -50,13 +53,17 @@ impl ExportRequest {
                     out = Some(PathBuf::from(rest.get(i)?));
                 }
                 "--check" => check = true,
+                "--work" => {
+                    i += 1;
+                    work = Some(rest.get(i)?.parse::<u64>().ok()?);
+                }
                 flag if flag.starts_with('-') => return None,
                 positional => positionals.push(positional.to_string()),
             }
             i += 1;
         }
         match positionals.as_slice() {
-            [target, path] if target == "lean" => Some(Self { path: PathBuf::from(path), out, check }),
+            [target, path] if target == "lean" => Some(Self { path: PathBuf::from(path), out, check, work }),
             _ => None,
         }
     }
@@ -93,7 +100,7 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         return EXIT_USAGE;
     }
     let mathlib = mathlib_packages();
-    let export = match lean::export(&roots, &base, &mathlib) {
+    let export = match lean::export(&roots, &base, &mathlib, request.work) {
         Ok(export) => export,
         Err(message) => {
             eprintln!("error: E-EXPORT-SOURCE: {message}");
