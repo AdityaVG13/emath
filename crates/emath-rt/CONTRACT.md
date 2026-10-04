@@ -321,6 +321,15 @@ reproduces the VM's walk records arm for arm:
   does not admit the argument `{v}``. A closed non-function code
   evaluates up front and every application refuses `type: value is not
   callable: {v}` (the VM's words).
+- Recursive quoted functions execute with lexical captures and a self binding
+  installed in each call frame. The captured environment never points back to
+  its own closure, avoiding reference-count cycles. Inline function calls and
+  curried stages share this callable-value evaluator and the scalar kernels.
+  Explicit binder domains remain checked before binding.
+  Pure recursive scalar bodies memoize up to 4096 successful argument/result
+  pairs per closure instance. Keys preserve Int/Rat/Bool carrier identity.
+  Module calls, nested function bodies, higher-order arguments, and faults
+  do not enter this cache. Reference-engine cost measurements are unchanged.
 - `CodeTree::Closure` records its binder domain (`TreeDomain`, the
   VM's `DomainShape` in artifact vocabulary; distillation reuses the
   VM's `domain_shape_of_expr`). The view does not expose it (the VM's

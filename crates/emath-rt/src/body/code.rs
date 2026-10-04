@@ -694,7 +694,7 @@ pub fn evaluate_callable_expr(
     guard_closed(code, module)?;
     let tree = code.tree.clone();
     let module = *module;
-    if !matches!(tree, CodeTree::Closure { .. }) {
+    if !matches!(tree, CodeTree::Closure { .. } | CodeTree::Recur { .. }) {
         let value = match &code.make {
             Some(make) => make(&[])?,
             None => evaluate_tree(&tree, &std::collections::BTreeMap::new(), &module)?,
@@ -704,30 +704,7 @@ pub fn evaluate_callable_expr(
         }));
     }
     Ok(std::rc::Rc::new(move |args: &[CodeValue]| {
-        let mut bound = std::collections::BTreeMap::new();
-        let mut current = &tree;
-        for argument in args {
-            match current {
-                CodeTree::Closure {
-                    param,
-                    domain,
-                    body,
-                } => {
-                    if !domain.admits(argument) {
-                        return Err(format!(
-                            "type: closure domain `{domain}` does not admit the argument `{argument}`"
-                        ));
-                    }
-                    bound.insert(param.clone(), *argument);
-                    current = body;
-                }
-                other => {
-                    let value = evaluate_tree(other, &bound, &module)?;
-                    return Err(format!("type: value is not callable: {value}"));
-                }
-            }
-        }
-        evaluate_tree(current, &bound, &module)
+        super::code_tree::evaluate_applied_tree(&tree, args, &module)
     }))
 }
 

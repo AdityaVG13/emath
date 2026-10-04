@@ -23,7 +23,7 @@ use emath_core::tree::{BinaryOp, Expr, ExprKind, SyntaxTree, UnaryOp};
 use emath_rt::code::ExprCode;
 use emath_rt::code_tree::{CodeTree, TreeBinary, TreeDomain, TreeUnary};
 
-use super::{evaluate_function_at, with_embedded_modules, with_worlds, CValue, CarrierWorld};
+use super::{evaluate_function_with_work_at, with_embedded_modules, with_worlds, CValue, CarrierWorld};
 use crate::exact_int::ExactInt;
 
 /// A native value the artifact passes into the engine.
@@ -445,7 +445,11 @@ pub fn run_entry(
         .map(|(input, value)| (input.to_string(), value))
         .collect();
     with_embedded_modules(module_roots, modules, || {
-        with_worlds(&worlds, || evaluate_function_at(&tree, name, &inputs, Some(Path::new(path))))
+        // Ordinary emitted entries have no implicit VM-host work cap.
+        // Authored quote.cost/world limits remain enforced by their engines.
+        with_worlds(&worlds, || evaluate_function_with_work_at(
+            &tree, name, &inputs, Some(Path::new(path)), u64::MAX,
+        ))
     })
     .map_err(|error| format!("{}: {}", error.code, error.message))
 }

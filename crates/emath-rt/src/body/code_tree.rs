@@ -32,6 +32,7 @@
 // and tuple indexing. Global references refuse by name.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 
 use super::code::{CodeValue, ExprCode};
 
@@ -1724,6 +1725,195 @@ pub fn evaluate_node_tree(tree: &CodeTree, module: &ModuleTable) -> Result<NodeV
         }
         _ => evaluate_tree(tree, &BTreeMap::new(), module).map(NodeValue::Scalar),
     }
+}
+
+#[derive(Clone)]
+enum TreeValue {
+    Scalar(CodeValue),
+    Callable(Rc<TreeClosure>),
+}
+
+struct TreeClosure {
+    param: String,
+    domain: TreeDomain,
+    body: CodeTree,
+    captured: BTreeMap<String, TreeValue>,
+    recursive_name: Option<String>,
+    memo: Option<std::cell::RefCell<BTreeMap<(u8, i128, i128), CodeValue>>>,
+}
+
+// Only local scalar expressions and calls to this recursive binder qualify.
+// Module adapters and higher-order calls may observe host state or counters.
+fn memoizable_recursive_tree(tree: &CodeTree, name: &str) -> bool {
+    match tree {
+        CodeTree::Literal(_) | CodeTree::Path(_) => true,
+        CodeTree::Binary { left, right, .. } =>
+            memoizable_recursive_tree(left, name) && memoizable_recursive_tree(right, name),
+        CodeTree::Unary { value, .. } => memoizable_recursive_tree(value, name),
+        CodeTree::If { condition, then_value, else_value } =>
+            [condition, then_value, else_value].iter()
+                .all(|value| memoizable_recursive_tree(value, name)),
+        CodeTree::Call { function, args } =>
+            matches!(&**function, CodeTree::Path(segments) if segments.len() == 1 && segments[0] == name)
+                && args.iter().all(|value| memoizable_recursive_tree(value, name)),
+        _ => false,
+    }
+}
+
+fn scalar_memo_key(value: &TreeValue) -> Option<(u8, i128, i128)> {
+    match value {
+        TreeValue::Scalar(CodeValue::Int(value)) => Some((0, i128::from(*value), 1)),
+        TreeValue::Scalar(CodeValue::Rat((num, den))) => Some((1, *num, *den)),
+        TreeValue::Scalar(CodeValue::Bool(value)) => Some((2, i128::from(*value), 1)),
+        TreeValue::Callable(_) => None,
+    }
+}
+
+impl TreeValue {
+    fn scalar(self) -> Result<CodeValue, String> {
+        match self {
+            Self::Scalar(value) => Ok(value),
+            Self::Callable(_) => Err(String::from("type: function value is not a scalar")),
+        }
+    }
+
+    fn apply(self, argument: Self, module: &ModuleTable) -> Result<Self, String> {
+        let Self::Callable(function) = self else {
+            let value = self.scalar()?;
+            return Err(format!("type: value is not callable: {value}"));
+        };
+        match &argument {
+            Self::Scalar(scalar) if !function.domain.admits(scalar) => return Err(format!(
+                "type: closure domain `{}` does not admit the argument `{scalar}`",
+                function.domain,
+            )),
+            Self::Callable(_) if function.domain != TreeDomain::Unknown => return Err(format!(
+                "type: closure domain `{}` does not admit a function argument", function.domain,
+            )),
+            _ => {}
+        }
+        let key = function.memo.as_ref().and_then(|_| scalar_memo_key(&argument));
+        if let (Some(memo), Some(key)) = (&function.memo, key) {
+            if let Some(value) = memo.borrow().get(&key) {
+                return Ok(Self::Scalar(*value));
+            }
+        }
+        let mut bound = function.captured.clone();
+        // The self binding lives only in the call frame, never in its
+        // captured environment, so recursive functions do not form Rc cycles.
+        if let Some(name) = &function.recursive_name {
+            bound.insert(name.clone(), Self::Callable(function.clone()));
+        }
+        bound.insert(function.param.clone(), argument);
+        let value = evaluate_tree_value(&function.body, &bound, module)?;
+        if let (Some(memo), Some(key), Self::Scalar(result)) = (&function.memo, key, &value) {
+            let mut memo = memo.borrow_mut();
+            if memo.len() < 4096 {
+                memo.insert(key, *result);
+            }
+        }
+        Ok(value)
+    }
+}
+
+fn evaluate_tree_value(
+    tree: &CodeTree,
+    inputs: &BTreeMap<String, TreeValue>,
+    module: &ModuleTable,
+) -> Result<TreeValue, String> {
+    match tree {
+        CodeTree::Literal(value) => Ok(TreeValue::Scalar(*value)),
+        CodeTree::Path(segments) => {
+            let name = segments.join(".");
+            inputs.get(&name).cloned().ok_or_else(|| format!(
+                "tree: global reference `{name}` is not emitted in the scalar tree evaluator"
+            ))
+        }
+        CodeTree::Closure { param, domain, body } => Ok(TreeValue::Callable(Rc::new(TreeClosure {
+            param: param.clone(),
+            domain: domain.clone(),
+            body: (**body).clone(),
+            captured: inputs.clone(),
+            recursive_name: None,
+            memo: None,
+        }))),
+        CodeTree::Recur { name, body, .. } => {
+            let CodeTree::Closure { param, domain, body } = &**body else {
+                return Err(String::from("type: recursive function body is not callable"));
+            };
+            Ok(TreeValue::Callable(Rc::new(TreeClosure {
+                param: param.clone(),
+                domain: domain.clone(),
+                body: (**body).clone(),
+                captured: inputs.clone(),
+                recursive_name: Some(name.clone()),
+                memo: memoizable_recursive_tree(body, name)
+                    .then(|| std::cell::RefCell::new(BTreeMap::new())),
+            })))
+        }
+        CodeTree::Call { function, args } => {
+            if let CodeTree::Path(segments) = &**function {
+                let name = segments.join(".");
+                if !inputs.contains_key(&name) {
+                    let callable = module.callable(&name).ok_or_else(|| format!(
+                        "tree: call `{name}` is not emitted in the scalar tree evaluator"
+                    ))?;
+                    let values = args.iter().map(|arg|
+                        evaluate_tree_value(arg, inputs, module)?.scalar()
+                    ).collect::<Result<Vec<_>, _>>()?;
+                    return callable(&values).map(TreeValue::Scalar);
+                }
+            }
+            let mut value = evaluate_tree_value(function, inputs, module)?;
+            for argument in args {
+                value = value.apply(evaluate_tree_value(argument, inputs, module)?, module)?;
+            }
+            Ok(value)
+        }
+        CodeTree::If { condition, then_value, else_value } => {
+            let condition = evaluate_tree_value(condition, inputs, module)?.scalar()?;
+            evaluate_tree_value(
+                if super::code::code_as_bool(&condition)? { then_value } else { else_value },
+                inputs, module,
+            )
+        }
+        CodeTree::Binary { op, left, right } => {
+            let left = evaluate_tree_value(left, inputs, module)?.scalar()?;
+            if *op == TreeBinary::And && !super::code::code_as_bool(&left)? {
+                return Ok(TreeValue::Scalar(CodeValue::Bool(false)));
+            }
+            if *op == TreeBinary::Or && super::code::code_as_bool(&left)? {
+                return Ok(TreeValue::Scalar(CodeValue::Bool(true)));
+            }
+            let right = evaluate_tree_value(right, inputs, module)?.scalar()?;
+            evaluate_tree(&CodeTree::Binary {
+                op: *op,
+                left: Box::new(CodeTree::Literal(left)),
+                right: Box::new(CodeTree::Literal(right)),
+            }, &BTreeMap::new(), module).map(TreeValue::Scalar)
+        }
+        CodeTree::Unary { op, value } => {
+            let value = evaluate_tree_value(value, inputs, module)?.scalar()?;
+            evaluate_tree(&CodeTree::Unary {
+                op: *op, value: Box::new(CodeTree::Literal(value)),
+            }, &BTreeMap::new(), module).map(TreeValue::Scalar)
+        }
+        CodeTree::Tuple(_) | CodeTree::Index { .. } => Err(String::from(
+            "tree: structured values are not emitted in the scalar tree evaluator",
+        )),
+    }
+}
+
+pub(super) fn evaluate_applied_tree(
+    tree: &CodeTree,
+    arguments: &[CodeValue],
+    module: &ModuleTable,
+) -> Result<CodeValue, String> {
+    let mut value = evaluate_tree_value(tree, &BTreeMap::new(), module)?;
+    for argument in arguments {
+        value = value.apply(TreeValue::Scalar(*argument), module)?;
+    }
+    value.scalar()
 }
 
 pub fn evaluate_tree(

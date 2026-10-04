@@ -400,7 +400,20 @@ pub fn evaluate_function_at(
     inputs: &BTreeMap<String, CValue>,
     source: Option<&Path>,
 ) -> Result<CValue, ConstructorError> {
+    evaluate_function_with_work_at(tree, name, inputs, source, DEFAULT_WORK)
+}
+
+/// Non-suspending evaluation under an explicit host work limit. Authored
+/// cost/world measurements keep their own budgets inside this outer limit.
+pub fn evaluate_function_with_work_at(
+    tree: &SyntaxTree,
+    name: &str,
+    inputs: &BTreeMap<String, CValue>,
+    source: Option<&Path>,
+    work_limit: u64,
+) -> Result<CValue, ConstructorError> {
     let mut engine = engine_from_tree_at(tree, source)?;
+    engine.work_limit = work_limit;
     engine.facts_only_memo = true;
     engine.eval_entry(name, inputs)
 }

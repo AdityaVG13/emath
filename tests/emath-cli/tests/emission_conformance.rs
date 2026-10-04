@@ -138,10 +138,16 @@ fn repo_root() -> PathBuf {
 /// and driver re-run as a cargo no-op, a changed one recompiles
 /// incrementally.
 fn run_lane(module_rel: &str, driver_src: &str) -> Vec<String> {
+    run_lane_with_work(module_rel, driver_src, 1_000_000)
+}
+
+fn run_lane_with_work(module_rel: &str, driver_src: &str, work: u64) -> Vec<String> {
     let module = repo_root().join(module_rel);
 
     // 1. VM truth: the authored rows pass in the VM.
-    let (text, code) = cli(&["test", module.to_str().expect("utf8 module path")]);
+    let (text, code) = cli(&[
+        "test", module.to_str().expect("utf8 module path"), "--work", &work.to_string(),
+    ]);
     assert_eq!(
         code, 0,
         "authored module must pass its own tests in the VM first\n{text}"
@@ -1923,7 +1929,7 @@ fn emission_conformance_union_exact_compare() {
 const GENERIC_RECORD_DRIVER: &str = r#"
 //! One generic object at two carriers: each instantiation has its own
 //! native layout, and the generic fold reads it at the bound carrier.
-use generic_record::{adding, maxing, peak, total};
+use generic_record::{adding, curried_total, mapped_powers, maxing, peak, total};
 fn main() {
     let mut failures = 0usize;
     let got = total(vec![3, 4, 5]);
@@ -1950,6 +1956,25 @@ fn main() {
     if !matches!(&unit, Ok(value) if *value == -3.0) {
         failures += 1;
         println!("DIFF maxing.unit EMITTED {:?}; VM = -3.0", unit);
+    }
+    let got = mapped_powers(vec![3, 4, 5]);
+    if got != Ok(vec![8, 16, 32]) {
+        failures += 1;
+        println!("DIFF mapped_powers EMITTED {:?}; VM = [8, 16, 32]", got);
+    }
+    let overflow = mapped_powers(vec![63]);
+    if !matches!(&overflow, Err(error) if error.starts_with("E-INT-002")) {
+        failures += 1;
+        println!("DIFF mapped_powers_width EMITTED {:?}; expected checked i64 refusal", overflow);
+    }
+    if curried_total(3, 4) != Ok(7) {
+        failures += 1;
+        println!("DIFF curried_total EMITTED {:?}; VM = 7", curried_total(3, 4));
+    }
+    let overflow = curried_total(i64::MAX, 1);
+    if !matches!(&overflow, Err(error) if error.starts_with("E-INT-002")) {
+        failures += 1;
+        println!("DIFF curried_total_width EMITTED {:?}; expected checked i64 refusal", overflow);
     }
     if failures == 0 {
         println!("generic_record: all pins hold");
@@ -3072,7 +3097,7 @@ use engine_worlds::sequence_join;
 use engine_worlds::{viewed_names, recursive_names, borrowed_text, cyclic_names, wide_boundary};
 use engine_worlds::callback_work;
 use engine_worlds::expected_seed;
-use engine_worlds::mapped_codes;
+use engine_worlds::{long_entry, mapped_codes};
 
 fn code(body: emath_rt::code_tree::CodeTree) -> emath_rt::code::ExprCode {
     use emath_rt::{code::open_expr, code_tree::{CodeTree, TreeDomain}};
@@ -3104,6 +3129,60 @@ fn main() {
     if expected_seed(0) != Ok(vec![]) {
         failures += 1;
         println!("DIFF expected_seed; VM = []");
+    }
+    let long = long_entry(150000);
+    if long != Ok(150000) {
+        failures += 1;
+        println!("DIFF long_entry EMITTED {:?}; VM = 150000", long);
+    }
+    let recur = emath_rt::code::open_expr(
+        vec![],
+        CodeTree::Recur {
+            name: "f".into(),
+            ty: Box::new(CodeTree::Binary {
+                op: TreeBinary::Imply,
+                left: Box::new(CodeTree::Path(vec!["Int".into()])),
+                right: Box::new(CodeTree::Path(vec!["Int".into()])),
+            }),
+            body: Box::new(CodeTree::Closure {
+                param: "n".into(),
+                domain: emath_rt::code_tree::TreeDomain::Scalar("Int".into()),
+                body: Box::new(CodeTree::If {
+                    condition: Box::new(CodeTree::Binary {
+                        op: TreeBinary::Le,
+                        left: Box::new(CodeTree::Path(vec!["n".into()])),
+                        right: Box::new(CodeTree::Literal(CodeValue::Int(1))),
+                    }),
+                    then_value: Box::new(CodeTree::Path(vec!["n".into()])),
+                    else_value: Box::new(CodeTree::Binary {
+                        op: TreeBinary::Add,
+                        left: Box::new(CodeTree::Call {
+                            function: Box::new(CodeTree::Path(vec!["f".into()])),
+                            args: vec![CodeTree::Binary {
+                                op: TreeBinary::Sub,
+                                left: Box::new(CodeTree::Path(vec!["n".into()])),
+                                right: Box::new(CodeTree::Literal(CodeValue::Int(1))),
+                            }],
+                        }),
+                        right: Box::new(CodeTree::Call {
+                            function: Box::new(CodeTree::Path(vec!["f".into()])),
+                            args: vec![CodeTree::Binary {
+                                op: TreeBinary::Sub,
+                                left: Box::new(CodeTree::Path(vec!["n".into()])),
+                                right: Box::new(CodeTree::Literal(CodeValue::Int(2))),
+                            }],
+                        }),
+                    }),
+                }),
+            }),
+        },
+        None,
+        Default::default(),
+    );
+    let recursive = code_callable(recur).and_then(|call| call(12));
+    if recursive != Ok(144) {
+        failures += 1;
+        println!("DIFF recursive_callable EMITTED {:?}; VM = 144", recursive);
     }
     match mapped_codes(3) {
         Ok(codes) if codes.len() == 3 => {
@@ -3272,7 +3351,7 @@ fn main() {
 #[test]
 fn emission_conformance_engine_worlds() {
     let module_rel = "tests/fixtures/constructor/engine_worlds.emath";
-    let diffs = run_lane(module_rel, ENGINE_WORLDS_DRIVER);
+    let diffs = run_lane_with_work(module_rel, ENGINE_WORLDS_DRIVER, 20_000_000);
     assert!(diffs.is_empty(), "emitted quote.world disagrees with the VM on:\n{}", diffs.join("\n"));
 
     let module = repo_root().join(module_rel);

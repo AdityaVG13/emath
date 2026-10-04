@@ -63,3 +63,47 @@ emath function peak:
         example <empty_is_floor>:
             given xs = []
             expect result == -1.0f64
+
+emath object VectorMap:
+    representation:
+        apply: sequence(Int) -> sequence(Int)
+
+emath function powers:
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = map(function x in Int: int_pow(2, x), xs)
+
+emath function mapped_powers:
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: sequence(Int)
+    definitions:
+        action = VectorMap: {apply: powers}
+        result = action.apply(xs)
+    tests:
+        example <wide_vector_function_in_a_declared_field>:
+            given xs = [3, 4, 5]
+            expect result == [8, 16, 32]
+
+emath object CurriedAction:
+    representation:
+        apply: Int -> Int -> Int
+
+emath function curried_total:
+    inputs:
+        a: Int
+        b: Int
+    outputs:
+        result: Int
+    definitions:
+        action = CurriedAction: {apply: function x in Int: function y in Int: int_sum([x, y])}
+        result = action.apply(a)(b)
+    tests:
+        example <nested_function_result_uses_the_declared_field_carrier>:
+            given a = 3
+            given b = 4
+            expect result == 7

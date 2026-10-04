@@ -50,6 +50,12 @@ sequences. Native callbacks cannot supply reference-engine work counts:
 callers that construct callbacks for an engine-measuring function retain that
 construction in the engine. Ordinary scalar/Code calls still use the bridge.
 
+Artifact entries use explicit non-suspending evaluation with no implicit
+small VM-host work cap, matching ordinary native entries. Authored
+`quote.cost`/`quote.world` budgets still apply inside the entry.
+`evaluate_function_at` retains the ordinary reference-host default;
+`evaluate_function_with_work_at` lets a host supply its own outer limit.
+
 `CallFrame.bindings` carries generic parameters fixed by an expected result,
 alongside instantiated input declarations. Rendering keeps these bindings in
 scope for body binders and empty seeds. An unresolved declaration variable is

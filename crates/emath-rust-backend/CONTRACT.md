@@ -18,10 +18,10 @@ Code/node carrier support is pinned by the expanded
 `emission_census`: 141 modules, zero non-runnable lanes.
 Every module artifact compiles offline. This is a compilation census,
 not a claim that every user workflow executes within every native carrier.
-Full workflow probes pass deterministic neural training. The curated learning
-workflow still refuses recursive quoted functions; exploration exposes a
-wide-vector closure ABI mismatch; formula search reaches the bounded rational
-carrier; conjecture retains an undeclared callable-signature refusal.
+Full workflow probes pass deterministic neural training, learning, and
+exploration (including engine-authored work measurements). Formula search
+reaches the bounded rational carrier; conjecture retains an undeclared
+callable-signature refusal.
 Their authored reference-engine examples pass.
 
 ## Native mutable buffers
@@ -46,6 +46,14 @@ rows against the constructor VM. Native buffers do not cross the existing
 engine bridge or acquire native checkpoint serialization through this change.
 
 ## Native Code and numeric carriers
+
+Function-valued boundaries adapt compatible carrier representations rather
+than casting incompatible Rust closure types. Arguments cross contravariantly;
+results cross covariantly, including vectors and nested curried functions.
+The adapter clones the callable handle once, keeps non-copy arguments borrowed
+where no conversion is needed, and retains checked narrowing at fixed slots.
+The generic-record conformance lane exercises vector and curried results and
+named overflow refusals.
 
 - Code, nested Code records/sequences, and shared arbitrary-precision integers
   cross the existing reference-engine bridge. Cost and WorldAnswer records use

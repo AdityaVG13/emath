@@ -2585,6 +2585,46 @@ pub(super) fn numeric_boundary_value(
     slot: &str,
 ) -> Option<Expr> {
     match (from, to) {
+        (
+            ValueKind::Closure { params: source_params, result: source_result },
+            ValueKind::Closure { params: target_params, result: target_result },
+        ) if from != to && source_params.len() == target_params.len() => {
+            let mut bindings = Vec::new();
+            let mut arguments = Vec::new();
+            for (index, (source, target)) in source_params.iter().zip(target_params).enumerate() {
+                let name = format!("__carrier_arg_{index}");
+                let ty = crate::rust_ir::render::render_ty(&target.rust_ty().ok()?);
+                let borrowed = !target.is_copy() && !matches!(target, ValueKind::Closure { .. });
+                bindings.push(format!("{name}: {}{ty}", if borrowed { "&" } else { "" }));
+                let argument = Expr::Raw(name.clone());
+                let converted = if source == target {
+                    argument
+                } else {
+                    numeric_boundary_value(&argument, target, source, slot)?
+                };
+                let rendered = render_expr(&converted);
+                arguments.push(if matches!(source, ValueKind::Closure { .. }) {
+                    format!("({rendered}).clone()")
+                } else if !source.is_copy() && !(borrowed && source == target) {
+                    format!("&({rendered})")
+                } else {
+                    rendered
+                });
+            }
+            let result = Expr::Raw("__carrier_result".into());
+            let converted = if source_result == target_result {
+                result
+            } else {
+                numeric_boundary_value(&result, source_result, target_result, slot)?
+            };
+            let result_ty = crate::rust_ir::render::render_ty(&target_result.rust_ty().ok()?);
+            let callable_ty = crate::rust_ir::render::render_ty(&to.rust_ty().ok()?);
+            Some(Expr::Raw(format!(
+                "{{ let __carrier_callable = ({}).clone(); let __carrier_adapter: {callable_ty} = std::rc::Rc::new(move |{}| -> Result<{result_ty}, String> {{ let __carrier_result = __carrier_callable({})?; Ok({}) }}); __carrier_adapter }}",
+                render_expr(expression), bindings.join(", "), arguments.join(", "),
+                render_expr(&converted),
+            )))
+        }
         (ValueKind::Cell, target) => super::cell_into(&render_expr(expression), target).map(Expr::Raw),
         (ValueKind::ExactInt, ValueKind::I64) => Some(coerce_to_ty(
             expression.clone(),
