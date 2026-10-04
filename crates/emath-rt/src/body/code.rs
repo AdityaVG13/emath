@@ -197,7 +197,7 @@ pub fn free_names<V: Clone + 'static>(code: &Code<V>) -> &[String] {
 }
 
 // ---------------------------------------------------------------------------
-// Expression templates (bead emath-expression-quotes-324y0): the
+// Expression templates: the
 // quoted program is an EXPRESSION with free names, not a wrapped
 // function - no parameter, no closure. The carrier of each free name
 // is a substitute-time fact (the same template serves Int and Rat
@@ -228,7 +228,7 @@ pub fn free_names<V: Clone + 'static>(code: &Code<V>) -> &[String] {
 // distinction). Parity holds in the i64-shared domain; beyond-i64
 // values refuse here exactly as the Int emission lane always has.
 //
-// Dual representation (bead emath-shared-tree-view-make-bp8nu): the
+// Dual representation: the
 // value additionally carries the DISTILLED TREE of the quoted
 // expression plus its stamped dependencies, and the compiled factory
 // becomes optional (a made tree has no compiled body). Both halves
@@ -450,6 +450,26 @@ impl Clone for ExprCode {
     }
 }
 
+impl ExprCode {
+    /// The portable representation at an engine crossing. The compiled
+    /// factory is derived from this tree and does not cross the boundary.
+    pub fn captured_tree(
+        &self,
+    ) -> (
+        &super::code_tree::CodeTree,
+        &std::collections::BTreeMap<String, u64>,
+    ) {
+        (&self.tree, &self.deps)
+    }
+
+    pub fn evaluate_node(
+        &self,
+        module: &super::code_tree::ModuleTable,
+    ) -> Result<super::code_tree::NodeValue, String> {
+        evaluate_node_expr(self, module)
+    }
+}
+
 impl core::fmt::Debug for ExprCode {
     /// The diagnostic shape: the open names, the distilled tree, and
     /// the stamped dependencies (the compiled factory is a function
@@ -620,6 +640,18 @@ pub fn evaluate_expr(
         return make(&[]);
     }
     super::code_tree::evaluate_tree(&code.tree, &std::collections::BTreeMap::new(), module)
+}
+
+/// A closed quoted value may be structured rather than scalar.
+pub fn evaluate_node_expr(
+    code: &ExprCode,
+    module: &super::code_tree::ModuleTable,
+) -> Result<super::code_tree::NodeValue, String> {
+    guard_closed(code, module)?;
+    match &code.make {
+        Some(make) => Ok(super::code_tree::NodeValue::Scalar(make(&[])?)),
+        None => super::code_tree::evaluate_node_tree(&code.tree, module),
+    }
 }
 
 /// The executor's guards, in the VM's order: stamped dependencies

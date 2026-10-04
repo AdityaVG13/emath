@@ -1,5 +1,5 @@
 //! Constructor-file crate emission (the `emath build` core, shared
-//! with the native epoch export, bead emath-8k3zw).
+//! with the native epoch export).
 //!
 //! One emitter, two callers: the CLI's `emath build` and the loop
 //! host's `export-native` must produce byte-identical artifact crates,
@@ -263,6 +263,12 @@ pub fn emit_constructor_crate(
         }
     }
     let _templates = crate::codegen_render::RecordTemplateScope::enter(templates);
+    let _layouts = crate::codegen_render::AuthoredRecordScope::enter(
+        records
+            .iter()
+            .map(|record| (record.name.clone(), record.fields.clone()))
+            .collect(),
+    );
     let mut rust = String::from(EMITTED_HEADER);
     let mut runnable = true;
     let mut unresolved = Vec::new();
@@ -360,8 +366,14 @@ pub fn emit_constructor_crate(
     // Rat-typed inlined carrier joining an Int-declared recursive
     // tail emits the ratio carrier at the entry). The input kinds
     // mirror the entry ABI's declared carriers exactly.
-    let mut sibling_kinds: BTreeMap<String, ValueKind> = BTreeMap::new();
+    let mut sibling_kinds: BTreeMap<String, EntryAbi> = BTreeMap::new();
     for (name, lowered) in &lowered {
+        if tree.items.iter().any(|item| matches!(item,
+            emath_core::tree::Item::Declaration(decl)
+                if decl.name == *name && !decl.generics.is_empty()))
+        {
+            continue;
+        }
         let Ok(lowered) = lowered else {
             continue;
         };
@@ -376,6 +388,7 @@ pub fn emit_constructor_crate(
             );
             input_names.push(input);
         }
+        crate::codegen_render::refine_recursive_frame_kinds(&lowered.program, &input_names, &[], &mut kinds);
         let body_kind = program_kind(&lowered.program, &input_names, &[], &kinds);
         // The entry ABI law, mirrored: a `CodeValue` body result
         // projects checked onto the declared scalar carrier at the
@@ -385,14 +398,52 @@ pub fn emit_constructor_crate(
         // table carries the EMITTED entry carrier, so a caller's
         // `CallSibling` register kind must match what the emitted
         // entry actually returns.
-        let sibling_kind = if body_kind == ValueKind::CodeValue {
+        let sibling_kind = if body_kind == ValueKind::CodeValue
+            || crate::codegen_render::kind_is_degenerate(&body_kind)
+        {
             declared_output(&tree, name, &objects)
                 .map(|(_, signature)| ValueKind::from_signature(signature.as_str()))
                 .unwrap_or(body_kind)
         } else {
             body_kind
         };
-        sibling_kinds.insert(name.clone(), sibling_kind);
+        sibling_kinds.insert(name.clone(), EntryAbi {
+            inputs: input_names.iter().map(|name| kinds[name].clone()).collect(),
+            result: sibling_kind,
+        });
+    }
+    // A mutual cycle can append a viewed name in another member.
+    // Propagate actual cycle arguments before fixing any entry ABI.
+    for _ in 0..sibling_kinds.len() {
+        let scope = SiblingEntryScope::enter(sibling_kinds.clone());
+        let (_, passed) = crate::codegen_render::with_sibling_call_scope(|| {
+            for (name, lowered) in &lowered {
+                let (Ok(lowered), Some(abi)) = (lowered, sibling_kinds.get(name)) else {
+                    continue;
+                };
+                let names = lowered.inputs.clone();
+                let frame = names
+                    .iter()
+                    .cloned()
+                    .zip(abi.inputs.iter().cloned())
+                    .collect();
+                let _ = program_kind(&lowered.program, &names, &[], &frame);
+            }
+        });
+        drop(scope);
+        let mut changed = false;
+        for (name, passed) in passed {
+            if let Some(abi) = sibling_kinds.get_mut(&name) {
+                for (kind, passed) in abi.inputs.iter_mut().zip(passed) {
+                    let widened = crate::codegen_render::widen_name_carrier(kind, &passed);
+                    changed |= widened != *kind;
+                    *kind = widened;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
     }
     let _sibling_scope = SiblingEntryScope::enter(sibling_kinds);
     // Entries render callees-first (post-order over the named-call
@@ -618,7 +669,7 @@ pub fn emit_constructor_crate(
             "#[allow(dead_code)]\nstatic __EMATH_MODULE_TABLE: emath_rt::code_tree::ModuleTable = emath_rt::code_tree::ModuleTable {{ globals: &[{globals}], stamps: &[{stamps}], callables: &[{callables}] }};\n\n"
         ));
     }
-    // The definition table (bead emath-quote-body-defs-trto7): the
+    // The definition table: the
     // module's function bodies as DATA - the same bodies the
     // compiled entries come from, distilled by the same lowering, so
     // a `quote.body` unfold and a compiled call cannot disagree (the

@@ -69,6 +69,7 @@ pub(crate) fn replace_ident_prefix(
 pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError> {
     Ok(match kind {
         ValueKind::CodeValue => expr,
+        ValueKind::Node => Expr::Raw(format!("({}).to_scalar()?", render_expr(&expr))),
         ValueKind::I64 => Expr::Raw(format!(
             "emath_rt::code::CodeValue::Int({})",
             render_expr(&expr)
@@ -105,10 +106,13 @@ pub(crate) fn engine_crosses(kind: &ValueKind) -> bool {
     fn crosses(kind: &ValueKind, depth: usize) -> bool {
         match kind {
             ValueKind::I64
+            | ValueKind::ExactInt
             | ValueKind::Rational
             | ValueKind::Bool
             | ValueKind::F64
-            | ValueKind::Text => true,
+            | ValueKind::Text
+            | ValueKind::ExprCode
+            | ValueKind::Node => true,
             ValueKind::Vector(element) => crosses(element, depth),
             ValueKind::Record(name) if depth < 8 => record_layout(name).is_some_and(|layout| {
                 layout
@@ -132,7 +136,8 @@ fn node_family(kind: &ValueKind) -> bool {
         | ValueKind::I64
         | ValueKind::ExactInt
         | ValueKind::Rational
-        | ValueKind::Bool => true,
+        | ValueKind::Bool
+        | ValueKind::Text => true,
         ValueKind::Vector(element) => node_family(element),
         _ => false,
     }
@@ -160,6 +165,10 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError
         // an owning register or a borrow block, so the fold clones
         // through method-call auto-deref (one spelling, both shapes).
         ValueKind::Node => Expr::Raw(format!("({}).clone()", render_expr(&expr))),
+        ValueKind::Text => Expr::Raw(format!(
+            "emath_rt::code_tree::NodeValue::Text(({}).to_string())",
+            render_expr(&expr)
+        )),
         ValueKind::ExprCode => Expr::Raw(format!(
             "emath_rt::code_tree::NodeValue::Code(Box::new(({}).clone()))",
             render_expr(&expr)
@@ -332,8 +341,10 @@ pub(crate) fn op_expr(
             inputs,
             state,
             declared,
+            bindings,
             callee,
         } => {
+            let _bindings = TypeBindingScope::enter_bound(bindings);
             if let Some(callee) = callee
                 && state.is_empty()
                 && let Some(call) = entry_frame_call(callee, body, inputs, program, kinds, declared)
@@ -432,7 +443,7 @@ pub(crate) fn op_expr(
             let callee_kind = self_wrapper_kind()
                 .unwrap_or_else(|| program_kind(program, names, states, input_kinds));
             let declared =
-                if result.is_empty() { ValueKind::Other } else { ValueKind::from_signature(result) };
+                if result.is_empty() { ValueKind::Other } else { ValueKind::from_signature(&bound_signature(result)) };
             let site_kind = if !matches!(declared, ValueKind::Other) {
                 declared
             } else {
@@ -466,10 +477,10 @@ pub(crate) fn op_expr(
                 .enumerate()
                 .map(|(position, value)| {
                     let kind = kind_at(kinds, *value);
-                    let target = declared
+                    let target = sibling_entry_param(name, position).or_else(|| declared
                         .get(position)
                         .map(|signature| ValueKind::from_signature(signature))
-                        .filter(|kind| !matches!(kind, ValueKind::Other));
+                        .filter(|kind| !matches!(kind, ValueKind::Other)));
                     if let Some(target) = &target {
                         if let Some(converted) = numeric_boundary_value(
                             &operand(program, *value),
@@ -1024,7 +1035,13 @@ pub(crate) fn op_expr(
                         "typed program literal takes exactly one domain parameter".into(),
                     ));
                 }
-                let param_kind = ValueKind::from_signature(&bound_signature(signature));
+                let param_kind = op_self_index(program, op)
+                    .and_then(|index| match kinds.get(index as usize) {
+                        Some(ValueKind::Closure { params, .. }) => params.first()
+                            .filter(|param| **param == ValueKind::Node).cloned(),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| ValueKind::from_signature(&bound_signature(signature)));
                 if matches!(param_kind, ValueKind::Other) {
                     return Err(BackendError::UnsupportedType(format!(
                         "program literal parameter domain {signature} has no native carrier"
@@ -1037,7 +1054,11 @@ pub(crate) fn op_expr(
                         // would double it.
                         crate::rust_ir::render::render_ty(&param_kind.rust_ty()?)
                     } else {
-                        let ty = crate::rust_ir::render::render_ty(&param_kind.rust_ty()?);
+                        let ty = crate::rust_ir::render::render_ty(&param_kind.rust_ty().map_err(|error| {
+                            BackendError::UnsupportedType(format!(
+                                "literal domain {signature} binds as {param_kind:?}: {error}"
+                            ))
+                        })?);
                         if param_kind.is_copy() {
                             ty
                         } else {
@@ -1153,8 +1174,7 @@ pub(crate) fn op_expr(
             deps,
         } => {
             if param.is_none() {
-                // The compiled EXPRESSION template (bead
-                // emath-expression-quotes-324y0): the quoted
+                // The compiled EXPRESSION template: the quoted
                 // expression lowers once over the value union - every
                 // scalar op of the body renders as a dynamic rt kernel
                 // call implementing the VM's exact carrier rules. All
@@ -1167,8 +1187,7 @@ pub(crate) fn op_expr(
                 // closed body with no free name to carry the union)
                 // refuses here.
                 //
-                // The dual representation (bead
-                // emath-shared-tree-view-make-bp8nu): the SAME
+                // The dual representation: the SAME
                 // lowering emits the distilled tree and the
                 // capture-time dependency snapshot beside the
                 // factory, so `quote.view`/`quote.make` operate on
@@ -1263,6 +1282,18 @@ pub(crate) fn op_expr(
             // No tree, no interpreter: candidates execute as this
             // emitted closure.
             let param = param.clone().unwrap_or_default();
+            if kinds::template_uses_tree(body, &param, free, carrier)
+                && let Some(tree) = tree
+            {
+                let free = free.iter().map(|name| format!("String::from({name:?})"))
+                    .collect::<Vec<_>>().join(", ");
+                let deps = deps.iter().map(|(name, stamp)| format!("(String::from({name:?}), {stamp}u64)"))
+                    .collect::<Vec<_>>().join(", ");
+                return Ok(Expr::Raw(format!(
+                    "emath_rt::code::open_expr(vec![{free}], {}, None, vec![{deps}].into_iter().collect())",
+                    tree_expr(tree)
+                )));
+            }
             let carrier_kind = ValueKind::from_signature(carrier);
             if matches!(carrier_kind, ValueKind::Other) {
                 return Err(BackendError::UnsupportedType(format!(
@@ -1499,18 +1530,35 @@ pub(crate) fn op_expr(
             // node records. Stamped dependencies verify against the
             // module table first (the `stale_dependency` refusal).
 
-            match kind_at(kinds, *code) {
+            let code_kind = kind_at(kinds, *code);
+            let target = if code_kind == ValueKind::Node {
+                format!("({}).to_code()?", render_expr(&operand(program, *code)))
+            } else {
+                render_expr(&operand(program, *code))
+            };
+            match code_kind {
                 ValueKind::Code(_) => Ok(Expr::Raw(format!(
                     "emath_rt::code::evaluate(&{})?",
                     render_expr(&operand(program, *code))
                 ))),
-                ValueKind::ExprCode => match applied {
+                ValueKind::ExprCode | ValueKind::Node => match applied {
                     // The declared lane: the same closed callable,
                     // adapted to the declared arrow - scalar arguments
                     // wrap into the union, the union result projects
                     // checked onto the declared carrier (the typed
                     // boundary's refusal names the slot).
                     Some(emath_exec_ir::CodeApplication::Declared(signature)) => {
+                        if !signature.starts_with("Fn<") {
+                            let kind = ValueKind::from_signature(signature);
+                            let value = format!(
+                                "({target}).evaluate_node(&__EMATH_MODULE_TABLE)?"
+                            );
+                            return node_into(&value, &kind).map(Expr::Raw).ok_or_else(|| {
+                                BackendError::UnsupportedType(format!(
+                                    "an evaluated quoted value has no native projection onto `{signature}`"
+                                ))
+                            });
+                        }
                         let Some(ValueKind::Closure { params, result }) =
                             declared_scalar_arrow(signature)
                         else {
@@ -1555,7 +1603,7 @@ pub(crate) fn op_expr(
                         let callable = callable_ty(&params, &result)?;
                         Ok(Expr::Raw(format!(
                             "{{ let __applied = ({}).evaluate_callable(&__EMATH_MODULE_TABLE)?; let __typed: std::rc::Rc<{callable}> = std::rc::Rc::new(move |{bindings}| {{ let __out = __applied(&[{union_args}])?; Ok({projected}) }}); __typed }}",
-                            render_expr(&operand(program, *code))
+                            target
                         )))
                     }
                     // The applied lane: the rt closes the code once
@@ -1578,12 +1626,12 @@ pub(crate) fn op_expr(
                         )?;
                         Ok(Expr::Raw(format!(
                             "{{ let __applied = ({}).evaluate_callable(&__EMATH_MODULE_TABLE)?; let __applied: std::rc::Rc<{callable}> = std::rc::Rc::new(move |{params}| __applied(&[{names}])); __applied }}",
-                            render_expr(&operand(program, *code))
+                            target
                         )))
                     }
                     None => Ok(Expr::Raw(format!(
                         "({}).evaluate(&__EMATH_MODULE_TABLE)?",
-                        render_expr(&operand(program, *code))
+                        target
                     ))),
                 },
                 _ => Err(BackendError::UnsupportedType(
@@ -1685,8 +1733,7 @@ pub(crate) fn op_expr(
             // package validates its minted Scope witness and unwraps
             // its term; a plain Code opens to its tree with the
             // factory and snapshot dropped (the VM's
-            // check_fragment_scope + open_fragment laws, bead
-            // emath-quote-bind-open-consumer-6f86g).
+            // check_fragment_scope + open_fragment laws).
 
             match kind_at(kinds, *package) {
             ValueKind::Node => Ok(Expr::Raw(format!(
@@ -1747,7 +1794,7 @@ pub(crate) fn op_expr(
                 "{BRIDGE}::run_entry(__EMATH_SOURCE, __EMATH_SOURCE_PATH, __EMATH_MODULE_ROOTS, __EMATH_MODULES, {function:?}, vec![{}], __EMATH_WORLDS)?",
                 args.join(", ")
             );
-            let kind = ValueKind::from_signature(result);
+            let kind = ValueKind::from_signature(&bound_signature(result));
             let refuse = || {
                 BackendError::UnsupportedType(format!(
                     "`{function}` runs in the reference engine; its declared result `{result}` does not cross back"
@@ -2106,7 +2153,7 @@ pub(crate) fn node_into(expression: &str, target: &ValueKind) -> Option<String> 
             let inner = node_into("__item", element)?;
             let element_ty = crate::rust_ir::render::render_ty(&element.rust_ty().ok()?);
             Some(format!(
-                "emath_rt::code_tree::node_items(&{expression})?.into_iter().map(|__item| -> Result<{element_ty}, String> {{ Ok({inner}) }}).collect::<Result<Vec<{element_ty}>, String>>()?"
+                "({expression}).items()?.into_iter().map(|__item| -> Result<{element_ty}, String> {{ Ok({inner}) }}).collect::<Result<Vec<{element_ty}>, String>>()?"
             ))
         }
         _ => None,
@@ -2200,13 +2247,24 @@ fn literal_frame_expr(
         // call sites use; the binding owns the converted carrier.
         let actual = kind_at(kinds, *value);
         if actual != kind {
+            if kind == ValueKind::Node && kinds::kind_is_degenerate(&actual)
+                && matches!(actual, ValueKind::Vector(_))
+            {
+                code.push_str(&format!(
+                    "let {name} = &emath_rt::code_tree::NodeValue::Sequence({}); ",
+                    render_expr(&operand(outer, *value))
+                ));
+                frame_kinds.insert(name.clone(), kind);
+                continue;
+            }
             if let Some(converted) = numeric_boundary_value(
                 &operand(outer, *value),
                 &actual,
                 &kind,
                 "frame input",
             ) {
-                code.push_str(&format!("let {name} = {}; ", render_expr(&converted)));
+                let borrow = if kind.is_copy() { "" } else { "&" };
+                code.push_str(&format!("let {name} = {borrow}{}; ", render_expr(&converted)));
                 frame_kinds.insert(name.clone(), kind);
                 continue;
             }

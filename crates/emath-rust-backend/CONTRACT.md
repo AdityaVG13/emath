@@ -13,6 +13,28 @@ Rust backend: universal EMIR and artifact contracts to deterministic Rust via th
 
 ## Native numeric boundaries
 
+Code/node carrier support is pinned by the expanded
+`emission_conformance_engine_worlds` fixture and the complete
+`emission_census`: 141 modules, one non-runnable lane (`discrete/sieve`).
+The pin remains one, and every claimed-runnable artifact compiles offline.
+
+- Code, nested Code records/sequences, and shared arbitrary-precision integers
+  cross the existing reference-engine bridge. Cost and WorldAnswer records use
+  the node family so done/value and fault variants retain their actual fields.
+- Locally emitted closures and recursive accumulators retain viewed schema
+  names as nodes, separately from Text. Carrier inference follows call and
+  capture edges; mutual-cycle argument carriers settle before entry emission.
+  Externally supplied closure ABIs are not rewritten.
+- Generic signature inference represents Code and the scalar union explicitly.
+  Expected-result bindings remain available to body binders and empty seeds.
+  Dynamic scalar/sequence branches project checked onto typed sibling arms.
+- Non-scalar unary templates retain a distilled tree instead of forcing a
+  scalar factory. Evaluated Code can return a declared scalar callable or a
+  structured node value; unsupported tree leaves still refuse by name.
+- A caller constructing callbacks for engine work measurement executes that
+  authored computation in the engine. It is not a native step-count estimate
+  and does not marshal opaque Rust closures.
+
 Recursive-call arguments and results, closure-call arguments, and authored record
 fields share numeric representation conversion, including sequence elements and
 sequence index operands. A fixed
@@ -71,7 +93,7 @@ predicts the rendered Rust type:
   same frame-input laws (numeric boundaries, closure handle clones, owned
   non-copy carriers), and the register kind carries the callee's declared
   result.
-- Entry reuse (emath-49o8): an inlined sibling frame names its callee
+- Entry reuse: an inlined sibling frame names its callee
   (`CallFrame.callee`). Entries emit callees-first (post-order over the
   named-call graph) and register their ABI (parameter carriers, returned
   carrier); a named frame whose `frame_input_kind` carriers and inferred
@@ -192,12 +214,53 @@ change is introduced by this reuse.
 - Goals and tests attach by declared ids, never by span geometry.
 - `model` declarations emit explicit `step_euler` and `step_rk4` step methods over `der_<state>` rates; models with `algebraic:` residual equations render the shared typed residual step program and its authored Newton cells (forward-difference Jacobian, Gaussian elimination, 30 iterations, 1e-9 solve tolerance, 1e-6 convergence check), returning `Result<Self, String>` that errors on non-convergence instead of inventing a value; no silent omission. Algebraic unknowns are fields of `Self` (extended DAE state). After the differential update each step re-solves them at the accepted state so the algebraic residual at the returned point is ~0 (index-1 projection), matching `emath simulate`.
 - Program literals retain typed captures. Literal frames bind their own inputs and state. Nested frames and programs disable outer register inlining, so outer substitutions cannot change inner bindings.
-- Program-space quote emission (emath-npky7, carriers widened emath-3ran3): `CodeLiteral` renders as a two-stage factory - the nested program lowers once into `move |param: V, free...: V| -> Result<V, String>` where `V` is the template's declared scalar carrier (`emath_rt::ExactRatio` for Rat, `i64` for Int, `bool` for Bool), and `emath_rt::code::open::<V>` wraps it in the outer factory (`Rc<dyn Fn(&[V]) -> Result<Unary<V>, String>>`) that owns the bound constants and yields the specialized closure (`ValueKind::Code(carrier)`). A body computing any carrier other than the declared one refuses typed at emission. `CodeSubstitute` renders `emath_rt::code::substitute(&code, "name", value)` (the value must carry the template's carrier, else `UnsupportedType`; the generic instantiation would not compile a mismatch anyway); `CodeEvaluate` renders `emath_rt::code::evaluate(&code)?` with kind `Closure { V -> V }` so `CallValue` applies it typed. Hygiene is structural: the nested body's only external names are its parameter and the open constants, so there is no ambient capture to render; no tree and no interpreter are emitted - candidates execute as the compiled closures.
-- Expression templates (emath-expression-quotes-324y0): a `CodeLiteral` with `param: None` renders the body ONCE over the dynamic value union (`ValueKind::CodeValue`, the rt `CodeValue` Int/Rat/Bool union) - every scalar op of the body renders as a call to a shared rt dynamic kernel (`code_add`/`code_sub`/`code_mul`/`code_div`/`code_neg`/`code_not`/`code_eq`/`code_cmp`/`code_as_bool`) implementing the VM's exact carrier rules, wrapped by `emath_rt::code::open_expr` (the `ValueKind::ExprCode` carrier, the same by-name/no-op/`unbound_code` laws as the function carrier). Kind rules route a joinable union pair (one `CodeValue` operand, the other Int/Rat/Bool) onto the kernels; anything else (Float64 beside the union, structured bodies, a closed body with no free name) refuses named at the body-kind check. Result kinds follow the render: comparisons (`code_eq`/`code_cmp`) yield the checked `Bool` in every lane, while the boolean combinators And/Or keep the union result (`CodeValue::Bool`) over a joinable pair - and a union-kinded `Branch`/`Select` condition projects through `code_as_bool` (the VM's dynamic condition). `CodeSubstitute` over an expression template accepts any scalar and converts it into the union; `CodeEvaluate` yields the computed union scalar (`CodeValue`), and the entry boundary projects it checked onto the DECLARED output carrier (`project_i64`/`project_ratio`/`project_bool`) - the engine's `type_admits` law (Rat widens Int exactly; Int refuses a Rational by name; Bool admits Bool only); a `CodeValue` result without a declared scalar output refuses named. Mixed-kind joins inside one body follow the same boundary law: a `Branch` whose arms disagree (one typed numeric/Bool arm, one union arm) projects the union arm checked onto the typed arm's carrier (`branch arm` refusal slot), and call arguments, call results, frame inputs, vector elements, and record fields name their slots the same way - a dynamic value crossing a typed seam renders the checked projection, never an E0308 pair. This lane is still not a tree interpreter: no expression tree is carried into the artifact, the body is compiled arithmetic over the union. The no-interpreter boundary is hereby precise: what is never emitted is a structural walk over a carried tree; compiled dynamic-scalar kernels over a value union are exactly that - compiled arithmetic.
+- Program-space quote emission:
+  scalar unary templates use a two-stage compiled factory,
+  `open::<V>`, with the declared Int/Rat/Bool carrier. Substitution
+  retains that carrier and evaluate returns its typed callable.
+  A non-scalar template instead uses `open_expr` with the distilled
+  tree and no scalar factory. Its declared callable result or
+  structured value follows the checked tree lane described below.
+- Expression templates: scalar
+  bodies compile once over the Int/Rat/Bool `CodeValue` union using
+  shared dynamic kernels. Closed scalar bodies wrap into the union.
+  Float64 and Text do not enter it. Comparisons return checked Bool;
+  boolean combinators retain `CodeValue::Bool`, and dynamic conditions
+  project through `code_as_bool`. Substitution converts supported
+  scalars into the union. Evaluate projects onto a declared scalar
+  output with `project_i64`/`project_ratio`/`project_bool`: Rat widens
+  Int exactly, Int refuses Rational, and Bool admits only Bool.
+  Branches, frame inputs, call edges, sequence elements, and record
+  fields use the same checked projection law, including dynamic
+  nodes and recursive sequence joins. Non-scalar expression bodies
+  retain a factory-free tree instead of forcing a scalar union.
 - The residual lane splits the work with the union lane (the pre-existing quote-elimination law): a substitute-then-evaluate chain over statically-known templates folds to plain arithmetic over the function's declared inputs, and the union `CodeLiteral` remains for template VALUES (a function whose def IS the bare quote) and non-residualizable consumers. Mixed Int/Rational arithmetic (`x + 1/2` with Int `x` - the residualized expression lane's shape) now widens the Int operand exactly (`(i128::from(n), 1)`) and computes rationally, matching the VM's `as_rat` law and locking the Rational carrier - previously this shape fell to the float lane and emitted a non-compiling `f64 + (i128, i128)`; the kind rule promotes the mixed pair to Rational. No-claim: mixed `ExactInt`/Rational pairs (an `ExactIntCall` result beside a rational constant) keep the pre-existing float fallback.
-- Shared tree view/make (emath-shared-tree-view-make-bp8nu): a union-lane `CodeLiteral` now embeds BOTH representations - `emath_rt::code::open_expr(free, TREE, Some(factory), DEPS)` where `TREE` is the distilled std-only `CodeTree` (`tree_expr` renders it as a constructing Rust expression) and `DEPS` the stamped dependency map. When a lowered program needs it, the crate emits a crate-level `static __EMATH_MODULE_TABLE: emath_rt::code_tree::ModuleTable` built from `module_callable_table` (name, opaque, stamp per callable), and every tree-lane entry renders an `emath_rt::code_tree::reset_mint()` prologue so tokens are deterministic per run. `CodeView` renders `view_quoted`/`view_node` (kind `Node`), `CodeMake` renders `make_quoted` (kind `ExprCode`), and `CodeEvaluate` over an `ExprCode` renders `evaluate_expr(&code, &__EMATH_MODULE_TABLE)?` - the factory runs when present, else the rt tree evaluator. The `Node` value kind (`emath_rt::code_tree::NodeValue`) carries the walk records: `RecordCreate` with a node-tag type name renders `node_record`, `RecordField` over `Node` renders the checked `node_field`, list create with any `Node` element is `Node`-kind, and `VectorIndex`/`VectorLength` over `Node` render `node_index`/`node_field("length")`. Comparison over `Node` renders `node_eq` (the VM's `eq_values` law - scalar VALUE equality). Dual-rep debt: the function-template lane still carries no tree (compiled closures only). Tree-evaluator boundary: the rt `evaluate_tree` computes scalar trees and refuses calls/globals/structured bodies by name - the artifact makes no interpreter claim beyond compiled scalar arithmetic and the compiled factory.
-- Definition table - quote.body (emath-quote-body-defs-trto7): `CodeBody` renders `({code}).body(&__EMATH_DEFINITIONS)?` (kind `Node`) - the Available/Opaque body-record unfold over a crate-level `static __EMATH_DEFINITIONS: std::sync::LazyLock<emath_rt::code_tree::DefinitionTable>` built from `module_definition_table` (one `LazyLock` initialization; rows render name, opacity, and the distilled body via the same `tree_expr`). Over a NODE callee the same op renders `quote_body_over_node`: a named node resolves through the table (`Available`), an op-tag callee yields the no-identity `Opaque` (an operator has no authored body). The dual-representation debt is OWNED here: the table is distilled by the same lowering that compiles the entries - one lowering, two projections, cannot drift, neither hand-written. `to_node` folds a list of family-joinable elements (an all-made argument list, `[made, made]`) into the family's dynamic sequence elementwise. No-claim boundaries: a transparent body outside the distilled subset refuses by name at the unfold; a raw union (`CodeValue`) result in a MULTI-output record member is not projected (the checked projection is the single-output boundary) - authored value pins compare instead (`== 8 / 1`), and the compile error is the boundary's honest shape.
-- The binder half - quote.open / quote.bind (emath-quote-bind-open-consumer-6f86g): `CodeOpen` renders `({package}).open()?` (a node-family package; kind `ExprCode`) or `({code}).open()` (a plain Code: the factory and snapshot dropped) - the witness-validated unwrap; a function-template operand keeps its named no-tree-lane refusal. `CodeBind` (call form) renders `({code}).bind(&__EMATH_MODULE_TABLE)` - the identity mint walk with the snapshot re-stamped. The call-marshal bridge: the node lane wraps codes as Code nodes, so a Node-kind argument crossing into a declared Code parameter - at a frame input (`frame_input_kind` lets the declared carrier win over the node wrapper), a recursive self-call argument, or a sibling-call argument - converts through `node_as_code` (unwrap or rebuild, never a silent type change; the VM's call arguments ARE codes). The expression-template lane now accepts a closed SCALAR body (a bare literal, e.g. `quote(0)` in an authored transformation rule): the atom wraps into the union (`to_code_value`) instead of refusing - the free-name arithmetic path stays `CodeValue`-typed throughout. No-claim boundaries: the quote.bind BINDER form refuses at lowering (a fresh-tokened function literal is outside the distilled subset); mutually recursive siblings refuse lowering (the emission model inlines acyclic siblings and self-recursion only - entry-call emission for cycles is a future bead); the consumer proof that DID land is the authored differentiation module (`language/modules/analysis/derivative.emath` `d_form`, local-only) driven end-to-end through the session fixture `tests/fixtures/constructor/diff_session.emath` (export parity case 13).
+- Shared tree view/make:
+  `open_expr(free, TREE, factory, DEPS)` carries the distilled
+  `CodeTree` and stamped dependencies; scalar templates also retain
+  a compiled factory. The crate emits `__EMATH_MODULE_TABLE` when
+  needed and resets mint tokens at tree-lane entry boundaries.
+  View/make, checked node fields and sequence indexing preserve
+  the node family; `node_eq` keeps Text separate from schema tags.
+  Evaluate uses the compiled factory when present, otherwise the
+  limited tree evaluator. Declared scalar arrows use the callable
+  adapter, structured results use `ExprCode::evaluate_node`, and
+  ordinary scalar results use `evaluate_expr`. Module calls carried
+  by the table compute; tuples, lazy branches and tuple indexing
+  compute in the structured lane. Unsupported leaves and globals
+  still refuse by name. Scalar unary factories remain closure-only.
+- Definition table - quote.body: `CodeBody` renders `({code}).body(&__EMATH_DEFINITIONS)?` (kind `Node`) - the Available/Opaque body-record unfold over a crate-level `static __EMATH_DEFINITIONS: std::sync::LazyLock<emath_rt::code_tree::DefinitionTable>` built from `module_definition_table` (one `LazyLock` initialization; rows render name, opacity, and the distilled body via the same `tree_expr`). Over a NODE callee the same op renders `quote_body_over_node`: a named node resolves through the table (`Available`), an op-tag callee yields the no-identity `Opaque` (an operator has no authored body). The dual-representation debt is OWNED here: the table is distilled by the same lowering that compiles the entries - one lowering, two projections, cannot drift, neither hand-written. `to_node` folds a list of family-joinable elements (an all-made argument list, `[made, made]`) into the family's dynamic sequence elementwise. No-claim boundaries: a transparent body outside the distilled subset refuses by name at the unfold; a raw union (`CodeValue`) result in a MULTI-output record member is not projected (the checked projection is the single-output boundary) - authored value pins compare instead (`== 8 / 1`), and the compile error is the boundary's honest shape.
+- The binder half - quote.open / quote.bind: `CodeOpen` validates and
+  unwraps a node-family package or drops a plain Code's factory and
+  capture snapshot. Closure-only unary templates still refuse the
+  no-tree lane. `CodeBind` call form mints identities and re-stamps
+  the snapshot. Node-wrapped Code arguments unwrap or rebuild
+  checked at frame, recursive and sibling-call boundaries.
+  The quote.bind binder form remains outside the distilled subset.
+  Mutual recursion uses emitted sibling entries; its argument
+  carriers settle before entry emission. Consumer evidence includes
+  authored differentiation through `diff_session.emath` and the
+  mutual-name cycle in `engine_worlds.emath`.
 - Text formatting uses positional operands and preserves literal braces. Statistical estimates use the authored `Estimate` record layout.
 - `SameVector`, `SameMatrix`, and `SameTensor` result signatures retain their dense carrier kind. Authored guards retain shape validation.
 - Current subset: one constructor and one evaluate goal per declaration.
@@ -280,7 +343,7 @@ Frequently re-exported types (not exhaustive):
 - `CrateProfile`, `ProfileProblem` (module `profiles`): `parse_profile`.
 - `FileSet`, `Anchor`, `RenderResult` (module `render`): `render_module`, `render_file_set`, `render_file_set_partitioned`, `render_generics`, `coverage_gaps`.
 - Module `ast`: full AST item types (`Module`, `Item`, `StructDef`, `FnDef`, `ImplDef`, `EnumDef`, `Expr`, `Stmt`, `Ty`, etc.) and helpers `escape_ident`, `snake_case`, `RUST_KEYWORDS`.
-- `ConstructorCrateEmission`, `ConstructorEmitRefusal` (module `constructor_crate`, bead emath-8k3zw): `emit_constructor_crate(main_tree, spec_path)` - the `emath build` emission core (import merge, authored-record collection, one named entry per main-file function, the `mod emath_rt` self-containment embed, and the manifest), shared with the loop host's `export-native` so the two callers' artifact crates are byte-identical by construction. Pure: it returns the lib text, the manifest, the package name, and the admission facts (runnable, functions, unresolved), plus the authored `records` with their EMATH field names - the emitted Rust escapes keywords (`move` becomes `move_` via `escape_ident`, a non-injective escape), so consumers that must recover the authored names map back through that list, never by heuristic.
+- `ConstructorCrateEmission`, `ConstructorEmitRefusal` (module `constructor_crate`): `emit_constructor_crate(main_tree, spec_path)` - the `emath build` emission core (import merge, authored-record collection, one named entry per main-file function, the `mod emath_rt` self-containment embed, and the manifest), shared with the loop host's `export-native` so the two callers' artifact crates are byte-identical by construction. Pure: it returns the lib text, the manifest, the package name, and the admission facts (runnable, functions, unresolved), plus the authored `records` with their EMATH field names - the emitted Rust escapes keywords (`move` becomes `move_` via `escape_ident`, a non-injective escape), so consumers that must recover the authored names map back through that list, never by heuristic.
 
 ## Invariants
 

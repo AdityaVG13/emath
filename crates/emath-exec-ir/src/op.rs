@@ -230,6 +230,9 @@ pub enum EmirOp {
         inputs: Vec<EmirValue>,
         state: Vec<EmirValue>,
         declared: Vec<String>,
+        /// Generic carriers supplied by the expected result. Kept
+        /// separately so body binder names remain available.
+        bindings: Vec<(String, String)>,
         callee: Option<String>,
     },
     /// Re-enter the active recursive program with a new input frame.
@@ -295,19 +298,19 @@ pub enum EmirOp {
     /// A quoted unary program template as compiled code: the lambda
     /// body lowered once, with the open (free) constant names as
     /// trailing runtime inputs after the parameter. The artifact
-    /// value is the compiled closure factory - the function lane
-    /// carries no tree and runs no interpreter. Two template shapes
+    /// value uses a compiled closure factory for scalar unary
+    /// templates and a distilled tree for non-scalar templates.
+    /// Two template shapes
     /// are admitted. A FUNCTION template (`quote(function x in Rat:
     /// ...)`) carries `param: Some(x)`: the declared domain governs
     /// the parameter AND the open constants, so the compiled factory
     /// is monomorphic in the carrier. An EXPRESSION template
-    /// (`quote(x + c)`, bead emath-expression-quotes-324y0) carries
+    /// (`quote(x + c)`) carries
     /// `param: None` and carrier `Union`: the body computes over the
     /// dynamic value union, every free name is a runtime input, and
     /// `evaluate` yields a scalar of dynamic carrier, projected at
     /// typed boundaries. The union lane additionally carries the
-    /// DISTILLED TREE of the same authored body (the dual
-    /// representation, bead emath-shared-tree-view-make-bp8nu):
+    /// DISTILLED TREE of the same authored body:
     /// `quote.view` walks it and `quote.make` rebuilds into it, both
     /// through the shared std-only algorithms in `emath-rt`. The
     /// hygiene law is structural for all lanes: a quote never
@@ -329,8 +332,8 @@ pub enum EmirOp {
         /// `Union` for an expression template (the dynamic
         /// value-union lane).
         carrier: String,
-        /// The distilled tree of the expression template: `None` on
-        /// the function lane, `Some` on the union lane - emitted by
+        /// The distilled tree: `None` on scalar unary factories,
+        /// `Some` on union and non-scalar templates - emitted by
         /// this same lowering pass from the same authored body as the
         /// compiled factory, so the two representations cannot drift.
         tree: Option<emath_rt::code_tree::CodeTree>,
@@ -357,9 +360,9 @@ pub enum EmirOp {
     /// refuses `unbound_code` naming every remaining open name;
     /// closed code yields the specialized unary closure for a
     /// function template (a callable value, so a def bound to it is
-    /// closure-valued) or the computed scalar for an expression
+    /// closure-valued) or the computed value for an expression
     /// template - through the compiled factory when the tree came
-    /// from a static template literal, through the shared scalar
+    /// from a static scalar template literal, through the shared
     /// tree evaluator when it was made from node records.
     ///
     /// `applied` is set when the evaluated value is used as a function
@@ -373,8 +376,7 @@ pub enum EmirOp {
     },
     /// `quote.view(code)`: open a Code value (or Fragment package)
     /// into its structural node records - the shared tree walked
-    /// through the minted-scope packaging (bead
-    /// emath-shared-tree-view-make-bp8nu). The artifact value is the
+    /// through the minted-scope packaging. The artifact value is the
     /// dynamic node-record family over the same layouts the VM
     /// produces.
     CodeView {
@@ -391,8 +393,8 @@ pub enum EmirOp {
     /// naming a module function becomes the Available record with the
     /// body fragment (transparent), the Opaque record (opaque), or
     /// the Opaque-unbound record (a name the table does not carry);
-    /// any other Code yields Available of its own tree (bead
-    /// emath-quote-body-defs-trto7). The artifact value is the node
+    /// any other Code yields Available of its own tree.
+    /// The artifact value is the node
     /// family over the embedded definition table.
     CodeBody {
         code: EmirValue,
@@ -401,7 +403,7 @@ pub enum EmirOp {
     /// the Fragment package's minted Scope witness (a forged witness
     /// refuses by the VM's name) and unwrap the term as a
     /// dependency-free Code, bound to the binder parameter for the
-    /// body's lowering (bead emath-quote-bind-open-consumer-6f86g).
+    /// body's lowering.
     /// The artifact value is the shared lane's opened `ExprCode`.
     CodeOpen {
         package: EmirValue,
@@ -409,8 +411,8 @@ pub enum EmirOp {
     /// `quote.bind(code)` (the call form): mint nested binder syntax
     /// inside a code value and re-stamp its dependencies - over the
     /// distilled subset (no binder nodes) the mint walk is the
-    /// identity and the snapshot re-stamps exactly as the VM's does
-    /// (bead emath-quote-bind-open-consumer-6f86g). The binder FORM
+    /// identity and the snapshot re-stamps exactly as the VM's does.
+    /// The binder FORM
     /// of quote.bind (a fresh-tokened function literal) is outside
     /// the distilled subset and refuses at lowering by name.
     CodeBind {

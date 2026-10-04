@@ -236,6 +236,7 @@ fn lower_named(
     if ["quote.cost", "quote.world", "quote.worlds"]
         .iter()
         .any(|op| engine_sites.contains_key(*op))
+        || calls_engine_callback(tree, name, &mut BTreeSet::new())
     {
         visiting.remove(name);
         let object_names: BTreeSet<String> = object_kinds(tree).into_keys().collect();
@@ -449,7 +450,11 @@ fn lower_named(
             ExprKind::Call { function, args }
                 if is_quote_evaluate_call(function) && args.len() == 1 =>
             {
-                evaluate_application(tree, &call_sites, def_name, &object_names)
+                if outputs.len() == 1 && &outputs[0] == def_name && output_signature.starts_with("Fn<") {
+                    Some(CodeApplication::Declared(output_signature.clone()))
+                } else {
+                    evaluate_application(tree, &call_sites, def_name, &object_names)
+                }
             }
             _ => None,
         };
@@ -461,16 +466,13 @@ fn lower_named(
             // for a generic call handed evaluated code
             // (`tabulate(quote.evaluate(c), n)` into `sequence(Int)`
             // binds `T`, so the evaluated code is an `Int -> Int`).
-            (ExprKind::Call { function, args }, None)
+            (ExprKind::Call { function, .. }, None)
                 if outputs.len() == 1
                     && &outputs[0] == def_name
                     && !output_signature.is_empty()
                     && matches!(&function.kind, ExprKind::Path { segments, .. }
                         if segments.len() == 1 && is_generic_function(tree, &segments[0]))
-                    && args.iter().any(|arg| {
-                        matches!(&arg.kind,
-                        ExprKind::Call { function, .. } if is_quote_evaluate_call(function))
-                    }) =>
+                    =>
             {
                 lowerer.expr_expecting(expr, &output_signature)
             }
@@ -598,6 +600,35 @@ fn lower_named(
     }
     cache.insert(name.to_string(), lowered.clone());
     Ok(lowered)
+}
+
+/// A native callback has no reference-engine step count. Keep its
+/// construction and cost measurement together in the engine instead
+/// of attempting to marshal an opaque native closure.
+fn calls_engine_callback(tree: &SyntaxTree, name: &str, visiting: &mut BTreeSet<String>) -> bool {
+    if !visiting.insert(name.to_string()) {
+        return false;
+    }
+    let Some(decl) = tree.items.iter().find_map(|item| match item {
+        Item::Declaration(decl) if decl.as_kind == "function" && decl.name == name => Some(decl),
+        _ => None,
+    }) else {
+        return false;
+    };
+    let mut sites = BTreeMap::new();
+    for (_, expr) in section_assigns(decl, "definitions") {
+        collect_call_sites(&expr, &mut sites);
+    }
+    let takes_callback = section_typed_fields(decl, "inputs")
+        .iter()
+        .any(|(_, ty)| arrow_type_stages(ty) > 0);
+    (takes_callback
+        && ["quote.cost", "quote.world", "quote.worlds"]
+            .iter()
+            .any(|op| sites.contains_key(*op)))
+        || sites
+            .keys()
+            .any(|callee| calls_engine_callback(tree, callee, visiting))
 }
 
 /// Whether a program carries a recursion-cycle edge at any depth.
@@ -833,6 +864,11 @@ impl Lowerer {
     /// lowered against those carriers in turn. Anything else lowers
     /// as usual.
     fn expr_expecting(&mut self, expr: &Expr, expected: &str) -> Result<EmirValue, String> {
+        // An unresolved declaration variable is not a carrier
+        // expectation. Bind it at the actual generic call site.
+        if expected.contains("Var<") {
+            return self.expr(expr);
+        }
         let ExprKind::Call { function, args } = &expr.kind else {
             return self.expr(expr);
         };
@@ -840,7 +876,7 @@ impl Lowerer {
         // arrow's callable lane.
         if is_quote_evaluate_call(function)
             && args.len() == 1
-            && expected.starts_with("Fn<")
+            && !expected.is_empty()
             && !expected.contains("Var<")
         {
             return self
@@ -890,6 +926,7 @@ impl Lowerer {
             inputs,
             state: Vec::new(),
             declared,
+            bindings: bound.into_iter().collect(),
             callee: Some(called.clone()),
         }))
     }
@@ -972,6 +1009,7 @@ impl Lowerer {
             inputs,
             state: Vec::new(),
             declared: Vec::new(),
+            bindings: Vec::new(),
             callee: None,
         }))
     }
@@ -1156,6 +1194,7 @@ impl Lowerer {
                 inputs: args,
                 state: Vec::new(),
                 declared: declared.to_vec(),
+                bindings: Vec::new(),
                 callee: Some(name.to_string()),
             })
         } else {
@@ -1276,8 +1315,7 @@ impl Lowerer {
                         applied: None,
                     }))
                 }
-                // The shared-tree pair (bead
-                // emath-shared-tree-view-make-bp8nu): view opens a
+                // The shared-tree pair: view opens a
                 // Code (or Fragment) into node records over the
                 // embedded tree; make rebuilds a (possibly modified)
                 // node-record tree back into Code.
@@ -1289,16 +1327,14 @@ impl Lowerer {
                     let node = self.expr(&args[0])?;
                     Ok(self.push(EmirOp::CodeMake { node }))
                 }
-                // The definition-table unfold (bead
-                // emath-quote-body-defs-trto7): a Code naming a
+                // The definition-table unfold: a Code naming a
                 // module function becomes the Available/Opaque body
                 // record over the embedded definition table.
                 ("quote.body", 1) => {
                     let code = self.expr(&args[0])?;
                     Ok(self.push(EmirOp::CodeBody { code }))
                 }
-                // The binder-half call form (bead
-                // emath-quote-bind-open-consumer-6f86g): mint nested
+                // The binder-half call form: mint nested
                 // binder syntax inside a code value and re-stamp the
                 // dependencies - the identity over the distilled
                 // subset. The binder FORM refuses by name below (a
@@ -1368,8 +1404,11 @@ impl Lowerer {
             // named sibling call - the backend renders a call to the
             // callee's emitted entry fn with the declared carriers.
             let mut inputs = Vec::new();
-            for arg in args {
-                inputs.push(self.expr(arg)?);
+            for (index, arg) in args.iter().enumerate() {
+                inputs.push(match declared.get(index) {
+                    Some(signature) => self.expr_expecting(arg, signature)?,
+                    None => self.expr(arg)?,
+                });
             }
             return Ok(self.push(EmirOp::CallSibling {
                 name: called.clone(),
@@ -1380,14 +1419,18 @@ impl Lowerer {
         }
         if let Some((body, declared)) = self.siblings.get(&called).cloned() {
             let mut inputs = Vec::new();
-            for arg in args {
-                inputs.push(self.expr(arg)?);
+            for (index, arg) in args.iter().enumerate() {
+                inputs.push(match declared.get(index) {
+                    Some(signature) => self.expr_expecting(arg, signature)?,
+                    None => self.expr(arg)?,
+                });
             }
             return Ok(self.push(EmirOp::CallFrame {
                 body,
                 inputs,
                 state: Vec::new(),
                 declared,
+                bindings: Vec::new(),
                 callee: Some(called),
             }));
         }
@@ -1610,6 +1653,7 @@ impl Lowerer {
                         inputs,
                         state: Vec::new(),
                         declared,
+                        bindings: Vec::new(),
                         callee: None,
                     }))
                 }
@@ -1683,14 +1727,14 @@ impl Lowerer {
                 // hygiene law keeps them open (a quote never captures
                 // the ambient frame), so they become the template's
                 // runtime substitution inputs. An EXPRESSION
-                // template (bead emath-expression-quotes-324y0) is a
+                // template is a
                 // quoted expression with free names and no wrapper:
                 // no parameter, every free name a runtime input, the
                 // carrier dynamic (`Union`) - the body compiles over
                 // the value union and `evaluate` yields a scalar
                 // projected at typed boundaries. The union lane also
                 // distills the SAME authored body into the shared
-                // tree (bead emath-shared-tree-view-make-bp8nu): the
+                // tree: the
                 // dual representation - compiled factory plus data
                 // tree - emitted by this one pass, and the capture
                 // stamps free names that resolve against the module
@@ -1904,8 +1948,7 @@ impl Lowerer {
                 domain,
                 body,
             } => match &callee.kind {
-                // The binder half of the tree family (bead
-                // emath-quote-bind-open-consumer-6f86g):
+                // The binder half of the tree family:
                 // `quote.open term in package: body` lowers as the
                 // witness-validated unwrap (CodeOpen) bound to the
                 // parameter for the body, mirroring lower_open's
@@ -2081,7 +2124,7 @@ fn expr_uses_quote(expr: &Expr) -> bool {
 /// unresolved exemption, so the two can never disagree; every other
 /// quote stays behind the fence as symbolic code.
 fn emitted_quote_carrier(body: &Expr) -> Option<&'static str> {
-    // An expression template (bead emath-expression-quotes-324y0): a
+    // An expression template: a
     // quoted expression with free names, no function wrapper. The
     // carrier of each free name is a substitute-time fact, so the
     // declared-carrier lane does not apply; the `Union` marker routes
@@ -2651,6 +2694,9 @@ fn type_signature(ty: &TypeExpr, objects: &BTreeSet<String>, vars: &[String]) ->
                 // A Fragment package (a viewed child: term + minted
                 // Scope witness) is a node-family record.
                 "Fragment" => Some("Fragment".into()),
+                // Engine answers have variant field sets (value when
+                // done, fault otherwise), not a fixed authored layout.
+                "Cost" | "WorldAnswer" => Some("Node".into()),
                 // A generic object applied to carriers names its
                 // instantiation (`Record<Pair<Int,Bool>>`): each
                 // instantiation is its own layout.

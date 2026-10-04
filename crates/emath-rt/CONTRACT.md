@@ -68,7 +68,7 @@ primitive does not widen native Int type admission.
 - `body`'s mathematical kernels are linked (glob-re-exported and embedded
   via `SOURCE`). Their methods must move into executable language
   definitions while preserving current behavior. See the ownership rule in
-  the root `AGENTS.md` and bead `emath-nwmm6`. The probability wrapper
+  the root `AGENTS.md`. The probability wrapper
   keeps only the unit-interval counter-stream leaf; family sampling and
   densities are authored language definitions.
 - `stencil_1d` / `stencil_2d` take `EdgePolicy` **by value** (moved from a
@@ -169,7 +169,7 @@ Language Image programs. The runtime no longer exports their former
 record types or algorithms. Generated Rust emits authored record layouts
 and program bodies through the same generic backend.
 
-## Code carrier (emath-npky7)
+## Code carrier
 
 `body/code.rs` (embedded as `pub mod code` in both the crate and
 `SOURCE`) is the artifact-side Code value: a quoted unary program
@@ -191,7 +191,7 @@ guard-removal mutation probes; the Int and Bool instantiations are
 exercised end-to-end by the program-space fixture and the export
 acceptance.
 
-## Expression-template union (emath-expression-quotes-324y0)
+## Expression-template union
 
 The same file carries the expression-template lane: a quoted
 EXPRESSION with free names (`quote(x + c)`, no parameter, no
@@ -243,7 +243,7 @@ no Text carrier; the rt comparison kernels are pinned at the unit
 level - the authored surface's comparison-valued templates compute
 through them but the export parity case rides the arithmetic lane.
 
-## Shared code tree - view/make substrate (emath-shared-tree-view-make-bp8nu)
+## Shared code tree - view/make substrate
 
 `body/code_tree.rs` (embedded as `pub mod code_tree` in both the
 crate and `SOURCE`) is the artifact-side STRUCTURAL Code
@@ -255,8 +255,16 @@ the VM's `scalar_op_name` spellings/Unary/Tuple/If) and the VM keeps
 its own CValue quote machinery - parity rests on shared-algorithm
 ports pinned at the unit level, not on rewiring the VM to this type.
 
-The node family `NodeValue` (Scalar/Record/Sequence/Tuple/Code)
+The node family `NodeValue` (Scalar/Text/Record/Sequence/Tuple/Code)
 reproduces the VM's walk records arm for arm:
+- Text remains distinct from schema-name tags. Equality does not turn a tag
+  into a string; substitution references accept either representation.
+  This does not add Text literals to `CodeValue`.
+- `ExprCode::captured_tree` exposes the tree and dependency snapshot without
+  exposing its compiled factory. `evaluate_node_expr` (also the
+  `ExprCode::evaluate_node` method) checks dependencies and open names, then
+  evaluates scalar leaves, tuples, lazy branches, and indexing into the node
+  family. Unsupported leaves retain named refusals.
 
 - view (quote.view): `view_tree`/`view_quoted` mirror `view_of` -
   Call/Binary/Unary view as Call records with op-tag callees, Code
@@ -317,17 +325,18 @@ reproduces the VM's walk records arm for arm:
 make: Option<factory>, deps}` - one lowering pass emits the compiled
 union factory AND the distilled tree; `evaluate_expr` verifies deps,
 then runs the factory when present, else the tree evaluator.
-`evaluate_tree` computes scalar trees only; calls, globals, and
-structured bodies refuse named (`tree: ... is not emitted in the
-scalar tree evaluator`) - the compile-time resolution boundary, no
-interpreter claim. Conformance:
+`evaluate_tree` computes scalar leaves and module calls carried by
+`ModuleTable::callables`; unsupported calls and global references refuse
+by name. `evaluate_node_tree` also preserves tuples, lazy branches,
+and bounds-checked tuple indexing. This is a limited tree evaluator,
+not an unrestricted interpreter. Conformance:
 `tests/emath-rt/tests/code_tree.rs` (8 cases, 35 checks) with
 token-format, forged-scope-drop, and node-kind-tag mutation probes
 all killing; `ModuleTable`/`mint_scope`/`check_scope` parity with
 the VM's `mint_scope`/`check_fragment_scope`/`dependency_snapshot`
 is pinned by the same probe.
 
-## Definition table - the quote.body unfold (emath-quote-body-defs-trto7)
+## Definition table - the quote.body unfold
 
 The same file carries the definition-table lane: `DefinitionTable`
 (rows of name, opacity, and - for a transparent callee - the
@@ -359,7 +368,7 @@ hand-written), built once at first use. Conformance: the
 fragment computation, the unbound record, the named boundary
 refusal) with a signature-swap mutation probe killing.
 
-## The binder half - quote.open and the call-form quote.bind (emath-quote-bind-open-consumer-6f86g)
+## The binder half - quote.open and the call-form quote.bind
 
 `open_node` is the arm-for-arm port of the VM's
 `check_fragment_scope` + `open_fragment`: a Fragment package

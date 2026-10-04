@@ -299,10 +299,25 @@ pub(crate) fn emit_constructor_entry_abi(
     let mut params = Vec::new();
     let mut self_params = Vec::new();
     let mut self_args = Vec::new();
+    let input_names: Vec<String> = inputs.iter().map(|(name, _)| name.clone()).collect();
+    for (position, (name, signature)) in inputs.iter().enumerate() {
+        kinds.insert(
+            name.clone(),
+            crate::codegen_render::sibling_entry_param(function_name, position).unwrap_or_else(
+                || {
+                    signature
+                        .as_deref()
+                        .map_or(ValueKind::I64, ValueKind::from_signature)
+                },
+            ),
+        );
+    }
+    crate::codegen_render::refine_recursive_frame_kinds(program, &input_names, &[], &mut kinds);
+    let mut wrapper_carriers = Vec::new();
     for (name, signature) in inputs {
-        let kind = signature
+        let kind = kinds.get(name).cloned().unwrap_or_else(|| signature
             .as_deref()
-            .map_or(ValueKind::I64, ValueKind::from_signature);
+            .map_or(ValueKind::I64, ValueKind::from_signature));
         // The parameter identifier is the escaped name (an authored
         // Rust keyword like `ref` becomes `ref_`); the kinds map stays
         // keyed by the authored name - load rendering escapes the
@@ -315,14 +330,13 @@ pub(crate) fn emit_constructor_entry_abi(
         // the parameter directly.
         self_params.push(format!("{ident}: {}", render_ty(&kind.rust_ty()?)));
         self_args.push(ident);
+        wrapper_carriers.push(kind.clone());
         input_carriers.push(kind.clone());
-        kinds.insert(name.clone(), kind);
     }
     let params = params.join(", ");
-    let input_names: Vec<String> = inputs.iter().map(|(name, _)| name.clone()).collect();
     let recursive = contains_call_self(program);
     let _tail = recursive.then(|| {
-        crate::codegen_render::TailLoopScope::enter(program, self_args.clone(), 0)
+        crate::codegen_render::TailLoopScope::enter(program, input_names.iter().map(|name| escape_ident(name)).collect(), 0)
     });
     let result_kind = program_kind(program, &input_names, &[], &kinds);
     // The expression-template boundary: the union collapses onto the
@@ -338,7 +352,7 @@ pub(crate) fn emit_constructor_entry_abi(
         // The projected carrier is what the entry (and its `__self`
         // wrapper, when the body recurses) returns; nested `CallSelf`
         // sites cross from it.
-        let _wrapper = SelfWrapperScope::enter(declared.clone(), input_carriers.clone());
+        let _wrapper = SelfWrapperScope::enter(declared.clone(), wrapper_carriers.clone());
         let rendered = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
         let projected = match declared {
             ValueKind::I64 => format!(
@@ -379,7 +393,7 @@ pub(crate) fn emit_constructor_entry_abi(
         // body recurses) returns; nested `CallSelf` sites read it
         // from the scope instead of re-deriving a branch-local
         // inference that cannot see the enclosing join.
-        let _wrapper = SelfWrapperScope::enter(result_kind.clone(), input_carriers.clone());
+        let _wrapper = SelfWrapperScope::enter(result_kind.clone(), wrapper_carriers.clone());
         let body = render_expr(&value_expr(program, &input_names, &[], &kinds)?);
         (result_ty, body, result_kind)
     };
@@ -399,7 +413,7 @@ pub(crate) fn emit_constructor_entry_abi(
         let wrapper = format!(
             "pub fn {}({params}) -> Result<{result_ty}, String> {{\n    emath_rt::code_tree::reset_mint();\n    {body_name}({})\n}}\n#[doc(hidden)]\n",
             escape_ident(function_name),
-            self_args.join(", ")
+            input_names.iter().map(|name| escape_ident(name)).collect::<Vec<_>>().join(", ")
         );
         (body_name, wrapper)
     } else {
@@ -481,7 +495,7 @@ pub(crate) fn contains_tree_ops(program: &emath_exec_ir::EmirProgram) -> bool {
     use emath_exec_ir::EmirOp;
     program.ops.iter().any(|(op, _)| match op {
         EmirOp::CodeView { .. } | EmirOp::CodeMake { .. } => true,
-        // The binder half (bead emath-quote-bind-open-consumer-6f86g):
+        // The binder half:
         // open consumes the per-run minted-ids state (the witness
         // check), and the call-form bind re-stamps against the module
         // table.

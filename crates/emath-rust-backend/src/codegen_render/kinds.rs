@@ -29,7 +29,7 @@ thread_local! {
     /// EMITTED carrier, not the authored declaration: the two
     /// disagree when the callee's body joins mixed-kind arms and
     /// emits the ratio spelling against an Int-declared tail.
-    static SIBLING_ENTRY_KINDS: std::cell::RefCell<Vec<BTreeMap<String, ValueKind>>> =
+    static SIBLING_ENTRY_KINDS: std::cell::RefCell<Vec<BTreeMap<String, EntryAbi>>> =
         const { std::cell::RefCell::new(Vec::new()) };
     /// The emitted entry ABI per module function, registered as each
     /// entry emits (callees before callers), beside the crate's
@@ -264,7 +264,7 @@ pub(crate) fn ends_in_tail_loop(program: &EmirProgram) -> bool {
 /// `SIBLING_ENTRY_KINDS`).
 pub(crate) struct SiblingEntryScope;
 impl SiblingEntryScope {
-    pub(crate) fn enter(kinds: BTreeMap<String, ValueKind>) -> Self {
+    pub(crate) fn enter(kinds: BTreeMap<String, EntryAbi>) -> Self {
         SIBLING_ENTRY_KINDS.with(|stack| stack.borrow_mut().push(kinds));
         Self
     }
@@ -283,7 +283,18 @@ pub(crate) fn sibling_entry_kind(name: &str) -> Option<ValueKind> {
             .borrow()
             .iter()
             .rev()
-            .find_map(|table| table.get(name).cloned())
+            .find_map(|table| table.get(name).map(|abi| abi.result.clone()))
+    })
+}
+
+pub(crate) fn sibling_entry_param(name: &str, position: usize) -> Option<ValueKind> {
+    SIBLING_ENTRY_KINDS.with(|stack| {
+        stack.borrow().iter().rev().find_map(|table| {
+            table
+                .get(name)
+                .and_then(|abi| abi.inputs.get(position))
+                .cloned()
+        })
     })
 }
 
@@ -306,7 +317,7 @@ pub(crate) enum ValueKind {
     /// `substitute` closes it; `evaluate` yields the specialized
     /// closure.
     Code(Box<ValueKind>),
-    /// The open expression template (emath-expression-quotes-324y0):
+    /// The open expression template:
     /// a quoted EXPRESSION with free names, compiled over the value
     /// union - no parameter, no closure. Open until `substitute`
     /// closes it; `evaluate` yields the computed
@@ -317,7 +328,7 @@ pub(crate) enum ValueKind {
     /// value. Typed boundaries project it checked onto the declared
     /// carrier.
     CodeValue,
-    /// The node-record family (bead emath-shared-tree-view-make-bp8nu):
+    /// The node-record family:
     /// the dynamic values `quote.view` produces and authored
     /// structural code consumes - node records (tag records are
     /// empty-field records), sequences, tuples, scalars, and Code
@@ -362,9 +373,10 @@ impl ValueKind {
                 "Program" => ValueKind::Program,
                 "BigInt" => ValueKind::BigInt,
                 "Code" => ValueKind::ExprCode,
+                "CodeValue" => ValueKind::CodeValue,
                 // The dynamic node family: a Fragment package record
                 // and the unparameterized (heterogeneous) sequence.
-                "Fragment" | "Sequence" => ValueKind::Node,
+                "Fragment" | "Sequence" | "Node" => ValueKind::Node,
                 "Complex" | "Complex<Float64>" => ValueKind::Complex,
                 "emath_rt::Tensor" => ValueKind::Tensor,
                 text if text.starts_with("Tensor<") || text.starts_with("SameTensor<") => {
@@ -511,7 +523,7 @@ impl ValueKind {
 pub(super) fn union_promotable(kind: &ValueKind) -> bool {
     matches!(
         kind,
-        ValueKind::CodeValue | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
+        ValueKind::CodeValue | ValueKind::Node | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
     )
 }
 
@@ -519,8 +531,9 @@ pub(super) fn union_promotable(kind: &ValueKind) -> bool {
 pub(super) fn union_pair(kinds: &[ValueKind], left: EmirValue, right: EmirValue) -> bool {
     let left_kind = kind_at(kinds, left);
     let right_kind = kind_at(kinds, right);
-    (left_kind == ValueKind::CodeValue && union_promotable(&right_kind))
-        || (right_kind == ValueKind::CodeValue && union_promotable(&left_kind))
+    (matches!(left_kind, ValueKind::CodeValue | ValueKind::Node) && union_promotable(&right_kind))
+        || (matches!(right_kind, ValueKind::CodeValue | ValueKind::Node)
+            && union_promotable(&left_kind))
 }
 
 /// A receiver kind that can never be indexed: every concrete
@@ -543,7 +556,7 @@ pub(super) fn kind_is_never_indexable(kind: &ValueKind) -> bool {
 /// vector whose element kind is itself degenerate (an empty `[]`
 /// literal carries no element kind of its own; a list OF empty lists
 /// carries neither its own nor its elements').
-pub(super) fn kind_is_degenerate(kind: &ValueKind) -> bool {
+pub(crate) fn kind_is_degenerate(kind: &ValueKind) -> bool {
     match kind {
         ValueKind::Other => true,
         ValueKind::Vector(element) => kind_is_degenerate(element),
@@ -567,12 +580,12 @@ pub(super) fn branch_carrier(
     let left_degenerate = kind_is_degenerate(&left);
     let right_degenerate = kind_is_degenerate(&right);
     if left == ValueKind::Never
-        || (left_is_call_self && right != ValueKind::Other)
+        || (left_is_call_self && !right_degenerate)
         || (left_degenerate && !right_degenerate && right != ValueKind::Other)
     {
         right
     } else if right == ValueKind::Never
-        || (right_is_call_self && left != ValueKind::Other)
+        || (right_is_call_self && !left_degenerate)
         || (right_degenerate && !left_degenerate && left != ValueKind::Other)
     {
         left
@@ -587,7 +600,7 @@ pub(super) fn branch_carrier(
         // (`if can: claim(x) else: false` is Bool). Pairs the law
         // cannot fold stay unrepresentable.
         match (&left, &right) {
-            (ValueKind::CodeValue, typed) | (typed, ValueKind::CodeValue)
+            (ValueKind::CodeValue | ValueKind::Node, typed) | (typed, ValueKind::CodeValue | ValueKind::Node)
                 if matches!(
                     typed,
                     ValueKind::I64 | ValueKind::Rational | ValueKind::ExactInt | ValueKind::Bool
@@ -623,7 +636,7 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
         let declared_kind = ValueKind::from_signature(signature);
         if matches!(
             declared_kind,
-            ValueKind::ExprCode | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
+            ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
         ) {
             return declared_kind;
         }
@@ -657,7 +670,7 @@ pub(super) fn instantiate_declared(arg_kinds: &[ValueKind], declared: &[String])
     }
     declared
         .iter()
-        .map(|signature| substitute_signature_vars(signature, &bound))
+        .map(|signature| bound_signature(&substitute_signature_vars(signature, &bound)))
         .collect()
 }
 
@@ -671,6 +684,10 @@ thread_local! {
 /// binder domain lowered as `Var<T>` resolves to the site's carrier.
 pub(crate) struct TypeBindingScope;
 impl TypeBindingScope {
+    pub(crate) fn enter_bound(bindings: &[(String, String)]) -> Self {
+        TYPE_BINDINGS.with(|stack| stack.borrow_mut().push(bindings.iter().cloned().collect()));
+        Self
+    }
     pub(crate) fn enter(arg_kinds: &[ValueKind], declared: &[String]) -> Self {
         let mut bound = BTreeMap::new();
         for (kind, signature) in arg_kinds.iter().zip(declared) {
@@ -703,17 +720,34 @@ pub(crate) fn bound_signature(signature: &str) -> String {
     })
 }
 
-pub(crate) fn bind_signature_vars(signature: &str, kind: &ValueKind, bound: &mut BTreeMap<String, String>) {
+pub(crate) fn bind_signature_vars(
+    signature: &str,
+    kind: &ValueKind,
+    bound: &mut BTreeMap<String, String>,
+) {
     let signature = signature.trim();
     if let Some(name) = signature.strip_prefix("Var<").and_then(|rest| rest.strip_suffix('>')) {
         if !kind_is_degenerate(kind)
             && let Some(text) = kind_signature(kind)
         {
-            bound.entry(name.to_string()).or_insert(text);
+            let merged = bound.get(name).map(|previous| {
+                let previous = ValueKind::from_signature(previous);
+                kind_signature(&widen_name_carrier(&previous, kind))
+                    .unwrap_or_else(|| text.clone())
+            });
+            bound.entry(name.to_string()).and_modify(|previous| {
+                if let Some(merged) = &merged {
+                    *previous = merged.clone();
+                }
+            }).or_insert(text);
         }
     } else if let Some(inner) = signature.strip_prefix("Vector<").and_then(|rest| rest.strip_suffix('>')) {
         if let ValueKind::Vector(element) = kind {
             bind_signature_vars(inner, element, bound);
+        } else if *kind == ValueKind::Node {
+            // A dynamic family sequence exposes family elements.
+            // Generic map/filter/fold bind T to that carrier.
+            bind_signature_vars(inner, &ValueKind::Node, bound);
         }
     } else if let Some(inner) = signature.strip_prefix("Record<").and_then(|rest| rest.strip_suffix('>')) {
         // `Record<Pair<Var<A>,Int>>` against the instantiation
@@ -764,6 +798,9 @@ fn kind_signature(kind: &ValueKind) -> Option<String> {
         ValueKind::Rational => "Rat".into(),
         ValueKind::Bool => "Bool".into(),
         ValueKind::Text => "Text".into(),
+        ValueKind::ExprCode => "Code".into(),
+        ValueKind::CodeValue => "CodeValue".into(),
+        ValueKind::Code(carrier) => format!("Code<{}>", kind_signature(carrier)?),
         ValueKind::BigInt => "BigInt".into(),
         ValueKind::Complex => "Complex".into(),
         // The dynamic node family's spelling (`from_signature` reads
@@ -788,8 +825,38 @@ thread_local! {
     /// walk records them where their kinds are known.
     static SELF_CALL_ARGS: std::cell::RefCell<Vec<Vec<ValueKind>>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    static SIBLING_CALL_ARGS: std::cell::RefCell<Vec<BTreeMap<String, Vec<ValueKind>>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
+pub(crate) fn with_sibling_call_scope<R>(
+    walk: impl FnOnce() -> R,
+) -> (R, BTreeMap<String, Vec<ValueKind>>) {
+    SIBLING_CALL_ARGS.with(|stack| stack.borrow_mut().push(BTreeMap::new()));
+    let result = walk();
+    let seen = SIBLING_CALL_ARGS
+        .with(|stack| stack.borrow_mut().pop())
+        .unwrap_or_default();
+    (result, seen)
+}
+
+fn record_sibling_call_args(name: &str, passed: impl Iterator<Item = ValueKind>) {
+    SIBLING_CALL_ARGS.with(|stack| {
+        if let Some(top) = stack.borrow_mut().last_mut() {
+            let args = top.entry(name.to_string()).or_default();
+            for (index, kind) in passed.enumerate() {
+                if args.len() <= index {
+                    args.resize(index + 1, ValueKind::Other);
+                }
+                args[index] = if kind_is_degenerate(&args[index]) {
+                    kind
+                } else {
+                    widen_name_carrier(&args[index], &kind)
+                };
+            }
+        }
+    });
+}
 fn record_self_call_args(passed: impl Iterator<Item = ValueKind>) {
     SELF_CALL_ARGS.with(|stack| {
         if let Some(top) = stack.borrow_mut().last_mut() {
@@ -799,6 +866,8 @@ fn record_self_call_args(passed: impl Iterator<Item = ValueKind>) {
                 }
                 if kind_is_degenerate(&top[index]) {
                     top[index] = kind;
+                } else {
+                    top[index] = widen_name_carrier(&top[index], &kind);
                 }
             }
         }
@@ -818,7 +887,7 @@ fn with_self_call_scope<R>(walk: impl FnOnce() -> R) -> (R, Vec<ValueKind>) {
 /// accumulator, or a type-parameter declaration) takes the kind its own
 /// self-calls pass for it: `tabulate_down(f, i, k - 1, [f(k), ..acc])`
 /// fixes `acc` from `f`'s result at this frame's instantiation.
-pub(super) fn refine_recursive_frame_kinds(
+pub(crate) fn refine_recursive_frame_kinds(
     body: &EmirProgram,
     names: &[String],
     states: &[String],
@@ -833,8 +902,14 @@ pub(super) fn refine_recursive_frame_kinds(
         let (_, seen) = with_self_call_scope(|| value_kinds(body, names, states, frame));
         let mut changed = false;
         for (name, passed) in names.iter().zip(seen) {
-            if frame.get(name).is_none_or(kind_is_degenerate) && !kind_is_degenerate(&passed) {
-                frame.insert(name.clone(), passed);
+            let current = frame.get(name).cloned().unwrap_or(ValueKind::Other);
+            let widened = if kind_is_degenerate(&current) {
+                passed
+            } else {
+                widen_name_carrier(&current, &passed)
+            };
+            if widened != current && !kind_is_degenerate(&widened) {
+                frame.insert(name.clone(), widened);
                 changed = true;
             }
         }
@@ -1018,7 +1093,227 @@ pub(super) fn value_kinds(
     for (i, (op, _)) in program.ops.iter().enumerate() {
         kinds[i] = kind_of_op(op, &kinds, names, states, input_kinds, resolved.as_ref());
     }
+    if !program.ops.iter().enumerate().any(|(index, (op, _))| {
+        matches!(op, EmirOp::ProgramLiteral { .. })
+            && matches!(&kinds[index], ValueKind::Closure { params, .. }
+                if params.iter().any(|param| widen_name_carrier(param, &ValueKind::Node) != *param))
+    }) {
+        return kinds;
+    }
+    let mut parameters = BTreeMap::new();
+    for _ in 0..n {
+        let before = parameters.clone();
+        let roots = (0..n).map(Some).collect::<Vec<_>>();
+        collect_literal_parameters(program, &kinds, &roots, true, &mut parameters);
+        if before == parameters {
+            break;
+        }
+        for (i, (op, _)) in program.ops.iter().enumerate() {
+            kinds[i] = if let (EmirOp::ProgramLiteral { body, captures, .. }, Some(param)) =
+                (op, parameters.get(&i))
+            {
+                literal_kind(body, captures, param.clone(), &kinds)
+            } else {
+                kind_of_op(op, &kinds, names, states, input_kinds, resolved.as_ref())
+            };
+        }
+    }
     kinds
+}
+
+/// Viewed names are schema tags, not Text. When a local binder or
+/// recursive accumulator receives both, retain both in the node family.
+/// Scalar and Code boundaries still use their checked projections.
+pub(crate) fn widen_name_carrier(current: &ValueKind, incoming: &ValueKind) -> ValueKind {
+    fn contains_text(kind: &ValueKind) -> bool {
+        match kind {
+            ValueKind::Text => true,
+            ValueKind::Vector(element) => contains_text(element),
+            _ => false,
+        }
+    }
+    if *incoming == ValueKind::Node && contains_text(current) {
+        ValueKind::Node
+    } else {
+        current.clone()
+    }
+}
+
+fn literal_kind(
+    body: &EmirProgram,
+    captures: &[EmirValue],
+    param: ValueKind,
+    kinds: &[ValueKind],
+) -> ValueKind {
+    let names = (0..usize::from(body.input_count))
+        .map(|index| format!("__program_arg_{index}"))
+        .collect::<Vec<_>>();
+    let explicit = names.len() - captures.len();
+    let frame = names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| {
+            (
+                name.clone(),
+                if index < explicit {
+                    param.clone()
+                } else {
+                    kind_at(kinds, captures[index - explicit])
+                },
+            )
+        })
+        .collect();
+    ValueKind::Closure {
+        params: vec![param; explicit],
+        result: Box::new(program_kind(body, &names, &[], &frame)),
+    }
+}
+
+/// Follow actual call/capture edges back to locally emitted literals.
+/// Do not change an externally supplied callable's declared ABI.
+fn collect_literal_parameters(
+    program: &EmirProgram,
+    kinds: &[ValueKind],
+    roots: &[Option<usize>],
+    local_roots: bool,
+    parameters: &mut BTreeMap<usize, ValueKind>,
+) {
+    let mut origins = vec![None; program.ops.len()];
+    for (index, (op, _)) in program.ops.iter().enumerate() {
+        origins[index] = match op {
+            EmirOp::LoadInput(input) => roots.get(*input as usize).copied().flatten(),
+            EmirOp::ProgramLiteral { .. } if local_roots => Some(index),
+            _ => None,
+        };
+        let mut request = |value: EmirValue, actual: &ValueKind| {
+            if let Some(root) = origins[value.0 as usize]
+                && let ValueKind::Closure { params, .. } = kind_at(kinds, value)
+                && params.len() == 1
+            {
+                let desired = widen_name_carrier(&params[0], actual);
+                if desired != params[0] {
+                    parameters.insert(root, desired);
+                }
+            }
+        };
+        match op {
+            EmirOp::CallValue {
+                program: target,
+                inputs,
+            } if !inputs.is_empty() => {
+                request(*target, &kind_at(kinds, inputs[0]));
+            }
+            EmirOp::CallFrame {
+                inputs,
+                declared,
+                body,
+                state,
+                bindings,
+                ..
+            } => {
+                let _bindings = TypeBindingScope::enter_bound(bindings);
+                let actual = inputs
+                    .iter()
+                    .map(|value| kind_at(kinds, *value))
+                    .collect::<Vec<_>>();
+                let declared = instantiate_declared(&actual, declared);
+                for (value, signature) in inputs.iter().zip(&declared) {
+                    if let ValueKind::Closure { params, .. } = ValueKind::from_signature(&signature)
+                        && params.len() == 1
+                    {
+                        request(*value, &params[0]);
+                    }
+                }
+                if inputs
+                    .iter()
+                    .any(|value| origins[value.0 as usize].is_some())
+                {
+                    let names = (0..inputs.len())
+                        .map(|i| format!("__arg_{i}"))
+                        .collect::<Vec<_>>();
+                    let states = (0..state.len())
+                        .map(|i| format!("__state_{i}"))
+                        .collect::<Vec<_>>();
+                    let mut frame = names
+                        .iter()
+                        .enumerate()
+                        .map(|(i, name)| {
+                            (
+                                name.clone(),
+                                frame_input_kind(actual[i].clone(), declared.get(i)),
+                            )
+                        })
+                        .chain(
+                            states
+                                .iter()
+                                .zip(state)
+                                .map(|(name, value)| (name.clone(), kind_at(kinds, *value))),
+                        )
+                        .collect();
+                    refine_recursive_frame_kinds(body, &names, &states, &mut frame);
+                    let nested = value_kinds(body, &names, &states, &frame);
+                    let roots = inputs
+                        .iter()
+                        .map(|value| origins[value.0 as usize])
+                        .collect::<Vec<_>>();
+                    collect_literal_parameters(body, &nested, &roots, false, parameters);
+                }
+            }
+            EmirOp::ProgramLiteral { body, captures, .. } => {
+                if captures
+                    .iter()
+                    .any(|value| origins[value.0 as usize].is_some())
+                    && let ValueKind::Closure { params, .. } = &kinds[index]
+                {
+                    let names = (0..body.input_count)
+                        .map(|i| format!("__arg_{i}"))
+                        .collect::<Vec<_>>();
+                    let frame = names
+                        .iter()
+                        .cloned()
+                        .zip(
+                            params
+                                .iter()
+                                .cloned()
+                                .chain(captures.iter().map(|value| kind_at(kinds, *value))),
+                        )
+                        .collect();
+                    let roots = std::iter::repeat_n(None, params.len())
+                        .chain(captures.iter().map(|value| origins[value.0 as usize]))
+                        .collect::<Vec<_>>();
+                    let nested = value_kinds(body, &names, &[], &frame);
+                    collect_literal_parameters(body, &nested, &roots, false, parameters);
+                }
+            }
+            EmirOp::Branch {
+                args,
+                then_body,
+                else_body,
+                ..
+            } => {
+                if !args.iter().any(|value| origins[value.0 as usize].is_some()) {
+                    continue;
+                }
+                let names = (0..args.len())
+                    .map(|i| format!("__arg_{i}"))
+                    .collect::<Vec<_>>();
+                let frame = names
+                    .iter()
+                    .cloned()
+                    .zip(args.iter().map(|value| kind_at(kinds, *value)))
+                    .collect();
+                let roots = args
+                    .iter()
+                    .map(|value| origins[value.0 as usize])
+                    .collect::<Vec<_>>();
+                for body in [then_body, else_body] {
+                    let nested = value_kinds(body, &names, &[], &frame);
+                    collect_literal_parameters(body, &nested, &roots, false, parameters);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 pub(super) fn kind_at(kinds: &[ValueKind], value: EmirValue) -> ValueKind {
@@ -1069,6 +1364,12 @@ fn register_is_call_self(program: &EmirProgram, value: EmirValue) -> bool {
 /// same join. Every pair the law cannot fold is unrepresentable.
 pub(super) fn join_arm_kinds(left: ValueKind, right: ValueKind) -> ValueKind {
     match (left, right) {
+        (ValueKind::CodeValue | ValueKind::Node, typed)
+        | (typed, ValueKind::CodeValue | ValueKind::Node)
+            if matches!(typed, ValueKind::I64 | ValueKind::Rational | ValueKind::ExactInt | ValueKind::Bool) =>
+        {
+            typed
+        }
         (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt) => {
             ValueKind::ExactInt
         }
@@ -1125,6 +1426,24 @@ pub(super) fn numeric_element_kind(values: &[EmirValue], kinds: &[ValueKind]) ->
         .iter()
         .map(|value| kind_at(kinds, *value))
         .fold(ValueKind::Other, join)
+}
+
+/// A non-scalar quoted function has structure, but no monomorphic
+/// scalar factory. Inference and rendering must choose the same lane.
+pub(super) fn template_uses_tree(
+    body: &EmirProgram,
+    param: &str,
+    free: &[String],
+    carrier: &str,
+) -> bool {
+    let kind = ValueKind::from_signature(carrier);
+    let mut names = vec![param.to_string()];
+    names.extend(free.iter().cloned());
+    let inputs = names
+        .iter()
+        .map(|name| (name.clone(), kind.clone()))
+        .collect();
+    program_kind(body, &names, &[], &inputs) != kind
 }
 
 pub(super) fn kind_of_op(
@@ -1252,28 +1571,7 @@ pub(super) fn kind_of_op(
             if signature.is_empty() {
                 return ValueKind::Program;
             }
-            let param_kind = ValueKind::from_signature(&bound_signature(signature));
-            let names = (0..usize::from(body.input_count))
-                .map(|index| format!("__program_arg_{index}"))
-                .collect::<Vec<_>>();
-            let explicit = names.len() - captures.len();
-            let frame = names
-                .iter()
-                .enumerate()
-                .map(|(index, name)| {
-                    let kind = if index < explicit {
-                        param_kind.clone()
-                    } else {
-                        kind_at(kinds, captures[index - explicit])
-                    };
-                    (name.clone(), kind)
-                })
-                .collect();
-            let result = program_kind(body, &names, &[], &frame);
-            ValueKind::Closure {
-                params: vec![param_kind; explicit],
-                result: Box::new(result),
-            }
+            literal_kind(body, captures, ValueKind::from_signature(&bound_signature(signature)), kinds)
         }
         // The quoted-template carrier. A FUNCTION template is open
         // code over its declared scalar carrier (a CodeLiteral or a
@@ -1281,8 +1579,9 @@ pub(super) fn kind_of_op(
         // guarded executor yields a callable). An EXPRESSION
         // template (param None) is the union lane: an ExprCode value
         // whose executor yields the computed CodeValue scalar.
-        EmirOp::CodeLiteral { param, carrier, .. } => {
-            if param.is_none() {
+        EmirOp::CodeLiteral { body, param, free, carrier, tree, .. } => {
+            if param.is_none() || (tree.is_some() && param.as_deref()
+                .is_some_and(|param| template_uses_tree(body, param, free, carrier))) {
                 ValueKind::ExprCode
             } else {
                 ValueKind::Code(Box::new(ValueKind::from_signature(carrier)))
@@ -1311,7 +1610,7 @@ pub(super) fn kind_of_op(
         EmirOp::CodeBind { .. } => ValueKind::ExprCode,
         EmirOp::CodeIdentity { .. } => ValueKind::I64,
         EmirOp::CodeJoin { .. } => ValueKind::ExprCode,
-        EmirOp::EngineCall { result, .. } => ValueKind::from_signature(result),
+        EmirOp::EngineCall { result, .. } => ValueKind::from_signature(&bound_signature(result)),
         // quote.evaluate: closed code yields the specialized unary
         // closure over the template's carrier (a def bound to it is
         // callable), or - for an expression template - the computed
@@ -1328,13 +1627,17 @@ pub(super) fn kind_of_op(
                 params: vec![carrier.as_ref().clone()],
                 result: carrier,
             },
-            ValueKind::ExprCode => match applied {
+            ValueKind::ExprCode | ValueKind::Node => match applied {
                 Some(emath_exec_ir::CodeApplication::Union(arity)) => ValueKind::Closure {
                     params: vec![ValueKind::CodeValue; usize::from(*arity)],
                     result: Box::new(ValueKind::CodeValue),
                 },
                 Some(emath_exec_ir::CodeApplication::Declared(signature)) => {
-                    declared_scalar_arrow(signature).unwrap_or(ValueKind::Other)
+                    if signature.starts_with("Fn<") {
+                        declared_scalar_arrow(signature).unwrap_or(ValueKind::Other)
+                    } else {
+                        ValueKind::from_signature(signature)
+                    }
                 }
                 None => ValueKind::CodeValue,
             },
@@ -1382,7 +1685,7 @@ pub(super) fn kind_of_op(
             let declared = if result.is_empty() {
                 ValueKind::Other
             } else {
-                ValueKind::from_signature(result)
+                ValueKind::from_signature(&bound_signature(result))
             };
             if let Some(body_kind) = call_self_kind {
                 if !matches!(body_kind, ValueKind::Other) {
@@ -1432,12 +1735,13 @@ pub(super) fn kind_of_op(
         // Rat-typed inlined carrier against an Int-declared recursive
         // tail emits the ratio carrier). Without a pre-lowered table
         // entry the declared signature stands.
-        EmirOp::CallSibling { name, result, .. } => {
+        EmirOp::CallSibling { name, inputs, result, .. } => {
+            record_sibling_call_args(name, inputs.iter().map(|value| kind_at(kinds, *value)));
             if let Some(kind) = sibling_entry_kind(name) {
                 return kind;
             }
             if !result.is_empty() {
-                let declared = ValueKind::from_signature(result);
+                let declared = ValueKind::from_signature(&bound_signature(result));
                 if !matches!(declared, ValueKind::Other) {
                     return declared;
                 }
@@ -1449,8 +1753,10 @@ pub(super) fn kind_of_op(
             inputs,
             state,
             declared,
+            bindings,
             ..
         } => {
+            let _bindings = TypeBindingScope::enter_bound(bindings);
             let names = (0..inputs.len())
                 .map(|index| format!("__frame_input_{index}"))
                 .collect::<Vec<_>>();
@@ -1731,6 +2037,7 @@ pub(super) fn kind_of_op(
                 ValueKind::F64
             }
         }
+        EmirOp::Neg(value) if kind_at(kinds, *value) == ValueKind::Node => ValueKind::CodeValue,
         EmirOp::Neg(value) => kind_at(kinds, *value),
         // The union lane: comparisons and boolean combinators over a
         // joinable union pair compute the union (a Bool-valued
@@ -1755,7 +2062,7 @@ pub(super) fn kind_of_op(
             }
         }
         EmirOp::Not(value) => {
-            if matches!(kind_at(kinds, *value), ValueKind::CodeValue) {
+            if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node) {
                 ValueKind::CodeValue
             } else {
                 ValueKind::Bool
@@ -1918,7 +2225,7 @@ pub(super) fn cmp_expr(
     let lk = operand_kind(kinds, left);
     let rk = operand_kind(kinds, right);
     Ok(match (&lk, &rk) {
-        // The node family (bead emath-shared-tree-view-make-bp8nu):
+        // The node family:
         // structural comparison over the dynamic records - tags by
         // name, records by type and field set, scalars by VALUE
         // through the union kernels (`node.kind == Call` is the
@@ -2138,7 +2445,7 @@ pub(super) fn cmp_expr(
                 let view = |kind: &ValueKind, value: EmirValue| {
                     let rendered = render_expr(&operand(program, value));
                     match kind {
-                        ValueKind::Text => format!("({rendered}).as_str()"),
+                        ValueKind::Text => format!("{{ let __text: &str = &({rendered}); __text }}"),
                         ValueKind::Tensor => format!("({rendered}).data.as_slice()"),
                         ValueKind::Vector(_) | ValueKind::Matrix(_) => {
                             format!("({rendered}).as_slice()")
@@ -2258,6 +2565,7 @@ pub(super) fn numeric_boundary_value(
         // boundary applies, at record fields, sequence elements, and
         // branch arms. The refusal names the slot and the found
         // value; an Int widens into Rat/ExactInt exactly.
+        (ValueKind::Node, target) => super::node_into(&render_expr(expression), target).map(Expr::Raw),
         (ValueKind::CodeValue, ValueKind::I64) => Some(Expr::Raw(format!(
             "emath_rt::code::project_i64(&{}, {slot:?})?",
             render_expr(expression)
@@ -2281,17 +2589,13 @@ pub(super) fn numeric_boundary_value(
         // A Code arm beside node arms (or a `sequence(Code)` element
         // joined with a node sequence) folds into the node family,
         // which holds code as a Code node.
-        (ValueKind::ExprCode, ValueKind::Node) => {
-            super::to_node(expression.clone(), &ValueKind::ExprCode).ok()
+        (source, ValueKind::Node) if super::node_family(source) => {
+            super::to_node(expression.clone(), source).ok()
         }
         // The reverse crossing: a node into a declared Code slot (a
         // record field, a parameter, a `sequence(Code)` element)
         // unwraps or rebuilds through the shared bridge, refusing a
         // non-code node by name.
-        (ValueKind::Node, ValueKind::ExprCode) => Some(Expr::Raw(format!(
-            "({}).to_code()?",
-            render_expr(expression)
-        ))),
         // A typed function template (substituted or not) into a
         // declared Code slot crosses as its tree.
         (ValueKind::Code(_), ValueKind::ExprCode) => Some(Expr::Raw(format!(

@@ -32,7 +32,8 @@ non-scalar call is free under the all-calls memo), which is why
 
 `constructor_layer::artifact_bridge` is the seam a built artifact links
 to run one function in this engine (`run_entry`, with the
-`ToCValue`/`FromCValue` crossings for Int, Rat, Bool, Float64, Str,
+`ToCValue`/`FromCValue` crossings for Int (including the shared arbitrary-precision
+carrier), Rat, Bool, Float64, Str, Code, node-family values,
 sequences, and authored objects - the artifact implements the traits
 for each record struct whose fields cross, through `record`/`field`;
 imports resolve only from the module files the artifact embeds, via
@@ -40,6 +41,19 @@ imports resolve only from the module files the artifact embeds, via
 `quote.world`, or `quote.worlds` through it, so artifact answers and work
 counts are this engine's; a value that does not fit its native carrier
 refuses by name.
+
+Code crosses as its captured tree and dependency stamps, never as a native
+closure pointer. Reconstruction preserves free names and binder domains;
+returning Code uses the same distiller as ordinary lowering. Node crossings
+preserve Text separately from schema tags and recurse through records and
+sequences. Native callbacks cannot supply reference-engine work counts:
+callers that construct callbacks for an engine-measuring function retain that
+construction in the engine. Ordinary scalar/Code calls still use the bridge.
+
+`CallFrame.bindings` carries generic parameters fixed by an expected result,
+alongside instantiated input declarations. Rendering keeps these bindings in
+scope for body binders and empty seeds. An unresolved declaration variable is
+not a concrete expectation and binds at the actual call site.
 
 ## Purpose and layer
 
@@ -179,11 +193,11 @@ The first failure remains the case verdict; a failed case cannot pass its expect
 Constructor and assumption checks remain strict. `eval_definitions_values`, used
 by numerical solver callers, remains fail-fast.
 
-## Program-space quote emission (emath-npky7, expression templates emath-expression-quotes-324y0)
+## Program-space quote emission
 
 Constructor lowering emits exactly two quote subsets. The FUNCTION
-template (`quote(<unary scalar-carrier function literal>)`,
-emath-npky7): the ops are `CodeLiteral` (the template's nested
+template (`quote(<unary scalar-carrier function literal>)`):
+the ops are `CodeLiteral` (the template's nested
 program with the open constants as trailing runtime inputs, plus the
 declared carrier; `param: Some(name)`), `CodeSubstitute` (partial
 application; the reference is a static string resolved at lowering,
@@ -192,11 +206,10 @@ the value is carried in the template's carrier), and `CodeEvaluate`
 `f(x)` lowers as `CallValue` — the fourth closure-valued def source).
 The admitted carriers are the declared scalar domains `Int`, `Rat`,
 and `Bool`: the domain governs the parameter AND the open constants,
-so the artifact's compiled factory is monomorphic in the carrier
-(emath-3ran3 widened this from the original Rat-only cut).
+so the artifact's compiled factory is monomorphic in the carrier.
 
-The EXPRESSION template (`quote(<expression with free names>)`,
-emath-expression-quotes-324y0): `CodeLiteral` carries `param: None`
+The EXPRESSION template (`quote(<expression with free names>)`):
+`CodeLiteral` carries `param: None`
 and carrier `Union` — no parameter, every free name a runtime input,
 the body compiled over the dynamic value union (the backend's
 `ExprCode`/`CodeValue` lane). `quote.substitute` accepts any scalar
@@ -243,7 +256,7 @@ mapping, the union fast path, the Rat-lock, the projection refusal,
 the mixed Int/Rational render, and the union factory render each
 kill their suite.
 
-## Shared tree view/make (emath-shared-tree-view-make-bp8nu)
+## Shared tree view/make
 
 The union lane is now dual-representational: the `CodeLiteral` for
 an expression template carries BOTH the compiled factory lane inputs
@@ -306,7 +319,7 @@ the VM lane's checkpoint (native-run-ok and scratch-bytes-equal both
 fail), which is how the probe caught the original session shape
 folding to arithmetic before the fixture was strengthened.
 
-## Definition table - quote.body (emath-quote-body-defs-trto7)
+## Definition table - quote.body
 
 A third quote op joins the emission set: `CodeBody` (`quote.body`,
 arity 1) - the definition-table unfold. The fence admits exactly
@@ -335,7 +348,7 @@ them; the fixture pins own-module callees only. The `to_node` vector
 fold (a list of made codes as one family sequence) is the backend's
 concern, recorded in its contract.
 
-## The binder half - CodeOpen and CodeBind (emath-quote-bind-open-consumer-6f86g)
+## The binder half - CodeOpen and CodeBind
 
 Two more quote ops join the emission set. `CodeOpen`
 (`quote.open`, the BINDER form only): the package lowers as an

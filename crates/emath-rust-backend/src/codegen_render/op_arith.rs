@@ -38,8 +38,7 @@ pub(super) fn op_arith_exprs(
     program: &EmirProgram,
     kinds: &[ValueKind],
 ) -> Result<Expr, BackendError> {
-    // The expression-template union lane (bead
-    // emath-expression-quotes-324y0): a joinable union pair routes the
+    // The expression-template union lane: a joinable union pair routes the
     // op onto the dynamic rt kernels, which implement the VM's exact
     // carrier rules. Every render returns the union (comparisons and
     // boolean combinators yield CodeValue::Bool), so the body composes
@@ -64,18 +63,18 @@ pub(super) fn op_arith_exprs(
         }
     }
     if let EmirOp::Neg(value) = op {
-        if kind_at(kinds, *value) == ValueKind::CodeValue {
+        if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node) {
             return Ok(Expr::Raw(format!(
                 "emath_rt::code::code_neg(&{})?",
-                render_expr(&operand(program, *value))
+                render_expr(&to_code_value(operand(program, *value), &kind_at(kinds, *value))?)
             )));
         }
     }
     if let EmirOp::Not(value) = op {
-        if kind_at(kinds, *value) == ValueKind::CodeValue {
+        if matches!(kind_at(kinds, *value), ValueKind::CodeValue | ValueKind::Node) {
             return Ok(Expr::Raw(format!(
                 "emath_rt::code::CodeValue::Bool(emath_rt::code::code_not(&{})?)",
-                render_expr(&operand(program, *value))
+                render_expr(&to_code_value(operand(program, *value), &kind_at(kinds, *value))?)
             )));
         }
     }

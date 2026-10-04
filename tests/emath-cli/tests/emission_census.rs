@@ -1,4 +1,4 @@
-//! Emission census gate (emath-nwmm6): every RUNNABLE module in
+//! Emission census gate: every RUNNABLE module in
 //! `language/modules` and `language/domains` must compile offline as an
 //! emitted crate.
 //!
@@ -29,9 +29,9 @@ use std::sync::mpsc;
 
 mod common;
 
-/// The pinned not-runnable census (2026-09-24, the refusal-lane pass):
-/// 6 modules across the named refusal lanes. Update this number ONLY
-/// with a bead that names the lane that changed. History: 15 until
+/// The pinned not-runnable census: one named refusal lane remains.
+/// Update this number only when a lane's capability genuinely changes.
+/// History: 15 until
 /// the operator-tag-witness pass, which unblocked analysis/autodiff,
 /// analysis/bvp_newton, and optimization/advanced (the schema-tag
 /// family completed with the unary/binary view arms Neg/Not/Pos/
@@ -39,14 +39,14 @@ mod common;
 /// quote_body_over_node; the definition-table bodies distill their
 /// FunctionAbs wrappers as Closure trees; the modules declare their
 /// vars carriers as sequence(Code)). Still 12 after the walk-lane
-/// crash fix (emath-49o8): quote/walk used to hit `unreachable!` in
+/// crash fix: quote/walk used to hit `unreachable!` in
 /// the node-family fold and the census silently counted the crash as
 /// a refusal lane - the family is now closed under nested sequences
 /// and non-family record fields refuse by name, so walk answers with
 /// its real lanes (quote.open, quote.view, and the Cases.arms tuple
 /// kind, all named). `not_runnable_lanes_answer_by_name` pins that
 /// no lane may crash the emitter again. 12 -> 11 with the
-/// mixed-kind-join pass (emath-49o8): discrete/matching's three
+/// mixed-kind-join pass: discrete/matching's three
 /// refusals (max_match_loop, max_matching, asg_row) were the
 /// mixed-kind vector join - a Rat-typed inlined carrier (replace_at's
 /// declared Rat signatures instantiated over Int vectors) joining a
@@ -57,7 +57,7 @@ mod common;
 /// crossing an Int-declared parameter narrows checked (E-INT-002 by
 /// name), so matching emits and compiles offline with its 154
 /// authored rows still green in the VM. 11 -> 10 with the
-/// code-template-carrier seam (emath-49o8): search/structural_spike's
+/// code-template-carrier seam: search/structural_spike's
 /// four closure-call refusals (cand_score, climb_step, rollout_of,
 /// scan_best) were the interchange's missing spelling for the
 /// PROGRAM template - bare `Code` kinds as the expression template
@@ -71,7 +71,7 @@ mod common;
 /// still green in the VM. search/discovery stays a named lane (its
 /// Rat -> Bool quoted functions are outside the homogeneous
 /// unary-program lane the runtime's Code<V> carries). 10 -> 8 with
-/// the shared-state pass (emath-49o8): analysis/evolution/composition
+/// the shared-state pass: analysis/evolution/composition
 /// (10 refusals) and mechanics/stiff (3) refused every SimState
 /// record literal by name because composition USED one_step's shared
 /// evolution object with no import - the VM resolved it structurally
@@ -84,7 +84,7 @@ mod common;
 /// record name. Both modules emit and compile offline with their 19
 /// and 28 authored rows still green in the VM (the conformance lanes
 /// pin every row emitted == VM, refusal atoms exact). 8 -> 7 with
-/// the substitute-seam pass (emath-49o8): algebra/linalg refused
+/// the substitute-seam pass: algebra/linalg refused
 /// through quote.substitute's static reference seam - d_form's chain
 /// rule reads the callee fragment's binder name at runtime (a
 /// minted-scope tag record whose type name IS the binder), which the
@@ -112,7 +112,7 @@ mod common;
 /// linalg emits and compiles offline with its 94 authored rows still
 /// green in the VM and 28 conformance rows pinning emitted == VM
 /// (the grad_quote substitute+evaluate round trip over the emitted
-/// ExprCode included). 7 -> 6 with the event-data pass (emath-49o8):
+/// ExprCode included). 7 -> 6 with the event-data pass:
 /// analysis/evolution/events refused on ONE seam - `events[i].guard(
 /// sa.t, sa)` is a record field's CLOSURE called where it is
 /// projected, and the application parses with the field-access call
@@ -131,7 +131,7 @@ mod common;
 /// tangent/double-root misses, the priority pick, the exact
 /// bisection with dyadic-exact and nondyadic-banded rows, and the
 /// event-aware rollout's terminal/reset/dedup/chatter outcomes).
-/// 6 -> 5 with the rewriting pass (emath-49o8): search/rewriting
+/// 6 -> 5 with the rewriting pass: search/rewriting
 /// refused on `quote.make(quote.evaluate(source))` - make over an
 /// evaluated SCALAR, where the make lane took only node records and
 /// codes - and on `quote.substitute(quote(function x in Rat: x + 1),
@@ -143,7 +143,7 @@ mod common;
 /// checked narrowing). rewriting emits and compiles offline with its
 /// 6 authored rows still green in the VM and 6 conformance pins
 /// (the AvoidCapture query is not an emitted entry). 5 -> 4 with the
-/// curried-model pass (emath-49o8): numerics/levenberg's model seam
+/// curried-model pass: numerics/levenberg's model seam
 /// `model_at = predict(params)` binds a PARTIAL application of a
 /// declared `A -> B -> C` input, but the def was not marked
 /// closure-valued, so `model_at(t)` lowered as the projection
@@ -157,8 +157,8 @@ mod common;
 /// numeric-program lane because the bracket domain `sequence[T]` had
 /// no signature; it now types as `Vector<T>`. levenberg emits and
 /// compiles offline with its 61 authored rows still green in the VM
-/// and 61 conformance pins. 4 -> 3 with the dynamic-family pass
-/// (emath-49o8): quote/walk declared `packed: Fragment` and untyped
+/// and 61 conformance pins. 4 -> 3 with the dynamic-family pass:
+/// quote/walk declared `packed: Fragment` and untyped
 /// `items: sequence`, neither of which had an interchange signature,
 /// so the entries fell back to Int and quote.open/quote.view refused.
 /// Both are the dynamic node family (`Fragment` package records, the
@@ -171,7 +171,7 @@ mod common;
 /// bodies and a projection off a code carrier refuses by name. walk
 /// emits and compiles offline with its 7 authored rows still green
 /// in the VM and 8 conformance pins. 3 -> 2 with the applied-evaluate
-/// pass (emath-49o8): search/discovery evaluates a bare `Code`
+/// pass: search/discovery evaluates a bare `Code`
 /// conjecture (`claim = quote.evaluate(conjecture.claim)`) and APPLIES
 /// it (`claim(domain[at])`) - a quoted function literal Rat -> Bool,
 /// where the expression-template lane knew evaluate only as a scalar.
@@ -185,8 +185,8 @@ mod common;
 /// values compare by tree + dependencies so records with Code fields
 /// derive PartialEq. discovery emits and compiles offline with its 4
 /// authored rows still green in the VM and 4 conformance pins.
-/// 2 -> 1 with the declared-arrow evaluate pass (emath-49o8, the user
-/// accepted the design 2026-09-25): analysis/derivative's newtons pass
+/// 2 -> 1 with the declared-arrow evaluate pass:
+/// analysis/derivative's newtons pass
 /// `df = quote.evaluate(derivative_of(f_term))` - a quoted function
 /// built at run time - into `newton_solve`'s declared `df: Rat -> Rat`.
 /// An evaluated def passed into a declared arrow parameter now lowers
@@ -341,7 +341,6 @@ fn not_runnable_lanes_answer_by_name() {
         }
         if path.ends_with("code_comparison_boundaries.emath")
             && (!text.contains("\"runnable\": false")
-                || !text.contains("node comparison")
                 || !text.contains("union comparison")
                 || !text.contains("Text"))
         {

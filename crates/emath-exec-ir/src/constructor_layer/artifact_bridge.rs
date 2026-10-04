@@ -18,7 +18,10 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use emath_core::tree::SyntaxTree;
+use emath_core::Span;
+use emath_core::tree::{BinaryOp, Expr, ExprKind, SyntaxTree, UnaryOp};
+use emath_rt::code::ExprCode;
+use emath_rt::code_tree::{CodeTree, TreeBinary, TreeDomain, TreeUnary};
 
 use super::{evaluate_function_at, with_embedded_modules, with_worlds, CValue, CarrierWorld};
 use crate::exact_int::ExactInt;
@@ -55,6 +58,21 @@ impl FromCValue for i64 {
             CValue::Int(n) => n
                 .to_i64()
                 .ok_or_else(|| format!("overflow: {n} exceeds the native Int carrier")),
+            other => mismatch("Int", other),
+        }
+    }
+}
+
+impl ToCValue for ExactInt {
+    fn to_cvalue(&self) -> CValue {
+        CValue::Int(self.clone())
+    }
+}
+
+impl FromCValue for ExactInt {
+    fn from_cvalue(value: &CValue) -> Result<Self, String> {
+        match value {
+            CValue::Int(value) => Ok(value.clone()),
             other => mismatch("Int", other),
         }
     }
@@ -134,6 +152,205 @@ impl FromCValue for String {
             CValue::Str(text) => Ok(text.clone()),
             other => mismatch("Str", other),
         }
+    }
+}
+
+/// Reconstruct the core expression from the distilled tree, without
+/// reparsing source or losing its binder domains and dependency stamps.
+fn tree_expr(tree: &CodeTree) -> Expr {
+    let wrap = |kind| Expr {
+        kind,
+        source: Span::default(),
+    };
+    fn domain(name: &str) -> Expr {
+        let kind = match name
+            .strip_prefix("sequence(")
+            .and_then(|n| n.strip_suffix(')'))
+        {
+            Some(element) => ExprKind::Call {
+                function: Box::new(domain("sequence")),
+                args: vec![domain(element)],
+            },
+            None => ExprKind::Path {
+                segments: vec![name.to_string()],
+                generics: None,
+            },
+        };
+        Expr {
+            kind,
+            source: Span::default(),
+        }
+    }
+    wrap(match tree {
+        CodeTree::Literal(value) => match value {
+            emath_rt::code::CodeValue::Int(n) => ExprKind::Int(n.to_string()),
+            emath_rt::code::CodeValue::Rat((num, den)) => ExprKind::Rational {
+                numer: num.to_string(),
+                denom: den.to_string(),
+            },
+            emath_rt::code::CodeValue::Bool(b) => ExprKind::Bool(*b),
+        },
+        CodeTree::Path(segments) => ExprKind::Path {
+            segments: segments.clone(),
+            generics: None,
+        },
+        CodeTree::Call { function, args } => ExprKind::Call {
+            function: Box::new(tree_expr(function)),
+            args: args.iter().map(tree_expr).collect(),
+        },
+        CodeTree::Binary { op, left, right } => ExprKind::Binary {
+            op: match op {
+                TreeBinary::Add => BinaryOp::Add,
+                TreeBinary::Sub => BinaryOp::Sub,
+                TreeBinary::Mul => BinaryOp::Mul,
+                TreeBinary::Div => BinaryOp::Div,
+                TreeBinary::Eq => BinaryOp::Eq,
+                TreeBinary::Ne => BinaryOp::Ne,
+                TreeBinary::Lt => BinaryOp::Lt,
+                TreeBinary::Le => BinaryOp::Le,
+                TreeBinary::Gt => BinaryOp::Gt,
+                TreeBinary::Ge => BinaryOp::Ge,
+                TreeBinary::And => BinaryOp::And,
+                TreeBinary::Or => BinaryOp::Or,
+                TreeBinary::Pow => BinaryOp::Pow,
+                TreeBinary::Imply => BinaryOp::Imply,
+                TreeBinary::Iff => BinaryOp::Iff,
+                TreeBinary::Asymp => BinaryOp::Asymp,
+                TreeBinary::In => BinaryOp::In,
+            },
+            left: Box::new(tree_expr(left)),
+            right: Box::new(tree_expr(right)),
+        },
+        CodeTree::Unary { op, value } => ExprKind::Unary {
+            op: match op {
+                TreeUnary::Neg => UnaryOp::Neg,
+                TreeUnary::Pos => UnaryOp::Pos,
+                TreeUnary::Not => UnaryOp::Not,
+            },
+            value: Box::new(tree_expr(value)),
+        },
+        CodeTree::Closure {
+            param,
+            domain: ty,
+            body,
+        } => ExprKind::FunctionAbs {
+            param: param.clone(),
+            domain: Box::new(domain(match ty {
+                TreeDomain::Scalar(name) | TreeDomain::Sequence(name) => name,
+                TreeDomain::Unknown => "unknown",
+            })),
+            body: Box::new(tree_expr(body)),
+        },
+        CodeTree::Recur { name, ty, body } => ExprKind::Recur {
+            name: name.clone(),
+            ty: Box::new(tree_expr(ty)),
+            body: Box::new(tree_expr(body)),
+        },
+        CodeTree::Tuple(items) => ExprKind::Tuple(items.iter().map(tree_expr).collect()),
+        CodeTree::Index { container, indices } => ExprKind::Index {
+            value: Box::new(tree_expr(container)),
+            indices: indices.iter().map(tree_expr).collect(),
+        },
+        CodeTree::If {
+            condition,
+            then_value,
+            else_value,
+        } => ExprKind::If {
+            condition: Box::new(tree_expr(condition)),
+            then_value: Box::new(tree_expr(then_value)),
+            else_value: Box::new(tree_expr(else_value)),
+        },
+    })
+}
+
+impl ToCValue for ExprCode {
+    fn to_cvalue(&self) -> CValue {
+        let (tree, deps) = self.captured_tree();
+        CValue::Code(Box::new(super::Code {
+            expr: tree_expr(tree),
+            deps: deps.clone(),
+        }))
+    }
+}
+
+impl FromCValue for ExprCode {
+    fn from_cvalue(value: &CValue) -> Result<Self, String> {
+        match value {
+            CValue::Code(code) => {
+                let tree = crate::tree_distill::distill_tree(&code.expr)
+                    .map_err(|error| format!("type: engine Code cannot cross back: {error}"))?;
+                let free = emath_rt::code_tree::free_names_tree(&tree)
+                    .into_iter()
+                    .filter(|name| !code.deps.contains_key(name))
+                    .collect();
+                Ok(emath_rt::code::open_expr(
+                    free,
+                    tree,
+                    None,
+                    code.deps.clone(),
+                ))
+            }
+            other => mismatch("Code", other),
+        }
+    }
+}
+
+impl ToCValue for emath_rt::code_tree::NodeValue {
+    fn to_cvalue(&self) -> CValue {
+        use emath_rt::{code::CodeValue, code_tree::NodeValue};
+        match self {
+            NodeValue::Scalar(CodeValue::Int(n)) => n.to_cvalue(),
+            NodeValue::Scalar(CodeValue::Rat(q)) => q.to_cvalue(),
+            NodeValue::Scalar(CodeValue::Bool(b)) => b.to_cvalue(),
+            NodeValue::Text(text) => text.to_cvalue(),
+            NodeValue::Code(code) => code.to_cvalue(),
+            NodeValue::Sequence(items) => items.to_cvalue(),
+            NodeValue::Tuple(items) => {
+                CValue::Tuple(items.iter().map(ToCValue::to_cvalue).collect())
+            }
+            NodeValue::Record(name, fields) => record(
+                name,
+                fields
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.to_cvalue()))
+                    .collect(),
+            ),
+        }
+    }
+}
+
+impl FromCValue for emath_rt::code_tree::NodeValue {
+    fn from_cvalue(value: &CValue) -> Result<Self, String> {
+        use emath_rt::{code::CodeValue, code_tree::NodeValue};
+        Ok(match value {
+            CValue::Int(_) => NodeValue::Scalar(CodeValue::Int(i64::from_cvalue(value)?)),
+            CValue::Rat { .. } => {
+                NodeValue::Scalar(CodeValue::Rat(<(i128, i128)>::from_cvalue(value)?))
+            }
+            CValue::Bool(b) => NodeValue::Scalar(CodeValue::Bool(*b)),
+            CValue::Str(text) => NodeValue::Text(text.clone()),
+            CValue::Code(_) => NodeValue::Code(Box::new(ExprCode::from_cvalue(value)?)),
+            CValue::Sequence(items) => NodeValue::Sequence(
+                items
+                    .iter()
+                    .map(Self::from_cvalue)
+                    .collect::<Result<_, _>>()?,
+            ),
+            CValue::Tuple(items) => NodeValue::Tuple(
+                items
+                    .iter()
+                    .map(Self::from_cvalue)
+                    .collect::<Result<_, _>>()?,
+            ),
+            CValue::Record { type_name, fields } => NodeValue::Record(
+                type_name.to_string(),
+                fields
+                    .iter()
+                    .map(|(name, value)| Ok((name.clone(), Self::from_cvalue(value)?)))
+                    .collect::<Result<_, String>>()?,
+            ),
+            other => return mismatch("node family", other),
+        })
     }
 }
 

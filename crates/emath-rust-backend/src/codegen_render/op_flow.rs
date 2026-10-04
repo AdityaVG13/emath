@@ -196,10 +196,16 @@ pub(super) fn authored_control_expr(
                     callable_ty(params, result)?
                 ));
             } else {
-                source.push_str(&format!(
+                if super::kinds::kind_is_degenerate(&kind) && matches!(kind, ValueKind::Vector(_)) {
+                    // An empty capture takes its element type from
+                    // its typed use in the nested body, not a guess.
+                    source.push_str(&format!("let {name} = &{expression};"));
+                } else {
+                    source.push_str(&format!(
                     "let {name}: &{} = &{expression};",
                     crate::rust_ir::render::render_ty(&kind.borrowed_rust_ty()?)
-                ));
+                    ));
+                }
             }
         }
         Ok(source)
@@ -343,10 +349,10 @@ pub(super) fn authored_control_expr(
             // A union-valued condition (a boolean combinator inside an
             // expression template or quoted frame) projects to bool
             // checked - the same law as the Select arm.
-            let condition = if kind_at(kinds, *condition) == ValueKind::CodeValue {
+            let condition = if matches!(kind_at(kinds, *condition), ValueKind::CodeValue | ValueKind::Node) {
                 format!(
                     "emath_rt::code::code_as_bool(&{})?",
-                    render_expr(&operand(program, *condition))
+                    render_expr(&super::to_code_value(operand(program, *condition), &kind_at(kinds, *condition))?)
                 )
             } else {
                 render_expr(&operand(program, *condition))

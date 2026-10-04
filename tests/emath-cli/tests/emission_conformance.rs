@@ -1,4 +1,4 @@
-//! Emission conformance harness (emath-9sw3v): authored module tests re-run
+//! Emission conformance harness: authored module tests re-run
 //! against `emath build` output.
 //!
 //! Per module lane:
@@ -2997,9 +2997,154 @@ fn emission_conformance_quote_cost() {
 const ENGINE_WORLDS_DRIVER: &str = r#"
 use engine_worlds::{configured, disagreements, first_done, inner_fault, judge, narrowed, new_work, probe, probe_work};
 use engine_worlds::{EmathRecord_Probe as Probe, EmathRecord_Verdict as Verdict};
+use engine_worlds::{code_collection, code_roundtrip, code_work, local_label, EmathRecord_CodeProbe};
+use engine_worlds::{apply_pair, code_callable, nested_template};
+use engine_worlds::{cost_answer, cost_value, evaluated_child, structured_value, viewed_kind};
+use engine_worlds::sequence_join;
+use engine_worlds::{viewed_names, recursive_names, borrowed_text, cyclic_names, wide_boundary};
+use engine_worlds::callback_work;
+use engine_worlds::expected_seed;
+use engine_worlds::mapped_codes;
+
+fn code(body: emath_rt::code_tree::CodeTree) -> emath_rt::code::ExprCode {
+    use emath_rt::{code::open_expr, code_tree::{CodeTree, TreeDomain}};
+    open_expr(vec![], CodeTree::Closure {
+        param: "n".into(),
+        domain: TreeDomain::Scalar("Int".into()),
+        body: Box::new(body),
+    }, None, Default::default())
+}
 
 fn main() {
     let mut failures = 0usize;
+    use emath_rt::{code::CodeValue, code_tree::{CodeTree, TreeBinary}};
+    let term = |op, k| code(CodeTree::Binary {
+        op,
+        left: Box::new(CodeTree::Path(vec!["n".into()])),
+        right: Box::new(CodeTree::Literal(CodeValue::Int(k))),
+    });
+    let add = term(TreeBinary::Add, 2);
+    let mul = term(TreeBinary::Mul, 3);
+    if wide_boundary(2) != Ok(true) {
+        failures += 1;
+        println!("DIFF wide_boundary; VM = true");
+    }
+    if callback_work(3) != Ok(true) {
+        failures += 1;
+        println!("DIFF callback_work; VM = true");
+    }
+    if expected_seed(0) != Ok(vec![]) {
+        failures += 1;
+        println!("DIFF expected_seed; VM = []");
+    }
+    match mapped_codes(3) {
+        Ok(codes) if codes.len() == 3 => {
+            let code = emath_rt::code::substitute_expr(&codes[2], "x", CodeValue::Int(3));
+            if emath_rt::code::evaluate_expr(&code, &emath_rt::code_tree::ModuleTable::EMPTY) != Ok(CodeValue::Int(5)) {
+                failures += 1;
+                println!("DIFF mapped_codes value; VM = 5");
+            }
+        }
+        _ => {
+            failures += 1;
+            println!("DIFF mapped_codes; VM = three quoted expressions");
+        }
+    }
+    let other = emath_rt::code::open_expr(vec![], CodeTree::Closure {
+        param: "m".into(),
+        domain: emath_rt::code_tree::TreeDomain::Scalar("Int".into()),
+        body: Box::new(CodeTree::Literal(CodeValue::Int(1))),
+    }, None, Default::default());
+    if viewed_names(add.clone()) != Ok(true) || viewed_names(other) != Ok(false) {
+        failures += 1;
+        println!("DIFF viewed_names; VM = true false");
+    }
+    if recursive_names(add.clone(), 2) != Ok(true) || recursive_names(add.clone(), 0) != Ok(false) {
+        failures += 1;
+        println!("DIFF recursive_names; VM = true false");
+    }
+    if cyclic_names(add.clone(), 2) != Ok(true) || cyclic_names(add.clone(), 0) != Ok(false) {
+        failures += 1;
+        println!("DIFF cyclic_names; VM = true false");
+    }
+    if borrowed_text("n".into()) != Ok(true) || borrowed_text("m".into()) != Ok(false) {
+        failures += 1;
+        println!("DIFF borrowed_text; VM = true false");
+    }
+    if code_work(add.clone(), 3) != Ok(5) {
+        failures += 1;
+        println!("DIFF code_work EMITTED {:?}; VM = 5", code_work(add.clone(), 3));
+    }
+    if code_collection(vec![add.clone(), mul], 3) != Ok(vec![5, 9]) {
+        failures += 1;
+        println!("DIFF code_collection; VM = [5, 9]");
+    }
+    match code_roundtrip(EmathRecord_CodeProbe { term: add.clone(), limit: 1000 }) {
+        Ok(p) if p.term.identity() == add.identity() && p.limit == 1000 => {}
+        other => {
+            failures += 1;
+            println!("DIFF code_roundtrip EMITTED {other:?}; VM = unchanged CodeProbe");
+        }
+    }
+    if local_label("x".into()) != Ok(true) || local_label("y".into()) != Ok(false) {
+        failures += 1;
+        println!("DIFF local_label; VM = true false");
+    }
+    match code_callable(add) {
+        Ok(f) if f(3) == Ok(5) => {}
+        _ => {
+            failures += 1;
+            println!("DIFF code_callable; VM = 5");
+        }
+    }
+    match nested_template(0) {
+        Ok(term) if apply_pair(term.clone(), 2, 3) == Ok(5) => {}
+        other => {
+            failures += 1;
+            println!("DIFF nested_template EMITTED {other:?}; VM = 5");
+        }
+    }
+    let child = emath_rt::code::open_expr(vec![], CodeTree::Binary {
+        op: TreeBinary::Add,
+        left: Box::new(CodeTree::Literal(CodeValue::Int(4))),
+        right: Box::new(CodeTree::Literal(CodeValue::Int(7))),
+    }, None, Default::default());
+    if viewed_kind(child.clone()) != Ok(true) {
+        failures += 1;
+        println!("DIFF viewed_kind; VM = true");
+    }
+    if evaluated_child(child) != Ok(4) {
+        failures += 1;
+        println!("DIFF evaluated_child; VM = 4");
+    }
+    match cost_answer(3) {
+        Ok(answer) if cost_value(answer.clone()) == Ok(4) => {}
+        other => {
+            failures += 1;
+            println!("DIFF cost_answer EMITTED {other:?}; VM = 4");
+        }
+    }
+    let fault = emath_rt::code_tree::node_record("Cost", vec![
+        ("done".into(), emath_rt::code_tree::NodeValue::Scalar(CodeValue::Bool(false))),
+        ("work".into(), emath_rt::code_tree::NodeValue::Scalar(CodeValue::Int(2))),
+        ("fault".into(), emath_rt::code_tree::NodeValue::Text("division_by_zero".into())),
+    ]);
+    if cost_value(fault) != Ok(-1) {
+        failures += 1;
+        println!("DIFF fault cost_value; VM = -1");
+    }
+    let sequence = emath_rt::code::open_expr(vec![], CodeTree::Tuple(vec![
+        CodeTree::Literal(CodeValue::Int(2)), CodeTree::Literal(CodeValue::Int(3)),
+    ]), None, Default::default());
+    if structured_value(sequence) != Ok(5) {
+        failures += 1;
+        println!("DIFF structured_value; VM = 5");
+    }
+    let scalar = emath_rt::code::open_expr(vec![], CodeTree::Literal(CodeValue::Int(3)), None, Default::default());
+    if sequence_join(scalar.clone(), true) != Ok(vec![3]) || sequence_join(scalar, false) != Ok(vec![0]) {
+        failures += 1;
+        println!("DIFF sequence_join; VM = [3] [0]");
+    }
     if judge(10) != Ok(true) || judge(2) != Ok(false) {
         failures += 1;
         println!("DIFF judge EMITTED {:?} {:?}; VM = true false", judge(10), judge(2));
@@ -3482,7 +3627,7 @@ fn emission_conformance_operator_tag_witness() {
 const MATCHING_DRIVER: &str = r#"
 //! Authored pins of discrete/matching.emath against the emitted crate.
 //!
-//! The mixed-kind join pins (emath-49o8): replace_at's declared Rat
+//! The mixed-kind join pins: replace_at's declared Rat
 //! carriers instantiate over Int vectors, so some inlined arms carry
 //! the ratio spelling while the recursive tails declare the Int
 //! spelling - the branch join folds both to one carrier and the
@@ -3662,7 +3807,7 @@ const SPIKE_DRIVER: &str = r#"
 //! Authored pins of research/structural_spike.emath against the emitted
 //! crate.
 //!
-//! The code-template-carrier pins (emath-49o8): the module's template
+//! The code-template-carrier pins: the module's template
 //! chain is declared `Code[Rat]` - the homogeneous unary program
 //! template over Rat - so substitutes bind Rat constants and
 //! evaluate yields the specialized Rat -> Rat closure the walks call.
@@ -3831,7 +3976,7 @@ fn emission_conformance_structural_spike() {
 
 const COMPOSITION_DRIVER: &str = r#"
 //! Authored pins of analysis/evolution/composition.emath against the
-//! emitted crate (emath-49o8, the shared-state lane).
+//! emitted crate (the shared-state lane).
 //!
 //! SimState is one_step's shared evolution object; this module had
 //! used it with no import (the VM resolved it structurally), so the
@@ -4150,7 +4295,7 @@ fn emission_conformance_composition() {
 
 const STIFF_DRIVER: &str = r#"
 //! Authored pins of analysis/evolution/stiff.emath against the emitted crate
-//! (emath-49o8, the shared-state lane's second module).
+//! (the shared-state lane's second module).
 //!
 //! stiff composes one_step's SimState machinery with the implicit
 //! solves: solve_dense (imported from algebra.linear.systems) is
@@ -4671,7 +4816,7 @@ fn emission_conformance_sparse() {
 
 const HESSIAN_DRIVER: &str = r#"
 //! Authored pins of analysis/hessian.emath against the emitted crate
-//! (emath-49o8, the substitute-lane pass).
+//! (the substitute-lane pass).
 //!
 //! The hess/grad family refused through quote.substitute's
 //! static-reference seam: d_form's chain rule reads the callee
@@ -5035,7 +5180,7 @@ fn emission_conformance_linalg() {
 
 const EVENTS_DRIVER: &str = r#"
 //! Authored pins of analysis/evolution/events.emath against the
-//! emitted crate (emath-49o8, the event-data lane).
+//! emitted crate (the event-data lane).
 //!
 //! The module refused on one seam: `events[i].guard(sa.t, sa)` - a
 //! record field's CLOSURE called where it is projected. The call
@@ -5699,7 +5844,7 @@ fn emission_conformance_events() {
     );
 }
 
-/// Rewriting lane pins (emath-49o8): search/rewriting refused on two
+/// Rewriting lane pins: search/rewriting refused on two
 /// seams - `quote.make(quote.evaluate(source))` rebuilt code from an
 /// evaluated SCALAR (the make lane took only node records and codes),
 /// and `quote.substitute(quote(function x in Rat: x + 1), x, 7)` crossed
@@ -5825,7 +5970,7 @@ fn emission_conformance_rewriting() {
     );
 }
 
-/// Levenberg lane pins (emath-49o8): numerics/levenberg refused on two
+/// Levenberg lane pins: numerics/levenberg refused on two
 /// seams of the curried model closure. `model_at = predict(params)`
 /// binds a PARTIAL application of the declared `sequence[Float64] ->
 /// Float64 -> Float64` input - a closure value - but the def was not
@@ -6016,7 +6161,7 @@ fn emission_conformance_levenberg() {
     );
 }
 
-/// Walk lane pins (emath-49o8): quote/walk refused on two carriers its
+/// Walk lane pins: quote/walk refused on two carriers its
 /// declarations name. `packed: Fragment` had no interchange signature,
 /// so the entry carried the numeric fallback Int and `quote.open`
 /// refused it; the untyped `items: sequence` of walk_list/walk_pairs
@@ -6132,7 +6277,7 @@ fn emission_conformance_walk() {
     );
 }
 
-/// Discovery lane pins (emath-49o8): search/discovery refused because
+/// Discovery lane pins: search/discovery refused because
 /// `claim = quote.evaluate(conjecture.claim)` then `claim(domain[at])`
 /// APPLIES the evaluated value - a quoted function literal Rat -> Bool
 /// carried by a bare `Code` - and the expression-template lane only
@@ -6329,7 +6474,7 @@ fn emission_conformance_discovery() {
     );
 }
 
-/// Derivative lane pins (emath-49o8): analysis/derivative's two
+/// Derivative lane pins: analysis/derivative's two
 /// composed newtons refused because `df = quote.evaluate(derivative_of(
 /// f_term))` is a quoted function built at RUN time (the derived
 /// derivative), carried by a bare `Code`, and PASSED - not applied - to

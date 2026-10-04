@@ -1,6 +1,7 @@
 # quote.world and quote.worlds in a built artifact: the functions using
 # them run in the reference engine, so the artifact's answers are the
 # VM's, and a compiled caller uses them like any other function.
+use fold.reduce
 
 emath function judge:
     inputs:
@@ -121,3 +122,372 @@ emath function new_work:
         thirds = function y in Rat: y + y + y == 1
         known = Probe: {world: "float64", at: 1 / 3, limit: 1000}
         result = if p == known: 0 else: quote.world(p.world, thirds, p.at, p.limit).work
+
+# Code crosses in both directions, including nested authored fields.
+emath object CodeProbe:
+    representation:
+        term: Code
+        limit: Int
+
+emath function code_roundtrip:
+    inputs:
+        p: CodeProbe
+    outputs:
+        result: CodeProbe
+    definitions:
+        keep = function unused in Int: p
+        result = quote.world("exact", keep, 0, p.limit).value
+    tests:
+        example <keeps_code_identity>:
+            given p = CodeProbe: {term: quote(3 + 4), limit: 1000}
+            expect quote.identity(result.term) == quote.identity(p.term)
+
+emath function code_work:
+    inputs:
+        term: Code
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        answer = quote.cost(quote.evaluate(term), x, 1000)
+        result = if answer.done: answer.value else: -1
+    tests:
+        example <executes_crossed_code>:
+            given term = quote n in Int: n + 2
+            given x = 3
+            expect result == 5
+
+emath function code_collection:
+    inputs:
+        terms: sequence(Code)
+        x: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = map(function c in Code: quote.cost(quote.evaluate(c), x, 1000).value, terms)
+    tests:
+        example <executes_code_sequence>:
+            given terms = [quote n in Int: n + 2, quote n in Int: n * 3]
+            given x = 3
+            expect result == [5, 9]
+
+emath function local_label:
+    inputs:
+        label: Text
+    outputs:
+        result: Bool
+    definitions:
+        node = Local: {name: label, token: label}
+        result = node.name == "x"
+    tests:
+        example <text_name_is_preserved>:
+            given label = "x"
+            expect result == true
+        example <different_text_name_is_preserved>:
+            given label = "y"
+            expect result == false
+
+emath function code_callable:
+    inputs:
+        term: Code
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = quote.evaluate(term)
+    tests:
+        example <declared_callable_result>:
+            given term = quote n in Int: n + 2
+            expect result(3) == 5
+
+emath function nested_template:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(function n in Int: function m in Int: n + m)
+    tests:
+        example <non_scalar_template_keeps_its_tree>:
+            given unused = 0
+            expect quote.evaluate(result)(2)(3) == 5
+
+emath function apply_pair:
+    inputs:
+        term: Code
+        x: Int
+        y: Int
+    outputs:
+        result: Int
+    definitions:
+        run = function unused in Int: quote.evaluate(term)(x)(y)
+        result = quote.cost(run, 0, 1000).value
+    tests:
+        example <nested_crossed_code>:
+            given term = quote(function n in Int: function m in Int: n + m)
+            given x = 2
+            given y = 3
+            expect result == 5
+
+emath function evaluated_child:
+    inputs:
+        term: Code
+    outputs:
+        result: Int
+    definitions:
+        node = quote.view(term)
+        result = quote.evaluate(node.args[0])
+    tests:
+        example <viewed_child_is_code>:
+            given term = quote(4 + 7)
+            expect result == 4
+
+emath function cost_answer:
+    inputs:
+        n: Int
+    outputs:
+        result: Cost
+    definitions:
+        result = quote.cost(function x in Int: x + 1, n, 1000)
+    tests:
+        example <cost_record_crosses_back>:
+            given n = 3
+            expect result.done == true
+            expect result.value == 4
+
+emath function cost_value:
+    inputs:
+        answer: Cost
+    outputs:
+        result: Int
+    definitions:
+        result = if answer.done: answer.value else: -1
+    tests:
+        example <done_cost_has_value>:
+            given answer = quote.cost(function x in Int: x + 1, 3, 1000)
+            expect result == 4
+        example <fault_cost_has_no_value>:
+            given answer = quote.cost(function x in Int: 1 / x, 0, 1000)
+            expect result == -1
+
+emath function pair_sum:
+    inputs:
+        xs: sequence(Int)
+    outputs:
+        result: Int
+    definitions:
+        result = xs[0] + xs[1]
+
+emath function structured_value:
+    inputs:
+        term: Code
+    outputs:
+        result: Int
+    definitions:
+        result = pair_sum(quote.evaluate(term))
+    tests:
+        example <quoted_sequence_crosses_typed_argument>:
+            given term = quote([2, 3])
+            expect result == 5
+
+emath function viewed_kind:
+    inputs:
+        term: Code
+    outputs:
+        result: Bool
+    definitions:
+        result = (function v in Code: v.kind == Call)(quote.view(term))
+    tests:
+        example <view_record_stays_a_record_in_local_frame>:
+            given term = quote(4 + 7)
+            expect result == true
+
+emath function sequence_join:
+    inputs:
+        term: Code
+        choose: Bool
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = if choose: [quote.evaluate(term)] else: [0]
+    tests:
+        example <evaluated_element_keeps_declared_sequence_carrier>:
+            given term = quote(3)
+            given choose = true
+            expect result == [3]
+        example <plain_element_keeps_declared_sequence_carrier>:
+            given term = quote(3)
+            given choose = false
+            expect result == [0]
+
+emath function viewed_names:
+    inputs:
+        term: Code
+    outputs:
+        result: Bool
+    definitions:
+        matches = function names in sequence(Text): any(function name in Text: name == quote.view(quote(n)).name, names)
+        result = matches([quote.view(term).param])
+    tests:
+        example <viewed_name_sequence_enters_closure>:
+            given term = quote(function n in Int: n + 1)
+            expect result == true
+        example <different_viewed_name_does_not_match>:
+            given term = quote(function m in Int: m + 1)
+            expect result == false
+
+emath function collect_names:
+    inputs:
+        term: Code
+        left: Int
+        names: sequence(Text)
+    outputs:
+        result: Bool
+    definitions:
+        result = if left > 0: collect_names(term, left - 1, [quote.view(term).param, ..names]) else: any(function name in Text: name == quote.view(quote(n)).name, names)
+
+emath function recursive_names:
+    inputs:
+        term: Code
+        count: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = collect_names(term, count, [])
+    tests:
+        example <recursive_empty_name_seed_keeps_tag_carrier>:
+            given term = quote(function n in Int: n + 1)
+            given count = 2
+            expect result == true
+        example <empty_name_seed_has_no_match>:
+            given term = quote(function n in Int: n + 1)
+            given count = 0
+            expect result == false
+
+emath function borrowed_text:
+    inputs:
+        name: Text
+    outputs:
+        result: Bool
+    definitions:
+        result = name == "n"
+    tests:
+        example <borrowed_text_compares_as_text>:
+            given name = "n"
+            expect result == true
+        example <other_borrowed_text_does_not_match>:
+            given name = "m"
+            expect result == false
+
+emath function names_a:
+    inputs:
+        term: Code
+        left: Int
+        names: sequence(Text)
+    outputs:
+        result: Bool
+    definitions:
+        result = if left > 0: names_b(term, left - 1, [quote.view(term).param, ..names]) else: any(function name in Text: name == quote.view(quote(n)).name, names)
+
+emath function names_b:
+    inputs:
+        term: Code
+        left: Int
+        names: sequence(Text)
+    outputs:
+        result: Bool
+    definitions:
+        result = names_a(term, left, names)
+
+emath function cyclic_names:
+    inputs:
+        term: Code
+        count: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = names_a(term, count, [])
+    tests:
+        example <name_carrier_crosses_mutual_cycle>:
+            given term = quote(function n in Int: n + 1)
+            given count = 2
+            expect result == true
+        example <empty_cycle_has_no_match>:
+            given term = quote(function n in Int: n + 1)
+            given count = 0
+            expect result == false
+
+emath function engine_count:
+    inputs:
+        value: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.cost(function x in Int: x == int_pow(2, 63), value, 1000).value
+
+emath function wide_boundary:
+    inputs:
+        base: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = engine_count(int_pow(base, 63))
+    tests:
+        example <wide_integer_crosses_engine_without_narrowing>:
+            given base = 2
+            expect result == true
+
+emath function generic_work<T>:
+    inputs:
+        f: T -> T
+        x: T
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.cost(f, x, 1000).done
+
+emath function callback_work:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        f = function x in Int: x + 1
+        result = generic_work(f, n)
+    tests:
+        example <callback_cost_runs_where_engine_steps_exist>:
+            given n = 3
+            expect result == true
+
+emath function typed_seed<T>:
+    inputs:
+        unused: Int
+    outputs:
+        result: sequence(T)
+    definitions:
+        result = map(function x in T: x, [])
+
+emath function expected_seed:
+    inputs:
+        n: Int
+    outputs:
+        result: sequence(Int)
+    definitions:
+        result = typed_seed(n)
+    tests:
+        example <expected_result_binds_an_empty_generic_seed>:
+            given n = 0
+            expect result == []
+
+emath function mapped_codes:
+    inputs:
+        count: Int
+    outputs:
+        result: sequence(Code)
+    definitions:
+        entry = function i in Int: quote.substitute(quote(x + k), "k", i)
+        result = map(entry, range(0, count))
+    tests:
+        example <generic_map_keeps_code_result_distinct_from_integer_input>:
+            given count = 3
+            expect length(result) == 3
+            expect quote.evaluate(quote.substitute(result[2], "x", 3)) == 5

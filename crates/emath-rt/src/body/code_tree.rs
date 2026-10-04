@@ -1,4 +1,4 @@
-// The shared tree family (bead emath-shared-tree-view-make-bp8nu):
+// The shared tree family:
 // the distilled expression tree a quoted program carries, the node
 // records `quote.view` produces over it, the minted Scope witnesses
 // that package fragments, and the reconstruction `quote.make`
@@ -26,10 +26,10 @@
 // No-claim boundaries (the emitted subset): trees carry the scalar
 // expression shapes - literals, paths, scalar calls, binary/unary
 // ops, sequences, branches. `Closure`/`Index`/`Quotation`/`Record`/
-// `Recur`/`Cases` node kinds refuse by name at reconstruction (the
-// definition-tree and binder beads extend this family), and the tree
-// evaluator computes scalar values only: a made tree that references
-// module globals refuses at evaluation instead of resolving them.
+// `Recur`/`Cases` node kinds refuse by name at reconstruction.
+// Scalar evaluation supports module calls carried by the callable
+// table; structured evaluation also preserves tuples, lazy branches
+// and tuple indexing. Global references refuse by name.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -233,6 +233,8 @@ pub enum CodeTree {
 #[derive(Clone, Debug)]
 pub enum NodeValue {
     Scalar(CodeValue),
+    /// Text is a value, not a schema tag. Mixed tag/Text equality is false.
+    Text(String),
     Record(String, BTreeMap<String, NodeValue>),
     Sequence(Vec<NodeValue>),
     Tuple(Vec<NodeValue>),
@@ -253,6 +255,7 @@ pub fn node_eq(
     let (left, right) = (left.borrow(), right.borrow());
     Ok(match (left, right) {
         (NodeValue::Scalar(a), NodeValue::Scalar(b)) => super::code::code_eq(a, b)?,
+        (NodeValue::Text(a), NodeValue::Text(b)) => a == b,
         (
             NodeValue::Record(name_a, fields_a),
             NodeValue::Record(name_b, fields_b),
@@ -390,11 +393,10 @@ pub fn node_index(sequence: impl std::borrow::Borrow<NodeValue>, index: i64) -> 
 /// binder names as tag records), and a Code node wrapping a Path
 /// names its joined segments - the VM's dynamic reference forms.
 /// Anything else refuses by name, never guessing a binder.
-pub fn substitute_reference(
-    value: impl std::borrow::Borrow<NodeValue>,
-) -> Result<String, String> {
+pub fn substitute_reference(value: impl std::borrow::Borrow<NodeValue>) -> Result<String, String> {
     match value.borrow() {
         NodeValue::Record(name, _) => Ok(name.clone()),
+        NodeValue::Text(name) => Ok(name.clone()),
         NodeValue::Code(code) => match &code.tree {
             CodeTree::Path(segments) => Ok(segments.join(".")),
             _ => Err(String::from(
@@ -431,8 +433,7 @@ impl NodeValue {
     pub fn make(&self, module: &ModuleTable) -> Result<ExprCode, String> {
         make_quoted(self, module)
     }
-    /// `quote.open` over a package value (the binder half, bead
-    /// emath-quote-bind-open-consumer-6f86g): the witness-validated
+    /// `quote.open` over a package value: the witness-validated
     /// unwrap, same law as the free function.
     pub fn open(&self) -> Result<ExprCode, String> {
         open_node(self)
@@ -447,6 +448,9 @@ impl NodeValue {
     }
     pub fn to_scalar(&self) -> Result<CodeValue, String> {
         node_scalar(self)
+    }
+    pub fn items(&self) -> Result<Vec<NodeValue>, String> {
+        node_items(self)
     }
 }
 
@@ -526,7 +530,7 @@ pub struct DefinitionRow {
     pub body: Option<CodeTree>,
 }
 
-/// The artifact's definition table (bead emath-quote-body-defs-trto7):
+/// The artifact's definition table:
 /// the module's functions as DATA, the same bodies the compiled
 /// entries come from. The rows are built once at first use (the
 /// backend emits this as a `LazyLock` static), so a definition-table
@@ -1258,6 +1262,7 @@ pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
     match value {
         NodeValue::Code(code) => Ok(code.tree.clone()),
         NodeValue::Scalar(value) => Ok(CodeTree::Literal(*value)),
+        NodeValue::Text(_) => Err(String::from("type: Text literals are not emitted in artifact trees")),
         NodeValue::Sequence(items) => {
             let trees = items
                 .iter()
@@ -1680,6 +1685,47 @@ pub fn verify_deps(
 /// compiled entry through the module table (`ModuleTable::callables`,
 /// arguments crossing as scalars); a call the table does not carry and
 /// a global value reference refuse by name.
+/// Structured value evaluation uses the same scalar leaves and guards,
+/// preserving tuples and lazy branch selection.
+pub fn evaluate_node_tree(tree: &CodeTree, module: &ModuleTable) -> Result<NodeValue, String> {
+    match tree {
+        CodeTree::Tuple(items) => Ok(NodeValue::Tuple(
+            items
+                .iter()
+                .map(|item| evaluate_node_tree(item, module))
+                .collect::<Result<_, _>>()?,
+        )),
+        CodeTree::If {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            let condition = evaluate_tree(condition, &BTreeMap::new(), module)?;
+            evaluate_node_tree(
+                if super::code::code_as_bool(&condition)? {
+                    then_value
+                } else {
+                    else_value
+                },
+                module,
+            )
+        }
+        CodeTree::Index { container, indices } if indices.len() == 1 => {
+            let container = evaluate_node_tree(container, module)?;
+            let index = evaluate_tree(&indices[0], &BTreeMap::new(), module)?;
+            let index = super::code::project_i64(&index, "index")?;
+            let items = node_items(&container)?;
+            let index = usize::try_from(index)
+                .map_err(|_| String::from("invalid_index: negative index"))?;
+            items
+                .get(index)
+                .cloned()
+                .ok_or_else(|| String::from("invalid_index: sequence index out of range"))
+        }
+        _ => evaluate_tree(tree, &BTreeMap::new(), module).map(NodeValue::Scalar),
+    }
+}
+
 pub fn evaluate_tree(
     tree: &CodeTree,
     inputs: &BTreeMap<String, CodeValue>,
