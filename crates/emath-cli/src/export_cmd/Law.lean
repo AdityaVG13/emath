@@ -770,16 +770,51 @@ theorem HasOrder.int_quot {a k : ℕ} (p : ℕ → ℤ) (d : ℤ) (hdvd : 0 < d 
   funext n
   rw [Emath.int_quot, Int.cast_div (hdvd.2 n) (by exact_mod_cast hdvd.1.ne')]
 
+/-- A sequence with period `d`: `X ^ d - 1 = (X - 1) (X ^ (d - 1) + ... + 1)`
+annihilates it. -/
+theorem HasOrder.periodic {u : ℕ → ℚ} (d : ℕ) (hd : 0 < d) (hper : ∀ n, u (n + d) = u n) :
+    HasOrder 1 (d - 1) u := by
+  refine ⟨∑ i ∈ Finset.range d, X ^ i, monic_geom_sum_X hd.ne', ?_, ?_⟩
+  · refine natDegree_sum_le_of_forall_le _ _ (fun i hi => ?_)
+    rw [natDegree_X_pow]; have := Finset.mem_range.mp hi; omega
+  · rw [pow_one, C_1, mul_geom_sum]
+    unfold Ann
+    funext n
+    simp [shift_pow_apply, hper]
+
+/-- `int_rem(p, d)` for `p` whose residues mod `d` have period `d`. -/
+theorem HasOrder.int_rem (p : ℕ → ℤ) (d : ℤ) (hd : 0 < d)
+    (hper : ∀ m : ℕ, p (m + d.toNat) ≡ p m [ZMOD d]) :
+    HasOrder 1 (d.toNat - 1) (fun n => ((Emath.int_rem (p n) d : ℤ) : ℚ)) :=
+  HasOrder.periodic d.toNat (by omega) (fun n => by simp only [Emath.int_rem]; exact congrArg _ (hper n))
+
+/-- `int_quot(p, d)` for `p` whose residues mod `d` have period `d`:
+`(p - int_rem(p, d)) / d`. -/
+theorem HasOrder.int_quot_floor {a k : ℕ} (p : ℕ → ℤ) (d : ℤ) (hd : 0 < d)
+    (hper : ∀ m : ℕ, p (m + d.toNat) ≡ p m [ZMOD d]) (hp : HasOrder a k (fun n => ((p n : ℤ) : ℚ))) :
+    HasOrder (max a 1) (k + (d.toNat - 1)) (fun n => ((Emath.int_quot (p n) d : ℤ) : ℚ)) := by
+  convert (hp.sub (HasOrder.int_rem p d hd hper)).div_const (d : ℚ) using 1
+  funext n
+  have hd' : (d : ℚ) ≠ 0 := by exact_mod_cast hd.ne'
+  have h : ((p n : ℤ) : ℚ) = ((p n % d : ℤ) : ℚ) + (d : ℚ) * ((p n / d : ℤ) : ℚ) := by
+    exact_mod_cast (Int.emod_add_mul_ediv (p n) d).symm
+  simp only [Emath.int_quot, Emath.int_rem]
+  rw [eq_div_iff hd', h]; ring
+
+/-- Proves `∀ m, p (m + d.toNat) ≡ p m [ZMOD d]` for a polynomial `p`
+with integer coefficients. -/
+macro "emath_period" : tactic => `(tactic|
+  exact fun m => by
+    push_cast
+    first
+      | exact Int.modEq_iff_dvd.mpr ⟨-1, by ring1⟩
+      | (gcongr; all_goals exact Int.modEq_iff_dvd.mpr ⟨-1, by ring1⟩))
+
 /-- Proves `0 < d ∧ ∀ n, d ∣ p n` for a polynomial `p` with integer
 coefficients: its residues mod `d` have period `d`, and its first `d`
 values are checked. -/
 macro "emath_divides" : tactic => `(tactic|
-  exact ⟨by norm_num, dvd_of_period _ _ (by norm_num)
-    (fun m => by
-      push_cast
-      gcongr
-      all_goals exact Int.modEq_iff_dvd.mpr ⟨-1, by ring⟩)
-    (by decide +kernel)⟩)
+  exact ⟨by norm_num, dvd_of_period _ _ (by norm_num) (by emath_period) (by decide +kernel)⟩)
 
 open Lean Meta Elab Tactic in
 /-- On `HasOrder a k (fun t => body)`, finds a loop `Emath.fold _ _ _` over
@@ -1066,6 +1101,8 @@ macro_rules
         | (with_reducible apply HasOrder.fold_affine_int); (intro acc t; beta_reduce; ring1)
         | with_reducible apply HasOrder.sum_tabulate
         | (with_reducible apply HasOrder.int_quot); emath_divides
+        | (with_reducible apply HasOrder.int_quot_floor); (· decide); (· emath_period)
+        | (with_reducible apply HasOrder.int_rem); (· decide); (· emath_period)
         | emath_readout; all_goals (first | decide | (intros; emath_lin; done) | (intros; emath_linz; done) | emath_linear [] | emath_linear [$defs,*])
         | (with_reducible apply HasOrder.if_true); (first | decide +kernel | exact decide_eq_true ‹_›)
         | (with_reducible apply HasOrder.if_false); (first | decide +kernel | exact decide_eq_false ‹_›)

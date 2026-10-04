@@ -161,6 +161,16 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     // proved theorem's line says nothing about it.
     let error_log: String = log.lines().filter(|line| line.starts_with("error:")).collect::<Vec<_>>().join("\n");
     let at = |lean: &str, line: usize| error_log.contains(&format!("{lean}:{line}:"));
+    // A file whose imports failed is never elaborated, so no error at a
+    // site there says nothing about it. Lake names each file it builds
+    // or replays.
+    let elaborated = |lean: &str| {
+        let module = lean.trim_end_matches(".lean").replace('/', ".");
+        log.lines().any(|line| {
+            let mut words = line.split_whitespace();
+            words.any(|word| ["Built", "Building", "Replayed"].contains(&word)) && words.next() == Some(module.as_str())
+        })
+    };
     let uncertified: Vec<String> = export
         .law_sites
         .iter()
@@ -170,10 +180,14 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
                 && (output.status.success() || !(site.first_line..=site.last_line).any(|line| at(&site.lean, line)))
         })
         .map(|(site, _)| {
-            format!(
-                "{}: Lean proves it, but emath does not certify it (Lean's arithmetic is total where emath's faults)",
-                site.what
-            )
+            if output.status.success() || elaborated(&site.lean) {
+                format!(
+                    "{}: Lean proves it, but emath does not certify it (Lean's arithmetic is total where emath's faults)",
+                    site.what
+                )
+            } else {
+                format!("{}: emath does not certify it, and Lean did not check it (a file it imports failed)", site.what)
+            }
         })
         .collect();
     if output.status.success() && uncertified.is_empty() {
