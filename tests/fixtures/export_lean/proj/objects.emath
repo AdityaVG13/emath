@@ -46,6 +46,20 @@ emath function widest_weight:
             given windows = [Window: {found: true, from: 0, until: 2, weight: 5 / 3}]
             expect result == 5 / 3
 
+# A number's parts at the end of a field path.
+emath function weight_parts:
+    inputs:
+        windows: sequence[Window]
+    outputs:
+        result: Int
+    definitions:
+        best = widest(windows)
+        result = best.inner.weight.numer + best.inner.weight.denom
+    tests:
+        example <three_halves>:
+            given windows = [Window: {found: true, from: 0, until: 2, weight: 3 / 2}]
+            expect result == 5
+
 # `decide` and `default` name what the Lean translation writes itself;
 # an element of an Int list divided is a Rat.
 emath function decide:

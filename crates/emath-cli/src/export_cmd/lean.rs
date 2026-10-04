@@ -2463,7 +2463,17 @@ impl Ctx<'_> {
             [value, path @ ..] if let Some(Ty::Record(..)) = self.local(value) => {
                 let mut text = ident(value);
                 let mut ty = self.local(value).expect("a record local");
-                for field in path {
+                for (k, field) in path.iter().enumerate() {
+                    match (&ty, field.as_str()) {
+                        (Ty::Int | Ty::Rat, "numer" | "denom") if k + 1 == path.len() => {
+                            let (text, level) = coerce(text, LEVEL_ATOM, &ty, &Ty::Rat);
+                            return Ok((format!("Emath.{field} {}", paren(text, level, LEVEL_ATOM)), LEVEL_APP, Ty::Int));
+                        }
+                        (Ty::List(_), "length") if k + 1 == path.len() => {
+                            return Ok((format!("Emath.length {text}"), LEVEL_APP, Ty::Int));
+                        }
+                        _ => {}
+                    }
                     let Ty::Record(_, fields) = &ty else {
                         return Err(format!("field `.{field}` has no Lean translation"));
                     };
