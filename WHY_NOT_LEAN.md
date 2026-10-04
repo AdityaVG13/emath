@@ -61,7 +61,11 @@ faithful program that contains the false idea. Each answer from
 
 ## Working together
 
-A proof checker is planned as a separate, optional step: it takes emath
-claims in and returns verdicts. emath's own checks always run; a proof
-adds stronger evidence for a specific claim but never replaces them.
-Nothing in emath depends on Lean today.
+Lean is an optional second step. `emath export lean --check` translates
+your functions, their examples, and the laws you state with
+`search.certify` into a Lean 4 project, and the Lean kernel proves them
+from the definitions. emath's own checks always run first, and Lean
+never claims more than emath: an example that faults in emath is not
+exported, and a law counts as proved only when emath certifies it too.
+Nothing in emath depends on Lean; only this step needs it. See
+[Certifying results in Lean](docs/guide/lean.md).

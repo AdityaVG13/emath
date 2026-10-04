@@ -40,6 +40,8 @@ language/**/target/
 # local working docs (product notes, curated queues); the shipped spec
 # lives under language/ and the public contract docs under implementation/
 docs/*
+# The user guide is shipped.
+!docs/guide/
 # MANUAL.md lives at repo root (next to README), not under docs/
 
 # local issue description files (not shipped)
@@ -151,3 +153,6 @@ archived_mailbox_states/
 # emath-checked-language image-walk books (local-only)
 /.emath-checked-language/
 .empryo
+
+# Lean projects `emath export lean` writes beside the guide examples.
+/docs/guide/examples/*/lean/

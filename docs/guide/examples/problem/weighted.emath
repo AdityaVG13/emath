@@ -1,0 +1,30 @@
+# Problem: find a closed form for S(n) = 0*2^0 + 1*2^1 + ... + (n-1)*2^(n-1).
+use fold.reduce
+use analysis.powers.{rat_pow}
+
+exports: weighted
+
+emath function weighted:
+    # S(n), summed by a loop over k = 0, 1, ..., n - 1
+    inputs:
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = fold(function acc in Rat: function k in Int: acc + k * rat_pow(2, k), 0 / 1, range(0, n))
+    tests:
+        example <none>:
+            given n = 0
+            expect result == 0
+        example <four>:
+            given n = 4
+            expect result == 34
+
+emath function table:
+    # S(0), S(1), ..., S(count - 1)
+    inputs:
+        count: Int
+    outputs:
+        result: sequence(Rat)
+    definitions:
+        result = tabulate(function n in Int: weighted(n), count)

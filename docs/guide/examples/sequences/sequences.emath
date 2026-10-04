@@ -1,0 +1,61 @@
+# Ordinary functions with examples. `emath export lean` turns each
+# function into a Lean definition and each example into a theorem.
+use fold.reduce
+use analysis.powers.{rat_pow}
+
+exports: fib, cubes, triangle, geometric
+
+emath function fib:
+    # The n-th Fibonacci number, by a loop on the pair (F(k), F(k + 1))
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        pair = fold(function p in sequence(Int): function k in Int: [p[1], p[0] + p[1]], [0, 1], range(0, n))
+        result = pair[0]
+    tests:
+        example <ten>:
+            given n = 10
+            expect result == 55
+
+emath function cubes:
+    # 0^3 + 1^3 + ... + (n - 1)^3
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = sum(tabulate(function i in Int: i * i * i, n))
+    tests:
+        example <five>:
+            given n = 5
+            expect result == 100
+
+emath function triangle:
+    # 0 + 1 + ... + (n - 1)
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = int_quot(n * (n - 1), 2)
+    tests:
+        example <five>:
+            given n = 5
+            expect result == 10
+
+emath function geometric:
+    # 1 + r + ... + r^(n - 1)
+    inputs:
+        r: Rat
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = fold(function acc in Rat: function k in Int: acc + rat_pow(r, k), 0 / 1, range(0, n))
+    tests:
+        example <halves>:
+            given r = 1 / 2
+            given n = 3
+            expect result == 7 / 4

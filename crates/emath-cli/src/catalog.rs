@@ -726,6 +726,8 @@ Identity
   {}
   First command to try: emath capabilities --json
   Human help: emath help [<command>]   or   emath <command> --help
+  Guide: docs/guide/README.md in the emath repository (writing, running,
+  solving a problem, and certifying it in Lean, end to end)
 
 Aliases (single-letter & shorthand)
   c, chk -> check       b -> build
@@ -736,6 +738,7 @@ Aliases (single-letter & shorthand)
 
 Exit codes (constructor layer)
   0  completed constructor value or successful inspect/help
+  1  a checker rejected a claim (export lean --check)
   2  admission (syntax, type, input, or extracted-token refusal)
   3  unmet, partial, or suspended requested answer
   4  execution or backend fault
@@ -751,8 +754,9 @@ Environment conventions
 Canonical agent loop
   1. emath capabilities --json
   2. emath check <file.emath> --json
-  3. emath run <file.emath> --json
-  4. emath build <file.emath> --json
+  3. emath test <file.emath>
+  4. emath run <file.emath> --function F --set name=value --json
+  5. emath export lean <dir> --check
   plan, planner, simulate, eval, solve, and agent are not constructor commands.
 
 Rules

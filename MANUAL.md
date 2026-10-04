@@ -5,6 +5,9 @@ compile, compare, and explore `.emath` programs. For the language itself,
 start at [`language/README.md`](language/README.md). For what computes
 today, see [`language/CAPABILITY.md`](language/CAPABILITY.md).
 
+For the end-to-end flow (write, run, solve a problem, certify it in
+Lean), start at the [guide](docs/guide/README.md).
+
 `emath help` lists every command. `emath help COMMAND` prints one
 command's flags and examples. `emath capabilities --json` is the
 machine-readable contract.
@@ -148,6 +151,7 @@ and use `emath run`.
 | Code | Meaning |
 | --- | --- |
 | `0` | The command completed |
+| `1` | A checker rejected a claim (`export lean --check` found a false example or law) |
 | `2` | Admission failure: syntax, type, or input |
 | `3` | Unmet, partial, or suspended answer |
 | `4` | Execution or backend fault |

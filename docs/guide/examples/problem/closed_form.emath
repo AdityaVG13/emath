@@ -1,0 +1,12 @@
+# The guess, stated as a law: S(n) = (n - 2) 2^n + 2 for every n >= 0.
+use weighted
+use search.certify
+use analysis.powers.{rat_pow}
+
+emath function laws:
+    inputs:
+        limit: Int
+    outputs:
+        result: sequence(Certificate)
+    definitions:
+        result = [certify_equal(quote(function n in Int: weighted(n)), quote(function n in Int: (n - 2) * rat_pow(2, n) + 2), limit)]

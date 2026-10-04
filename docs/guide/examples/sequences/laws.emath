@@ -1,0 +1,22 @@
+# Laws: statements about every n, which `emath export lean` turns into
+# Lean theorems. A function that calls certify_equal or certify_all
+# becomes its laws; its own value is not exported.
+use sequences
+use search.certify
+use analysis.powers.{rat_pow}
+
+emath function laws:
+    inputs:
+        limit: Int
+    outputs:
+        result: sequence(Certificate)
+    definitions:
+        result = [certify_equal(quote(function n in Int: cubes(n)), quote(function n in Int: triangle(n) * triangle(n)), limit), certify_equal(quote(function n in Int: fib(n + 1) * fib(n + 1) - fib(n) * fib(n + 2)), quote(function n in Int: rat_pow(0 - 1, n)), limit)]
+
+emath function geometric_law:
+    inputs:
+        limit: Int
+    outputs:
+        result: ParameterCertificate
+    definitions:
+        result = certify_all(quote(function r in Rat: function n in Int: geometric(r, n)), quote(function r in Rat: function n in Int: (rat_pow(r, n) - 1) / (r - 1)), limit)

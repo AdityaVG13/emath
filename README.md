@@ -196,13 +196,17 @@ Work proceeds in a fixed order:
 
 **What emath does not claim.** Compiling is not proving. emath
 guarantees that the program is what you wrote, not that the mathematics
-is true, and a check over finitely many cases is only that. A separate
-proof-checking step is planned; see [Why not just Lean?](WHY_NOT_LEAN.md)
+is true, and a check over finitely many cases is only that. For proofs,
+`search.certify` proves laws over every n, and `emath export lean --check`
+has the Lean kernel prove your examples and laws; see
+[Certifying results in Lean](docs/guide/lean.md) and
+[Why not just Lean?](WHY_NOT_LEAN.md)
 
 ## Documentation
 
 | | |
 | --- | --- |
+| [Guide](docs/guide/README.md) | Start here: the whole flow, from a first program to a Lean proof |
 | [Language guide](language/README.md) | What emath is and where everything lives |
 | [Quick start](language/QUICKSTART.md) | Your first program in a few minutes |
 | [What computes](language/CAPABILITY.md) | What works today and what is refused |
