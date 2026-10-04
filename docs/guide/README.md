@@ -79,12 +79,11 @@ ok four --
 | Look up any command and its flags | [MANUAL.md](../../MANUAL.md), or `emath help COMMAND` |
 | Find a library function | `emath api --search "words"` |
 | Understand an error code | `emath explain E-CODE` (for example `emath explain E-NAME-025`) |
-| Run a simulation | The template `language/templates/simulation.emath` in your emath install |
-| Run a discovery loop (`dream`) | `language/DISCOVERY.md` in your emath install |
+| Run a simulation | [simulations.md](simulations.md) |
+| Run a discovery loop (`dream`) | [dream.md](dream.md) |
 | Know what computes and what is refused | `language/CAPABILITY.md` in your emath install |
 
-Pages on dream and simulations are coming to this guide. The
-`language/` folder ships with emath (`EMATH_ROOT` points at the folder
+The `language/` folder ships with emath (`EMATH_ROOT` points at the folder
 that contains it) and holds the full language reference.
 
 ## A program in one screen

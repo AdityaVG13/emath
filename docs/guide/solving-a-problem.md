@@ -196,8 +196,8 @@ Setup, every flag, and every message are on the
 2. **Compute.** Use a `tabulate` helper and `emath run --function` to
    print small cases.
 3. **Guess.** Look for a pattern: subtract, divide, take differences.
-   (To have emath search for formulas, see `search.synthesis` in
-   `language/DISCOVERY.md` in your emath install.)
+   (To have emath search for formulas, start with the
+   [dream guide](dream.md).)
 4. **Prove in emath.** State the guess with `certify_equal` (or
    `certify_all` for laws with parameters) and run it. `proven=true`
    is a proof.

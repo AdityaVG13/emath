@@ -1,0 +1,81 @@
+# y' = -y, y(0) = 1. Exact arithmetic, approximate time stepping.
+use analysis.evolution.trajectories
+
+emath function rate:
+    inputs:
+        t: Rat
+        s: SimState
+    outputs:
+        result: SimState
+    definitions:
+        result = SimState: {t: t, y: [-s.y[0]]}
+
+emath function decay:
+    inputs:
+        end_time: Rat
+        step_size: Rat
+        budget: Int
+    outputs:
+        result: RolloutResult
+    definitions:
+        start = SimState: {t: 0 / 1, y: [1 / 1]}
+        result = rollout_to(rate, euler_tableau(0), 1, step_size, 1, end_time, start, budget)
+    tests:
+        example <endpoint>:
+            given end_time = 1 / 1
+            given step_size = 1 / 2
+            given budget = 2
+            expect result.complete == true
+            expect result.final_state.y[0] == 1 / 4
+            expect result.accepted_t == 1 / 1
+        example <budget_halt>:
+            given end_time = 2 / 1
+            given step_size = 1 / 2
+            given budget = 1
+            expect result.complete == false
+            expect result.accepted_t == 1 / 2
+            expect result.attempted_t == 1 / 1
+            expect result.final_state.y[0] == 1 / 2
+        example <clipped_step>:
+            given end_time = 3 / 4
+            given step_size = 1 / 2
+            given budget = 2
+            expect result.complete == true
+            expect result.accepted_t == 3 / 4
+            expect result.final_state.y[0] == 3 / 8
+        example <zero_step_refused>:
+            given end_time = 1 / 1
+            given step_size = 0 / 1
+            given budget = 2
+            expect diagnostic.code == non_positive_step
+
+emath function trace:
+    inputs:
+        step_size: Rat
+        steps: Int
+    outputs:
+        result: sequence(sequence(Rat))
+    definitions:
+        result = rollout_trace(rate, euler_tableau(0), 1, step_size, steps, SimState: {t: 0 / 1, y: [1 / 1]})
+    tests:
+        example <rows_include_initial_state>:
+            given step_size = 1 / 2
+            given steps = 2
+            expect result == [[0 / 1, 1 / 1], [1 / 2, 1 / 2], [1 / 1, 1 / 4]]
+
+emath function decay_rk4:
+    inputs:
+        end_time: Rat
+        step_size: Rat
+        budget: Int
+    outputs:
+        result: RolloutResult
+    definitions:
+        result = rollout_to(rate, rk4_tableau(0), 4, step_size, 1, end_time, SimState: {t: 0 / 1, y: [1 / 1]}, budget)
+    tests:
+        example <two_rk4_steps>:
+            given end_time = 1 / 1
+            given step_size = 1 / 2
+            given budget = 2
+            expect result.complete == true
+            expect result.final_state.y[0] == 54289 / 147456
