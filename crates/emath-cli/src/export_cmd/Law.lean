@@ -44,6 +44,7 @@ import Mathlib.Tactic.FieldSimp
 import Mathlib.Tactic.Positivity
 import Mathlib.Tactic.LinearCombination
 import Mathlib.Tactic.Tauto
+import Mathlib.Data.Int.ModEq
 import Emath.Prelude
 
 namespace Emath.Law
@@ -523,6 +524,229 @@ theorem HasOrder.list_readout_zero (f : List ℚ → List ℚ) (s : List ℚ) (l
       (Emath.range lo t))) := by
   simpa using HasOrder.list_readout f s lo 0 L hL le_rfl hlen hlin
 
+/-! ### Integer programs, read as rationals -/
+
+theorem index_ofFn_int {k : ℕ} (w : Fin k → ℤ) (j : ℤ) :
+    Emath.index (List.ofFn w) j = if h : j.toNat < k then w ⟨j.toNat, h⟩ else 0 := by
+  unfold Emath.index
+  split_ifs with h
+  · simp [List.getD_eq_getElem?_getD, h]
+  · simp [List.getD_eq_getElem?_getD, h]
+
+theorem ofFn_index_int {k : ℕ} (xs : List ℤ) (h : xs.length = k) :
+    List.ofFn (fun i : Fin k => Emath.index xs (i : ℕ)) = xs := by
+  apply List.ext_getElem
+  · simp [h]
+  · intro n h1 h2
+    simp [Emath.index, List.getD_eq_getElem?_getD, h2]
+
+theorem index_tabulate_int (f : ℤ → ℤ) (n i : ℤ) :
+    Emath.index (Emath.tabulate f n) i = if i.toNat < n.toNat then f i.toNat else 0 := by
+  unfold Emath.index Emath.tabulate
+  split_ifs with h
+  · simp [List.getD_eq_getElem?_getD, h]
+  · simp [List.getD_eq_getElem?_getD, h]
+
+/-- `F` is linear over `ℤ` in an integer loop state `x`. -/
+structure LinZ {k : ℕ} (F : (Fin k → ℤ) → ℤ) : Prop where
+  map : ∀ (a : ℤ) (x y : Fin k → ℤ), F (a • x + y) = a * F x + F y
+
+namespace LinZ
+variable {k : ℕ} {F G : (Fin k → ℤ) → ℤ}
+
+theorem index (j : ℤ) : LinZ (fun x : Fin k → ℤ => Emath.index (List.ofFn x) j) :=
+  ⟨fun a x y => by simp only [index_ofFn_int]; split_ifs <;> simp⟩
+
+theorem zero {c : ℤ} (h : c = 0) : LinZ (fun _ : Fin k → ℤ => c) := ⟨fun a x y => by simp [h]⟩
+
+theorem add (hF : LinZ F) (hG : LinZ G) : LinZ (fun x => F x + G x) :=
+  ⟨fun a x y => by rw [hF.map, hG.map]; ring⟩
+
+theorem sub (hF : LinZ F) (hG : LinZ G) : LinZ (fun x => F x - G x) :=
+  ⟨fun a x y => by rw [hF.map, hG.map]; ring⟩
+
+theorem neg (hF : LinZ F) : LinZ (fun x => -F x) := ⟨fun a x y => by rw [hF.map]; ring⟩
+
+theorem mul_const (c : ℤ) (hF : LinZ F) : LinZ (fun x => F x * c) :=
+  ⟨fun a x y => by rw [hF.map]; ring⟩
+
+theorem const_mul (c : ℤ) (hF : LinZ F) : LinZ (fun x => c * F x) :=
+  ⟨fun a x y => by rw [hF.map]; ring⟩
+
+theorem ite (c : Prop) [Decidable c] (hF : LinZ F) (hG : LinZ G) :
+    LinZ (fun x => if c then F x else G x) :=
+  ⟨fun a x y => by split_ifs; exacts [hF.map a x y, hG.map a x y]⟩
+
+theorem fold_acc {δ : Type} (h : (Fin k → ℤ) → δ → ℤ) (init : (Fin k → ℤ) → ℤ) (r : List δ)
+    (hh : ∀ t, LinZ (fun x => h x t)) (hi : LinZ init) :
+    LinZ (fun x => Emath.fold (fun acc t => acc + h x t) (init x) r) := by
+  unfold Emath.fold
+  induction r generalizing init with
+  | nil => simpa using hi
+  | cons t r ih => exact ih (fun x => init x + h x t) (hi.add (hh t))
+
+theorem index_tabulate (g : (Fin k → ℤ) → ℤ → ℤ) (n i : ℤ) (hg : ∀ j, LinZ (fun x => g x j)) :
+    LinZ (fun x => Emath.index (Emath.tabulate (g x) n) i) :=
+  ⟨fun a x y => by
+    simp only [index_tabulate_int]
+    split_ifs
+    · exact (hg _).map a x y
+    · ring⟩
+
+end LinZ
+
+/-- `emath_lin` for integer loop states. -/
+syntax "emath_linz" : tactic
+macro_rules
+  | `(tactic| emath_linz) => `(tactic|
+      repeat' ((try beta_reduce); first
+        | with_reducible exact LinZ.index _
+        | ((with_reducible apply LinZ.zero); norm_num)
+        | ((with_reducible apply LinZ.index_tabulate); intro _)
+        | ((with_reducible apply LinZ.fold_acc); intro _)
+        | with_reducible apply LinZ.add
+        | with_reducible apply LinZ.sub
+        | with_reducible apply LinZ.neg
+        | with_reducible apply LinZ.mul_const
+        | with_reducible apply LinZ.const_mul
+        | with_reducible apply LinZ.ite))
+
+/-- `Rec.linear_iterate` over `ℤ`: the integer characteristic polynomial,
+read over `ℚ`, annihilates the readouts. -/
+theorem Rec.linear_iterate_int {k : ℕ} (T : Module.End ℤ (Fin k → ℤ)) (v : Fin k → ℤ)
+    (φ : (Fin k → ℤ) →ₗ[ℤ] ℤ) : Rec k (fun t => ((φ ((T ^ t) v) : ℤ) : ℚ)) := by
+  have hm := LinearMap.charpoly_monic T
+  refine ⟨(LinearMap.charpoly T).map (Int.castRingHom ℚ), hm.map _, ?_, ?_⟩
+  · rw [hm.natDegree_map, LinearMap.charpoly_natDegree]; simp
+  · funext t
+    rw [aeval_apply, Pi.zero_apply, hm.natDegree_map]
+    have hct := congrArg (fun S : Module.End ℤ (Fin k → ℤ) => φ ((T ^ t) (S v)))
+      (LinearMap.aeval_self_charpoly T)
+    simp only [aeval_eq_sum_range, LinearMap.sum_apply, LinearMap.smul_apply, map_sum,
+      map_smul, smul_eq_mul, LinearMap.zero_apply, map_zero] at hct
+    have := congrArg (Int.cast : ℤ → ℚ) hct
+    push_cast at this
+    rw [← this]
+    refine Finset.sum_congr rfl (fun i _ => ?_)
+    rw [coeff_map, eq_intCast, pow_add, Module.End.mul_apply]
+
+/-- `list_readout` for a loop over integer lists, read as rationals. -/
+theorem HasOrder.list_readout_int (f : List ℤ → List ℤ) (s : List ℤ) (lo c : ℤ) (L : List ℤ → ℤ)
+    (hL : LinZ (fun x : Fin s.length → ℤ => L (List.ofFn x)))
+    (hc : 0 ≤ c)
+    (hlen : ∀ x : Fin s.length → ℤ, (f (List.ofFn x)).length = s.length)
+    (hlin : ∀ i : Fin s.length,
+      LinZ (fun x : Fin s.length → ℤ => Emath.index (f (List.ofFn x)) (i : ℕ))) :
+    HasOrder 0 s.length (fun t : ℕ => ((L (Emath.fold (fun p (_ : ℤ) => f p) s
+      (Emath.range lo (c + t))) : ℤ) : ℚ)) := by
+  have hf0 : ∀ i : Fin s.length, Emath.index (f (List.ofFn (0 : Fin s.length → ℤ))) (i : ℕ) = 0 := by
+    intro i; have := (hlin i).map 1 0 0; simp at this; linarith
+  have hL0 : L (List.ofFn (0 : Fin s.length → ℤ)) = 0 := by
+    have := hL.map 1 0 0; simp at this; linarith
+  let T : Module.End ℤ (Fin s.length → ℤ) :=
+    { toFun := fun x i => Emath.index (f (List.ofFn x)) (i : ℕ)
+      map_add' := fun x y => funext fun i => by simpa using (hlin i).map 1 x y
+      map_smul' := fun a x => funext fun i => by simpa [hf0] using (hlin i).map a x 0 }
+  let φ : (Fin s.length → ℤ) →ₗ[ℤ] ℤ :=
+    { toFun := fun x => L (List.ofFn x)
+      map_add' := fun x y => by simpa using hL.map 1 x y
+      map_smul' := fun a x => by simpa [hL0] using hL.map a x 0 }
+  let v : Fin s.length → ℤ := fun i => Emath.index s (i : ℕ)
+  have hit : ∀ m, f^[m] s = List.ofFn ((T ^ m) v) := by
+    intro m
+    induction m with
+    | zero => exact (ofFn_index_int s rfl).symm
+    | succ m ih =>
+      rw [Function.iterate_succ_apply', ih, pow_succ', Module.End.mul_apply]
+      exact (ofFn_index_int _ (hlen _)).symm
+  convert (Rec.linear_iterate_int T ((T ^ c.toNat) v) φ).hasOrder using 1
+  funext t
+  have hct : (c + (t : ℤ)).toNat = t + c.toNat := by omega
+  rw [fold_iterate, hct, hit, pow_add, Module.End.mul_apply]
+  rfl
+
+theorem HasOrder.list_readout_int_zero (f : List ℤ → List ℤ) (s : List ℤ) (lo : ℤ) (L : List ℤ → ℤ)
+    (hL : LinZ (fun x : Fin s.length → ℤ => L (List.ofFn x)))
+    (hlen : ∀ x : Fin s.length → ℤ, (f (List.ofFn x)).length = s.length)
+    (hlin : ∀ i : Fin s.length,
+      LinZ (fun x : Fin s.length → ℤ => Emath.index (f (List.ofFn x)) (i : ℕ))) :
+    HasOrder 0 s.length (fun t : ℕ => ((L (Emath.fold (fun p (_ : ℤ) => f p) s
+      (Emath.range lo t)) : ℤ) : ℚ)) := by
+  simpa using HasOrder.list_readout_int f s lo 0 L hL le_rfl hlen hlin
+
+theorem fold_acc_eq_int (f : ℤ → ℤ → ℤ) (hf : ∀ acc t, f acc t = acc + f 0 t) (init : ℤ) (lo : ℤ)
+    (n : ℕ) : Emath.fold f init (Emath.range lo n) = init + ∑ t ∈ Finset.range n, f 0 (lo + t) := by
+  induction n with
+  | zero => simp [Emath.fold, Emath.range]
+  | succ n ih =>
+    simp only [Emath.fold, Emath.range, Int.toNat_natCast] at ih ⊢
+    rw [List.range_succ, List.map_append, List.foldl_append, ih]
+    simp only [List.map_cons, List.map_nil, List.foldl_cons, List.foldl_nil]
+    rw [hf, Finset.sum_range_succ]
+    ring
+
+/-- `fold(function acc in Int: function t: acc + h(t), init, range(lo, n))`. -/
+theorem HasOrder.fold_acc_int {a k : ℕ} (f : ℤ → ℤ → ℤ) (init : ℤ) (lo : ℤ)
+    (hf : ∀ acc t, f acc t = acc + f 0 t) (hh : HasOrder a k (fun t : ℕ => ((f 0 (lo + t) : ℤ) : ℚ))) :
+    HasOrder (a + 1) k (fun n : ℕ => ((Emath.fold f init (Emath.range lo n) : ℤ) : ℚ)) := by
+  have := hh.partial_sum (init : ℚ)
+  convert this using 1
+  funext n
+  rw [fold_acc_eq_int f hf init lo n]
+  push_cast; rfl
+
+theorem sum_tabulate_eq (f : ℤ → ℤ) (n : ℕ) :
+    Emath.sum (Emath.tabulate f n) = ∑ t ∈ Finset.range n, f t := by
+  induction n with
+  | zero => simp [Emath.sum, Emath.int_sum, Emath.tabulate]
+  | succ n ih =>
+    simp only [Emath.sum, Emath.int_sum, Emath.tabulate, Int.toNat_natCast] at ih ⊢
+    rw [List.range_succ, List.map_append, List.foldl_append, ih, Finset.sum_range_succ]
+    simp
+
+/-- `sum(tabulate(function t: h(t), n))`. -/
+theorem HasOrder.sum_tabulate {a k : ℕ} (f : ℤ → ℤ)
+    (hh : HasOrder a k (fun t : ℕ => ((f t : ℤ) : ℚ))) :
+    HasOrder (a + 1) k (fun n : ℕ => ((Emath.sum (Emath.tabulate f n) : ℤ) : ℚ)) := by
+  have := hh.partial_sum 0
+  convert this using 1
+  funext n
+  rw [sum_tabulate_eq]
+  push_cast; ring
+
+/-- A sequence of integers that repeats its residues mod `d` with period
+`d` is divisible by `d` once its first `d` values are. -/
+theorem dvd_of_period (p : ℕ → ℤ) (d : ℤ) (hd : 0 < d)
+    (hper : ∀ m : ℕ, p (m + d.toNat) ≡ p m [ZMOD d]) (hbase : ∀ i < d.toNat, d ∣ p i) :
+    ∀ n, d ∣ p n := by
+  intro n
+  induction n using Nat.strong_induction_on with
+  | _ n ih =>
+    by_cases hn : n < d.toNat
+    · exact hbase n hn
+    · have h := hper (n - d.toNat)
+      rw [Nat.sub_add_cancel (by omega)] at h
+      exact (Int.ModEq.dvd_iff h).mpr (ih _ (by omega))
+
+/-- `int_quot(p, d)` with `d` dividing `p` at every `n`: `p / d`. -/
+theorem HasOrder.int_quot {a k : ℕ} (p : ℕ → ℤ) (d : ℤ) (hdvd : 0 < d ∧ ∀ n, d ∣ p n)
+    (hp : HasOrder a k (fun n => ((p n : ℤ) : ℚ))) :
+    HasOrder a k (fun n => ((Emath.int_quot (p n) d : ℤ) : ℚ)) := by
+  convert hp.div_const (d : ℚ) using 1
+  funext n
+  rw [Emath.int_quot, Int.cast_div (hdvd.2 n) (by exact_mod_cast hdvd.1.ne')]
+
+/-- Proves `0 < d ∧ ∀ n, d ∣ p n` for a polynomial `p` with integer
+coefficients: its residues mod `d` have period `d`, and its first `d`
+values are checked. -/
+macro "emath_divides" : tactic => `(tactic|
+  exact ⟨by norm_num, dvd_of_period _ _ (by norm_num)
+    (fun m => by
+      push_cast
+      gcongr
+      all_goals exact Int.modEq_iff_dvd.mpr ⟨-1, by ring⟩)
+    (by decide +kernel)⟩)
+
 open Lean Meta Elab Tactic in
 /-- On `HasOrder a k (fun t => body)`, finds a loop `Emath.fold _ _ _` over
 lists in `body` that reads `t`, and applies `list_readout` with the rest of
@@ -539,17 +763,31 @@ elab "emath_readout" : tactic => withMainContext do
     let abst ← kabstract body loop
     if (abst.instantiate1 (mkConst ``Unit.unit)).containsFVar t.fvarId! then
       throwError "emath_readout: reads t outside the loop"
-    return Expr.lam `xs (← inferType loop) abst .default
+    -- An integer readout `↑(L xs)` is `list_readout_int`'s `L`.
+    if abst.isAppOfArity ``Int.cast 3 then
+      return (Expr.lam `xs (← inferType loop) abst.appArg! .default, true)
+    return (Expr.lam `xs (← inferType loop) abst .default, false)
+  let (readout, int) := readout
   let L ← Term.exprToSyntax readout
   let saved ← saveState
-  try
-    evalTactic (← `(tactic| with_reducible apply HasOrder.list_readout (L := $L)))
-    return
-  catch _ => saved.restore
-  try
-    evalTactic (← `(tactic| with_reducible apply HasOrder.list_readout_zero (L := $L)))
-    return
-  catch _ => saved.restore
+  if int then
+    try
+      evalTactic (← `(tactic| with_reducible apply HasOrder.list_readout_int (L := $L)))
+      return
+    catch _ => saved.restore
+    try
+      evalTactic (← `(tactic| with_reducible apply HasOrder.list_readout_int_zero (L := $L)))
+      return
+    catch _ => saved.restore
+  else
+    try
+      evalTactic (← `(tactic| with_reducible apply HasOrder.list_readout (L := $L)))
+      return
+    catch _ => saved.restore
+    try
+      evalTactic (← `(tactic| with_reducible apply HasOrder.list_readout_zero (L := $L)))
+      return
+    catch _ => saved.restore
   throwError "emath_readout: the loop is not over range(lo, c + t)"
 
 /-- Two sequences that agree at the first `max a b + (k + l)` points
@@ -706,7 +944,7 @@ elab "emath_readout_through" "[" defs:ident,* "]" : tactic => do
     try
       evalTactic (← `(tactic| emath_readout))
       evalTactic (← `(tactic|
-        all_goals (first | decide | (intros; emath_lin; done) | emath_linear [] | emath_linear [$defs,*])))
+        all_goals (first | decide | (intros; emath_lin; done) | (intros; emath_linz; done) | emath_linear [] | emath_linear [$defs,*])))
       return
     catch _ => attempt.restore
   saved.restore
@@ -727,7 +965,10 @@ macro_rules
         | (with_reducible apply HasOrder.rat_pow_add_left); decide +kernel
         | (with_reducible apply HasOrder.rat_pow_sub); decide +kernel
         | (with_reducible apply HasOrder.fold_acc); (intro acc t; beta_reduce; ring)
-        | emath_readout; all_goals (first | decide | (intros; emath_lin; done) | emath_linear [] | emath_linear [$defs,*])
+        | (with_reducible apply HasOrder.fold_acc_int); (intro acc t; beta_reduce; ring)
+        | with_reducible apply HasOrder.sum_tabulate
+        | (with_reducible apply HasOrder.int_quot); emath_divides
+        | emath_readout; all_goals (first | decide | (intros; emath_lin; done) | (intros; emath_linz; done) | emath_linear [] | emath_linear [$defs,*])
         | (with_reducible apply HasOrder.if_true); (first | decide +kernel | exact decide_eq_true ‹_›)
         | (with_reducible apply HasOrder.if_false); (first | decide +kernel | exact decide_eq_false ‹_›)
         | emath_branch
