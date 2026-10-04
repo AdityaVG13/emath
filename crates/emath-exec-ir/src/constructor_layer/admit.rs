@@ -107,21 +107,33 @@ pub fn admit_tree_at(
     tree: &SyntaxTree,
     source: Option<&Path>,
 ) -> Result<(), ConstructorError> {
+    admit_tree_objects(tree, source).0
+}
+
+/// `admit_tree_at`, and the object names the module sees: its own and
+/// those its imports bring. Empty when the imports do not load.
+pub fn admit_tree_objects(
+    tree: &SyntaxTree,
+    source: Option<&Path>,
+) -> (Result<(), ConstructorError>, std::collections::BTreeSet<String>) {
     let mut engine = empty_engine();
-    install_local_items(&mut engine, tree)?;
-    load_imports(
-        &mut engine,
-        tree,
-        &module_roots_for(source),
-        source,
-    )?;
+    let loaded = install_local_items(&mut engine, tree)
+        .and_then(|()| load_imports(&mut engine, tree, &module_roots_for(source), source));
+    if let Err(err) = loaded {
+        return (Err(err), Default::default());
+    }
+    let objects = engine.objects.keys().cloned().collect();
+    (admit_loaded(&engine, tree), objects)
+}
+
+fn admit_loaded(engine: &Engine, tree: &SyntaxTree) -> Result<(), ConstructorError> {
     for item in &tree.items {
         let Item::Declaration(decl) = item else {
             continue;
         };
         match decl.as_kind.as_str() {
-            "function" => admit_function(&engine, decl)?,
-            "query" => admit_query(&engine, decl)?,
+            "function" => admit_function(engine, decl)?,
+            "query" => admit_query(engine, decl)?,
             "object" => {}
             other => {
                 return Err(fault(

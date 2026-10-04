@@ -35,12 +35,13 @@ pub(super) type AdmitResult = (
 /// are not lowered through capability cells.
 pub(super) fn admit_constructor_declaration(
     decl: &emath_core::tree::Declaration,
+    objects: &BTreeSet<String>,
 ) -> AdmitResult {
     let host_types = BTreeSet::new();
     let (mut admitter, kind_label, _, _, _, _, _) =
         admit_declaration_setup(decl, &host_types);
-    let inputs = constructor_io_fields(&mut admitter, decl, "inputs");
-    let outputs = constructor_io_fields(&mut admitter, decl, "outputs");
+    let inputs = constructor_io_fields(&mut admitter, decl, "inputs", objects);
+    let outputs = constructor_io_fields(&mut admitter, decl, "outputs", objects);
     let declaration = Declaration {
         id: emath_ir::DeclarationId(0),
         name: QualifiedName::single(decl.name.clone()),
@@ -78,6 +79,7 @@ fn constructor_io_fields(
     admitter: &mut Admitter,
     decl: &emath_core::tree::Declaration,
     section_name: &str,
+    objects: &BTreeSet<String>,
 ) -> Vec<Field> {
     let mut fields = Vec::new();
     for section in decl.sections().filter(|section| section.name == section_name) {
@@ -85,7 +87,9 @@ fn constructor_io_fields(
             let StmtKind::FieldDecl { name, ty, .. } = &stmt.kind else {
                 continue;
             };
-            if let Some(catalog) = leftover_catalog_type_name(ty) {
+            // An old catalog name is refused only where no object
+            // the file sees (its own or imported) carries it.
+            if let Some(catalog) = leftover_catalog_type_name(ty, objects) {
                 admitter.error(
                     "E-KIND-GONE",
                     format!(
@@ -106,24 +110,27 @@ fn constructor_io_fields(
     fields
 }
 
-fn leftover_catalog_type_name(ty: &emath_core::tree::TypeExpr) -> Option<&str> {
+fn leftover_catalog_type_name<'a>(
+    ty: &'a emath_core::tree::TypeExpr,
+    objects: &BTreeSet<String>,
+) -> Option<&'a str> {
     use emath_core::tree::TypeKind;
     match &ty.kind {
         TypeKind::Path { segments, .. } => match segments.last().map(String::as_str) {
-            Some(name) if leftover_catalog_type(name) => Some(name),
+            Some(name) if leftover_catalog_type(name) && !objects.contains(name) => Some(name),
             _ => None,
         },
         TypeKind::In { base, .. } | TypeKind::Domain { base, .. } | TypeKind::Pow { base, .. } => {
-            leftover_catalog_type_name(base)
+            leftover_catalog_type_name(base, objects)
         }
-        TypeKind::Product { left, right, .. } => leftover_catalog_type_name(left)
-            .or_else(|| leftover_catalog_type_name(right)),
+        TypeKind::Product { left, right, .. } => leftover_catalog_type_name(left, objects)
+            .or_else(|| leftover_catalog_type_name(right, objects)),
         TypeKind::List(items) | TypeKind::Tuple(items) => {
-            items.iter().find_map(leftover_catalog_type_name)
+            items.iter().find_map(|item| leftover_catalog_type_name(item, objects))
         }
-        TypeKind::Fn { domain, codomain } => leftover_catalog_type_name(domain)
-            .or_else(|| leftover_catalog_type_name(codomain)),
-        TypeKind::Ref(inner) => leftover_catalog_type_name(inner),
+        TypeKind::Fn { domain, codomain } => leftover_catalog_type_name(domain, objects)
+            .or_else(|| leftover_catalog_type_name(codomain, objects)),
+        TypeKind::Ref(inner) => leftover_catalog_type_name(inner, objects),
     }
 }
 

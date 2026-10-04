@@ -60,6 +60,30 @@ fn declaration_kinds() {
         )
         .must_refuse(p, &["E-SEC-101"]);
     });
+    // An old catalog type name refuses, unless an object the file sees,
+    // its own or imported, carries it.
+    p.case("catalog-type-gone", |p| {
+        Source::from_str(
+            "catalog-type-gone",
+            "emath function Trace:\n    inputs:\n        m: Matrix\n    outputs:\n        y: Rat\n    definitions:\n        y = 1\n",
+        )
+        .must_refuse(p, &["E-KIND-GONE"]);
+    });
+    for (name, source) in [
+        (
+            "catalog-name-local-object",
+            "emath object Matrix:\n    representation:\n        entries: sequence(Rat)\n\nemath function Trace:\n    inputs:\n        m: Matrix\n    outputs:\n        y: Rat\n    definitions:\n        y = m.entries[0]\n",
+        ),
+        (
+            "catalog-name-imported-object",
+            "use search.tensor_rank\n\nemath function Rank:\n    inputs:\n        t: Tensor\n    outputs:\n        y: Int\n    definitions:\n        y = length(standard(t))\n",
+        ),
+    ] {
+        p.case(name, |p| {
+            let result = Source::from_str(name, source).check();
+            p.demand("admit", !result.diagnostics.has_errors(), error_text(&result));
+        });
+    }
     p.case("wrong-section-reported-once", |p| {
         let result = Source::from_str(
             "wrong-section-reported-once",

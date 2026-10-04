@@ -72,6 +72,14 @@ fn check_constructor_user_file(
     mut trace: SemanticTrace,
     units_profiles: Vec<(String, String)>,
 ) -> CheckResult {
+    let (admitted, mut objects) = emath_exec_ir::constructor_layer::admit_tree_objects(tree, source);
+    for item in &tree.items {
+        if let emath_core::tree::Item::Declaration(decl) = item
+            && decl.as_kind == "object"
+        {
+            objects.insert(decl.name.clone());
+        }
+    }
     let mut declaration_id = 0_u32;
     let mut seen_declaration_names: BTreeSet<String> = BTreeSet::new();
     let mut seen_folded_declaration_names: BTreeMap<String, String> = BTreeMap::new();
@@ -145,7 +153,7 @@ fn check_constructor_user_file(
             admit_diagnostics,
             law_metadata,
             binding_provenance,
-        ) = admit_constructor_declaration(decl);
+        ) = admit_constructor_declaration(decl, &objects);
         diagnostics.extend_from(&admit_diagnostics);
         trace.entries.extend(entries);
         let Some(mut declaration) = declaration else {
@@ -185,7 +193,7 @@ fn check_constructor_user_file(
     if !package.declarations.is_empty() {
         package.seal();
     }
-    if let Err(err) = emath_exec_ir::constructor_layer::admit_tree_at(tree, source) {
+    if let Err(err) = admitted {
         let code = emath_exec_ir::constructor_layer::constructor_admit_code(&err.code);
         // The per-declaration loop above already reported kind, section, and
         // field-type refusals with real spans, and this constructor pass is
