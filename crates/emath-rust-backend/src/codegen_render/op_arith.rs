@@ -56,8 +56,8 @@ pub(super) fn op_arith_exprs(
         if union_pair(kinds, left, right) {
             let left_kind = kind_at(kinds, left);
             let right_kind = kind_at(kinds, right);
-            let left_code = render_expr(&to_code_value(operand(program, left), &left_kind));
-            let right_code = render_expr(&to_code_value(operand(program, right), &right_kind));
+            let left_code = render_expr(&to_code_value(operand(program, left), &left_kind)?);
+            let right_code = render_expr(&to_code_value(operand(program, right), &right_kind)?);
             return Ok(Expr::Raw(format!(
                 "emath_rt::code::{function}(&{left_code}, &{right_code})?"
             )));
@@ -96,8 +96,8 @@ pub(super) fn op_arith_exprs(
             // representation on both sides.
             let left_kind = kind_at(kinds, left);
             let right_kind = kind_at(kinds, right);
-            let left_code = render_expr(&to_code_value(operand(program, left), &left_kind));
-            let right_code = render_expr(&to_code_value(operand(program, right), &right_kind));
+            let left_code = render_expr(&to_code_value(operand(program, left), &left_kind)?);
+            let right_code = render_expr(&to_code_value(operand(program, right), &right_kind)?);
             return Ok(Expr::Raw(format!(
                 "emath_rt::code::CodeValue::Bool(emath_rt::code::code_as_bool(&{left_code})? {join} emath_rt::code::code_as_bool(&{right_code})?)"
             )));
@@ -437,12 +437,12 @@ pub(super) fn op_arith_exprs(
             method: "is_finite".to_string(),
             args: Vec::new(),
         }),
-        EmirOp::Lt(l, r) => Ok(cmp_expr(BinOp::Lt, program, *l, *r, kinds)),
-        EmirOp::Le(l, r) => Ok(cmp_expr(BinOp::Le, program, *l, *r, kinds)),
-        EmirOp::Gt(l, r) => Ok(cmp_expr(BinOp::Gt, program, *l, *r, kinds)),
-        EmirOp::Ge(l, r) => Ok(cmp_expr(BinOp::Ge, program, *l, *r, kinds)),
-        EmirOp::Eq(l, r) => Ok(cmp_expr(BinOp::Eq, program, *l, *r, kinds)),
-        EmirOp::Ne(l, r) => Ok(cmp_expr(BinOp::Ne, program, *l, *r, kinds)),
+        EmirOp::Lt(l, r) => cmp_expr(BinOp::Lt, program, *l, *r, kinds),
+        EmirOp::Le(l, r) => cmp_expr(BinOp::Le, program, *l, *r, kinds),
+        EmirOp::Gt(l, r) => cmp_expr(BinOp::Gt, program, *l, *r, kinds),
+        EmirOp::Ge(l, r) => cmp_expr(BinOp::Ge, program, *l, *r, kinds),
+        EmirOp::Eq(l, r) => cmp_expr(BinOp::Eq, program, *l, *r, kinds),
+        EmirOp::Ne(l, r) => cmp_expr(BinOp::Ne, program, *l, *r, kinds),
         EmirOp::And(l, r) => Ok(comparison(BinOp::And, *l, *r, program)),
         EmirOp::Or(l, r) => Ok(comparison(BinOp::Or, *l, *r, program)),
         // `==>` = `!l || r`

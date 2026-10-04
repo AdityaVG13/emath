@@ -23,7 +23,7 @@ fn authored_list_concat(
                 let kind = kind_at(kinds, *value);
                 to_node(operand(program, *value), &kind)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         let parts = folded
             .iter()
             .map(|value| render_expr(value))

@@ -304,34 +304,56 @@ fn census_row(bin: &Path, module: &Path) -> Row {
 /// as a refusal lane because a panicked build prints no
 /// `"runnable": true`. This lane pins the answer shape: a clean exit
 /// whose JSON either claims runnable or names what is unresolved.
+/// The discovery lanes additionally pin Text crossing a viewed node
+/// or evaluated union, which formerly panicked in carrier conversion.
 #[test]
 fn not_runnable_lanes_answer_by_name() {
     let bin = common::emath_bin();
-    let module = repo_root().join("language/modules/quote/walk.emath");
-    let out = common::emitted_crate_dir(&module);
-    let _lock = common::lock_emitted_crate(&out);
-    let build = Command::new(bin)
-        .args([
-            "build",
-            module.to_str().expect("utf8 module path"),
-            "--out",
-            out.to_str().expect("utf8 scratch path"),
-            "--json",
-        ])
-        .output()
-        .expect("run emath build for the walk lane");
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&build.stdout),
-        String::from_utf8_lossy(&build.stderr)
-    );
+    let mut failures = Vec::new();
+    for path in [
+        "language/modules/quote/walk.emath",
+        "language/modules/search/accelerate.emath",
+        "language/modules/search/certify.emath",
+        "language/modules/search/conjecture.emath",
+        "language/modules/search/exploration.emath",
+        "tests/fixtures/constructor/code_comparison_boundaries.emath",
+    ] {
+        let module = repo_root().join(path);
+        let out = common::emitted_crate_dir(&module);
+        let _lock = common::lock_emitted_crate(&out);
+        let build = Command::new(bin)
+            .args([
+                "build",
+                module.to_str().expect("utf8 module path"),
+                "--out",
+                out.to_str().expect("utf8 scratch path"),
+                "--json",
+            ])
+            .output()
+            .expect("run emath build for a code comparison lane");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&build.stdout),
+            String::from_utf8_lossy(&build.stderr)
+        );
+        if !build.status.success() || !text.contains("\"runnable\"") || text.contains("panicked") {
+            failures.push(format!("{path}\n{text}"));
+        }
+        if path.ends_with("code_comparison_boundaries.emath")
+            && (!text.contains("\"runnable\": false")
+                || !text.contains("node comparison")
+                || !text.contains("union comparison")
+                || !text.contains("Text"))
+        {
+            failures.push(format!(
+                "{path}: unsupported comparison carriers must be named\n{text}"
+            ));
+        }
+    }
     assert!(
-        !text.contains("panicked"),
-        "a not-runnable lane must not crash the emitter:\n{text}"
-    );
-    assert!(
-        build.status.success() && text.contains("\"runnable\""),
-        "the walk lane must answer: runnable true/false with named unresolved entries\n{text}"
+        failures.is_empty(),
+        "build must answer with runnable status or named unresolved entries, never panic:\n{}",
+        failures.join("\n\n")
     );
 }
 

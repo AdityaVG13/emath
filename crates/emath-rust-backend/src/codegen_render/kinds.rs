@@ -1914,10 +1914,10 @@ pub(super) fn cmp_expr(
     left: EmirValue,
     right: EmirValue,
     kinds: &[ValueKind],
-) -> Expr {
+) -> Result<Expr, BackendError> {
     let lk = operand_kind(kinds, left);
     let rk = operand_kind(kinds, right);
-    match (&lk, &rk) {
+    Ok(match (&lk, &rk) {
         // The node family (bead emath-shared-tree-view-make-bp8nu):
         // structural comparison over the dynamic records - tags by
         // name, records by type and field set, scalars by VALUE
@@ -1925,8 +1925,12 @@ pub(super) fn cmp_expr(
         // walk's kind test). A scalar beside a node folds into the
         // family (mixed shapes are never equal).
         (ValueKind::Node, _) | (_, ValueKind::Node) => {
-            let left = render_expr(&to_node(operand(program, left), &lk));
-            let right = render_expr(&to_node(operand(program, right), &rk));
+            let lift = |value, kind| {
+                to_node(operand(program, value), kind)
+                    .map_err(|error| BackendError::UnsupportedType(format!("node comparison: {error}")))
+            };
+            let left = render_expr(&lift(left, &lk)?);
+            let right = render_expr(&lift(right, &rk)?);
             let ordered = |orderings: &str| {
                 format!(
                     "matches!(emath_rt::code_tree::node_cmp(&{left}, &{right})?, {orderings})"
@@ -1956,8 +1960,12 @@ pub(super) fn cmp_expr(
         // The other side is Int/Rat/Bool/union, or an exact Int that
         // narrows checked onto the union's i64 (`to_code_value`).
         (ValueKind::CodeValue, _) | (_, ValueKind::CodeValue) => {
-            let left = to_code_value(operand(program, left), &lk);
-            let right = to_code_value(operand(program, right), &rk);
+            let lift = |value, kind| {
+                to_code_value(operand(program, value), kind)
+                    .map_err(|error| BackendError::UnsupportedType(format!("union comparison: {error}")))
+            };
+            let left = lift(left, &lk)?;
+            let right = lift(right, &rk)?;
             let (left, right) = (render_expr(&left), render_expr(&right));
             let raw = match op {
                 BinOp::Eq => format!("emath_rt::code::code_eq(&{left}, &{right})?"),
@@ -2103,7 +2111,7 @@ pub(super) fn cmp_expr(
                         None
                     };
                     if let Some((left, right)) = widened {
-                        return Expr::Bin {
+                        return Ok(Expr::Bin {
                             op,
                             left: Box::new(Expr::Raw(format!(
                                 "({}).as_slice()",
@@ -2113,7 +2121,7 @@ pub(super) fn cmp_expr(
                                 "({}).as_slice()",
                                 render_expr(&right)
                             ))),
-                        };
+                        });
                     }
                 }
                 // Non-copy carriers compare through a common view: the
@@ -2146,7 +2154,7 @@ pub(super) fn cmp_expr(
                 }
             }
         }
-    }
+    })
 }
 
 /// Mixed Int/Float64 compare must not widen through `as f64` (2^53 lie).
@@ -2269,12 +2277,12 @@ pub(super) fn numeric_boundary_value(
         (
             ValueKind::I64 | ValueKind::ExactInt | ValueKind::Rational | ValueKind::Bool,
             ValueKind::CodeValue,
-        ) => Some(super::to_code_value(expression.clone(), from)),
+        ) => super::to_code_value(expression.clone(), from).ok(),
         // A Code arm beside node arms (or a `sequence(Code)` element
         // joined with a node sequence) folds into the node family,
         // which holds code as a Code node.
         (ValueKind::ExprCode, ValueKind::Node) => {
-            Some(super::to_node(expression.clone(), &ValueKind::ExprCode))
+            super::to_node(expression.clone(), &ValueKind::ExprCode).ok()
         }
         // The reverse crossing: a node into a declared Code slot (a
         // record field, a parameter, a `sequence(Code)` element)

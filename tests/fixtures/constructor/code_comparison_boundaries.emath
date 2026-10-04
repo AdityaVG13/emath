@@ -1,0 +1,29 @@
+# These comparisons compute in the VM. Unsupported native carriers must
+# be named in build's unresolved entries, never treated as unreachable.
+emath function name_matches:
+    inputs:
+        term: Code
+        label: Text
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.view(term).name == label
+    tests:
+        example <different_name_rejected>:
+            given term = quote(x)
+            given label = ""
+            expect result == false
+
+emath function value_matches:
+    inputs:
+        term: Code
+        label: Text
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.evaluate(term) == label
+    tests:
+        example <text_value_matches>:
+            given term = quote("hello")
+            given label = "hello"
+            expect result == true

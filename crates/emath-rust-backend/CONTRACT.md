@@ -123,6 +123,13 @@ predicts the rendered Rust type:
   callable carrier refuses by name (`field `f` projected off a <kind>
   carrier`): such a projection is an application the lowering misread,
   and the artifact never claims runnable over Rust that cannot compile.
+- Code-node and scalar-union conversion is fallible at every rendering
+  boundary, including comparisons, lists, recursive/closure arguments,
+  substitutions, and branch arms. A kind outside the native family returns
+  `BackendError::UnsupportedType`, never a kind-invariant panic.
+  Comparisons name the node or union lane and the unsupported carrier.
+  This does not add Text or Float64 to the quoted scalar union: the reference
+  VM computes those values, while affected native entries remain unresolved.
 
 Authored lists join Int/ExactInt/Rat representations before construction or cons.
 Concatenation borrows each input once, sums lengths without cloning, allocates

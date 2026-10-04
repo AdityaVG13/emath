@@ -263,7 +263,7 @@ pub(super) fn authored_control_expr(
             );
             let then_text = nested(then_body, argument_kinds.clone())?;
             let else_text = nested(else_body, argument_kinds)?;
-            let widen = |text: String, kind: &ValueKind, other: &ValueKind| -> String {
+            let widen = |text: String, kind: &ValueKind, other: &ValueKind| -> Result<String, BackendError> {
                 // A sequence arm joining the node family folds into
                 // the family (the kind walk's degenerate-side law
                 // kinds `if done: [] else: <family tail>` as the
@@ -279,19 +279,19 @@ pub(super) fn authored_control_expr(
                             let folded = super::to_node(
                                 Expr::Raw(text.clone()),
                                 &ValueKind::Vector(element.clone()),
-                            );
-                            return render_expr(&folded);
+                            )?;
+                            return Ok(render_expr(&folded));
                         }
                         if matches!(**element, ValueKind::Other) {
-                            return format!(
+                            return Ok(format!(
                                 "{{ let _family_arm: Vec<emath_rt::code::CodeValue> = {text}; emath_rt::code_tree::node_list(vec![]) }}"
-                            );
+                            ));
                         }
                     }
                 }
                 // A Code arm joining a node arm: the scalar node lift.
                 if *kind == ValueKind::ExprCode && joined_kind == ValueKind::Node {
-                    return render_expr(&super::to_node(Expr::Raw(text), kind));
+                    return Ok(render_expr(&super::to_node(Expr::Raw(text), kind)?));
                 }
                 if !matches!(joined_kind, ValueKind::Other)
                     && *kind != joined_kind
@@ -303,7 +303,7 @@ pub(super) fn authored_control_expr(
                         "branch arm",
                     )
                 {
-                    return render_expr(&converted);
+                    return Ok(render_expr(&converted));
                 }
                 // A dynamic arm (a quoted frame's `evaluate` result)
                 // joining a typed arm projects through the same
@@ -326,19 +326,19 @@ pub(super) fn authored_control_expr(
                         "branch arm",
                     )
                 {
-                    return render_expr(&converted);
+                    return Ok(render_expr(&converted));
                 }
-                text
+                Ok(text)
             };
             let then_body = if super::kinds::ends_in_tail_loop(then_body) {
                 then_text
             } else {
-                widen(then_text, &then_kind, &else_kind)
+                widen(then_text, &then_kind, &else_kind)?
             };
             let else_body = if super::kinds::ends_in_tail_loop(else_body) {
                 else_text
             } else {
-                widen(else_text, &else_kind, &then_kind)
+                widen(else_text, &else_kind, &then_kind)?
             };
             // A union-valued condition (a boolean combinator inside an
             // expression template or quoted frame) projects to bool

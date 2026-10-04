@@ -34,10 +34,6 @@ pub(crate) use record_layouts::{
 };
 pub(crate) use rtcalls::*;
 
-/// Wrap an operand expression into the value union by its kind. Total
-/// over the joinable kinds (union, Int, Rat, Bool): the union-lane
-/// kind rules only admit those beside a `CodeValue` operand, so the
-/// `unreachable` arm is a compile-time invariant, not a runtime path.
 /// Replace `pat` in rendered Rust only where it starts an identifier
 /// and `next` accepts the following character. Scoped declaration keys
 /// (`name__module`) contain `__`, so a plain `str::replace` of a
@@ -68,8 +64,10 @@ pub(crate) fn replace_ident_prefix(
     out
 }
 
-pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
-    match kind {
+/// Wrap a supported scalar in the code union. Inferred operands can
+/// carry other kinds, so an unsupported crossing is an emission refusal.
+pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError> {
+    Ok(match kind {
         ValueKind::CodeValue => expr,
         ValueKind::I64 => Expr::Raw(format!(
             "emath_rt::code::CodeValue::Int({})",
@@ -90,10 +88,12 @@ pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Expr {
             "emath_rt::code::CodeValue::Int({})",
             render_expr(&kinds::coerce_to_ty(expr, ValueKind::ExactInt, &Ty::I64))
         )),
-        other => unreachable!(
-            "the union-lane kind rules admit only Int/Rat/Bool beside the union, found {other:?}"
-        ),
-    }
+        other => {
+            return Err(BackendError::UnsupportedType(format!(
+                "code union conversion cannot represent {other:?}; supported carriers are Int/Rat/Bool"
+            )));
+        }
+    })
 }
 
 /// Whether a value of this kind crosses into and out of the reference
@@ -149,12 +149,13 @@ fn carries_exact_int(kind: &ValueKind) -> bool {
 /// Wrap an operand expression into the node-record family by its
 /// kind. Total over the family-joinable kinds (node, the dual Code,
 /// the union, Int, Rat, Bool, and sequences of those, nested
-/// inductively): the node-lane kind rules fold exactly those into the
-/// family, mirroring the VM's heterogeneous `CValue` sequences (a
+/// inductively). Unsupported crossings refuse during emission rather
+/// than assuming kind inference proved membership. This mirrors the
+/// supported subset of the VM's heterogeneous `CValue` sequences (a
 /// walk's `[made_code, node.args[1]]` list mixes Code and node
 /// values; its argument-list lists nest one level deeper).
-pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
-    match kind {
+pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError> {
+    Ok(match kind {
         // Both family carriers are non-copy: an operand may render as
         // an owning register or a borrow block, so the fold clones
         // through method-call auto-deref (one spelling, both shapes).
@@ -170,13 +171,13 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
         // An exact-Int element narrows with `?`, which cannot escape a
         // `map` closure, so that fold collects through a Result.
         ValueKind::Vector(element) if node_family(element) => {
-            let folded = to_node(Expr::Raw(String::from("item")), element);
+            let folded = to_node(Expr::Raw(String::from("item")), element)?;
             if carries_exact_int(element) {
-                return Expr::Raw(format!(
+                return Ok(Expr::Raw(format!(
                     "emath_rt::code_tree::NodeValue::Sequence(({}).into_iter().map(|item| Ok::<_, String>({})).collect::<Result<Vec<_>, String>>()?)",
                     render_expr(&expr),
                     render_expr(&folded)
-                ));
+                )));
             }
             Expr::Raw(format!(
                 "emath_rt::code_tree::NodeValue::Sequence(({}).into_iter().map(|item| {}).collect::<Vec<_>>())",
@@ -206,10 +207,12 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Expr {
             "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Bool({}))",
             render_expr(&expr)
         )),
-        other => unreachable!(
-            "the node-lane kind rules admit only node/Code/union/Int/Rat/Bool into the family, found {other:?}"
-        ),
-    }
+        other => {
+            return Err(BackendError::UnsupportedType(format!(
+                "code node conversion cannot represent {other:?}; supported carriers are node/Code/union/Int/Rat/Bool and their sequences"
+            )));
+        }
+    })
 }
 
 /// Render a shared tree as a Rust value expression (the static-tree
@@ -351,7 +354,7 @@ pub(crate) fn op_expr(
             let args = inputs
                 .iter()
                 .enumerate()
-                .map(|(position, value)| {
+                .map(|(position, value)| -> Result<String, BackendError> {
                     let kind = kind_at(kinds, *value);
                     // A node value crossing into the recursive target's
                     // declared Code parameter (the input at this
@@ -370,7 +373,7 @@ pub(crate) fn op_expr(
                             target,
                             "call argument",
                         ) {
-                            return render_expr(&converted);
+                            return Ok(render_expr(&converted));
                         }
                     }
                     if kind == ValueKind::Node
@@ -378,12 +381,12 @@ pub(crate) fn op_expr(
                             node_into(&render_expr(&operand(program, *value)), target)
                         })
                     {
-                        return converted;
+                        return Ok(converted);
                     }
                     if param_kind == Some(ValueKind::Node) && kind != ValueKind::Node {
-                        return render_expr(&to_node(operand(program, *value), &kind));
+                        return Ok(render_expr(&to_node(operand(program, *value), &kind)?));
                     }
-                    if matches!(kind, ValueKind::Closure { .. }) {
+                    Ok(if matches!(kind, ValueKind::Closure { .. }) {
                         // Closure carriers are shared `Rc` handles:
                         // clone into the `Rc<dyn Fn>` parameter.
                         format!("{}.clone()", render_expr(&operand(program, *value)))
@@ -391,9 +394,9 @@ pub(crate) fn op_expr(
                         render_expr(&operand(program, *value))
                     } else {
                         render_expr(&owned_operand(program, *value, kinds))
-                    }
+                    })
                 })
-                .collect::<Vec<_>>();
+                .collect::<Result<Vec<_>, _>>()?;
             if let Some((params, unchanged)) = kinds::tail_call_slot(op) {
                 // Every new argument is computed before any parameter
                 // is rebound, so arguments read the old values.
@@ -526,9 +529,9 @@ pub(crate) fn op_expr(
                     .iter()
                     .map(|value| {
                         let kind = kind_at(kinds, *value);
-                        render_expr(&to_node(operand(program, *value), &kind))
+                        Ok(render_expr(&to_node(operand(program, *value), &kind)?))
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Result<Vec<_>, BackendError>>()?
                     .join(", ");
                 return Ok(Expr::Raw(format!(
                     "emath_rt::code_tree::node_list(vec![{items}])"
@@ -852,7 +855,7 @@ pub(crate) fn op_expr(
                 let rendered = args
                     .iter()
                     .zip(params.iter())
-                    .map(|(value, param)| {
+                    .map(|(value, param)| -> Result<String, BackendError> {
                         let expression = render_expr(&operand(program, *value));
                         // A scalar crossing into a union parameter (an
                         // applied quoted function) wraps into the union.
@@ -863,22 +866,22 @@ pub(crate) fn op_expr(
                                 ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
                             )
                         {
-                            return render_expr(&to_code_value(operand(program, *value), &value_kind));
+                            return Ok(render_expr(&to_code_value(operand(program, *value), &value_kind)?));
                         }
                         // A viewed child (a node) crossing into a Code
                         // parameter: the VM's elements are codes.
                         if value_kind == ValueKind::Node
                             && let Some(converted) = node_into(&expression, param)
                         {
-                            return format!("&({converted})");
+                            return Ok(format!("&({converted})"));
                         }
                         // Code or a scalar into a dynamic (node) binder.
                         if *param == ValueKind::Node
                             && value_kind != ValueKind::Node
                             && node_family(&value_kind)
                         {
-                            let lifted = to_node(operand(program, *value), &value_kind);
-                            return format!("&({})", render_expr(&lifted));
+                            let lifted = to_node(operand(program, *value), &value_kind)?;
+                            return Ok(format!("&({})", render_expr(&lifted)));
                         }
                         if let Some(converted) = numeric_boundary_value(
                             &operand(program, *value),
@@ -887,14 +890,14 @@ pub(crate) fn op_expr(
                             "call argument",
                         ) {
                             let converted = render_expr(&converted);
-                            return if param.is_copy() {
+                            return Ok(if param.is_copy() {
                                 converted
                             } else {
                                 format!("&({converted})")
-                            };
+                            });
                         }
                         if param.is_copy() {
-                            return expression;
+                            return Ok(expression);
                         }
                         // One reference layer exactly for data carriers:
                         // a LoadInput / LoadState register already
@@ -904,19 +907,19 @@ pub(crate) fn op_expr(
                         // shared `Rc` handles and clone into the
                         // `Rc<dyn Fn>` parameter.
                         if matches!(param, ValueKind::Closure { .. }) {
-                            return format!("{expression}.clone()");
+                            return Ok(format!("{expression}.clone()"));
                         }
                         let already_borrowed =
                             program.ops.get(value.0 as usize).is_some_and(|(op, _)| {
                                 matches!(op, EmirOp::LoadInput(_) | EmirOp::LoadState(_))
                             });
-                        if already_borrowed {
+                        Ok(if already_borrowed {
                             expression
                         } else {
                             format!("&{expression}")
-                        }
+                        })
                     })
-                    .collect::<Vec<_>>();
+                    .collect::<Result<Vec<_>, _>>()?;
                 call = format!("({call}({})?)", rendered.join(", "));
                 if rest.is_empty() {
                     break;
@@ -1190,7 +1193,7 @@ pub(crate) fn op_expr(
                     ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
                 ) {
                     value_expr(body, free, &[], &inputs)
-                        .map(|value| to_code_value(value, &body_kind))
+                        .and_then(|value| to_code_value(value, &body_kind))
                 } else {
                     Err(BackendError::UnsupportedType(
                     "quote expression template body must compute the scalar union (Int/Rat/Bool arithmetic, comparisons, and boolean combinators over its free names)".into(),
@@ -1444,7 +1447,7 @@ pub(crate) fn op_expr(
                                 "({}).clone()",
                                 render_expr(&operand(program, *value))
                             ));
-                            let node = to_node(owned, &value_kind);
+                            let node = to_node(owned, &value_kind)?;
                             Ok(Expr::Raw(format!(
                                 "({target}).substitute_tree({}, ({}).make(&__EMATH_MODULE_TABLE)?)",
                                 reference_code,
@@ -1458,7 +1461,7 @@ pub(crate) fn op_expr(
                                 || value_kind == ValueKind::ExactInt)
                                 && value_kind != ValueKind::CodeValue =>
                         {
-                            let converted = to_code_value(operand(program, *value), &value_kind);
+                            let converted = to_code_value(operand(program, *value), &value_kind)?;
                             Ok(Expr::Raw(format!(
                                 "({target}).substitute({}, {})",
                                 reference_code,
@@ -1530,12 +1533,12 @@ pub(crate) fn op_expr(
                             .iter()
                             .enumerate()
                             .map(|(index, kind)| {
-                                render_expr(&to_code_value(
+                                Ok(render_expr(&to_code_value(
                                     Expr::Raw(format!("__arg_{index}")),
                                     kind,
-                                ))
+                                )?))
                             })
-                            .collect::<Vec<_>>()
+                            .collect::<Result<Vec<_>, BackendError>>()?
                             .join(", ");
                         let projected = numeric_boundary_value(
                             &Expr::Raw(String::from("__out")),
@@ -1634,7 +1637,7 @@ pub(crate) fn op_expr(
                 | ValueKind::ExactInt
                 | ValueKind::Rational
                 | ValueKind::Bool) => {
-                    let value = to_node(operand(program, *node), &kind);
+                    let value = to_node(operand(program, *node), &kind)?;
                     Ok(Expr::Raw(format!(
                         "({}).make(&__EMATH_MODULE_TABLE)?",
                         render_expr(&value)
@@ -1772,7 +1775,7 @@ pub(crate) fn op_expr(
                         "quote.join expects quoted identifiers, found {kind:?}"
                     )));
                 }
-                sides.push(render_expr(&to_node(operand(program, value), &kind)));
+                sides.push(render_expr(&to_node(operand(program, value), &kind)?));
             }
             Ok(Expr::Raw(format!(
                 "emath_rt::code_tree::join_quoted(&({}), &({}), &__EMATH_MODULE_TABLE)?",

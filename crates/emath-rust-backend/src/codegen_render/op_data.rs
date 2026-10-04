@@ -142,7 +142,7 @@ pub(super) fn op_data_exprs(
                         }
                         Ok(format!(
                             "(String::from({name:?}), {})",
-                            render_expr(&to_node(operand(program, *value), &kind))
+                            render_expr(&to_node(operand(program, *value), &kind)?)
                         ))
                     })
                     .collect::<Result<Vec<_>, _>>()?
