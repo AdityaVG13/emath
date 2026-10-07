@@ -116,18 +116,17 @@ existing text unless you pass `--overwrite`. See
 
 ## Saved runs
 
-`emath run --out DIR` and budgeted runs save a checkpoint.
+`emath run --function F --work N` writes `constructor-checkpoint.json`
+under `--out DIR` (default `target/emath/runs`) when the budget stops
+the run.
 
 | Command | Purpose |
 | --- | --- |
-| `emath inspect CHECKPOINT` | Read the saved question, attempts, and artifacts without executing |
+| `emath inspect CHECKPOINT` | Read the saved function, source id, and work without executing |
 | `emath step CHECKPOINT --work N` | Resume the saved continuation |
-| `emath verify CHECKPOINT` | Replay the recorded cases. Replay is not a proof |
 
-`step` takes `--expect-revision N` to guard against a competing commit
-and `--cancel-file PATH` to stop between cases. An incompatible
-checkpoint refuses to resume. See
-[saved mathematical runs](language/reference/diagnostics-and-tooling-contract.md#saved-mathematical-runs).
+An incompatible checkpoint refuses to resume (exit 5). See
+[budgets and checkpoints](language/reference/diagnostics-and-tooling-contract.md#budgets-and-checkpoints).
 
 ## Project and tooling commands
 

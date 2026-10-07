@@ -1,6 +1,14 @@
 //! The `emath doctor` environment probes.
 
-use super::{CliExit, upstream_lock_path, content_id_of_str, JsonWriter, UPSTREAM_LOCK_REL, EXIT_OK, EXIT_TOOLCHAIN, Command};
+use super::{CliExit, Path, PathBuf, content_id_of_str, JsonWriter, EXIT_OK, EXIT_TOOLCHAIN, Command};
+
+/// Relative path of the committed upstream lock file (repo layout).
+const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";
+
+/// Crate-relative, so the probe works from any working directory.
+fn upstream_lock_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(UPSTREAM_LOCK_REL)
+}
 
 pub struct DoctorProbe {
     pub name: &'static str,

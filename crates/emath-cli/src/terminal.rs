@@ -48,21 +48,6 @@ pub fn set_no_color() {
     COLOR_MODE.store(COLOR_NEVER, Ordering::Relaxed);
 }
 
-/// Reset color mode back to default auto.
-pub fn reset_color_mode() {
-    COLOR_MODE.store(COLOR_AUTO, Ordering::Relaxed);
-}
-
-/// Current color mode as a string: "auto", "always", or "never".
-#[must_use]
-pub fn color_mode() -> &'static str {
-    match COLOR_MODE.load(Ordering::Relaxed) {
-        COLOR_ALWAYS => "always",
-        COLOR_NEVER => "never",
-        _ => "auto",
-    }
-}
-
 /// Extracts and applies `--color <mode>`, `--color=<mode>`, and `--no-color` from the argument list.
 ///
 /// Returns the remaining arguments with color flags stripped, or a pedagogic error if invalid.
@@ -104,20 +89,6 @@ pub fn extract_color_flags(args: &[String]) -> Result<Vec<String>, PedagogicErro
         }
     }
     Ok(cleaned)
-}
-
-/// Returns true if running in a Continuous Integration environment.
-#[must_use]
-pub fn is_ci() -> bool {
-    std::env::var_os("CI").is_some()
-        || std::env::var_os("CONTINUOUS_INTEGRATION").is_some()
-        || std::env::var_os("GITHUB_ACTIONS").is_some()
-}
-
-/// Returns true if execution is interactive (stdin is a TTY and not in CI).
-#[must_use]
-pub fn is_interactive() -> bool {
-    std::io::stdin().is_terminal() && !is_ci()
 }
 
 /// Returns true if stderr should use ANSI color formatting.
@@ -163,27 +134,9 @@ pub fn should_color_stdout() -> bool {
 // Stderr styling functions (used for pedagogic errors and diagnostics)
 
 #[must_use]
-pub fn red(text: &str) -> String {
-    if should_color_stderr() {
-        format!("\x1b[31m{text}\x1b[0m")
-    } else {
-        text.to_string()
-    }
-}
-
-#[must_use]
 pub fn bold_red(text: &str) -> String {
     if should_color_stderr() {
         format!("\x1b[1;31m{text}\x1b[0m")
-    } else {
-        text.to_string()
-    }
-}
-
-#[must_use]
-pub fn green(text: &str) -> String {
-    if should_color_stderr() {
-        format!("\x1b[32m{text}\x1b[0m")
     } else {
         text.to_string()
     }
@@ -208,27 +161,9 @@ pub fn yellow(text: &str) -> String {
 }
 
 #[must_use]
-pub fn bold_yellow(text: &str) -> String {
-    if should_color_stderr() {
-        format!("\x1b[1;33m{text}\x1b[0m")
-    } else {
-        text.to_string()
-    }
-}
-
-#[must_use]
 pub fn cyan(text: &str) -> String {
     if should_color_stderr() {
         format!("\x1b[36m{text}\x1b[0m")
-    } else {
-        text.to_string()
-    }
-}
-
-#[must_use]
-pub fn bold(text: &str) -> String {
-    if should_color_stderr() {
-        format!("\x1b[1m{text}\x1b[0m")
     } else {
         text.to_string()
     }
@@ -258,15 +193,6 @@ pub fn stdout_green(text: &str) -> String {
 pub fn stdout_bold_red(text: &str) -> String {
     if should_color_stdout() {
         format!("\x1b[1;31m{text}\x1b[0m")
-    } else {
-        text.to_string()
-    }
-}
-
-#[must_use]
-pub fn stdout_bold_green(text: &str) -> String {
-    if should_color_stdout() {
-        format!("\x1b[1;32m{text}\x1b[0m")
     } else {
         text.to_string()
     }

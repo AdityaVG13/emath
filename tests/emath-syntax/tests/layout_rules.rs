@@ -9,10 +9,6 @@
 use emath_cli::{CliExit, run_check};
 use std::path::{Path, PathBuf};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
 fn scratch(name: &str, body: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("emath-layout-f2-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("scratch dir");

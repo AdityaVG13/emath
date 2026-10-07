@@ -20,37 +20,17 @@ pub const E_LAW_001: &str = "E-LAW-001";
 /// Schema id for explanation JSON.
 pub const EXPLANATION_SCHEMA: &str = "emath.diagnostic.explanation v1";
 
-/// Schema id for tutor-check JSON.
-pub const TUTOR_CHECK_SCHEMA: &str = "tutor-check/v1";
-
 /// Kind of pedagogic explanation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExplainKind {
-    WorldRejected,
     LawFalsified,
-    GoalUnplanned {
-        qstate_facets: Vec<String>,
-    },
-    BudgetCut {
-        consumed: u64,
-        limit: u64,
-    },
-    AuthorityCapped {
-        requested: String,
-        granted: String,
-        reason: String,
-    },
 }
 
 impl ExplainKind {
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::WorldRejected => "world_rejected",
             Self::LawFalsified => "law_falsified",
-            Self::GoalUnplanned { .. } => "goal_unplanned",
-            Self::BudgetCut { .. } => "budget_cut",
-            Self::AuthorityCapped { .. } => "authority_capped",
         }
     }
 }
@@ -60,7 +40,6 @@ impl ExplainKind {
 pub enum RenderFormat {
     CayleyMatrix,
     Expression,
-    ExecutionTrace,
 }
 
 impl RenderFormat {
@@ -69,7 +48,6 @@ impl RenderFormat {
         match self {
             Self::CayleyMatrix => "cayley_matrix",
             Self::Expression => "expression",
-            Self::ExecutionTrace => "execution_trace",
         }
     }
 }
@@ -145,7 +123,7 @@ pub fn tutor_check_v1(explanation: &Explanation) -> Result<(), TutorCheckError> 
         return Err(TutorCheckError::ClaimedGreenWithoutWitness);
     }
     match &explanation.kind {
-        ExplainKind::LawFalsified | ExplainKind::WorldRejected => {
+        ExplainKind::LawFalsified => {
             if explanation.witness.is_none() {
                 return Err(TutorCheckError::MissingWitness);
             }
@@ -153,7 +131,6 @@ pub fn tutor_check_v1(explanation: &Explanation) -> Result<(), TutorCheckError> 
                 return Err(TutorCheckError::MissingReceipt);
             }
         }
-        _ => {}
     }
     Ok(())
 }
@@ -233,20 +210,6 @@ pub fn check_and_explain(
     let report = FiniteLawChecker.check(candidate, table, obligations)?;
     let explanations = explain_law_report(table, &report);
     Ok((report, explanations))
-}
-
-/// True when every failed verdict has a tutor-check-faithful witness.
-#[must_use]
-pub fn every_failure_has_witness(report: &WorldCheckReport, explanations: &[Explanation]) -> bool {
-    let failed = report
-        .verdicts
-        .iter()
-        .filter(|verdict| !verdict.passed)
-        .count();
-    failed == explanations.len()
-        && explanations
-            .iter()
-            .all(|explanation| explanation.witness.is_some() && tutor_check_v1(explanation).is_ok())
 }
 
 fn explain_verdict(

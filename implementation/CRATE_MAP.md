@@ -24,7 +24,7 @@ yet one unified semantic/execution type representation.
 
 CLI check/run/test/keep/compare/build, loop/dream/experiment hosts, Lean
 translation/example checks/certification and WASM operations consume checked
-results. Diagnostic/provenance/LSP consumers also use the semantic session.
+results. Diagnostic and provenance consumers also use the semantic session.
 Rust ABI/layout inference and Lean type/coercion/termination checks remain
 target obligations; they may refuse an admitted definition, but cannot
 independently admit source. Rust generation is optional user work, not
@@ -95,8 +95,7 @@ metadata on 2026-10-05.
 | `emath-build` | `crates/emath-build` | checked-source crate emission; separate elaborated-package artifact path | artifact/core/exec-ir/ir/rust-backend/sema/syntax |
 | `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity | core/ir/term |
 | `emath-registry` | `crates/emath-registry` | package/provider records; registry services not implemented | artifact/core |
-| `emath-cli` | `crates/emath-cli` | production command routing, presentation, Lean translation, LSP | artifact/build/core/evidence/exec-ir/ir/lab-core/plan/provider-api/rt/rust-backend/sema/syntax/term/tui |
-| `emath-cli-lab` | `crates/emath-cli-lab` | forwards constructor commands; extracted tokens refuse before retained bodies | adapter-rumoca/artifact/build/cli/core/evidence/exec-ir/genesis/ir/lab-core/sema/store/syntax/term/world-ir |
+| `emath-cli` | `crates/emath-cli` | production command routing, presentation, Lean translation | artifact/build/core/evidence/exec-ir/ir/lab-core/provider-api/rust-backend/sema/syntax/term/tui |
 | `emath-tui` | `crates/emath-tui` | loop/dream/experiment orchestration, scratch/native mirror, REPL/dashboard | artifact/build/core/exec-ir/rust-backend/sema/syntax |
 
 ### Tier 6: semantic genesis substrate
@@ -128,8 +127,8 @@ make the default transitive dependency graph third-party-free.
 
 ## Compiled roots and shipping profiles
 
-All 26 crates above have their production module root at `src/lib.rs`.
-CLI and lab binaries additionally start at `src/main.rs`. Module declarations,
+All 25 crates above have their production module root at `src/lib.rs`.
+The CLI binary additionally starts at `src/main.rs`. Module declarations,
 `cfg`, `include!` and build scripts, not physical source lines, determine
 compilation. Crate `CONTRACT.md` files record each component's API, error,
 determinism, resource and unsafe boundaries. This map is an ownership review,
@@ -137,16 +136,15 @@ not a claim that every line or optional configuration passed a quality gate.
 
 | Profile | First-party normal dependency closure | Distribution boundary |
 |---|---|---|
-| Default `emath-cli` | 17 crates | Binary plus shipped `language/` tree; backend, lab core, provider API and TUI/dashboard are linked dependencies |
+| Default `emath-cli` | 16 crates | Binary plus shipped `language/` tree; backend, lab core, provider API and TUI/dashboard are linked dependencies |
 | `emath-wasm` | 13 crates | `cargo xtask build-web` builds wasm32 release and stages `web/dist/emath.wasm`; not full mathematical-capability parity |
-| `emath-cli-lab` | 21 crates | Default CLI closure plus lab, Rumoca adapter, genesis, world-ir and store; extracted command bodies are not live admission |
 | Direct generated Rust | Runtime source included when needed | Shared constructor emitter, named entries and manifest; target support/refusal remains explicit |
 | Engine-backed generated Rust | 8 engine crates from exec-ir's manifest closure | `vendor/` first-party sources and a trimmed lockfile; third-party sources are not vendored, so an uncached machine is not guaranteed offline compilation |
 | Native epoch host | Artifact plus sibling host crate | Scratch mirror is target-specific; full integer state, bounded i128 ledger projections, cross-lane parity tested |
 | Lean export | Separate Lean project and toolchain | Translation is not proof; `--check` requires the Lean kernel, and laws also require emath certification |
 
 The default CLI closure is core, syntax, term, schema, ir, sema, exec-ir,
-plan, provider-api, rt, rust-backend, artifact, evidence, build, lab-core,
+provider-api, rt, rust-backend, artifact, evidence, build, lab-core,
 cli and tui. WASM is core, syntax, term, schema, ir, sema, exec-ir, rt,
 rust-backend, artifact, world-ir, genesis and wasm.
 HIR, Dew adapter, registry and SQLite store are not default CLI/WASM

@@ -3,7 +3,7 @@
 //! fails that row with budget_exhausted, with it the whole module
 //! passes. Failure-first: the default-lane failure predates the flag.
 use emath_cli::{EXIT_OK, EXIT_REFUSED};
-use emath_cli_lab::run;
+use emath_cli::run;
 use emath_test_harness::{Probe, boot};
 
 fn repo(rel: &str) -> String {

@@ -1,6 +1,6 @@
 //! File/plan explanation is not a constructor command.
 use emath_cli::{EXIT_OK, EXIT_USAGE};
-use emath_cli_lab::run;
+use emath_cli::run;
 use emath_test_harness::{Probe, boot};
 #[test]
 fn probe() {

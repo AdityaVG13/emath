@@ -597,12 +597,6 @@ fi
 lane_done "four-artifact" "negative-control" "passed" "grammar-only change refused"
 echo "four-artifact: tree delta compliant; grammar-only change refused"
 
-# Cut: the `planner` command was removed by the constructor cutover.
-
-# Cut: the `emath-lab bench` and `agent` commands were removed by the
-# constructor cutover; the E-TLT-004 refusal text is pinned by the
-# cli-lab source and its tests.
-
 echo "== language examples admit-or-refuse loop =="
 # Every language example must either admit (then build honestly) or be
 # refused with a documented E-code: nothing in the corpus is silently

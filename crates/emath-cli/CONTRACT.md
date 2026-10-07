@@ -82,9 +82,6 @@ checkpoint.
 
 Native build, public `admitted_tree`, stdin formatting and source
 fingerprinting consume the semantic-session result and original bytes.
-LSP checks unsaved document text under the decoded local file path for import
-provenance, while retaining the editor URI in notifications. Non-file/remote/
-malformed URIs retain the existing source-name policy, not remote loading.
 Lean translation uses checked syntax and retained import sources. Its
 derived example and law checks are re-admitted against those sources,
 not reloaded from disk while Lean builds. Translation, examples and universal
@@ -110,9 +107,8 @@ shared-setup, unchanged-output and compatibility regression.
 ## No-claim
 
 - Completing a run is not a theorem.
-- `verify` replays recorded observations.
-- Leftover planner / simulate / `goal_met` functions may remain in the
-  crate (no file deletion). Constructor files do not use them.
+- `verify` checks published artifact files against their manifests; it
+  does not re-run or prove anything.
 - Reusing one checked module is not an atomic filesystem snapshot of its whole
   import graph. Serialized checkpoints capture the graph that module resolved;
   they are not authenticated or guaranteed to come from one filesystem instant.

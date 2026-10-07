@@ -49,43 +49,6 @@ pub fn emath_bin() -> &'static Path {
     })
 }
 
-static EMATH_LAB_BIN: OnceLock<PathBuf> = OnceLock::new();
-
-/// Absolute path to the built `emath-lab` binary (extracted commands).
-pub fn emath_lab_bin() -> &'static Path {
-    EMATH_LAB_BIN.get_or_init(|| {
-        let profile = if cfg!(debug_assertions) {
-            "debug"
-        } else {
-            "release"
-        };
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
-            candidates.push(PathBuf::from(dir).join(profile).join("emath-lab"));
-        }
-        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        candidates.push(workspace.join("target").join(profile).join("emath-lab"));
-        for candidate in &candidates {
-            if candidate.is_file() {
-                return candidate.clone();
-            }
-        }
-        let status = Command::new(env!("CARGO"))
-            .args(["build", "-q", "-p", "emath-cli-lab"])
-            .current_dir(&workspace)
-            .status()
-            .expect("run cargo build -p emath-cli-lab");
-        assert!(
-            status.success(),
-            "cargo build -p emath-cli-lab must succeed"
-        );
-        candidates
-            .into_iter()
-            .find(|candidate| candidate.is_file())
-            .unwrap_or_else(|| panic!("emath-lab binary missing after build"))
-    })
-}
-
 /// Stable emitted-crate workspace for one authored module, shared by the
 /// emission census and the conformance lanes: `<temp>/emath_emit/<key>`,
 /// keyed by the module's repo-relative path (`/` -> `__`). The dir is

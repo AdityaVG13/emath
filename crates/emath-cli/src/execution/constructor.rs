@@ -7,29 +7,29 @@ fn fail(request: &RunRequest, source: &str, err: &emath_exec_ir::constructor_lay
     super::diagnostic_with(request.json, error_exit(&err.code), &err.code, &err.message, &text)
 }
 
-pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_build::CheckedSource) -> Option<CliExit> {
+pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_build::CheckedSource) -> CliExit {
     let source = checked.source();
     let diagnostics = &checked.result.diagnostics;
     if let Some(first) = diagnostics.errors().next() {
-        return Some(super::diagnostic_with(
+        return super::diagnostic_with(
             request.json,
             EXIT_ADMISSION,
             first.code,
             &first.message,
             &crate::cli_json::diagnostics_text(diagnostics, &checked.store),
-        ));
+        );
     }
     let Some(module) = &checked.result.prepared else {
-        return Some(diagnostic(
+        return diagnostic(
             request.json,
             EXIT_ADMISSION,
             "E-KIND-GONE",
             "`emath run` evaluates `emath object`, `emath function`, and `emath query`. Other declaration kinds are not constructors.",
-        ));
+        );
     };
     let inputs = match constructor_inputs(request) {
         Ok(inputs) => inputs,
-        Err(exit) => return Some(exit),
+        Err(exit) => return exit,
     };
     // `--function` runs one entry; the module's authored tests are not
     // an input to that evaluation. Gating first would evaluate every
@@ -47,12 +47,12 @@ pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_b
         };
         match module.evaluate_tests(work) {
             Ok(report) => Some(report),
-            Err(err) => return Some(fail(request, source, &err)),
+            Err(err) => return fail(request, source, &err),
         }
     };
     if let Some(name) = &request.function {
         if request.work_set {
-            return Some(run_constructor_budgeted(request, source, module, name, &inputs));
+            return run_constructor_budgeted(request, source, module, name, &inputs);
         }
         match module.evaluate_function(
             name,
@@ -60,7 +60,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_b
             emath_exec_ir::constructor_layer::DEFAULT_WORK,
         ) {
             Ok(value) => {
-                return Some(print_constructor_json(
+                return print_constructor_json(
                     request.json,
                     "returned",
                     "satisfied",
@@ -68,7 +68,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_b
                     &value.to_string(),
                     None,
                     EXIT_OK,
-                ));
+                );
             }
             // Only the entry itself being unknown falls through to the query
             // lookup and the E-RUN-ENTRY refusal. Any other error, including
@@ -77,26 +77,26 @@ pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_b
             // faulted; surface the fault instead of masking it as a missing
             // entry.
             Err(err) if err.code == "unbound" && err.message == format!("unknown function `{name}`") => {}
-            Err(err) => return Some(fail(request, source, &err)),
+            Err(err) => return fail(request, source, &err),
         }
         if module.has_query(name) {
             let receipt = match module.evaluate_query(name, &inputs) {
                 Ok(receipt) => receipt,
-                Err(err) => return Some(fail(request, source, &err)),
+                Err(err) => return fail(request, source, &err),
             };
             let exit = match receipt.fulfillment.as_str() {
                 "satisfied" => EXIT_OK,
                 "partial" | "unmet" => EXIT_PARTIAL,
                 _ => EXIT_FAULT,
             };
-            return Some(print_constructor_receipt(request.json, &receipt, exit));
+            return print_constructor_receipt(request.json, &receipt, exit);
         }
-        return Some(diagnostic(
+        return diagnostic(
             request.json,
             EXIT_ADMISSION,
             "E-RUN-ENTRY",
             &format!("no constructor entry `{name}`"),
-        ));
+        );
     }
     // Every path above returns; the only way here is the no-function
     // lane, which always evaluated the tree (report is Some).
@@ -117,8 +117,7 @@ pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_b
     out.string("command", "run");
     out.string("admission", "ok");
     println!("{}", out.finish());
-    let _ = request;
-    Some(exit)
+    exit
 }
 
 pub(super) fn run_constructor_budgeted(

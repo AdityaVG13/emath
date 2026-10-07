@@ -7,9 +7,6 @@ use super::{Path, CliExit, EXIT_ADMISSION, EXIT_REFUSED, EXIT_OK, EXIT_FAULT};
 /// raises the per-example budget (`--work N`), so large-instance rows
 /// are pinnable instead of refusing `budget_exhausted` at the default.
 pub(crate) fn test_cmd(file: &Path, _out: &Path, work: Option<u64>) -> CliExit {
-    if let Some(code) = crate::refuse_malformed_project_lock(file) {
-        return code;
-    }
     let checked = crate::cli_build::checked_file(file);
     let source = checked.source();
     let diagnostics = &checked.result.diagnostics;

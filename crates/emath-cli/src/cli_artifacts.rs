@@ -1,57 +1,6 @@
-//! Native-provider registration, Modelica import, artifact and architecture commands.
+//! Published-artifact listing and checking, and generated help text.
 
-use super::{ProviderRegistry, Path, CliExit, EXIT_USAGE, EXIT_REFUSED, EXIT_OK, catalog};
-
-/// Registers the in-tree static `native.rust` capability
-/// (`evaluate.rust.library` → f64, exact, deterministic, E2 ceiling) so
-/// the generic planner serves the same goals the native pipeline plans.
-/// This mirrors the `provider list` status table, never a new capability.
-pub(super) fn register_native_rust(registry: &mut ProviderRegistry) {
-    use emath_ir::EvidenceLevel;
-    use emath_provider_api::{
-        CapabilitySpec, CapabilityTable, ProviderIsolation, ProviderLock, RepresentationSpec,
-    };
-    let table = CapabilityTable {
-        capabilities: vec![
-            CapabilitySpec {
-                // Exact produce match (`evaluate.rust.library`), not a prefix:
-                // a bare `evaluate` capability would serve every evaluate goal
-                // and hide unplanned produce targets (CONF-0028).
-                name: "evaluate.rust.library".into(),
-                semantic_subset: "rust-library".into(),
-                representations: vec![RepresentationSpec {
-                    name: "f64".into(),
-                    exact_relation: "bit-identical".into(),
-                    encode_cost: 0,
-                }],
-                exactness: vec!["exact".into()],
-                failure_modes: vec![],
-                checker_bindings: vec!["sir-checker".into()],
-            },
-            CapabilitySpec {
-                name: "simplify".into(),
-                semantic_subset: "symbolic".into(),
-                representations: vec![RepresentationSpec {
-                    name: "exact-integer-expression".into(),
-                    exact_relation: "structural-checked".into(),
-                    encode_cost: 0,
-                }],
-                exactness: vec!["exact".into()],
-                failure_modes: vec!["E-SYM-002".into(), "E-SYM-003".into()],
-                checker_bindings: vec!["native-symbolic-v1".into()],
-            },
-        ],
-        isolation: ProviderIsolation::Static,
-        lock: ProviderLock::Unlocked,
-        maximum_evidence: EvidenceLevel::E2,
-        deterministic: true,
-    };
-    if let Err(error) = registry.register("native.rust", ProviderIsolation::Static, table) {
-        // Static bootstrap table is well-formed; a failure is an internal
-        // registry defect, not user input. Keep planning usable by logging.
-        eprintln!("warning: native.rust capability registration failed: {error:?}");
-    }
-}
+use super::{Path, CliExit, EXIT_USAGE, EXIT_REFUSED, EXIT_OK, catalog};
 
 pub fn list_published_artifact_ids(dir: &Path) -> Result<Vec<String>, CliExit> {
     let artifact_root = dir.join("emath");

@@ -33,12 +33,6 @@ const MAX_SAMPLES: usize = 10;
 const TARGET_ELAPSED: Duration = Duration::from_secs(5);
 /// History dir under the workspace root.
 const HISTORY_REL: &str = ".bench-history";
-/// Reference genesis source used by the codegen cells (genesis syntax;
-/// lives outside `tests/valid`, which the parse/check corpus cells
-/// require to be language-parseable).
-const GLYPHS_REL: &str = "tests/fixtures/genesis/arbitrary-glyphs.emath";
-/// Committed generated golden for the identity comparison.
-const SG_GENERATED_LIB_REL: &str = "examples/generated/semantic-genesis-worlds/src/lib.rs";
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -73,8 +67,6 @@ struct Sample {
     identity_bytes: Vec<u8>,
     /// Identity provenance description.
     identity_label: String,
-    /// Whether the identity matches a committed golden (where one exists).
-    golden_match: Option<bool>,
     /// Human-readable cell description.
     detail: String,
 }
@@ -159,7 +151,6 @@ fn cell_parse(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String>
             ns,
             identity_bytes: identity,
             identity_label: format!("concatenated bytes of {total} corpus .emath files"),
-            golden_match: None,
             detail: format!("parse_lossless over {total} corpus files"),
         })
     };
@@ -193,150 +184,7 @@ fn cell_check(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String>
             ns,
             identity_bytes: identity,
             identity_label: format!("concatenated source of {count} valid fixtures"),
-            golden_match: None,
             detail: format!("CompilerSession check over {count} valid fixtures"),
-        })
-    };
-    collect_samples(config, cell)
-}
-
-/// codegen-parametric family: full genesis analysis + in-memory codegen
-/// (no rustc, no disk) of the glyph example per sample.
-fn cell_codegen_parametric(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String> {
-    let glyphs = root.join(GLYPHS_REL);
-    let golden_lib = std::fs::read(root.join(SG_GENERATED_LIB_REL))
-        .map_err(|error| format!("cannot read committed golden: {error}"))?;
-    let golden_sha = lab::hex(&lab::digest(&golden_lib));
-    let cell = move || {
-        let start = Instant::now();
-        let analysis = emath_cli_lab::genesis_cmd::analyze(&glyphs)
-            .map_err(|error| format!("genesis analyze refused: {error}"))?;
-        let worlds = emath_cli_lab::genesis_cmd::builtin_worlds(&analysis.inference.signature);
-        // Portfolio witnesses (`one_point`, `csa_seeded`) have no lowering;
-        // generate() refuses them with E-GEN-094. Time the compiled trio only.
-        let specs = worlds
-            .iter()
-            .filter_map(|world| {
-                let label = world.name.to_ascii_lowercase();
-                if !matches!(
-                    label.as_str(),
-                    "free_symbolic" | "boolean_algebra" | "modular_numeric"
-                ) {
-                    return None;
-                }
-                let operators = world
-                    .operators
-                    .iter()
-                    .filter_map(|operator| match &operator.semantics {
-                        emath_world_ir::OperatorSemantics::DeclaredExpression(meaning) => {
-                            Some((operator.symbol.0.clone(), meaning.clone()))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                Some(emath_world_ir::world_codegen_rust::WorldSpec { label, operators })
-            })
-            .collect::<Vec<_>>();
-        if specs.len() != 3 {
-            return Err(format!("expected 3 compiled worlds, got {}", specs.len()));
-        }
-        let generated = emath_world_ir::world_codegen_rust::generate(
-            &analysis.term,
-            &analysis.inference.signature,
-            &specs,
-        )
-        .map_err(|refusal| format!("{}: {}", refusal.code, refusal.message))?;
-        let lib_rs = generated
-            .files
-            .get("src/lib.rs")
-            .ok_or_else(|| "generated crate has no src/lib.rs".to_string())?;
-        let identity_bytes = lib_rs.as_bytes().to_vec();
-        let generated_sha = lab::hex(&lab::digest(&identity_bytes));
-        let ns = elapsed_ns(start);
-        let sha_now = generated_sha.clone();
-        let golden_now = golden_sha.clone();
-        Ok(Sample {
-            ns,
-            identity_bytes,
-            identity_label: "generated src/lib.rs bytes (in-memory, no rustc)".into(),
-            golden_match: Some(sha_now == golden_now),
-            detail: "analyze + builtin_worlds + generate for the glyph example".into(),
-        })
-    };
-    collect_samples(config, cell)
-}
-
-/// artifact-json family: deterministic manifest + source-map JSON emit.
-fn cell_artifact_json(config: &FamilyConfig) -> Result<Vec<Sample>, String> {
-    let glyphs_rel = GLYPHS_REL.to_string();
-    let cell = move || {
-        let start = Instant::now();
-        let mut object = emath_artifact::JsonWriter::object();
-        object.string("schema", "emath.generated-crate-manifest");
-        object.string("crate_name", "bench-cell");
-        object.string("source", &glyphs_rel);
-        object.strings(
-            "worlds",
-            &["free_symbolic".to_string(), "modular_numeric".to_string()],
-        );
-        object.object_field("files", "[\"Cargo.toml\",\"src/lib.rs\"]");
-        let manifest = object.finish();
-        let source_map = emath_artifact::write_generated_crate_source_map(
-            &glyphs_rel,
-            &["Cargo.toml".to_string(), "src/lib.rs".to_string()],
-        );
-        let mut identity = Vec::new();
-        identity.extend_from_slice(manifest.as_bytes());
-        identity.extend_from_slice(&[0xff]);
-        identity.extend_from_slice(source_map.as_bytes());
-        let ns = elapsed_ns(start);
-        Ok(Sample {
-            ns,
-            identity_bytes: identity,
-            identity_label: "generated-crate-manifest + source-map JSON bytes".into(),
-            golden_match: None,
-            detail: "emath_artifact JSON writers emit the genesis manifest + source map".into(),
-        })
-    };
-    collect_samples(config, cell)
-}
-
-/// genesis-replay family: analyze the glyph example twice and pin the
-/// deterministic replay ids inside the timed cell.
-fn cell_genesis_replay(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String> {
-    let glyphs = root.join(GLYPHS_REL);
-    let cell = move || {
-        let start = Instant::now();
-        let first = emath_cli_lab::genesis_cmd::analyze(&glyphs)
-            .map_err(|error| format!("genesis analyze refused: {error}"))?;
-        let second = emath_cli_lab::genesis_cmd::analyze(&glyphs)
-            .map_err(|error| format!("genesis replay refused: {error}"))?;
-        if first.parse_id != second.parse_id
-            || first.signature_id != second.signature_id
-            || first.term_id != second.term_id
-        {
-            return Err(format!(
-                "replay divergence: parse {} vs {}, signature {} vs {}, term {:016x} vs {:016x}",
-                first.parse_id,
-                second.parse_id,
-                first.signature_id,
-                second.signature_id,
-                first.term_id,
-                second.term_id
-            ));
-        }
-        let identity = format!(
-            "{}:{}:{:016x}",
-            first.parse_id, first.signature_id, first.term_id
-        )
-        .into_bytes();
-        let ns = elapsed_ns(start);
-        Ok(Sample {
-            ns,
-            identity_bytes: identity,
-            identity_label: "replay ids `parse:signature:term` (determinism pin)".into(),
-            golden_match: None,
-            detail: "analyze twice + equality pin (replay fidelity)".into(),
         })
     };
     collect_samples(config, cell)
@@ -386,7 +234,6 @@ fn cell_cli8p(root: &Path, config: &FamilyConfig) -> Result<Vec<Sample>, String>
             ns,
             identity_bytes: identity,
             identity_label: "8 disjoint check file paths".into(),
-            golden_match: None,
             detail: "8 parallel `emath check` processes (CLI8p)".into(),
         })
     };
@@ -564,13 +411,6 @@ fn write_history(
                     "label".into(),
                     JsonValue::String(identity.identity_label.clone()),
                 ),
-                (
-                    "golden_lib_rs_match".into(),
-                    match identity.golden_match {
-                        Some(matched) => JsonValue::Bool(matched),
-                        None => JsonValue::Null,
-                    },
-                ),
             ]),
         ),
     ]);
@@ -668,12 +508,6 @@ fn main() {
     let families: Vec<(&str, Result<Vec<Sample>, String>)> = vec![
         ("parse", cell_parse(&root, &config)),
         ("check", cell_check(&root, &config)),
-        (
-            "codegen-parametric",
-            cell_codegen_parametric(&root, &config),
-        ),
-        ("artifact-json", cell_artifact_json(&config)),
-        ("genesis-replay", cell_genesis_replay(&root, &config)),
         ("cli8p", cell_cli8p(&root, &config)),
     ];
     let mut failures = 0_usize;

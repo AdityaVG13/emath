@@ -1,17 +1,11 @@
 //! Command dispatch and per-subcommand argument parsers.
 
-use super::{Command, Path, PlannerRequest, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, plan, planner_cmd, build, tooling_cmd, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, compiled_search, language_cmd, EXIT_USAGE, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError};
+use super::{Command, Path, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, build, tooling_cmd, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, language_cmd, EXIT_USAGE, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError};
 
 fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>)> {
     match command {
         Command::Check(FileJsonRequest::Ready { path, json, .. }) => {
             Some(("check", *json, Some(path)))
-        }
-        Command::Plan(FileJsonRequest::Ready { path, json, .. }) => {
-            Some(("plan", *json, Some(path)))
-        }
-        Command::Planner(PlannerRequest::Ready { path, json, .. }) => {
-            Some(("planner", *json, Some(path)))
         }
         Command::Build(BuildRequest::Ready { spec, json, .. }) => {
             Some(("build", *json, Some(spec)))
@@ -92,29 +86,6 @@ fn verify_language_gate(command: &Command) -> Result<(), (&'static str, bool, St
     verify_language_image(name, json, anchor)
 }
 
-/// Shared Language Image gate for production constructor commands.
-pub fn refuse_unverified_language_image(
-    command: &'static str,
-    json: bool,
-    anchor: Option<&Path>,
-) -> Option<CliExit> {
-    match verify_language_image(command, json, anchor) {
-        Ok(()) => None,
-        Err((name, json, detail)) => {
-            let message = format!("verified Language Image refused: {detail}");
-            eprintln!("error: E-LANG-IMAGE: {message}");
-            if json {
-                print_json_diagnostics(
-                    name,
-                    false,
-                    &[json_diagnostic_entry("E-LANG-IMAGE", "error", &message)],
-                );
-            }
-            Some(EXIT_REFUSED)
-        }
-    }
-}
-
 pub(super) fn run_command(command: Command) -> CliExit {
     if let Err((name, json, detail)) = verify_language_gate(&command) {
         let message = format!("verified Language Image refused: {detail}");
@@ -134,8 +105,6 @@ pub(super) fn run_command(command: Command) -> CliExit {
             json,
             verify_data,
         }) => check(&path, json, verify_data),
-        Command::Plan(FileJsonRequest::Ready { path, json, .. }) => plan(&path, json),
-        Command::Planner(request) => planner_cmd(request),
         Command::Build(request) => build(request),
         Command::New {
             name,
@@ -144,16 +113,7 @@ pub(super) fn run_command(command: Command) -> CliExit {
             force,
             json,
         } => tooling_cmd::new_cmd(&name, &out, dry_run, force, json),
-        Command::Fmt {
-            path,
-            value,
-            sf,
-            from,
-            format,
-        } => match value {
-            Some(raw) => tooling_cmd::fmt_value_cmd(&raw, sf, from.as_deref(), format.as_deref()),
-            None => tooling_cmd::fmt_cmd(path.as_deref().expect("path or --value at parse")),
-        },
+        Command::Fmt { path } => tooling_cmd::fmt_cmd(&path),
         Command::Migrate {
             path,
             fix,
@@ -179,22 +139,19 @@ pub(super) fn run_command(command: Command) -> CliExit {
         Command::Export(request) => export_cmd::run(request),
         Command::Compare(request) => super::compare_cmd::run(request),
         Command::Experiment(request) => experiment_cmd::run(request),
-        Command::Search(request) => compiled_search::run(request),
         Command::Step(request) => execution::step(request),
         Command::Api(request) => language_cmd::api(request),
         Command::Test { path, out, work } => tooling_cmd::test_cmd(&path, &out, work),
-        Command::Verify { dir, json } => {
-            if !dir.is_dir() {
-                execution::verify(&dir, json)
-            } else if json {
+        Command::Verify { dir } => {
+            if dir.is_dir() {
+                tooling_cmd::verify_cmd(&dir)
+            } else {
                 execution::diagnostic(
-                    true,
+                    false,
                     EXIT_USAGE,
                     "E-CLI-USAGE",
-                    "--json verification requires a saved run file; artifact-directory verification uses emath verify <dir>",
+                    "`emath verify` takes an artifact directory; read a checkpoint with `emath inspect`",
                 )
-            } else {
-                tooling_cmd::verify_cmd(&dir)
             }
         }
         Command::Inspect { dir, json } => {
@@ -207,16 +164,6 @@ pub(super) fn run_command(command: Command) -> CliExit {
         Command::Diff { a, b, json } => tooling_cmd::diff_cmd(&a, &b, json),
         Command::Doctor { json } => tooling_cmd::doctor_cmd(json),
     }
-}
-
-pub fn parse_show_named(rest: &[String]) -> Option<(String, PathBuf)> {
-    if rest.first().map(String::as_str) != Some("show") {
-        return None;
-    }
-    let tail = &rest[1..];
-    let id = tail.iter().find(|arg| !arg.starts_with('-'))?.clone();
-    let (_, dir, _) = parse_genesis_args(tail)?;
-    Some((id, dir?))
 }
 
 pub(super) fn parse_new_request(
@@ -495,23 +442,6 @@ pub(super) fn no_extra_positionals(args: &[String]) -> bool {
     args.iter().all(|arg| arg.starts_with('-') && arg != "-")
 }
 
-pub enum CompileRequest {
-    Ready {
-        path: PathBuf,
-        out: PathBuf,
-        worlds: Vec<String>,
-    },
-}
-
-pub fn parse_compile_request(args: &[String]) -> Option<CompileRequest> {
-    let parametric = args.iter().any(|arg| arg == "--parametric");
-    let (path, out, worlds) = parse_genesis_args(args)?;
-    match (path, out, parametric) {
-        (Some(path), Some(out), true) => Some(CompileRequest::Ready { path, out, worlds }),
-        _ => None,
-    }
-}
-
 pub enum FileJsonRequest {
     Ready {
         path: PathBuf,
@@ -522,27 +452,14 @@ pub enum FileJsonRequest {
     },
 }
 
-pub fn parse_file_json_request(args: &[String]) -> Option<FileJsonRequest> {
-    parse_file_request_inner(args, false)
-}
-
-/// `check` additionally admits `--verify-data`; plan/expand/
-/// assumptions reject it through the catalog flag whitelist.
 pub fn parse_check_request(args: &[String]) -> Option<FileJsonRequest> {
-    parse_file_request_inner(args, true)
-}
-
-pub fn parse_file_request_inner(
-    args: &[String],
-    wants_verify_data: bool,
-) -> Option<FileJsonRequest> {
     let mut path = None;
     let mut json = false;
     let mut verify_data = false;
     for arg in args {
         match arg.as_str() {
             "--json" => json = true,
-            "--verify-data" if wants_verify_data => verify_data = true,
+            "--verify-data" => verify_data = true,
             other if other.starts_with('-') && other != "-" => return None,
             other => assign_once(&mut path, PathBuf::from(other))?,
         }
@@ -552,73 +469,6 @@ pub fn parse_file_request_inner(
         json,
         verify_data,
     })
-}
-
-pub enum ParseRequest {
-    Ready {
-        path: PathBuf,
-        out: Option<PathBuf>,
-        forest_only: bool,
-    },
-}
-
-pub fn parse_parse_request(args: &[String]) -> Option<ParseRequest> {
-    let (path, out, _) = parse_genesis_args(args)?;
-    let forest_only = args.iter().any(|arg| arg == "--forest");
-    Some(ParseRequest::Ready {
-        path: path?,
-        out,
-        forest_only,
-    })
-}
-
-pub enum SignatureRequest {
-    Ready { path: PathBuf, out: Option<PathBuf> },
-}
-
-pub fn parse_signature_request(args: &[String]) -> Option<SignatureRequest> {
-    let (path, out, _) = parse_genesis_args(args)?;
-    Some(SignatureRequest::Ready { path: path?, out })
-}
-
-pub enum GenesisRequest {
-    Ready { path: PathBuf, out: PathBuf },
-}
-
-pub fn parse_genesis_request(args: &[String]) -> Option<GenesisRequest> {
-    let (path, out, _) = parse_genesis_args(args)?;
-    Some(GenesisRequest::Ready {
-        path: path?,
-        out: out?,
-    })
-}
-
-/// Shared arg scan for genesis commands: positional file, `--out`, `--world`.
-pub fn parse_genesis_args(
-    args: &[String],
-) -> Option<(Option<PathBuf>, Option<PathBuf>, Vec<String>)> {
-    let mut path = None;
-    let mut out = None;
-    let mut worlds = Vec::new();
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--out" | "-o" | "--dir" => {
-                assign_once(
-                    &mut out,
-                    PathBuf::from(take_nonflag_value(args, &mut index)?),
-                )?;
-            }
-            "--world" => {
-                worlds.push(take_nonflag_value(args, &mut index)?.to_owned());
-            }
-            "--parametric" | "--forest" | "--json" => {}
-            other if other.starts_with('-') => return None,
-            other => assign_once(&mut path, PathBuf::from(other))?,
-        }
-        index += 1;
-    }
-    Some((path, out, worlds))
 }
 
 pub fn usage(message: &str) -> CliExit {

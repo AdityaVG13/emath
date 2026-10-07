@@ -1,71 +1,6 @@
-//! Scaffold and provider metadata for `emath new`.
+//! The `emath new` project scaffold.
 
-use super::{PathBuf, Path, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_SAFETY, JsonWriter, EXIT_OK, EXIT_IO, content_id_of_str};
-
-/// Relative path of the committed upstream lock file (repo layout).
-pub const UPSTREAM_LOCK_REL: &str = "forks/UPSTREAM_LOCK.json";
-
-/// Absolute lock path: crate-relative so `vendor`/`fork` work regardless of
-/// the caller's working directory.
-pub fn upstream_lock_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(UPSTREAM_LOCK_REL)
-}
-
-/// Built-in provider descriptors: (id, capability, status). Status must
-/// match in-tree reality: std-only native stand-ins `implemented`;
-/// upstream lanes (Dew JIT/GPU, full Rumoca, Wrenfold, Franken*) always
-/// `planned`.
-pub const PROVIDERS: [(&str, &str, &str); 10] = [
-    (
-        "native.rust",
-        "scalar codegen + checked constructors",
-        "implemented",
-    ),
-    (
-        "evidence.rust",
-        "artifact verification + negative controls",
-        "implemented",
-    ),
-    (
-        "dew.scalar",
-        "scalar strict-f64 mapping; Rust source + token backends (in-tree, std-only)",
-        "implemented",
-    ),
-    (
-        "native.causal",
-        "neutral DAE plan: structural gate + native lowering",
-        "implemented",
-    ),
-    (
-        "native.euler",
-        "forward-Euler simulation of causal DAE plans",
-        "implemented",
-    ),
-    (
-        "rumoca.subset-import",
-        "Modelica subset scanner -> retained declarations (no upstream parse)",
-        "implemented",
-    ),
-    (
-        "future.expression",
-        "upstream Dew engine: optimization, JIT, GPU backends",
-        "planned",
-    ),
-    (
-        "future.structural",
-        "upstream Rumoca engine: full parse, flattening, DAE analysis",
-        "planned",
-    ),
-    (
-        "future.symbolic",
-        "cross-engine differential corpus against a real Dew/Rumoca checkout",
-        "planned",
-    ),
-    ("future.numerics", "solvers and optimization", "planned"),
-];
+use super::{Path, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_SAFETY, JsonWriter, EXIT_OK, EXIT_IO, content_id_of_str};
 
 /// `new <name> --out <dir> [--dry-run] [--force] [--json]`: deterministic project scaffold.
 pub(crate) fn new_cmd(name: &str, out: &Path, dry_run: bool, force: bool, json: bool) -> CliExit {
@@ -123,11 +58,7 @@ pub(crate) fn new_cmd(name: &str, out: &Path, dry_run: bool, force: bool, json: 
             obj.bool("dry_run", true);
             obj.string("name", name);
             obj.string("target_dir", &out.display().to_string());
-            let planned = [
-                manifest.display().to_string(),
-                main.display().to_string(),
-                out.join(".gitignore").display().to_string(),
-            ];
+            let planned = [manifest.display().to_string(), main.display().to_string()];
             obj.strings("planned_files", &planned);
             obj.bool("will_overwrite", collision);
             println!("{}", obj.finish());
@@ -137,7 +68,6 @@ pub(crate) fn new_cmd(name: &str, out: &Path, dry_run: bool, force: bool, json: 
             println!("planned files:");
             println!("  - {}", manifest.display());
             println!("  - {}", main.display());
-            println!("  - {}", out.join(".gitignore").display());
             if collision {
                 if force {
                     println!("warning: existing files will be overwritten (--force active)");
@@ -151,21 +81,6 @@ pub(crate) fn new_cmd(name: &str, out: &Path, dry_run: bool, force: bool, json: 
 
     if std::fs::create_dir_all(out.join("src")).is_err() {
         eprintln!("error: cannot create {}", out.display());
-        return EXIT_IO;
-    }
-    let gitignore_body = "# Local interpretation lock (per-user, per-project).\n# Teams MAY commit .emath/meaning.lock to share one interpretation.\n.emath/meaning.lock\n";
-    if let Err(error) = std::fs::create_dir_all(out.join(".emath")) {
-        eprintln!(
-            "error: cannot create {}: {error}",
-            out.join(".emath").display()
-        );
-        return EXIT_IO;
-    }
-    if let Err(error) = std::fs::write(out.join(".gitignore"), gitignore_body) {
-        eprintln!(
-            "error: cannot write {}: {error}",
-            out.join(".gitignore").display()
-        );
         return EXIT_IO;
     }
     let result =
@@ -197,7 +112,7 @@ pub(crate) fn new_cmd(name: &str, out: &Path, dry_run: bool, force: bool, json: 
             main.display(),
             content_id_of_str(main_body).0
         );
-        println!("next: emath run {} --set x=3", main.display());
+        println!("next: emath run {} --function Greeter --set x=3.0", main.display());
     }
     EXIT_OK
 }

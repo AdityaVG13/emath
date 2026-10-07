@@ -6,22 +6,13 @@ publish = false
 
 [dependencies]
 emath-test-harness = { workspace = true }
-# The lsp tests exercise the async runtime, so the feature is enabled for the
-# whole test package (features are additive; nothing here depends on it being off).
-emath-cli = { path = "../../crates/emath-cli", features = ["async-runtime"] }
-emath-cli-lab = { path = "../../crates/emath-cli-lab" }
-asupersync = { workspace = true }
-emath-genesis = { workspace = true }
-emath-term = { workspace = true }
+emath-cli = { path = "../../crates/emath-cli" }
 emath-core = { path = "../../crates/emath-core" }
 emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-sema = { path = "../../crates/emath-sema" }
 emath-syntax = { path = "../../crates/emath-syntax" }
-emath-plan = { path = "../../crates/emath-plan" }
 emath-artifact = { path = "../../crates/emath-artifact" }
-emath-world-ir = { path = "../../crates/emath-world-ir" }
 emath-exec-ir = { path = "../../crates/emath-exec-ir" }
-emath-ir = { path = "../../crates/emath-ir" }
 
 [[bench]]
 name = "comprehensive_bench"

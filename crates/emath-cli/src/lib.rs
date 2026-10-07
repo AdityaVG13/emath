@@ -8,15 +8,15 @@
 #![forbid(unsafe_code)]
 
 pub mod catalog;
-pub mod capabilities;
-pub mod diagnostics;
-pub mod execution;
-pub mod language_cmd;
+mod capabilities;
+mod diagnostics;
+mod execution;
+mod language_cmd;
 mod provenance_cmd;
-pub mod tooling_cmd;
-pub mod triage;
-pub mod pedagogy;
-pub mod terminal;
+mod tooling_cmd;
+mod triage;
+mod pedagogy;
+mod terminal;
 
 mod cli_artifacts;
 mod cli_build;
@@ -30,35 +30,20 @@ mod keep_cmd;
 mod export_cmd;
 mod compare_cmd;
 mod experiment_cmd;
-mod compiled_search;
-mod project_lock;
 
-pub use pedagogy::PedagogicError;
-pub use terminal::{
-    color_mode, is_ci, is_interactive, set_color_mode, set_no_color, should_color_stderr,
-    should_color_stdout,
-};
+pub(crate) use pedagogy::PedagogicError;
 
-pub use cli_artifacts::*;
-pub use cli_build::*;
-pub use cli_check::*;
-pub(crate) use cli_dispatch::{locate_language_root, help_cmd, catalog_read_cmd, print_command_help, unknown_command, run_command, parse_check_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals, load_verified_language};
-pub use cli_dispatch::{
-    CompileRequest, FileJsonRequest, GenesisRequest, ParseRequest, SignatureRequest, assign_once,
-    parse_compile_request, parse_file_json_request, parse_genesis_request, parse_parse_request,
-    parse_show_named, parse_signature_request, refuse_unverified_language_image, take_nonflag_value,
-    usage,
-};
-pub use project_lock::refuse_malformed_project_lock;
-pub use cli_json::*;
-pub use cli_parse::*;
+pub(crate) use cli_artifacts::*;
+pub(crate) use cli_build::*;
+pub use cli_build::{run_check, run_check_source};
+pub use cli_check::{admitted_meaning_id, check};
+pub(crate) use cli_dispatch::*;
+pub(crate) use cli_json::*;
+pub use cli_json::admitted_tree;
+pub use cli_parse::run;
+pub(crate) use cli_parse::*;
 
 use emath_core::Diagnostics;
-use emath_plan::{
-    PlanInspection, PlannerConfig, PlanningOutcome, emit_provider_trait, lift_missing,
-    plan as run_planner,
-};
-use emath_provider_api::{ProviderRegistry, RegistryConfig};
 use emath_sema::CompilerSession;
 use std::path::{Path, PathBuf};
 
@@ -103,8 +88,3 @@ pub fn exit_from_diagnostics(has_errors: bool) -> CliExit {
 }
 
 pub use provenance_cmd::provenance_explanation;
-
-pub mod lsp;
-
-
-pub mod portfolio;

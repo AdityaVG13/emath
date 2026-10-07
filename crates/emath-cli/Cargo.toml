@@ -10,29 +10,16 @@ rust-version.workspace = true
 name = "emath"
 path = "src/main.rs"
 
-[features]
-# Gates the additional async runtime dependency; this feature exposes the
-# lab runtime entry (lsp::lab). The default transitive graph is not std-only.
-async-runtime = ["dep:asupersync"]
-
 [dependencies]
 emath-term.workspace = true
 emath-core.workspace = true
-asupersync = { workspace = true, optional = true, features = ["test-internals"] }
 emath-artifact = { workspace = true }
 emath-build = { workspace = true }
 emath-lab-core = { workspace = true }
 emath-evidence = { workspace = true }
 emath-exec-ir = { workspace = true }
-emath-rt = { workspace = true }
 emath-rust-backend = { workspace = true }
-# This dependency is deliberate: it carries real domain data, not thin type
-# imports. It provides Goal (used in plan and agent JSON rendering),
-# Provenance, FallbackPolicy, and EvidenceLevel. Re-expressing Goal in
-# another crate would relocate ownership, not remove the need; emath-ir is
-# the owner of these types.
 emath-ir = { workspace = true }
-emath-plan = { workspace = true }
 emath-provider-api = { workspace = true }
 emath-sema = { workspace = true }
 emath-syntax = { workspace = true }

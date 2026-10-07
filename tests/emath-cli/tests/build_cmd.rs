@@ -131,33 +131,6 @@ emath function closure_fn:
 ";
 
 #[test]
-fn editor_checks_unsaved_text_with_local_imports() {
-    use emath_cli::lsp::{json::JsonValue, protocol::RpcMessage, server::ServerState};
-    let dir = scratch("editor space");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("helper.emath"), format!("exports: only_fn\n{SINGLE}")).unwrap();
-    let path = dir.join("input.emath");
-    std::fs::write(&path, SINGLE.replacen("function only_fn", "function _", 1)).unwrap();
-    let source = TWO_RUNNABLE.replacen("result = a + 1", "result = only_fn(a)", 1);
-    let uri = format!("file://{}", path.display()).replace(' ', "%20");
-    let mut params = emath_artifact::JsonWriter::object();
-    let mut document = emath_artifact::JsonWriter::object();
-    document.string("uri", &uri);
-    document.string("text", &format!("use helper.{{only_fn}}\n{source}"));
-    params.object_field("textDocument", document.finish().trim_end());
-    let mut state = ServerState::new();
-    let mut output = Vec::new();
-    state.handle(&RpcMessage {
-        id: None,
-        method: "textDocument/didOpen".into(),
-        params: JsonValue::parse(&params.finish()).unwrap(),
-    }, &mut output).unwrap();
-    let output = String::from_utf8(output).unwrap();
-    assert!(output.contains("\"diagnostics\":[]"), "the unsaved root must resolve its local import without reading refused disk text: {output}");
-    assert!(output.contains(&uri), "notifications must preserve the editor URI");
-}
-
-#[test]
 fn syntax_helper_and_stdin_format_obey_semantic_admission() {
     use std::io::Write;
     emath_syntax::install_source_parser();

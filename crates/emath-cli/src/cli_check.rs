@@ -1,6 +1,6 @@
 //! `emath check`: admission, data verification, and source reading.
 
-use super::{Path, CliExit, refuse_malformed_project_lock, check_json_document, exit_from_diagnostics, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_IO, Diagnostics, refuse_coded, EXIT_REFUSED};
+use super::{Path, CliExit, check_json_document, exit_from_diagnostics, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_IO, Diagnostics};
 
 /// `check <file> [--verify-data] [--json]`: parse + admit, no codegen.
 /// `--verify-data` re-hashes every
@@ -9,9 +9,6 @@ use super::{Path, CliExit, refuse_malformed_project_lock, check_json_document, e
 pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
     if path.as_os_str() == "-" {
         return check_stdin(json, verify_data);
-    }
-    if let Some(code) = refuse_malformed_project_lock(path) {
-        return code;
     }
     let path = path.to_path_buf();
     let checked = crate::cli_build::checked_file(&path);
@@ -62,7 +59,7 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
 /// Deterministic; the package id derives from the source bytes, so a
 /// piped check matches the same text checked from disk.
 ///
-/// No project lock or data-file base directory exists for stdin, so
+/// No data-file base directory exists for stdin, so
 /// `--verify-data` is refused (`E-CLI-USAGE`): `InstrumentRun` digests
 /// resolve relative to a source file on disk.
 fn check_stdin(json: bool, verify_data: bool) -> CliExit {
@@ -183,42 +180,4 @@ pub fn admitted_meaning_id(path: &Path, source: &str) -> Option<emath_core::Mean
         return None;
     }
     result.package.meaning_id(&[]).ok()
-}
-
-pub fn source_has_content(source: &str) -> bool {
-    source
-        .lines()
-        .map(str::trim)
-        .any(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with("//"))
-}
-
-pub fn read_emath_source(command: &str, path: &Path, json: bool) -> Result<String, CliExit> {
-    match std::fs::read_to_string(path) {
-        Ok(source) => {
-            if source_has_content(&source) {
-                Ok(source)
-            } else {
-                Err(refuse_coded(
-                    command,
-                    json,
-                    EXIT_REFUSED,
-                    "E-PKG-081",
-                    &format!("source has no declarations ({})", path.display()),
-                ))
-            }
-        }
-        Err(_) => Err(refuse_coded(
-            command,
-            json,
-            EXIT_USAGE,
-            "E-PKG-080",
-            &format!("cannot read source file ({})", path.display()),
-        )),
-    }
-}
-
-pub fn print_missing_newline(s: &str) {
-    if !s.ends_with('\n') {
-        println!();
-    }
 }

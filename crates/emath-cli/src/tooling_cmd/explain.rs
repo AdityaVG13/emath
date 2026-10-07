@@ -21,7 +21,7 @@ pub(crate) fn explain_cmd(request: ExplainRequest) -> CliExit {
 /// the CLI itself emits (compiler-emitted `E-*` codes are owned by
 /// `language/reference/` and refuse with a pointer there). Exact-match
 /// lookup; the row order is the stable registry order.
-pub(super) const DIAGNOSTIC_ROWS: [(&str, &str, &str, &str); 20] = [
+pub(super) const DIAGNOSTIC_ROWS: [(&str, &str, &str, &str); 15] = [
     (
         "E-CLI-USAGE",
         "invalid or missing command arguments",
@@ -66,9 +66,9 @@ pub(super) const DIAGNOSTIC_ROWS: [(&str, &str, &str, &str); 20] = [
     ),
     (
         "E-PKG-081",
-        "package lock malformed",
-        "an `emath.package.lock` file next to the source failed to parse or verify",
-        "delete nothing; run `emath meaning explain` to inspect the lock state",
+        "source has no declarations",
+        "the checked source parsed to zero declarations, so there is no module to check or run",
+        "add an `emath function`, `emath object`, or `emath query` declaration to the file",
     ),
     (
         "E-TLT-005",
@@ -95,30 +95,6 @@ pub(super) const DIAGNOSTIC_ROWS: [(&str, &str, &str, &str); 20] = [
         "restore the data file, or re-declare the sha256 in the provenance row after verifying the new data",
     ),
     (
-        "E-RUN-STATE",
-        "execution state violation",
-        "the checkpoint or run state does not permit the requested operation",
-        "pass the latest checkpoint (`emath step <checkpoint.json>`); `emath inspect <checkpoint.json> --json` shows the current state",
-    ),
-    (
-        "E-RUN-DRIFT",
-        "checkpoint drift",
-        "the checkpoint file changed since the run started",
-        "restart the run or branch with `--branch-from checkpoint --relation relation`",
-    ),
-    (
-        "E-RUN-REVISION",
-        "checkpoint revision conflict",
-        "a concurrent writer changed the checkpoint (--expect-revision guard)",
-        "re-read the checkpoint and pass its current `--expect-revision N`",
-    ),
-    (
-        "E-RUN-CANCELLED",
-        "run cancelled",
-        "the sentinel file named by `--cancel-file` appeared during execution",
-        "remove the sentinel to allow new runs; this is a clean stop, not a crash",
-    ),
-    (
         "E-DIFF-FAILED",
         "diff refused",
         "one of the two sources could not be read or admitted",
@@ -135,12 +111,6 @@ pub(super) const DIAGNOSTIC_ROWS: [(&str, &str, &str, &str); 20] = [
         "ambiguous symbol",
         "the name matches more than one declaration in scope",
         "qualify the symbol with its declaration-qualified name",
-    ),
-    (
-        "E-LOCK-004",
-        "meaning lock conflict",
-        "the project's `.emath/meaning.lock` disagrees with the current source",
-        "run `emath meaning explain` to see the divergence; never hand-edit the lock",
     ),
 ];
 

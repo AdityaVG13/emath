@@ -3,9 +3,7 @@ use emath_cli::catalog::{
     COMMANDS, EXTRACTED_COMMANDS, command_help_text, command_summary, command_usage,
     reject_unknown_flags, suggest_command,
 };
-use emath_cli::{CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE};
-use emath_cli_lab::catalog::CORE_COMMANDS;
-use emath_cli_lab::{architecture_json, run};
+use emath_cli::{CliExit, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, run};
 use emath_test_harness::{Case, Probe, check_all, expect_ok};
 
 fn owned(argv: &[&str]) -> Vec<String> {
@@ -32,7 +30,6 @@ fn catalog_contract() {
         ],
         |word| suggest_command(word),
     ));
-    p.eq("core-alias", CORE_COMMANDS, COMMANDS);
     p.eq("core-len", COMMANDS.len(), 27);
     p.case("live-help", |p| {
         for command in COMMANDS {
@@ -69,8 +66,7 @@ fn catalog_contract() {
                 EXTRACTED_COMMANDS.contains(&token),
                 "extracted",
             );
-            p.eq(format!("emath-{token}"), emath_cli::run(&[token.into(), "f.emath".into()]), EXIT_USAGE);
-            p.eq(format!("lab-{token}"), run(&owned(&[token, "f.emath"])), EXIT_USAGE);
+            p.eq(format!("emath-{token}"), run(&owned(&[token, "f.emath"])), EXIT_USAGE);
         }
     });
     p.case("capabilities", |p| {
@@ -121,12 +117,6 @@ fn catalog_contract() {
             );
         }
     });
-    p.case("architecture-fn-exists", |p| {
-        let body = architecture_json();
-        let parsed = emath_artifact::parse_json_document(&body).expect("architecture json");
-        p.eq("schema", parsed.string_field("schema").expect("schema"), "emath.architecture".to_string());
-        p.eq("cmd", run(&owned(&["architecture", "--json"])), EXIT_USAGE);
-    });
     p.case("flags", |p| {
         for (name, command, argv, expected) in [
             ("check-raise", "check", &["--raise"][..], Some(EXIT_USAGE)),
@@ -150,24 +140,6 @@ fn catalog_contract() {
         ] {
             p.eq(argv.join(" "), run(&owned(argv)), EXIT_USAGE);
         }
-        p.eq("capabilities-ok", run(&owned(&["capabilities", "--json"])), EXIT_OK);
     });
     p.finish();
-}
-
-#[test]
-fn typed_cli_vector_extent() {
-    use emath_cli::execution::parse_set_value_for;
-    use emath_exec_ir::interp::Value;
-    use emath_ir::{Extent, TypeNode};
-
-    let declared = TypeNode::Vector {
-        element: Box::new(TypeNode::Float64),
-        extent: Some(Extent::Fixed(3)),
-    };
-    assert_eq!(
-        parse_set_value_for(Some(&declared), "[1, 2, 3]"),
-        Some(Value::Vector(vec![1.0, 2.0, 3.0]))
-    );
-    assert_eq!(parse_set_value_for(Some(&declared), "[1, 2]"), None);
 }

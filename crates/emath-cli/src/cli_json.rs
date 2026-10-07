@@ -2,19 +2,6 @@
 
 use super::{Diagnostics, CliExit};
 
-/// Print diagnostics with no source text at hand: code and message only,
-/// since a bare byte offset tells the reader nothing.
-pub fn print_diagnostics(diagnostics: &Diagnostics) {
-    for item in diagnostics.items() {
-        eprintln!("{} {}", item.code, item.message);
-        if let Some(help) = &item.help {
-            for line in help.lines() {
-                eprintln!("  {line}");
-            }
-        }
-    }
-}
-
 /// The file a diagnostic points into, when `store` holds it. A diagnostic
 /// with the empty default span has no position.
 fn located<'a>(item: &emath_core::Diagnostic, store: &'a emath_core::SourceStore) -> Option<&'a emath_core::SourceFile> {
@@ -110,19 +97,6 @@ pub fn error_text(code: &str, message: &str, name: &str, source: &str, span: Opt
 /// 1-based line and column of a diagnostic in the main file, when known.
 fn line_column(item: &emath_core::Diagnostic, store: Option<&emath_core::SourceStore>) -> Option<(u32, u32)> {
     located(item, store?).map(|file| file.line_col(item.primary.start))
-}
-
-/// Split `error: E-FOO-001: rest` (or the same without the `error:` prefix)
-/// into a stable code and message.
-pub fn split_error_code(error: &str) -> Option<(&str, &str)> {
-    let error = error.strip_prefix("error: ").unwrap_or(error).trim();
-    let (code, rest) = error.split_once(':')?;
-    let code = code.trim();
-    if code.starts_with("E-") || code.starts_with("N-") {
-        Some((code, rest.trim()))
-    } else {
-        None
-    }
 }
 
 /// One `{code,severity,message}` diagnostic object for `--json` envelopes.
@@ -256,28 +230,4 @@ pub fn check_json_document(
         .collect();
     out.objects("units_profiles", &rows);
     out.finish()
-}
-
-pub fn goal_json_rows(goals: &[emath_ir::Goal]) -> Vec<String> {
-    goals
-        .iter()
-        .map(|goal| {
-            let mut row = emath_artifact::JsonWriter::object();
-            row.string("kind", goal.kind.as_str());
-            row.string("target", &goal.target);
-            row.finish().trim_end().to_string()
-        })
-        .collect()
-}
-
-/// Stdout envelope for `emath plan --json`.
-/// `goals` is `[{kind, target}]` with `kind` = `GoalKind::as_str()`.
-pub fn plan_json_document(admitted: bool, goals: &[emath_ir::Goal], plans: u64) -> String {
-    let mut object = emath_artifact::JsonWriter::object();
-    object.string("command", "plan");
-    object.string("status", if admitted { "ok" } else { "refused" });
-    object.bool("admitted", admitted);
-    object.int("plans", plans);
-    object.objects("goals", &goal_json_rows(goals));
-    object.finish()
 }

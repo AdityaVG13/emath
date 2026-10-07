@@ -186,11 +186,11 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "compare" => "compare <file.emath> --function F [--set name=value] [--grid name=v1,v2,... | name=LO..HI | name=LO..HI/N] [--world reference|exact|float64|float32|bfloat16|int64|interval|affine] [--work N] [--json]",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
-            "step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"
+            "step <checkpoint.json> [--work N] [--out dir] [--json]"
         }
         "test" => "test <file.emath> [--work N] [--out <dir>]",
         "bench" => "bench <file.emath>",
-        "verify" => "verify <artifact-dir> | verify <checkpoint.json> [--json]",
+        "verify" => "verify <artifact-dir>",
         "inspect" => "inspect <artifact-dir-or-checkpoint.json> [--json]",
         "diff" => "diff <a.emath> <b.emath> [--json]",
         "doctor" => "doctor [--json]",
@@ -278,7 +278,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "serve" => "refuses: not a constructor command. Use `emath run`",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011) unless --force is specified; --dry-run simulates actions",
         "fmt" => {
-            "canonical-form check; `-` reads source from stdin. `--value` / `--from` / `--format` are not constructor commands"
+            "canonical-form check; `-` reads source from stdin"
         }
         "migrate" => {
             "format-only respell of constructor source (`--check` / `--dry-run` / `--fix`). Not a recipe translator and not a second language"
@@ -313,7 +313,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "test" => "run authored `tests:` on constructor source",
         "bench" => "refuses: not a constructor command",
         "verify" => {
-            "replay recorded observations; not a theorem"
+            "check published artifacts under `<dir>/emath/` against their manifests"
         }
         "inspect" => {
             "read a saved constructor checkpoint without executing"
@@ -405,10 +405,7 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--event" => "event trigger specification (name=value)",
         "--set" => "parameter override (name=value); value may be a scalar or [v0, v1, …]",
         "--set-file" => "JSON object of name to scalar or array; --set overrides the same name",
-        "--value" => "refused: not constructor surface",
-        "--sf" => "refused: not constructor surface",
-        "--from" => "refused: unit catalogs are not constructor surface",
-        "--format" => "refused: unit catalogs are not constructor surface",
+        "--format" => "export format",
         "--fix" => "apply verified lossless migrations in-place",
         "--check" => "dry-run check without modifying files",
         "--receipt" => "path to write migration receipt JSON artifact",
@@ -425,11 +422,6 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--function" => "function name to execute or search",
         "--candidate" => "candidate function name",
         "--work" => "maximum work units to execute",
-        "--expect-revision" => "concurrency guard: fail if revision differs",
-        "--cancel-file" => "stop execution if sentinel file exists",
-        "--measure" => "record execution timing across N runs",
-        "--branch-from" => "branch execution from prior checkpoint",
-        "--relation" => "branch relation descriptor",
         "--guide" | "guide" => "handbook guide section",
         "--port" => "HTTP port for localhost server",
         "--no-open" => "do not automatically open web browser",
@@ -518,7 +510,7 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
             "emath test program.emath --work 5000000",
         ],
         "verify" => &[
-            "emath verify checkpoint.json --json",
+            "emath verify target/emath",
         ],
         "inspect" => &[
             "emath inspect checkpoint.json --json",
@@ -768,7 +760,7 @@ Rules
 pub fn flags_for(command: &str) -> &'static [&'static str] {
     let resolved = resolve_alias(command).unwrap_or(command);
     match resolved {
-        "search" => &["--function", "--candidate", "--set", "--measure", "--out", "-o", "--json", "--help", "-h"],
+        "search" => &["--function", "--candidate", "--set", "--out", "-o", "--json", "--help", "-h"],
         "api" => &[
             "--search", "--offset", "--limit", "--source", "--json", "--help", "-h",
         ],
@@ -778,10 +770,6 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "--set-file",
             "--work",
             "--worlds",
-            "--cancel-file",
-            "--measure",
-            "--branch-from",
-            "--relation",
             "--out",
             "-o",
             "--json",
@@ -790,8 +778,6 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         ],
         "step" => &[
             "--work",
-            "--expect-revision",
-            "--cancel-file",
             "--out",
             "-o",
             "--json",
@@ -828,7 +814,6 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
             "-h",
         ],
         "experiment" => &["--state", "--audit-ledger", "--stop-after-pairs", "--help", "-h"],
-        "verify" => &["--json", "--help", "-h"],
         "explain" => &["--json", "--provenance", "--show-defaults", "--list-codes", "--help", "-h"],
         "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" => &["--json", "--verify-data", "--help", "-h"],
@@ -916,11 +901,6 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--set-file"
             | "--function"
             | "--work"
-            | "--expect-revision"
-            | "--cancel-file"
-            | "--measure"
-            | "--branch-from"
-            | "--relation"
             | "--search"
             | "--offset"
             | "--limit"

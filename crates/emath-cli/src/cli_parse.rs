@@ -1,6 +1,6 @@
 //! CLI entry (`run`), argument parsing, and the command grammar.
 
-use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, PlannerRequest, BuildRequest, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, compiled_search, language_cmd, parse_check_request, parse_file_json_request, parse_planner_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
+use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, BuildRequest, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, language_cmd, parse_check_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
 
 /// Entry used by main; keeps the CLI testable.
 pub fn run(args: &[String]) -> CliExit {
@@ -76,8 +76,6 @@ pub(super) enum ParsedCli<'a> {
 
 pub(super) enum Command {
     Check(FileJsonRequest),
-    Plan(FileJsonRequest),
-    Planner(PlannerRequest),
     Build(BuildRequest),
     New {
         name: String,
@@ -87,11 +85,7 @@ pub(super) enum Command {
         json: bool,
     },
     Fmt {
-        path: Option<PathBuf>,
-        value: Option<String>,
-        sf: Option<u32>,
-        from: Option<String>,
-        format: Option<String>,
+        path: PathBuf,
     },
     Migrate {
         path: PathBuf,
@@ -110,7 +104,6 @@ pub(super) enum Command {
     Export(export_cmd::ExportRequest),
     Compare(super::compare_cmd::CompareRequest),
     Experiment(experiment_cmd::ExperimentRequest),
-    Search(compiled_search::SearchRequest),
     Step(execution::RunRequest),
     Api(language_cmd::ApiRequest),
     Test {
@@ -120,7 +113,6 @@ pub(super) enum Command {
     },
     Verify {
         dir: PathBuf,
-        json: bool,
     },
     Inspect {
         dir: PathBuf,
@@ -310,20 +302,6 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
             parse_check_request,
         )
         .map(Command::Check),
-        "plan" => require_single_file(
-            "plan",
-            "plan <file.emath> [--json]",
-            rest,
-            parse_file_json_request,
-        )
-        .map(Command::Plan),
-        "planner" => require_single_file(
-            "planner",
-            "planner <file.emath> [--json] [--parametric]",
-            rest,
-            parse_planner_request,
-        )
-        .map(Command::Planner),
         "build" => require_single_file(
             "build",
             "build <file.emath> [--out <dir>] [--dry-run] [--worlds w1,w2,...] [--json]",
@@ -378,19 +356,6 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                 .with_usage("emath api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]"),
             )),
         },
-        "search" => match compiled_search::SearchRequest::parse(rest) {
-            Some(req) => Ok(Command::Search(req)),
-            None => Err(ParseKnownError::Pedagogic(
-                PedagogicError::new(
-                    "E-CLI-USAGE",
-                    "invalid arguments for `emath search`",
-                    "arguments for `emath search`",
-                    "emath search --function <name> [--candidate <name>] [--out <dir>] [--json]",
-                )
-                .with_command("search")
-                .with_usage(format!("emath {}", compiled_search::USAGE)),
-            )),
-        },
         "loop" => require_single_file("loop", loop_cmd::USAGE, rest, loop_cmd::LoopRequest::parse)
             .map(Command::Loop),
         "dream" => dream_cmd::DreamRequest::parse(rest).map(Command::Dream).ok_or_else(|| {
@@ -435,7 +400,7 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         .map(Command::Experiment),
         "run" => require_single_file(
             "run",
-            "run <file.emath> [--function NAME] [--set name=value] [--work N] [--worlds w1,w2,...] [--cancel-file path] [--measure N] [--branch-from checkpoint --relation relation] [--out dir] [--json]",
+            "run <file.emath> [--function NAME] [--set name=value] [--set-file path.json] [--work N] [--worlds w1,w2,...] [--out dir] [--json]",
             rest,
             |r| execution::RunRequest::parse(r, false),
         )
@@ -450,7 +415,7 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
                     "emath step <checkpoint.json> [--work N] [--out <dir>] [--json]",
                 )
                 .with_command("step")
-                .with_usage("emath step <checkpoint.json> [--work N] [--expect-revision N] [--cancel-file path] [--out dir] [--json]"),
+                .with_usage("emath step <checkpoint.json> [--work N] [--out dir] [--json]"),
             )),
         },
         "test" => require_single_file(
@@ -461,19 +426,16 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         )
         .map(|(path, out, work)| Command::Test { path, out, work }),
         "verify" => match parse_required_path(rest) {
-            Some(dir) => Ok(Command::Verify {
-                dir,
-                json: catalog::wants_json(rest),
-            }),
+            Some(dir) => Ok(Command::Verify { dir }),
             None => Err(ParseKnownError::Pedagogic(
                 PedagogicError::new(
                     "E-CLI-USAGE",
                     "missing required argument `<artifact-dir>` for `emath verify`",
-                    "positional argument 1 (expected path to artifact directory or checkpoint.json)",
-                    "emath verify target/emath [--json]",
+                    "positional argument 1 (expected path to artifact directory)",
+                    "emath verify target/emath",
                 )
                 .with_command("verify")
-                .with_usage("emath verify <artifact-dir> | verify <checkpoint.json> [--json]"),
+                .with_usage("emath verify <artifact-dir>"),
             )),
         },
         "inspect" => match parse_inspect_request(rest) {
@@ -545,130 +507,24 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
     }
 }
 
-/// `fmt [<file.emath>]`. `--value` is parsed so dispatch can refuse it
-/// (`E-KIND-GONE`); it is not constructor surface.
+/// `fmt <file.emath|->`.
 pub(super) fn parse_fmt_request(rest: &[String]) -> Result<Command, ParseKnownError> {
-    const USAGE: &str = "fmt [<file.emath>|->]";
-    let mut path: Option<PathBuf> = None;
-    let mut value: Option<String> = None;
-    let mut sf: Option<u32> = None;
-    let mut from: Option<String> = None;
-    let mut format: Option<String> = None;
-    let mut i = 0;
-    while i < rest.len() {
-        match rest[i].as_str() {
-            "--value" => {
-                i += 1;
-                value = rest.get(i).cloned();
-                if value.is_none() {
-                    return Err(ParseKnownError::Pedagogic(
-                        PedagogicError::new(
-                            "E-CLI-MISSING-VALUE",
-                            "flag `--value` requires a literal value",
-                            "flag `--value` in `emath fmt`",
-                            "emath fmt --value 3.14159 [--sf 3]",
-                        )
-                        .with_command("fmt")
-                        .with_flag("--value")
-                        .with_usage(format!("emath {USAGE}")),
-                    ));
-                }
-            }
-            "--sf" => {
-                i += 1;
-                match rest.get(i).and_then(|s| s.parse::<u32>().ok()) {
-                    Some(n) => sf = Some(n),
-                    None => {
-                        return Err(ParseKnownError::Pedagogic(
-                            PedagogicError::new(
-                                "E-CLI-MISSING-VALUE",
-                                "flag `--sf` requires a positive integer",
-                                "flag `--sf` in `emath fmt`",
-                                "emath fmt --value 3.14159 --sf 3",
-                            )
-                            .with_command("fmt")
-                            .with_flag("--sf")
-                            .with_usage(format!("emath {USAGE}")),
-                        ));
-                    }
-                }
-            }
-            "--from" => {
-                i += 1;
-                from = rest.get(i).cloned();
-                if from.is_none() {
-                    return Err(ParseKnownError::Pedagogic(
-                        PedagogicError::new(
-                            "E-CLI-MISSING-VALUE",
-                            "flag `--from` requires a unit name",
-                            "flag `--from` in `emath fmt`",
-                            "emath fmt --value 100 --from m",
-                        )
-                        .with_command("fmt")
-                        .with_flag("--from")
-                        .with_usage(format!("emath {USAGE}")),
-                    ));
-                }
-            }
-            "--format" => {
-                i += 1;
-                if rest.get(i).is_none() {
-                    return Err(ParseKnownError::Pedagogic(
-                        PedagogicError::new(
-                            "E-CLI-MISSING-VALUE",
-                            "flag `--format` requires a format string",
-                            "flag `--format` in `emath fmt`",
-                            "emath fmt --value 0.5 --format \"0.1 %\"",
-                        )
-                        .with_command("fmt")
-                        .with_flag("--format")
-                        .with_usage(format!("emath {USAGE}")),
-                    ));
-                }
-                format = Some(rest[i..].join(" "));
-                break;
-            }
-            other if (other == "-" || !other.starts_with('-'))
-                && path.is_none()
-                && value.is_none() =>
-            {
-                path = Some(PathBuf::from(other));
-            }
-            _ => {
-                return Err(ParseKnownError::Pedagogic(
-                    PedagogicError::new(
-                        "E-CLI-USAGE",
-                        "invalid arguments for `emath fmt`",
-                        "arguments for `emath fmt`",
-                        "emath fmt <file.emath> or emath fmt --value <literal> [--sf N]",
-                    )
-                    .with_command("fmt")
-                    .with_usage(format!("emath {USAGE}")),
-                ));
-            }
-        }
-        i += 1;
-    }
-    // Exactly one of file mode or value mode.
-    if value.is_some() == path.is_some() {
-        return Err(ParseKnownError::Pedagogic(
+    const USAGE: &str = "fmt <file.emath|->";
+    match rest {
+        [path] if path == "-" || !path.starts_with('-') => Ok(Command::Fmt {
+            path: PathBuf::from(path),
+        }),
+        _ => Err(ParseKnownError::Pedagogic(
             PedagogicError::new(
                 "E-CLI-USAGE",
-                "fmt requires either a file path or `--value <literal>` (not both or neither)",
+                "`emath fmt` takes exactly one source path, or `-` for stdin",
                 "arguments for `emath fmt`",
-                "emath fmt <file.emath> or emath fmt --value 3.14159 [--sf 3]",
+                "emath fmt <file.emath>",
             )
             .with_command("fmt")
             .with_usage(format!("emath {USAGE}")),
-        ));
+        )),
     }
-    Ok(Command::Fmt {
-        path,
-        value,
-        sf,
-        from,
-        format,
-    })
 }
 
 /// `migrate <file.emath> [--fix] [--check] [--dry-run] [--receipt <path>] [--json] | migrate --list-rules`
