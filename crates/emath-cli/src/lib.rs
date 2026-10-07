@@ -1,5 +1,5 @@
 //! Production `emath` CLI (constructor layer): `check`, `run`, `step`,
-//! `inspect`, `verify`, `test`, `build`, `api`. Extracted tokens
+//! `inspect`, `test`, `build`, `api`. Extracted tokens
 //! (`eval`, `sweep`, `genesis`, `solve`, …) refuse `E-KIND-GONE` and
 //! point at `emath run`. Host entry is [`run`] -> [`CliExit`].
 //! Exit codes: 0 completed, 2 admission, 3 unmet/partial, 4 fault,
@@ -18,7 +18,7 @@ mod triage;
 mod pedagogy;
 mod terminal;
 
-mod cli_artifacts;
+mod cli_help;
 mod cli_build;
 mod cli_check;
 mod cli_dispatch;
@@ -33,7 +33,7 @@ mod experiment_cmd;
 
 pub(crate) use pedagogy::PedagogicError;
 
-pub(crate) use cli_artifacts::*;
+pub(crate) use cli_help::*;
 pub(crate) use cli_build::*;
 pub use cli_build::{run_check, run_check_source};
 pub use cli_check::{admitted_meaning_id, check};

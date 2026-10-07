@@ -83,7 +83,6 @@ metadata on 2026-10-05.
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-evidence` | `crates/emath-evidence` | claims, assumptions, bundles, freshness | artifact/core/ir |
 | `emath-rust-backend` | `crates/emath-rust-backend` | Rust ABI/layout/rendering, constructor crate and engine-source packaging | core/exec-ir/ir/rt |
 | `emath-artifact` | `crates/emath-artifact` | JSON interchange, manifests, source maps, staging/publication/verification | core/ir |
 | `emath-rt` | `crates/emath-rt` | numeric/storage/execution carriers; includes authored-math migration debt | core |
@@ -92,10 +91,10 @@ metadata on 2026-10-05.
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-build` | `crates/emath-build` | checked-source crate emission; separate elaborated-package artifact path | artifact/core/exec-ir/ir/rust-backend/sema/syntax |
+| `emath-build` | `crates/emath-build` | generated-crate host helpers: stable target dir, write-if-changed, bounded Cargo runs | (std only) |
 | `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity | core/ir/term |
 | `emath-registry` | `crates/emath-registry` | package/provider records; registry services not implemented | artifact/core |
-| `emath-cli` | `crates/emath-cli` | production command routing, presentation, Lean translation | artifact/build/core/evidence/exec-ir/ir/lab-core/provider-api/rust-backend/sema/syntax/term/tui |
+| `emath-cli` | `crates/emath-cli` | production command routing, presentation, Lean translation | artifact/build/core/exec-ir/ir/lab-core/provider-api/rust-backend/sema/syntax/term/tui |
 | `emath-tui` | `crates/emath-tui` | loop/dream/experiment orchestration, scratch/native mirror, REPL/dashboard | artifact/build/core/exec-ir/rust-backend/sema/syntax |
 
 ### Tier 6: semantic genesis substrate
@@ -127,7 +126,7 @@ make the default transitive dependency graph third-party-free.
 
 ## Compiled roots and shipping profiles
 
-All 25 crates above have their production module root at `src/lib.rs`.
+All 24 crates above have their production module root at `src/lib.rs`.
 The CLI binary additionally starts at `src/main.rs`. Module declarations,
 `cfg`, `include!` and build scripts, not physical source lines, determine
 compilation. Crate `CONTRACT.md` files record each component's API, error,
@@ -136,7 +135,7 @@ not a claim that every line or optional configuration passed a quality gate.
 
 | Profile | First-party normal dependency closure | Distribution boundary |
 |---|---|---|
-| Default `emath-cli` | 16 crates | Binary plus shipped `language/` tree; backend, lab core, provider API and TUI/dashboard are linked dependencies |
+| Default `emath-cli` | 15 crates | Binary plus shipped `language/` tree; backend, lab core, provider API and TUI/dashboard are linked dependencies |
 | `emath-wasm` | 13 crates | `cargo xtask build-web` builds wasm32 release and stages `web/dist/emath.wasm`; not full mathematical-capability parity |
 | Direct generated Rust | Runtime source included when needed | Shared constructor emitter, named entries and manifest; target support/refusal remains explicit |
 | Engine-backed generated Rust | 8 engine crates from exec-ir's manifest closure | `vendor/` first-party sources and a trimmed lockfile; third-party sources are not vendored, so an uncached machine is not guaranteed offline compilation |
@@ -144,7 +143,7 @@ not a claim that every line or optional configuration passed a quality gate.
 | Lean export | Separate Lean project and toolchain | Translation is not proof; `--check` requires the Lean kernel, and laws also require emath certification |
 
 The default CLI closure is core, syntax, term, schema, ir, sema, exec-ir,
-provider-api, rt, rust-backend, artifact, evidence, build, lab-core,
+provider-api, rt, rust-backend, artifact, build, lab-core,
 cli and tui. WASM is core, syntax, term, schema, ir, sema, exec-ir, rt,
 rust-backend, artifact, world-ir, genesis and wasm.
 HIR, Dew adapter, registry and SQLite store are not default CLI/WASM
@@ -182,7 +181,6 @@ inventory must be checked before redistribution.
 | `tests/emath-artifact` | `tests/emath-artifact` | artifact test suite |
 | `tests/emath-build` | `tests/emath-build` | build-step public-API test suite |
 | `tests/emath-cli` | `tests/emath-cli` | CLI public-API test suite |
-| `tests/emath-evidence` | `tests/emath-evidence` | evidence public-API test suite |
 | `tests/emath-exec-ir` | `tests/emath-exec-ir` | executable-IR public-API test suite |
 | `tests/emath-genesis` | `tests/emath-genesis` | genesis public-API test suite |
 | `tests/emath-hir` | `tests/emath-hir` | HIR public-API test suite |
@@ -198,7 +196,6 @@ inventory must be checked before redistribution.
 | `tests/emath-store` | `tests/emath-store` | store public-API test suite |
 | `tests/emath-syntax` | `tests/emath-syntax` | syntax public-API test suite |
 | `tests/emath-term` | `tests/emath-term` | term-parse back test suite |
-| `tests/emath-trust-gates` | `tests/emath-trust-gates` | trust gate test suite |
 | `tests/emath-wasm` | `tests/emath-wasm` | wasm public-API test suite |
 | `tests/emath-tui` | `tests/emath-tui` | loop/dream/experiment/native-host test suite |
 | `tests/harness` | `tests/harness` | shared test harness library |

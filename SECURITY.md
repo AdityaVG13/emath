@@ -9,7 +9,7 @@ problem.
 - `.emath` source files and package manifests.
 - Generated Rust and anything a build executes, including build scripts.
 - Saved checkpoints and run directories read back by `step`, `inspect`,
-  `verify`, and `dream resume`.
+  and `dream resume`.
 - Inputs supplied through `--set`, `--set-file`, and data files.
 - Programs constructed at run time with `quote` during discovery.
 

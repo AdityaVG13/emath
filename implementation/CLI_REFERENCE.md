@@ -1,6 +1,6 @@
 # CLI Reference (constructor layer)
 
-Live commands are `check`, `run`, `step`, `inspect`, `verify`, `test`,
+Live commands are `check`, `run`, `step`, `inspect`, `test`,
 `build`, and `api`. Exit codes: **0** completed, **2** admission, **3**
 unmet/partial/suspended, **4** fault, **5** incompatible checkpoint.
 
@@ -17,7 +17,6 @@ unmet/partial/suspended, **4** fault, **5** incompatible checkpoint.
 | `emath run <file> [--function NAME] [--set name=value] [--work N] [--json]` | Evaluate a function or query; print a constructor receipt |
 | `emath step <checkpoint> [--work N] [--json]` | Resume a constructor-layer continuation |
 | `emath inspect <checkpoint> [--json]` | Read a saved constructor checkpoint |
-| `emath verify <artifact-dir>` | Check published artifacts under `<dir>/emath/` against their manifests |
 | `emath test <file>` | Authored `tests:` |
 | `emath build <file> [--out <dir>]` | Emit fully lowered runnable Rust |
 | `emath api [--search TEXT] [--json]` | Constructor contracts and imported exports |

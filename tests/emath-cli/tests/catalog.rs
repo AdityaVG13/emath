@@ -30,7 +30,7 @@ fn catalog_contract() {
         ],
         |word| suggest_command(word),
     ));
-    p.eq("core-len", COMMANDS.len(), 27);
+    p.eq("core-len", COMMANDS.len(), 26);
     p.case("live-help", |p| {
         for command in COMMANDS {
             p.demand(format!("{command}-usage"), command_usage(command).is_some(), "usage");
@@ -121,7 +121,6 @@ fn catalog_contract() {
         for (name, command, argv, expected) in [
             ("check-raise", "check", &["--raise"][..], Some(EXIT_USAGE)),
             ("run-verify", "run", &["f.emath", "--verify"][..], Some(EXIT_USAGE)),
-            ("eval-world-eol", "eval", &["f.emath", "--world"][..], Some(EXIT_USAGE)),
         ] {
             p.eq(name, reject_unknown_flags(command, &owned(argv)), expected);
         }

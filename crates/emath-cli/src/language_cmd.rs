@@ -169,7 +169,7 @@ pub(crate) fn api(request: ApiRequest) -> crate::CliExit {
     let module_next = request.offset.saturating_add(module_rows.len());
     let mut commands = Vec::new();
     for name in [
-        "api", "check", "run", "step", "inspect", "verify", "test", "build",
+        "api", "check", "run", "step", "inspect", "test", "build",
     ] {
         let mut command = emath_artifact::JsonWriter::object();
         command.string("name", name);

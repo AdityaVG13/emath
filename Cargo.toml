@@ -15,7 +15,6 @@ members = [
   "crates/emath-provider-api",
   "crates/emath-build",
   "crates/emath-lab-core",
-  "crates/emath-evidence",
   "crates/emath-schema",
   "crates/emath-store",
   "crates/emath-cli",
@@ -32,7 +31,6 @@ members = [
   "tests/emath-artifact",
   "tests/emath-build",
   "tests/emath-cli",
-  "tests/emath-evidence",
   "tests/emath-exec-ir",
   "tests/emath-genesis",
   "tests/emath-hir",
@@ -47,7 +45,6 @@ members = [
   "tests/emath-store",
   "tests/emath-syntax",
   "tests/emath-term",
-  "tests/emath-trust-gates",
   "tests/emath-world-ir",
   "tests/emath-wasm",
   "tests/emath-registry",
@@ -82,7 +79,6 @@ emath-artifact = { path = "crates/emath-artifact" }
 emath-provider-api = { path = "crates/emath-provider-api" }
 emath-build = { path = "crates/emath-build" }
 emath-lab-core = { path = "crates/emath-lab-core" }
-emath-evidence = { path = "crates/emath-evidence" }
 emath-hir = { path = "crates/emath-hir" }
 emath-schema = { path = "crates/emath-schema" }
 emath-adapter-dew = { path = "crates/emath-adapter-dew" }

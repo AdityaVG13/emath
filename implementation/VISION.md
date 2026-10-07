@@ -182,9 +182,7 @@ comparison ruleset; `migrate`.
 
 **Today.** Library scaffold, not a shipped product. `emath-lab-core`
 provides experiment manifests, quality gates, promotion policy, and
-the Pareto archive. `emath-evidence` and `emath-checker` provide the
-independent check and the negative-control battery. Feature-gated
-spikes exist elsewhere.
+the Pareto archive. Feature-gated spikes exist elsewhere.
 
 **Next.** A live protection envelope against real host metrics:
 candidate construction, evaluation across worlds, promotion with

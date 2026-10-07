@@ -6,14 +6,5 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
-[dependencies]
-emath-artifact = { workspace = true }
-emath-core = { workspace = true }
-emath-exec-ir = { workspace = true }
-emath-ir = { workspace = true }
-emath-rust-backend = { workspace = true }
-emath-sema = { workspace = true }
-emath-syntax = { workspace = true }
-
 [lints]
 workspace = true

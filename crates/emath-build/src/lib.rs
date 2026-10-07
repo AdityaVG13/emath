@@ -1,51 +1,9 @@
-//! emath build pipeline: `.emath` → check → plan → EMIR → Rust backend →
-//! staged artifact → atomic publish → independent verification.
-//!
-//! `compile_direct_module` keeps the V3 build-script contract: build an
-//! artifact from a spec file into an output directory. `build_text` and
-//! `build_file` expose the full report for hosts and the CLI.
+//! Host helpers for generated Rust crates: a stable Cargo target dir,
+//! write-if-changed emission, and a wall-clock-bounded Cargo run.
 
 #![forbid(unsafe_code)]
 
-pub mod deps;
-pub mod edition;
-pub mod first_cutover;
-pub mod metrics;
-mod probe;
-pub mod publication;
-pub mod script;
-
-pub use deps::{
-    CargoDependency, DepError, DepPlan, DepPolicy, DepRequest, DepSource, RuntimeKind, TargetKind,
-    check_declared, plan_dependencies, requests_for,
-};
-pub use edition::{ManifestEditionError, manifest_edition, parse_edition_field};
-pub use first_cutover::{
-    CutoverError, FIRST_CUTOVER_CONFORMANCE_CASES, FIRST_CUTOVER_IDS, activate_first_cutover,
-    rollback_feature,
-};
-pub use metrics::{BENCHMARK_RECEIPT_SCHEMA, BENCHMARK_RECEIPT_VERSION, MetricsCollector};
-pub use publication::{
-    PublicationError, PublicationEvidence, PublicationMode, authority_status, publish_feature,
-};
-pub use script::{ScriptError, ScriptLock, ScriptReport, locked_build_script};
-
-use emath_artifact::{
-    ARTIFACT_MANIFEST_SCHEMA, ArtifactClass, ArtifactError, ArtifactManifest,
-    EVIDENCE_BUNDLE_SCHEMA, EvidenceBundleRecord, PlanRecord, SOURCE_MAP_SCHEMA, SourceMap,
-    SourceMapEntry, StagedFile, manifest_identity, plan_to_record, publish,
-    required_artifact_paths, stage, verify_artifact, write_artifact_manifest,
-    write_evidence_bundle, write_resolution_plan, write_source_map,
-};
-use emath_core::{Diagnostics, SchemaId, content_id_of_str};
-use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ResolutionPlan};
-use emath_rust_backend::constructor_crate::ConstructorCrateEmission;
-use emath_rust_backend::rust_ir::profiles::CrateProfile;
-use emath_rust_backend::{BackendInput, BackendOutput};
-use emath_sema::session::{CompilerSession, SourcePackage};
-use emath_syntax::install_source_parser;
-use std::collections::BTreeMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 /// Persistent cargo target dir for generated crates (`$CWD/target/emath-cargo/<key>`).
 /// Incremental rustc survives across `emath test` / `--verify` because those
@@ -58,6 +16,7 @@ pub fn generated_crate_target_dir(key: &str) -> PathBuf {
     dir.push(key.replace(['/', ':'], "-"));
     dir
 }
+
 /// Write a generated source or manifest without invalidating unchanged Cargo inputs.
 pub fn write_generated_file(
     path: impl AsRef<Path>,
@@ -71,222 +30,136 @@ pub fn write_generated_file(
     std::fs::write(path, contents)
 }
 
-pub const COMPILER_DESCRIPTOR: &str = concat!("emath-phase1/", env!("CARGO_PKG_VERSION"));
+/// Run a Cargo command under a wall-clock budget, including stdio drain.
+/// Inherited output handles cannot extend the budget after Cargo exits.
+#[cfg(unix)]
+pub fn run_cargo_timed(
+    mut command: std::process::Command,
+    timeout: std::time::Duration,
+) -> Result<std::process::Output, String> {
+    use std::io::{ErrorKind, Read};
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
 
-#[derive(Clone, Debug, Default)]
-pub struct BuildOptions {
-    /// Whether the staged crate is verified with `cargo test` before publish.
-    pub verify_generated_crate: bool,
-    /// Emit a compiled function-spec probe for this entrypoint (see
-    /// `probe::`): a standalone sibling binary with the same `--set`
-    /// contract as `emath eval`. `None` (default) emits no probe.
-    pub bin_entrypoint: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct BuildReport {
-    pub artifact_dir: PathBuf,
-    pub artifact_id: emath_core::ContentId,
-    pub package_id: emath_core::ContentId,
-    pub crate_name: String,
-    pub plan_ids: Vec<String>,
-    pub assumptions: Vec<String>,
-    pub exports: Vec<String>,
-    /// Diagnostic codes when the package is refused (empty on success).
-    pub refusal_codes: Vec<String>,
-    /// Compiled probe binary path when `BuildOptions::bin_entrypoint`
-    /// was set (sibling of the artifact, never inside it).
-    pub probe_binary: Option<PathBuf>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BuildError {
-    ReadFailed(String),
-    AdmittedWithErrors(Vec<String>),
-    Backend(String),
-    VerifyFailed(String),
-    Artifact(ArtifactError),
-    Io(String),
-}
-
-impl std::fmt::Display for BuildError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ReadFailed(detail) => write!(f, "cannot read spec: {detail}"),
-            Self::AdmittedWithErrors(codes) => {
-                write!(f, "admission refused with {}", codes.join(", "))
+    let started = Instant::now();
+    // Only the host endpoints are nonblocking. Socket pairs provide safe,
+    // cancellable byte streams without unsafe fcntl or reader threads that
+    // can outlive the run when descendants retain inherited descriptors.
+    let output_pair = || -> std::io::Result<(UnixStream, Stdio)> {
+        let (host, child) = UnixStream::pair()?;
+        host.set_nonblocking(true)?;
+        Ok((host, Stdio::from(OwnedFd::from(child))))
+    };
+    let (mut stdout_pipe, stdout_stdio) =
+        output_pair().map_err(|error| format!("cannot create stdout: {error}"))?;
+    let (mut stderr_pipe, stderr_stdio) =
+        output_pair().map_err(|error| format!("cannot create stderr: {error}"))?;
+    // Generated crates can live outside the workspace's Cargo configuration.
+    // Bound their default fan-out without overriding an explicit caller choice.
+    for key in ["CARGO_BUILD_JOBS", "RUST_TEST_THREADS"] {
+        if !command.get_envs().any(|(name, _)| name == key) {
+            command.env(key, std::env::var_os(key).unwrap_or_else(|| "1".into()));
+        }
+    }
+    // Stay in the terminal's foreground group so Ctrl-C / SIGTERM reach
+    // cargo and rustc. On timeout, kill cargo's children first (rustc),
+    // then cargo: Child::kill alone leaves the compiler holding
+    // CARGO_TARGET_DIR.
+    let mut child = command
+        .stdout(stdout_stdio)
+        .stderr(stderr_stdio)
+        .stdin(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("cannot spawn cargo: {error}"))?;
+    // Command retains caller-supplied descriptors for reuse. Closing those
+    // copies here is necessary for EOF when the child closes its own copies.
+    drop(command);
+    let mut status = None;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let (mut stdout_done, mut stderr_done) = (false, false);
+    let mut chunk = [0u8; 8192];
+    loop {
+        if status.is_none() {
+            match child.try_wait() {
+                Ok(exit) => status = exit,
+                Err(error) => {
+                    kill_timed_child(&mut child);
+                    let _ = child.wait();
+                    return Err(format!("cannot wait on cargo: {error}"));
+                }
             }
-            Self::Backend(detail) => write!(f, "backend refused: {detail}"),
-            Self::VerifyFailed(detail) => {
-                write!(f, "generated crate verification failed: {detail}")
+        }
+        let mut progress = false;
+        for (pipe, buffer, done) in [
+            (&mut stdout_pipe, &mut stdout, &mut stdout_done),
+            (&mut stderr_pipe, &mut stderr, &mut stderr_done),
+        ] {
+            if *done {
+                continue;
             }
-            Self::Artifact(error) => write!(f, "artifact error: {error}"),
-            Self::Io(detail) => write!(f, "io error: {detail}"),
+            match pipe.read(&mut chunk) {
+                Ok(0) => *done = true,
+                Ok(n) => {
+                    buffer.extend_from_slice(&chunk[..n]);
+                    progress = true;
+                }
+                Err(error)
+                    if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted) => {}
+                Err(_) => *done = true,
+            }
+        }
+        if let Some(status) = status.filter(|_| stdout_done && stderr_done) {
+            return Ok(std::process::Output {
+                status,
+                stdout,
+                stderr,
+            });
+        }
+        if started.elapsed() >= timeout {
+            // Never sweep a reaped pid: it may already belong to an unrelated
+            // process. Open descendants' descriptors are simply closed here.
+            if status.is_none() {
+                kill_timed_child(&mut child);
+                let _ = child.wait();
+            }
+            return Err(format!(
+                "E-RES-120: cargo exceeded the {timeout:?} wall-clock budget"
+            ));
+        }
+        if !progress {
+            std::thread::sleep(
+                (timeout - started.elapsed().min(timeout)).min(Duration::from_millis(5)),
+            );
         }
     }
 }
 
-impl std::error::Error for BuildError {}
+/// Refuse rather than spawn when safe interruptible stdio is unavailable.
+#[cfg(not(unix))]
+pub fn run_cargo_timed(
+    _command: std::process::Command,
+    _timeout: std::time::Duration,
+) -> Result<std::process::Output, String> {
+    Err("bounded process stdio requires Unix socket pairs on this host".into())
+}
 
-impl From<ArtifactError> for BuildError {
-    fn from(value: ArtifactError) -> Self {
-        Self::Artifact(value)
+fn kill_timed_child(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        // try_wait already proved this pid is still our child. Kill rustc
+        // (and other direct children) first; then SIGKILL cargo. A new
+        // process group would orphan the same tree on Ctrl-C.
+        let pid = child.id();
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-P", &pid.to_string()])
+            .status();
+        let _ = child.kill();
     }
-}
-
-/// V3-compatible entry point: build the spec into `output_path`, which
-/// receives `<output_path>/emath/<artifact-id>/...`.
-pub fn compile_direct_module(
-    specification_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
-) -> Result<(), String> {
-    let report = build_file(specification_path, output_path, BuildOptions::default())
-        .map_err(|error| error.to_string())?;
-    if !report.refusal_codes.is_empty() {
-        return Err(format!(
-            "admission refused: {}",
-            report.refusal_codes.join(", ")
-        ));
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
     }
-    Ok(())
-}
-
-/// Full pipeline over a spec file on disk.
-pub fn build_file(
-    specification_path: impl AsRef<Path>,
-    target_dir: impl AsRef<Path>,
-    options: BuildOptions,
-) -> Result<BuildReport, BuildError> {
-    let (source, emission) = prepare_constructor_file(specification_path.as_ref())?;
-    let _ = options;
-    write_constructor_crate(&source.text, target_dir.as_ref(), emission)
-}
-
-fn prepare_constructor_file(
-    path: &Path,
-) -> Result<(SourcePackage, ConstructorCrateEmission), BuildError> {
-    install_source_parser();
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let source = session.load_package(path).map_err(BuildError::ReadFailed)?;
-    let checked = session.check(source.file);
-    let emission = emit_constructor_text(&source.name, &source.text, checked)?;
-    Ok((source, emission))
-}
-
-/// Full pipeline over in-memory text (used by the CLI, tests and hosts).
-pub fn build_text(
-    name: &str,
-    text: &str,
-    target_dir: impl AsRef<Path>,
-    _options: BuildOptions,
-) -> Result<BuildReport, BuildError> {
-    // The session parses `.emath` text, so the source-parser backend must
-    // be installed for every host that builds (CLI, build scripts,
-    // builders). Idempotent.
-    install_source_parser();
-    let target_dir = target_dir.as_ref();
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let checked = session.check_owned(name, text);
-    build_constructor_text(name, text, target_dir, checked)
-}
-
-fn build_constructor_text(
-    name: &str,
-    text: &str,
-    target_dir: &Path,
-    checked: emath_sema::admit::CheckResult,
-) -> Result<BuildReport, BuildError> {
-    let emission = emit_constructor_text(name, text, checked)?;
-    write_constructor_crate(text, target_dir, emission)
-}
-
-fn emit_constructor_text(
-    name: &str,
-    text: &str,
-    checked: emath_sema::admit::CheckResult,
-) -> Result<ConstructorCrateEmission, BuildError> {
-    if checked.diagnostics.has_errors() {
-        let mut codes: Vec<String> = checked
-            .diagnostics
-            .items()
-            .iter()
-            .filter(|item| item.severity == emath_core::Severity::Error)
-            .map(|item| item.code.to_string())
-            .collect();
-        codes.sort();
-        codes.dedup();
-        return Err(BuildError::AdmittedWithErrors(codes));
-    }
-    let module = checked
-        .prepared
-        .ok_or_else(|| BuildError::AdmittedWithErrors(vec!["E-KIND-GONE".into()]))?;
-    emath_rust_backend::constructor_crate::emit_constructor_crate(&module, Path::new(name), text)
-        .map_err(|refusal| match refusal {
-            emath_rust_backend::constructor_crate::ConstructorEmitRefusal::NotConstructor(_) => {
-                BuildError::AdmittedWithErrors(vec!["E-KIND-GONE".into()])
-            }
-            emath_rust_backend::constructor_crate::ConstructorEmitRefusal::ImportsRefused {
-                e_code,
-                ..
-            } => BuildError::AdmittedWithErrors(vec![e_code]),
-        })
-}
-
-fn write_constructor_crate(
-    text: &str,
-    target_dir: &Path,
-    emission: ConstructorCrateEmission,
-) -> Result<BuildReport, BuildError> {
-    for (relative, contents) in emission.files() {
-        let path = target_dir.join(relative);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| {
-                BuildError::Io(format!("cannot create {}: {error}", parent.display()))
-            })?;
-        }
-        write_generated_file(&path, contents.as_bytes())
-            .map_err(|error| BuildError::Io(format!("cannot write {}: {error}", path.display())))?;
-    }
-    let artifact_id = content_id_of_str(&emission.lib);
-    let package_id = content_id_of_str(text);
-    Ok(BuildReport {
-        artifact_dir: target_dir.to_path_buf(),
-        artifact_id,
-        package_id,
-        crate_name: emission.package_name,
-        plan_ids: Vec::new(),
-        assumptions: emission.unresolved,
-        exports: emission.functions,
-        refusal_codes: Vec::new(),
-        probe_binary: None,
-    })
-}
-
-mod package;
-
-pub use package::*;
-
-/// build.rs helpers (`AGENT_BUILD_PROMPT`: host integration) ----------------
-///
-/// Emit `cargo:rerun-if-changed=<path>`; call from a build script.
-pub fn emit_rerun_if_changed(path: impl AsRef<Path>) {
-    println!("cargo:rerun-if-changed={}", path.as_ref().display());
-}
-
-/// Build an artifact into `$OUT_DIR` and print the artifact id for the
-/// host. Returns the full report.
-pub fn build_into_out_dir(
-    spec_path: impl AsRef<Path>,
-    out_dir: impl AsRef<Path>,
-) -> Result<BuildReport, BuildError> {
-    let report = build_file(
-        spec_path,
-        out_dir,
-        BuildOptions {
-            verify_generated_crate: false,
-            ..BuildOptions::default()
-        },
-    )?;
-    println!("cargo:emath-artifact-id={}", report.artifact_id.0);
-    Ok(report)
 }

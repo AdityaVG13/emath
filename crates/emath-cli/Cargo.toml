@@ -16,7 +16,6 @@ emath-core.workspace = true
 emath-artifact = { workspace = true }
 emath-build = { workspace = true }
 emath-lab-core = { workspace = true }
-emath-evidence = { workspace = true }
 emath-exec-ir = { workspace = true }
 emath-rust-backend = { workspace = true }
 emath-ir = { workspace = true }

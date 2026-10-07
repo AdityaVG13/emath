@@ -241,8 +241,7 @@ Artifact *corpus search* (id + kind + path + claim text) over the pinned
 frankensearch engine, spike of the FrankenStack adoption
 Layer: search adapter external to the
 protected set; it may import frankensearch; emath-core / emath-ir /
-emath-plan / emath-artifact / emath-evidence / emath-cli /
-emath-lsp / emath-store / emath-provenance stay Franken-free.
+emath-plan / emath-artifact / emath-cli / emath-store / emath-provenance stay Franken-free.
 
 This is a SPIKE, not a production search service. frankensearch is pinned to
 repository release v1.7.0 (facade v0.3.2), exact commit

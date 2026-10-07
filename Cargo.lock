@@ -784,7 +784,6 @@ version = "0.1.0"
 dependencies = [
  "emath-artifact",
  "emath-core",
- "emath-evidence",
  "emath-ir",
  "emath-test-harness",
 ]
@@ -792,23 +791,12 @@ dependencies = [
 [[package]]
 name = "emath-build"
 version = "0.1.0"
-dependencies = [
- "emath-artifact",
- "emath-core",
- "emath-exec-ir",
- "emath-ir",
- "emath-rust-backend",
- "emath-sema",
- "emath-syntax",
-]
 
 [[package]]
 name = "emath-build-tests"
 version = "0.1.0"
 dependencies = [
- "emath-artifact",
  "emath-build",
- "emath-core",
  "emath-test-harness",
 ]
 
@@ -819,7 +807,6 @@ dependencies = [
  "emath-artifact",
  "emath-build",
  "emath-core",
- "emath-evidence",
  "emath-exec-ir",
  "emath-ir",
  "emath-lab-core",
@@ -850,24 +837,6 @@ name = "emath-core"
 version = "0.1.0"
 dependencies = [
  "unicode-normalization",
-]
-
-[[package]]
-name = "emath-evidence"
-version = "0.1.0"
-dependencies = [
- "emath-artifact",
- "emath-core",
- "emath-ir",
-]
-
-[[package]]
-name = "emath-evidence-tests"
-version = "0.1.0"
-dependencies = [
- "emath-evidence",
- "emath-ir",
- "emath-test-harness",
 ]
 
 [[package]]
@@ -1207,19 +1176,6 @@ dependencies = [
  "emath-ir",
  "emath-sema",
  "emath-syntax",
-]
-
-[[package]]
-name = "emath-trust-gates"
-version = "0.1.0"
-dependencies = [
- "emath-adapter-dew",
- "emath-adapter-rumoca",
- "emath-core",
- "emath-evidence",
- "emath-ir",
- "emath-provider-api",
- "emath-test-harness",
 ]
 
 [[package]]

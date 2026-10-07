@@ -1,6 +1,6 @@
 //! Command dispatch and per-subcommand argument parsers.
 
-use super::{Command, Path, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, build, tooling_cmd, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, language_cmd, EXIT_USAGE, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError};
+use super::{Command, Path, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, build, tooling_cmd, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, language_cmd, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError};
 
 fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>)> {
     match command {
@@ -142,25 +142,7 @@ pub(super) fn run_command(command: Command) -> CliExit {
         Command::Step(request) => execution::step(request),
         Command::Api(request) => language_cmd::api(request),
         Command::Test { path, out, work } => tooling_cmd::test_cmd(&path, &out, work),
-        Command::Verify { dir } => {
-            if dir.is_dir() {
-                tooling_cmd::verify_cmd(&dir)
-            } else {
-                execution::diagnostic(
-                    false,
-                    EXIT_USAGE,
-                    "E-CLI-USAGE",
-                    "`emath verify` takes an artifact directory; read a checkpoint with `emath inspect`",
-                )
-            }
-        }
-        Command::Inspect { dir, json } => {
-            if dir.is_dir() {
-                tooling_cmd::inspect_cmd(&dir, json)
-            } else {
-                execution::inspect(&dir, json)
-            }
-        }
+        Command::Inspect { dir, json } => execution::inspect(&dir, json),
         Command::Diff { a, b, json } => tooling_cmd::diff_cmd(&a, &b, json),
         Command::Doctor { json } => tooling_cmd::doctor_cmd(json),
     }

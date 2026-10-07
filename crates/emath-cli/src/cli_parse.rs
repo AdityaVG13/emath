@@ -1,6 +1,6 @@
 //! CLI entry (`run`), argument parsing, and the command grammar.
 
-use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, BuildRequest, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, language_cmd, parse_check_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_required_path, parse_inspect_request, parse_diff_request, no_extra_positionals};
+use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, BuildRequest, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, language_cmd, parse_check_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_inspect_request, parse_diff_request, no_extra_positionals};
 
 /// Entry used by main; keeps the CLI testable.
 pub fn run(args: &[String]) -> CliExit {
@@ -110,9 +110,6 @@ pub(super) enum Command {
         path: PathBuf,
         out: PathBuf,
         work: Option<u64>,
-    },
-    Verify {
-        dir: PathBuf,
     },
     Inspect {
         dir: PathBuf,
@@ -425,30 +422,17 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
             parse_path_out_request,
         )
         .map(|(path, out, work)| Command::Test { path, out, work }),
-        "verify" => match parse_required_path(rest) {
-            Some(dir) => Ok(Command::Verify { dir }),
-            None => Err(ParseKnownError::Pedagogic(
-                PedagogicError::new(
-                    "E-CLI-USAGE",
-                    "missing required argument `<artifact-dir>` for `emath verify`",
-                    "positional argument 1 (expected path to artifact directory)",
-                    "emath verify target/emath",
-                )
-                .with_command("verify")
-                .with_usage("emath verify <artifact-dir>"),
-            )),
-        },
         "inspect" => match parse_inspect_request(rest) {
             Some((dir, json)) => Ok(Command::Inspect { dir, json }),
             None => Err(ParseKnownError::Pedagogic(
                 PedagogicError::new(
                     "E-CLI-USAGE",
-                    "missing required argument `<artifact-dir>` for `emath inspect`",
-                    "positional argument 1 (expected path to artifact directory or checkpoint.json)",
-                    "emath inspect target/emath [--json]",
+                    "missing required argument `<checkpoint.json>` for `emath inspect`",
+                    "positional argument 1 (expected path to checkpoint.json)",
+                    "emath inspect checkpoint.json [--json]",
                 )
                 .with_command("inspect")
-                .with_usage("emath inspect <artifact-dir> [--json]"),
+                .with_usage("emath inspect <checkpoint.json> [--json]"),
             )),
         },
         "diff" => if let Some((a, b, json)) = parse_diff_request(rest) { Ok(Command::Diff { a, b, json }) } else {

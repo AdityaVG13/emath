@@ -6,7 +6,7 @@ planner, lab, genesis, and `goal_met` text is not admission.
 ## Purpose and layer
 
 - Host entry is `run(&[String]) -> CliExit`.
-- Live commands: `check`, `run`, `step`, `inspect`, `verify`, `test`,
+- Live commands: `check`, `run`, `step`, `inspect`, `test`,
   `build`, `api`, plus `new`, `fmt`, `migrate`, `help`, `version`,
   `doctor`, `diff`.
 - `emath simulate`, `plan`, `planner`, `eval`, `sweep`, `genesis`,
@@ -107,8 +107,6 @@ shared-setup, unchanged-output and compatibility regression.
 ## No-claim
 
 - Completing a run is not a theorem.
-- `verify` checks published artifact files against their manifests; it
-  does not re-run or prove anything.
 - Reusing one checked module is not an atomic filesystem snapshot of its whole
   import graph. Serialized checkpoints capture the graph that module resolved;
   they are not authenticated or guaranteed to come from one filesystem instant.

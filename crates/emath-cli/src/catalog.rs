@@ -23,7 +23,6 @@ pub const COMMANDS: &[&str] = &[
     "experiment",
     "step",
     "test",
-    "verify",
     "inspect",
     "diff",
     "doctor",
@@ -132,42 +131,9 @@ pub fn is_known_command(command: &str) -> bool {
 pub fn command_usage(command: &str) -> Option<&'static str> {
     let resolved = resolve_alias(command).unwrap_or(command);
     Some(match resolved {
-        "search" => "search <file.emath>  (refuses: not a constructor command; use `emath run`)",
         "api" => "api [--search text] [--offset N] [--limit N] [--source file.emath] [--json]",
         "check" => "check <file.emath|-> [--verify-data] [--json]",
-        "plan" => "plan <file.emath> [--json]",
-        "planner" => "planner <file.emath> [--json] [--parametric]",
         "build" => "build <file.emath> [--out <dir>] [--dry-run] [--worlds w1,w2,...] [--json]",
-        "parse" => "parse --forest <file.emath> [--out <dir>]",
-        "expand" => "expand <file.emath> [--json]",
-        "solve" => "solve --check <file.emath> [--json] [--apply <label>]",
-        "exactness" => "exactness <file.emath> [--json] [--raise units]",
-        "freeze" => "freeze <file.emath> [--out <file>] [--json]",
-        "why" => "why <file.emath> inference:N [--json]",
-        "assumptions" => "assumptions <file.emath> [--json]",
-        "signature" => "signature <file.emath> [--out <dir>]",
-        "genesis" => "genesis <file.emath> --out <dir>",
-        "eval" => {
-            "eval <file.emath> [--world <name>] [--function NAME] [--set name=value] [--json]"
-        }
-        "sweep" => {
-            "sweep <file.emath> --function NAME --grid name=v1,v2,... [--expect name=value] [--out <file>] [--json]"
-        }
-        "simulate" => {
-            "simulate <file.emath>  (refuses: not a constructor; use `emath run`)"
-        }
-        "fit" => "fit <file.emath> [--json]",
-        "repl" => "repl <file.emath>",
-        "compile" => "compile --parametric <file.emath> --out <dir> [--world LABEL]",
-        "world" => "world show WORLD_ID --dir <dir>",
-        "portfolio" => "portfolio show PORTFOLIO_ID --dir <dir>",
-        "meaning" => "meaning list|set|unset|explain",
-        "import" => "import modelica <file.mo> [--json]",
-        "artifact" => "artifact check|battery <dir>",
-        "architecture" => "architecture [--json]",
-        "coverage" => "coverage [--emit json] [--check <ledger-file>]",
-        "web" => "web [--port N] [--no-open] [--dist PATH]",
-        "serve" => "serve [--port N] [--no-open] [--dist PATH]",
         "new" => "new <name> [--out <dir>] [--dry-run] [--force] [--json]",
         "fmt" => "fmt <file.emath|->",
         "migrate" => {
@@ -189,16 +155,10 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
             "step <checkpoint.json> [--work N] [--out dir] [--json]"
         }
         "test" => "test <file.emath> [--work N] [--out <dir>]",
-        "bench" => "bench <file.emath>",
-        "verify" => "verify <artifact-dir>",
-        "inspect" => "inspect <artifact-dir-or-checkpoint.json> [--json]",
+        "inspect" => "inspect <checkpoint.json> [--json]",
         "diff" => "diff <a.emath> <b.emath> [--json]",
         "doctor" => "doctor [--json]",
         "catalog" => "catalog [--json]",
-        "vendor" => "vendor --out <dir>",
-        "provider" => "provider list|inspect <id>|test <id> [--json]",
-        "fork" => "fork status|sync [--dry-run] [--json]",
-        "agent" => "agent check|plan|build|triage|propose <file> [--out <dir>]",
         "help" => "help [<command>]",
         "version" | "--version" | "-V" => "version",
         "capabilities" => "capabilities [--json]",
@@ -220,62 +180,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
         "check" => {
             "parse + admit, no codegen; `-` reads source from stdin (pipelines); `--verify-data` re-hashes declared sha256 provenance files (drift = E-OBS-HASH); `--json` emits codes and admission"
         }
-        "search" => {
-            "refuses: compiled candidate search is not a constructor command. Write an ordinary `emath function` and `emath run`"
-        }
-        "plan" => {
-            "refuses: there is no `goals:` layer. Write an ordinary `emath function` or `emath query` and `emath run`"
-        }
-        "planner" => {
-            "refuses: the provider planner is not a constructor command. Write an ordinary function or query and `emath run`"
-        }
         "build" => "emit fully lowered runnable Rust for an admitted constructor function",
-        "parse" => "refuses: not a constructor command; parse by writing `emath check`",
-        "expand" => {
-            "refuses: not a constructor command. Write an ordinary `emath function` and `emath run`"
-        }
-        "solve" => {
-            "refuses: `solve` is not a constructor. Write an ordinary `emath function` or `emath query` and `emath run`"
-        }
-        "exactness" => {
-            "refuses: not a constructor command. Exactness is a receipt field on `emath run --json`"
-        }
-        "freeze" => {
-            "refuses: not a constructor command. Use `emath run`"
-        }
-        "why" => "refuses: not a constructor command. Use `emath check`",
-        "assumptions" => "refuses: not a constructor command. Use `emath check`",
-        "signature" => "refuses: not a constructor command. Use `emath check`",
-        "genesis" => {
-            "refuses: genesis is not a constructor command. Write `emath object` / `emath function` / `emath query` and `emath run`"
-        }
-        "eval" => {
-            "refuses: `eval` is not a constructor command. Use `emath run`"
-        }
-        "simulate" => {
-            "refuses: `emath model` is not a core kind. Write an ordinary `emath function` and use `emath run`"
-        }
-        "fit" => {
-            "refuses: `fit` is not a constructor. Write an ordinary `emath function` or `emath query`"
-        }
-        "repl" => "refuses: not a constructor command. Use `emath run`",
-        "sweep" => {
-            "refuses: parameter sweep is not a constructor command. Write an ordinary function and `emath run`"
-        }
-        "compile" => {
-            "refuses: not a constructor command. Use `emath build`"
-        }
-        "world" => "refuses: not a constructor command. Worlds are execution configurations",
-        "portfolio" => "refuses: not a constructor command. Use `emath run`",
-        "meaning" => "refuses: not a constructor command. Use `emath check`",
-        "import" => "refuses: not a constructor command. Write ordinary constructor source",
-        "artifact" => "refuses: not a constructor command. Use `emath verify`",
-        "architecture" => "refuses: not a constructor command. See `emath help`",
-        "coverage" => {
-            "refuses: not a constructor command. See `language/CAPABILITY.md`"
-        }
-        "web" => "refuses: Stage 2 playground is not the constructor CLI. Use `emath run`",
-        "serve" => "refuses: not a constructor command. Use `emath run`",
         "new" => "deterministic project scaffold; refuses overwrite (E-TLT-011) unless --force is specified; --dry-run simulates actions",
         "fmt" => {
             "canonical-form check; `-` reads source from stdin"
@@ -311,19 +216,11 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
             "resume a constructor-layer continuation; incompatible checkpoints refuse"
         }
         "test" => "run authored `tests:` on constructor source",
-        "bench" => "refuses: not a constructor command",
-        "verify" => {
-            "check published artifacts under `<dir>/emath/` against their manifests"
-        }
         "inspect" => {
             "read a saved constructor checkpoint without executing"
         }
         "diff" => "content-id fingerprint comparison of parse-admitted sources",
         "doctor" => "toolchain presence: rustc, cargo, rustfmt, clippy",
-        "vendor" => "refuses: not a constructor command",
-        "provider" => "refuses: not a constructor command. Providers are not language identities",
-        "fork" => "refuses: not a constructor command",
-        "agent" => "refuses: not a constructor command. Use `emath check` / `emath run`",
         "help" => "this catalog; `emath help <command>` prints one command",
         "version" | "--version" | "-V" => "print the emath-cli crate version",
         "capabilities" => "machine contract: commands, flags, exit codes, env vars",
@@ -393,16 +290,6 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--help" | "-h" => "print help information",
         "--verify-data" => "re-hash declared sha256 provenance data files",
         "--out" | "-o" => "output directory or file path",
-        "--parametric" => "lift missing operators during planning",
-        "--method" => "ignored on simulate; write an ordinary stepper function and use `emath run`",
-        "--dt" => "ignored on simulate; not a constructor flag",
-        "--t0" => "ignored on simulate; not a constructor flag",
-        "--t1" => "ignored on simulate; not a constructor flag",
-        "--model" => "ignored: `emath model` is not a core kind",
-        "--atol" => "absolute error tolerance",
-        "--rtol" => "relative error tolerance",
-        "--dt-max" => "maximum allowed adaptive step size",
-        "--event" => "event trigger specification (name=value)",
         "--set" => "parameter override (name=value); value may be a scalar or [v0, v1, …]",
         "--set-file" => "JSON object of name to scalar or array; --set overrides the same name",
         "--format" => "export format",
@@ -420,24 +307,11 @@ pub fn flag_description(flag: &str) -> &'static str {
         "--color" => "control ANSI color output: auto, always, never",
         "--no-color" => "suppress ANSI color output (conforms to NO_COLOR)",
         "--function" => "function name to execute or search",
-        "--candidate" => "candidate function name",
         "--work" => "maximum work units to execute",
         "--guide" | "guide" => "handbook guide section",
-        "--port" => "HTTP port for localhost server",
-        "--no-open" => "do not automatically open web browser",
-        "--dist" => "path to custom web distribution assets",
-        "--emit" => "emission format",
         "--grid" => "parameter grid (name=v1,v2,...; compare also takes name=LO..HI[/N])",
-        "--expect" => "expected outcome specification",
-        "--apply" => "apply labeled completion to goal",
-        "--raise" => "raise meaning dimension",
-        "--forest" => "bounded parse forest output",
         "--world" => "target world label",
         "--worlds" => "carrier worlds quote.worlds() returns (comma-separated; default every world)",
-        "--dir" => "directory path",
-        "--hole" => "semantic hole descriptor",
-        "--declaration" => "declaration name",
-        "--cap" => "capability identifier",
         "--dry-run" => "dry-run without modifying state",
         "--force" => "force overwrite of existing project directories or files",
         "--state" => "experiment state directory (checkpoint and builds); reuse it to resume",
@@ -455,9 +329,6 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
             "emath check program.emath",
             "emath check - < program.emath",
             "emath check program.emath --json",
-        ],
-        "plan" | "planner" | "simulate" | "search" => &[
-            "emath run program.emath --json",
         ],
         "build" => &[
             "emath build program.emath",
@@ -509,9 +380,6 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
             "emath test program.emath",
             "emath test program.emath --work 5000000",
         ],
-        "verify" => &[
-            "emath verify target/emath",
-        ],
         "inspect" => &[
             "emath inspect checkpoint.json --json",
         ],
@@ -547,18 +415,6 @@ pub fn command_examples(command: &str) -> &'static [&'static str] {
             "emath help check",
             "emath check --help",
             "emath help --json",
-        ],
-        "web" | "serve" => &[
-            "emath web",
-            "emath web --port 8080 --no-open",
-        ],
-        "architecture" => &[
-            "emath architecture",
-            "emath architecture --json",
-        ],
-        "coverage" => &[
-            "emath coverage",
-            "emath coverage --emit json",
         ],
         _ => &[],
     }
@@ -760,7 +616,6 @@ Rules
 pub fn flags_for(command: &str) -> &'static [&'static str] {
     let resolved = resolve_alias(command).unwrap_or(command);
     match resolved {
-        "search" => &["--function", "--candidate", "--set", "--out", "-o", "--json", "--help", "-h"],
         "api" => &[
             "--search", "--offset", "--limit", "--source", "--json", "--help", "-h",
         ],
@@ -815,52 +670,12 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         ],
         "experiment" => &["--state", "--audit-ledger", "--stop-after-pairs", "--help", "-h"],
         "explain" => &["--json", "--provenance", "--show-defaults", "--list-codes", "--help", "-h"],
-        "exactness" => &["--json", "--help", "-h", "--raise"],
         "check" => &["--json", "--verify-data", "--help", "-h"],
-        "plan" | "architecture" | "inspect" | "diff" | "doctor" | "capabilities" | "catalog" | "triage" | "next" | "import"
-        | "provider" | "expand" | "why" | "assumptions" => &["--json", "--help", "-h"],
-        "coverage" => &["--emit", "--check", "--help", "-h"],
-        "solve" => &["--check", "--json", "--apply", "--help", "-h"],
-        "freeze" => &["--json", "--out", "-o", "--help", "-h"],
-        "planner" => &["--json", "--parametric", "--help", "-h"],
-        "fit" => &["--json", "--help", "-h"],
+        "inspect" | "diff" | "doctor" | "capabilities" | "catalog" | "triage" | "next" => &["--json", "--help", "-h"],
         "build" => &["--json", "--out", "-o", "--dry-run", "--worlds", "--help", "-h"],
         "new" => &["--out", "-o", "--dry-run", "--force", "--json", "--help", "-h"],
         "test" => &["--work", "--out", "-o", "--help", "-h"],
-        "vendor" | "agent" | "signature" | "genesis" => {
-            &["--out", "-o", "--help", "-h"]
-        }
-        "parse" => &["--forest", "--out", "-o", "--help", "-h"],
-        "eval" => &["--world", "--function", "--set", "--json", "--help", "-h"],
-        "sweep" => &[
-            "--function",
-            "--grid",
-            "--expect",
-            "--out",
-            "-o",
-            "--json",
-            "--help",
-            "-h",
-        ],
-        "simulate" => &[
-            "--model", "--dt", "--t0", "--t1", "--method", "--atol", "--rtol", "--dt-max",
-            "--event", "--set", "--json", "--help", "-h",
-        ],
-        "compile" => &["--parametric", "--out", "-o", "--world", "--help", "-h"],
-        "world" | "portfolio" => &["--dir", "--out", "-o", "--help", "-h"],
-        "meaning" => &[
-            "--dir",
-            "--world",
-            "--hole",
-            "--declaration",
-            "--cap",
-            "--json",
-            "--help",
-            "-h",
-        ],
-        "fork" => &["--dry-run", "--json", "--help", "-h"],
         "robot-docs" => &["--guide", "guide", "--json", "--help", "-h"],
-        "web" | "serve" => &["--port", "--no-open", "--dist", "--help", "-h"],
         "fmt" => &["--json", "--help", "-h"],
         "migrate" => &[
             "--fix",
@@ -881,22 +696,7 @@ fn flag_takes_value(flag: &str) -> bool {
         flag,
         "--out"
             | "-o"
-            | "--dir"
             | "--world"
-            | "--port"
-            | "--dist"
-            | "--hole"
-            | "--declaration"
-            | "--cap"
-            | "--dt"
-            | "--t0"
-            | "--t1"
-            | "--method"
-            | "--model"
-            | "--atol"
-            | "--rtol"
-            | "--dt-max"
-            | "--event"
             | "--set"
             | "--set-file"
             | "--function"
@@ -906,9 +706,6 @@ fn flag_takes_value(flag: &str) -> bool {
             | "--limit"
             | "--source"
             | "--grid"
-            | "--expect"
-            | "--raise"
-            | "--apply"
             | "--receipt"
             | "--target"
             | "--budget"
