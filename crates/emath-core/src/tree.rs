@@ -103,12 +103,6 @@ impl Declaration {
             _ => None,
         })
     }
-
-    /// Owned sections (consumed by admission and goal elaboration).
-    #[must_use]
-    pub fn sections_vec(&self) -> Vec<Section> {
-        self.sections().cloned().collect()
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -11,12 +11,10 @@ pub mod id;
 mod json;
 pub mod limits;
 pub mod parse;
-mod sigfigs;
 pub mod source;
 pub mod span;
 mod statistics;
 mod stochastic;
-pub mod text;
 pub mod tree;
 mod units;
 mod version;
@@ -34,17 +32,12 @@ pub use id::{
 };
 pub use json::{json_escape, json_escape_into, json_quote, json_quote_into, JsonObject, JsonWriter};
 pub use parse::{register_source_parser, source_parser, SourceParser};
-pub use sigfigs::{
-    count_sig_figs, round_to_sig_figs, FormatSpec, FormattedQuantity, PrecisionLedger,
-    PrecisionWarning, E_SF_MIXED_KINDS, E_SF_UNDER_REPORT, E_UNIT_FMT,
-};
 pub use source::{SourceFile, SourceStore};
 pub use span::Span;
 
 /// Labeled finite-sample estimate: value plus method and sample size.
 pub use statistics::Estimate;
 pub use stochastic::{local_stream_seed, Seed, StreamPath};
-pub use text::normalize_nfc;
 pub use units::{seed_table, Quantity, QuantityKind, UnitSpec, UnitTable};
 pub use version::{
     DeprecationStage, Edition, EditionError, EMATH_CANON_ENCODING_VERSION, EMATH_GRAMMAR_VERSION,

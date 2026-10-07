@@ -407,11 +407,3 @@ impl FiniteLawChecker {
     }
 }
 
-/// Convenience: runs the finite checker.
-pub fn check_world(
-    candidate: WorldId,
-    table: &FittedTable,
-    obligations: &[WorldObligation],
-) -> Result<WorldCheckReport, CheckerError> {
-    FiniteLawChecker.check(candidate, table, obligations)
-}

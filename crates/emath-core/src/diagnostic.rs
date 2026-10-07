@@ -48,34 +48,6 @@ impl Pedagogy {
             library_link: Some(library_link.into()),
         }
     }
-
-    /// Flatten for CLI `--help` style output.
-    #[must_use]
-    pub fn as_help_text(&self) -> String {
-        let mut lines = vec![
-            format!("understood: {}", self.understood),
-            format!("unknown: {}", self.unknown),
-            format!("missing: {}", self.unknown),
-            format!("why: {}", self.why),
-            format!("smallest fix: {}", self.smallest_repair),
-        ];
-        if !self.alternatives.is_empty() {
-            lines.push(format!("alternatives: {}", self.alternatives.join("; ")));
-        }
-        if let Some(example) = &self.example {
-            lines.push(format!("example: {example}"));
-        }
-        if let Some(deeper) = &self.deeper_concept {
-            lines.push(format!("deeper: {deeper}"));
-        }
-        if let Some(authority) = &self.authority_consequence {
-            lines.push(format!("authority: {authority}"));
-        }
-        if let Some(link) = &self.library_link {
-            lines.push(format!("library: {link}"));
-        }
-        lines.join("\n")
-    }
 }
 
 /// One diagnostic. `code` is a stable identifier such as `E-TYPE-002`; codes
@@ -132,21 +104,8 @@ impl Diagnostic {
     }
 
     #[must_use]
-    pub fn with_note(mut self, span: Span, note: impl Into<String>) -> Self {
-        self.related.push((span, note.into()));
-        self
-    }
-
-    #[must_use]
     pub fn with_help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
-        self
-    }
-
-    #[must_use]
-    pub fn with_pedagogy(mut self, pedagogy: Pedagogy) -> Self {
-        self.help = Some(pedagogy.as_help_text());
-        self.pedagogy = Some(pedagogy);
         self
     }
 }
@@ -180,11 +139,6 @@ impl Diagnostics {
         }
     }
 
-    pub fn set_max(&mut self, max: usize) {
-        self.max = max;
-        self.items.truncate(max);
-    }
-
     pub fn push(&mut self, diagnostic: Diagnostic) {
         if self.items.len() < self.max {
             self.items.push(diagnostic);
@@ -200,22 +154,6 @@ impl Diagnostics {
 
     pub fn note(&mut self, code: &'static str, message: impl Into<String>, primary: Span) {
         self.push(Diagnostic::note(code, message, primary));
-    }
-
-    /// Attach pedagogy (`understood` / missing / smallest fix / library) to
-    /// the most recently pushed diagnostic. No-op if the buffer is empty.
-    pub fn attach_help(&mut self, help: impl Into<String>) {
-        if let Some(item) = self.items.last_mut() {
-            item.help = Some(help.into());
-        }
-    }
-
-    /// Attach structured teacher layers to the most recent diagnostic.
-    pub fn attach_pedagogy(&mut self, pedagogy: Pedagogy) {
-        if let Some(item) = self.items.last_mut() {
-            item.help = Some(pedagogy.as_help_text());
-            item.pedagogy = Some(pedagogy);
-        }
     }
 
     pub fn extend_from(&mut self, other: &Diagnostics) {

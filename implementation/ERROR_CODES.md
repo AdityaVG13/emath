@@ -6,7 +6,7 @@
 | `E-PKG-*` | package/lock | missing dependency, checksum mismatch, experimental without capability (E-PKG-064), unknown capability key (E-PKG-065) |
 | `E-NAME-*` | names/visibility | ambiguous import, private access |
 | `E-KIND-*` | custom kind | missing section, recursive expansion |
-| `E-CELL-*` | capability cells | unknown class token (E-CELL-001), missing schema version (E-CELL-002), policy-refused identity mutation (E-CELL-003), arity over bound 64 (E-CELL-004), namespace-less cell name (E-CELL-005), pure cell without explicit numeric policy / non-finite logit (E-CELL-006), missing required closure projection (E-CELL-007), docs drifted from cell ID (E-CELL-008) |
+| `E-CELL-*` | capability cells | unknown class token (E-CELL-001), missing schema version (E-CELL-002), policy-refused identity mutation (E-CELL-003), arity over bound 64 (E-CELL-004), namespace-less cell name (E-CELL-005), pure cell without explicit numeric policy / non-finite logit (E-CELL-006) |
 | `E-SEC-*` | sections | section outside the current subset |
 | `E-TYPE-*` | type/refinement | mismatch, unsatisfied bound |
 | `E-UNIT-*` | units | dimensional mismatch, affine misuse |
@@ -15,7 +15,6 @@
 | `E-NOTATION-*` | notation declarations | glyph not lexable as one identifier (E-NOTATION-GLYPH), reserved core glyph (E-NOTATION-RESERVED), ambiguous glyph→target (E-NOTATION-AMBIG), precedence below the custom floor (E-NOTATION-PRECEDENCE) |
 | `E-NUM-*` | numeric models | unknown model, precision/error-limit, silent Real map |
 | `E-GOAL-*` | requests/planning | no eligible plan, weakened requirement |
-| `E-PROV-*` | conversion contracts | bit-identical primitive (410), affine unit (411), sparse index (412) |
 | `E-CODEGEN-*` | backend/artifact | unsupported lowering, manifest mismatch |
 | `E-RES-*` | resources | budget, memory, cancellation |
 | `E-HOST-*` | host/lab | ABI mismatch (001), invalid experiment manifest (003), insufficient evidence (006), incomparable experiment (008), self-comparison refused (016) |
@@ -81,7 +80,7 @@ Session (`crates/emath-sema/src/session.rs`):
   (empty, comment-only, or whitespace-only). Refused instead of a
   vacuous admit: `eval`/`simulate` already refuse empty source, and
   a one-error-one-OK result is a hard failure.
-- `E-SYN-120`: `check`/`plan`/`parse_text` refuse when no source-parser
+- `E-SYN-120`: `check`/`plan` refuse when no source-parser
   backend is installed: a host must wire
   `emath_syntax::install_source_parser` once per process (CLI and LSP
   do this at startup). The refusal is typed; never a silent empty parse.
@@ -346,19 +345,6 @@ Capability cells (`crates/emath-ir/src/capability.rs`, schema
 - `E-CELL-006`: pure-cell evaluation without the required explicit
   numeric policy, or a non-finite logit under the strict-f64 finite
   policy (`std.tensor.softmax` reference semantics).
-- `E-CELL-007`: a required closure projection is missing for a
-  capability cell; missing required projections block stable
-  (projection planner, fjxh.4).
-- `E-CELL-008`: docs are not bound to the cell's current identity
-  (`CellId`); docs cannot drift from the cell identity.
-- `E-CELL-009`: a biform cell is missing one required side's evidence
-  object; a missing side is never treated as proved by the algorithm
-  side.
-- `E-CELL-010`: a biform authority escalation: the supplying authority
-  cannot attest the claimed side (algorithm tests, benchmarks, or
-  provider receipts never raise spec authority).
-- `E-CELL-011`: one evidence object is claimed for both sides of a
-  biform cell (spec and algorithm evidence must be distinct).
 
 ### Symbolic algebra (`crates/emath-ir`, `crates/emath-sema`)
 
@@ -390,18 +376,9 @@ Capability cells (`crates/emath-ir/src/capability.rs`, schema
   (declared: `experimental-syntax`); the key is refused instead of
   being silently dropped.
 
-### Conversion contracts (`crates/emath-ir/src/contracts.rs`)
-
-- `E-PROV-410`: bit-identical primitive conversion contract
-  (float64/i64).
-- `E-PROV-411`: value-conserving affine unit conversion contract (degC
-  ↔ kelvin).
-- `E-PROV-412`: index-conserving sparse matrix conversion (csc-matrix).
-
 ### Shapes (`crates/emath-ir`)
 
 - `E-SHAPE-001`: matrix product requires rank-2 operands.
-- `E-SHAPE-002`: inner extents differ.
 - `E-SHAPE-003`: slice bounds invalid (start exceeds end).
 - `E-SHAPE-004`: declared shape is not well-formed (empty tensor rank,
   zero extent, or `Zero` symbolic extent).
@@ -518,13 +495,14 @@ These codes are no longer emitted. Their crates or lanes were removed, or
 the refusal was folded into another code. A retired code is never reissued.
 
 - `E-CAT`: 001, 002, 003, 004, 005, 006, 007
+- `E-CELL`: 007, 008, 009, 010, 011
 - `E-CODEGEN`: 005, 006, 007, 008, 009, 010, 012, 013, 053
 - `E-CSV`: 001, 002, 003, 004, 005, 006, 007, 008, 009
 - `E-CTOR`: 030, 031, 032, 033, 034, 035, 036, 037, 038, 039
 - `E-EINSUM`: 001, 002
-- `E-EV`: 140
 - `E-EVAL`: 001, 002, 003, 004, 005, 006, 007, 008
 - `E-EVID`: 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 201, 301, 302, 401, 402, 403, 404, 405, 501, 502, 503, 504, 505, 506, 507, 601, 602, 603, 604, 605, 606
+- `E-EV`: 140
 - `E-FIT`: 000
 - `E-GEN`: 080, 081, 082, 083, 084, 090, 091, 092, 093, 094, 095, 096
 - `E-GOAL`: 201
@@ -542,17 +520,17 @@ the refusal was folded into another code. A retired code is never reissued.
 - `E-PACK`: 001, 002, 003, 004, 005
 - `E-PKG`: 020
 - `E-PLG`: 001, 002, 003, 004, 005
-- `E-PROV`: 001, 002, 030, 031, 033, 210, 220, 221, 222, 223, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 300, 310, 401, 402, 501, 502, 503, 510, 511, 512, 513, 514, 515, 516, 517, 518, 521, 522, 523, 524, 525
 - `E-PROVIDER`: 001, 002, 003
+- `E-PROV`: 001, 002, 030, 031, 033, 210, 220, 221, 222, 223, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 300, 310, 401, 402, 410, 411, 412, 501, 502, 503, 510, 511, 512, 513, 514, 515, 516, 517, 518, 521, 522, 523, 524, 525
 - `E-RAT`: 002
 - `E-REG`: 020, 021, 022, 023, 024, 030, 031
 - `E-RES`: 100, 110, 111
 - `E-SCHEMA`: 001
 - `E-SHAKE`: 001, 002
-- `E-SHAPE`: 005, 006
+- `E-SHAPE`: 002, 005, 006
 - `E-STD`: 001, 002, 003
-- `E-SYN`: 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 155, 210, 211
 - `E-SYNTH`: 001, 002
+- `E-SYN`: 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 155, 210, 211
 - `E-TLT`: 007, 013, 016
 - `E-TYPE`: 011, 101, 102, 103
 - `E-UNIT`: 001, 103
@@ -565,7 +543,7 @@ regenerated as the registry changes. The workspace test
 `tests/emath-cli/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **154 unique codes** from 285 rust files.
+Emissions: **145 unique codes** from 278 rust files.
 Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |
@@ -602,11 +580,6 @@ Not yet documented at generation time: **0**.
 | `E-CELL-004` | crates/emath-ir/src/capability/model.rs | `E-CELL-004` |
 | `E-CELL-005` | crates/emath-ir/src/capability/model.rs | `E-CELL-005`<br>`capability cell name `{name}` is empty or has no namespace path (E-CELL-005)` |
 | `E-CELL-006` | crates/emath-exec-ir/src/interp/value.rs<br>crates/emath-exec-ir/src/term_compile/types.rs<br>crates/emath-ir/src/capability/model.rs | `E-CELL-006` |
-| `E-CELL-007` | crates/emath-ir/src/capability/biform.rs<br>crates/emath-ir/src/capability/projection.rs | `E-CELL-007` |
-| `E-CELL-008` | crates/emath-ir/src/capability/projection.rs | `E-CELL-008` |
-| `E-CELL-009` | crates/emath-ir/src/capability/biform.rs | `E-CELL-009` |
-| `E-CELL-010` | crates/emath-ir/src/capability/biform.rs | `E-CELL-010` |
-| `E-CELL-011` | crates/emath-ir/src/capability/biform.rs | `E-CELL-011` |
 | `E-CODEGEN-002` | crates/emath-rust-backend/src/rust_ir/profiles.rs | `E-CODEGEN-002` |
 | `E-CODEGEN-003` | crates/emath-rust-backend/src/rust_ir/profiles.rs | `library`<br>`E-CODEGEN-003` |
 | `E-CODEGEN-004` | crates/emath-rust-backend/src/rust_ir/profiles.rs<br>crates/emath-rust-backend/src/rust_ir/render.rs | `E-CODEGEN-004` |
@@ -634,7 +607,7 @@ Not yet documented at generation time: **0**.
 | `E-KIND-011` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-KIND-011`<br>`kind `{}` requires section `{name}`` |
 | `E-LAW-001` | crates/emath-cli/src/cli_parse.rs<br>crates/emath-cli/src/diagnostics.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs | `positional argument 1 (expected `.emath` file or diagnostic code such as `E-LAW-001`)`<br>`emath explain <file.emath> [<symbol>] or emath explain E-LAW-001 [--json]` |
 | `E-MEANING-001` | crates/emath-sema/src/admit/sections_meta.rs | `E-MEANING-001` |
-| `E-NAME-020` | crates/emath-exec-ir/src/constructor_layer/call.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-NAME-020` |
+| `E-NAME-020` | crates/emath-exec-ir/src/constructor_layer/call.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-NAME-020` |
 | `E-NAME-022` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/constructor_layer/scope.rs<br>crates/emath-exec-ir/src/constructor_layer/setup.rs<br>crates/emath-sema/src/admit/sections_meta.rs<br>crates/emath-sema/src/session.rs | `E-NAME-022`<br>`duplicate declaration name `{}`` |
 | `E-NAME-023` | crates/emath-sema/src/admit/sections_meta.rs | `E-NAME-023` |
 | `E-NAME-024` | crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/sections_meta.rs | `E-NAME-024` |
@@ -650,16 +623,12 @@ Not yet documented at generation time: **0**.
 | `E-PKG-081` | crates/emath-cli/src/cli_json.rs<br>crates/emath-cli/src/compare_cmd.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-sema/src/admit/sections_meta.rs | `E-PKG-081`<br>`E-PKG-081 checked source has no constructor module` |
 | `E-PROB-001` | crates/emath-rt/src/probability.rs | `E-PROB-001` |
 | `E-PROB-002` | crates/emath-rt/src/probability.rs | `E-PROB-002` |
-| `E-PROV-410` | crates/emath-ir/src/contracts.rs | `E-PROV-410` |
-| `E-PROV-411` | crates/emath-ir/src/contracts.rs | `E-PROV-411` |
-| `E-PROV-412` | crates/emath-ir/src/contracts.rs | `E-PROV-412` |
 | `E-RAT-001` | crates/emath-rt/src/body/exact.rs | `E-RAT-001: denominator is zero`<br>`E-RAT-001: noncanonical rational` |
 | `E-RES-120` | crates/emath-build/src/lib.rs<br>crates/emath-tui/src/experiment/mod.rs | `E-RES-120: cargo exceeded the {timeout:?} wall-clock budget`<br>`E-RES-120` |
 | `E-SEC-101` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs<br>crates/emath-sema/src/admit/declaration/setup.rs | `E-SEC-101`<br>`parameters` |
 | `E-SEC-130` | crates/emath-sema/src/admit/declaration/setup.rs | `inputs`<br>`E-SEC-130` |
 | `E-SEC-133` | crates/emath-cli/src/cli_dispatch.rs<br>crates/emath-sema/src/session/requests.rs |  |
-| `E-SHAPE-001` | crates/emath-ir/src/shapes.rs | `E-SHAPE-001` |
-| `E-SHAPE-002` | crates/emath-ir/src/shapes.rs | `E-SHAPE-002` |
+| `E-SHAPE-001` | crates/emath-ir/src/shapes.rs |  |
 | `E-SHAPE-003` | crates/emath-ir/src/shapes.rs | `E-SHAPE-003`<br>`slice end {rows_end} exceeds extent {size}` |
 | `E-SHAPE-004` | crates/emath-ir/src/shapes.rs | `E-SHAPE-004`<br>`declared extent `{name}` is not a well-formed shape` |
 | `E-SYM-001` | crates/emath-ir/src/symbolic.rs | `E-SYM-001`<br>`replacement references uncaptured variable `{name}`` |
@@ -707,9 +676,9 @@ Not yet documented at generation time: **0**.
 | `E-TLT-012` | crates/emath-cli/src/catalog.rs |  |
 | `E-TRANS-006` | crates/emath-ir/src/package.rs |  |
 | `E-TYPE-001` | crates/emath-sema/src/admit/declaration/setup.rs | ``{name}` needs an explicit constructor type, not an inferred default` |
-| `E-TYPE-002` | crates/emath-cli/src/catalog.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-core/src/diagnostic.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs | `diagnostic-code lookup (`emath explain E-TYPE-002`). File/plan explanation refuses: there is no goals planner`<br>`emath explain E-TYPE-002` |
-| `E-TYPE-003` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs | `E-TYPE-003`<br>`stale_dependency` |
-| `E-TYPE-010` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-sema/src/admit.rs | `type`<br>`E-TYPE-010` |
+| `E-TYPE-002` | crates/emath-cli/src/catalog.rs<br>crates/emath-cli/src/tooling_cmd/explain.rs<br>crates/emath-core/src/diagnostic.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs | `diagnostic-code lookup (`emath explain E-TYPE-002`). File/plan explanation refuses: there is no goals planner`<br>`emath explain E-TYPE-002` |
+| `E-TYPE-003` | crates/emath-exec-ir/src/constructor_layer/mod.rs | `E-TYPE-003`<br>`stale_dependency` |
+| `E-TYPE-010` | crates/emath-exec-ir/src/constructor_layer/admit.rs<br>crates/emath-exec-ir/src/constructor_layer/mod.rs | `type`<br>`E-TYPE-010` |
 | `E-TYPE-012` | crates/emath-exec-ir/src/constructor_layer/mod.rs<br>crates/emath-exec-ir/src/interp/eval_calls.rs<br>crates/emath-exec-ir/src/native_kernel.rs<br>crates/emath-rt/src/body/numeric.rs | `E-TYPE-012: checked-add arguments must be Int`<br>`E-TYPE-012: program result must be a real scalar` |
 | `E-TYPE-110` | crates/emath-syntax/src/parser/types.rs | `fn`<br>`E-TYPE-110` |
 | `E-TYPE-111` | crates/emath-syntax/src/parser/stmt_idents.rs | `E-TYPE-111` |

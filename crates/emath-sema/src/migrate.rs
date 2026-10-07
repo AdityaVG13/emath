@@ -32,8 +32,6 @@ use emath_ir::meaning::meaning_id;
 /// contract).
 pub const E_MIG_SOURCE_REFUSES: &str = "E-MIG-SOURCE-REFUSES";
 pub const E_MIG_VERIFY_FAIL: &str = "E-MIG-VERIFY-FAIL";
-pub const E_MIG_AMBIGUOUS_SITE: &str = "E-MIG-AMBIGUOUS-SITE";
-pub const E_MIG_RULE_INVALID: &str = "E-MIG-RULE-INVALID";
 
 /// The receipt schema is a versioned artifact; stable from day one.
 pub const RECEIPT_SCHEMA: &str = "emath.migration-receipt v1";
@@ -79,21 +77,6 @@ pub const RULE_SEMANTIC_CORRECTION: RuleSpec = RuleSpec {
 #[must_use]
 pub fn registered_rules() -> &'static [RuleSpec] {
     &[RULE_CANONICAL_FORMAT, RULE_SEMANTIC_CORRECTION]
-}
-
-/// Refuse a malformed registry before it can ship. `RuleKind` makes
-/// an unclassified rule unrepresentable; this gate additionally
-/// rejects unstable ids, empty proof descriptions, and duplicates.
-pub fn validate_rule_registry(rules: &[RuleSpec]) -> Result<(), &'static str> {
-    for (index, rule) in rules.iter().enumerate() {
-        if !rule.id.starts_with("E-MIG-RULE-") || rule.description.trim().is_empty() {
-            return Err(E_MIG_RULE_INVALID);
-        }
-        if rules[..index].iter().any(|previous| previous.id == rule.id) {
-            return Err(E_MIG_RULE_INVALID);
-        }
-    }
-    Ok(())
 }
 
 /// A rule that cannot classify itself does not ship: the type makes
@@ -352,142 +335,3 @@ pub fn migrate_verified_rewrite(
     }
 }
 
-/// Apply one registered semantic correction. Both sources must admit,
-/// and the rule must produce a different `MeaningId`. The checked delta
-/// is explicit in the receipt; treating an identity-preserving change
-/// as semantic is a classification error and refuses.
-#[must_use]
-pub fn migrate_semantic_rewrite(
-    file_name: &str,
-    before_source: &str,
-    rewritten_source: &str,
-    rule_id: &str,
-) -> MigrationOutcome {
-    let refuse = |code: &'static str, reason: String| MigrationOutcome {
-        receipt: MigrationReceipt {
-            source_edition: "2026",
-            target_edition: "2030",
-            rules_applied: vec![],
-            refusals: vec![Refusal {
-                code,
-                reason,
-                candidates: vec![],
-            }],
-            verdict: "partial-refused".to_string(),
-            identity_verified: false,
-        },
-        rewritten_source: None,
-    };
-
-    let Some(rule) = registered_rules()
-        .iter()
-        .find(|rule| rule.id == rule_id && rule.kind == RuleKind::Semantic)
-    else {
-        return refuse(
-            E_MIG_RULE_INVALID,
-            format!("semantic migration rule `{rule_id}` is not registered as semantic"),
-        );
-    };
-    if validate_rule_registry(registered_rules()).is_err() {
-        return refuse(
-            E_MIG_RULE_INVALID,
-            "migration rule registry failed validation".to_string(),
-        );
-    }
-
-    let before_id = match lower_identity(file_name, before_source) {
-        Ok(id) => id,
-        Err(errors) => {
-            return refuse(
-                E_MIG_SOURCE_REFUSES,
-                format!(
-                    "source does not admit; semantic migration is not emitted \
-                     (diagnostics: {})",
-                    errors.join(" | ")
-                ),
-            );
-        }
-    };
-    let after_id = match lower_identity(file_name, rewritten_source) {
-        Ok(id) => id,
-        Err(errors) => {
-            return refuse(
-                E_MIG_VERIFY_FAIL,
-                format!(
-                    "semantic correction does not admit; migration is not emitted \
-                     (diagnostics: {})",
-                    errors.join(" | ")
-                ),
-            );
-        }
-    };
-    if before_source == rewritten_source {
-        return MigrationOutcome {
-            receipt: MigrationReceipt {
-                source_edition: "2026",
-                target_edition: "2030",
-                rules_applied: vec![],
-                refusals: vec![],
-                verdict: "complete".to_string(),
-                identity_verified: true,
-            },
-            rewritten_source: None,
-        };
-    }
-    if before_id == after_id {
-        return refuse(
-            E_MIG_RULE_INVALID,
-            format!(
-                "rule `{}` classified an identity-preserving rewrite as semantic",
-                rule.id
-            ),
-        );
-    }
-
-    let identity_delta = format!("{before_id} -> {after_id}");
-    MigrationOutcome {
-        receipt: MigrationReceipt {
-            source_edition: "2026",
-            target_edition: "2030",
-            rules_applied: vec![RuleApplied {
-                rule: rule.id.to_string(),
-                kind: RuleKind::Semantic,
-                span: format!("{file_name}:whole-file"),
-                before_hash: before_id,
-                after_hash: after_id,
-                identity_delta,
-            }],
-            refusals: vec![],
-            verdict: "complete".to_string(),
-            identity_verified: true,
-        },
-        rewritten_source: Some(rewritten_source.to_string()),
-    }
-}
-
-/// Produce the required no-guess outcome for a semantic site that has
-/// multiple valid rewrites. Candidate order is part of deterministic
-/// replay and is therefore preserved in the canonical receipt.
-#[must_use]
-pub fn refuse_ambiguous_site(file_name: &str, site: &str, candidates: &[&str]) -> MigrationOutcome {
-    MigrationOutcome {
-        receipt: MigrationReceipt {
-            source_edition: "2026",
-            target_edition: "2030",
-            rules_applied: vec![],
-            refusals: vec![Refusal {
-                code: E_MIG_AMBIGUOUS_SITE,
-                reason: format!(
-                    "{file_name}: semantic site `{site}` has multiple valid migrations; choose one candidate explicitly"
-                ),
-                candidates: candidates
-                    .iter()
-                    .map(|candidate| (*candidate).to_string())
-                    .collect(),
-            }],
-            verdict: "partial-refused".to_string(),
-            identity_verified: false,
-        },
-        rewritten_source: None,
-    }
-}

@@ -7,13 +7,6 @@ use std::fmt::{self, Write as _};
 
 mod surface;
 
-/// Term IR schema id (durable artifact string is `emath.free-term` for the
-/// free-term document; the canonical text encoding is versioned here).
-pub const TERM_IR_SCHEMA: &str = "emath.term-ir";
-/// Term IR schema version. Bump on any change to the canonical text
-/// encoding; consumers refuse versions they do not know.
-pub const TERM_IR_VERSION: u32 = 1;
-
 /// Stable symbol identity within a signature.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SymbolId(pub String);

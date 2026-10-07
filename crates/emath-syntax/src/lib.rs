@@ -13,7 +13,6 @@ pub mod genesis;
 pub mod layout;
 pub mod lexer;
 pub mod parser;
-pub mod stage0;
 pub mod token;
 pub mod tree;
 
@@ -23,9 +22,6 @@ pub use layout::{E_SYN_HANGING_INFIX, classify_line_break};
 // deep (`formatter::format`) is root-exported; the module stays public
 // for format_type and friends.
 pub use formatter::format;
-pub use stage0::{
-    EXCLUDED_DOMAIN_FORMS, PreservedGlyph, STAGE0_FORMS, forbidden_domain_matches, unknown_glyphs,
-};
 
 use emath_core::{Diagnostics, Edition, FileId, limits::Limits};
 use token::Comment;

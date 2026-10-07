@@ -19,7 +19,7 @@ admit without depending on this crate. The syntax tree is owned by
 - `SyntaxParser`: process-wide default `SourceParser` unit.
 - `install_source_parser()`: idempotently installs `SyntaxParser`; hosts must
   call once per process before first parse.
-- Modules: `edition`, `formatter`, `genesis`, `layout`, `lexer`, `parser`, `stage0`, `token`, `tree`.
+- Modules: `edition`, `formatter`, `genesis`, `layout`, `lexer`, `parser`, `token`, `tree`.
 
 ## Invariants
 

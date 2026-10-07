@@ -85,16 +85,16 @@ term_id -> world_id -> answer_id` are all FNV-1a64 content ids bound in
 
 ### L10. Protected optimization
 
-Optimization never replaces the strict baseline: `StrictFastPortfolio`
-holds both worlds and only constructs when strict is present
-(`crates/emath-world-ir/src/translation.rs`); tuning campaigns assume a
-strict baseline world exists to deopt to (`crates/emath-tuning`).
+Optimization never replaces the strict baseline: any fast path must keep
+the strict world available to deopt to. No strict/fast world portfolio
+exists in the tree today; the previous `StrictFastPortfolio` had no
+callers and was removed.
 
 ### L11. Deoptimization first-class
 
-`DeoptReason` and `FastPathGuard` are typed values; `select_world`
-falls back to strict on any failed guard
-(`crates/emath-world-ir/src/translation.rs`).
+A future fast path must carry a typed deopt reason and guard and fall
+back to strict on any failed guard. The previous `DeoptReason` /
+`FastPathGuard` / `select_world` types had no callers and were removed.
 
 ### L12. Unknowns explicit
 

@@ -9,9 +9,6 @@ use emath_core::Diagnostics;
 use emath_core::tree::{Item, UseTree};
 use emath_ir::{ImportEntry, ImportSelection};
 
-/// Declaration kinds admitted by this front-end.
-pub const RECOGNIZED_KINDS: &[&str] = &["object", "function", "query"];
-
 mod text;
 
 pub use text::{expr_text, type_text};

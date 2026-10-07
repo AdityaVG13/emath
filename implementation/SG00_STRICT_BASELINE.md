@@ -94,7 +94,6 @@ version bump of the corresponding schema constant (current value `1`):
 
 | Constant | Lives in |
 | --- | --- |
-| `TERM_IR_VERSION` | `crates/emath-term/src/lib.rs` |
 | `CSA_SCHEMA_VERSION` | `crates/emath-genesis/src/csa.rs` |
 | `VM_SCHEMA_VERSION` | `crates/emath-genesis/src/vm.rs` |
 | `WORLD_ABI_VERSION` | `crates/emath-world-codegen-rust/src/lib.rs` |

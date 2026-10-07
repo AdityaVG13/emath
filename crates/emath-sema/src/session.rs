@@ -75,16 +75,6 @@ impl CompilerSession {
         }
     }
 
-    /// Construct a session pinned to a shipped package edition.
-    #[must_use]
-    pub fn with_edition(limits: Limits, edition: emath_core::Edition) -> Self {
-        Self {
-            store: SourceStore::new(),
-            limits,
-            edition,
-        }
-    }
-
     /// Package edition currently selecting parser behavior.
     #[must_use]
     pub fn edition(&self) -> emath_core::Edition {
@@ -124,21 +114,6 @@ impl CompilerSession {
     /// Load an in-memory source under a display name.
     pub fn load_text(&mut self, name: impl Into<String>, text: impl Into<String>) -> FileId {
         self.store.add(name, text)
-    }
-
-    /// Parse an anonymous source string (no admission or store allocation).
-    /// Its spans use `FileId(0)`; use `load_text` and `check` for stored sources.
-    pub fn parse_text(&self, text: &str) -> (emath_core::tree::SyntaxTree, Diagnostics) {
-        match parse_through(text, FileId(0), &self.limits, self.edition) {
-            Ok(pair) => pair,
-            Err(diagnostics) => (
-                emath_core::tree::SyntaxTree {
-                    source: Span::default(),
-                    items: Vec::new(),
-                },
-                diagnostics,
-            ),
-        }
     }
 
     /// `check`: parse + semantic admission.

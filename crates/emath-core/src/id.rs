@@ -96,11 +96,6 @@ macro_rules! durable_identity_type {
             pub fn as_str(&self) -> &str {
                 &self.0
             }
-
-            #[must_use]
-            pub fn into_string(self) -> String {
-                self.0
-            }
         }
 
         impl AsRef<str> for $name {

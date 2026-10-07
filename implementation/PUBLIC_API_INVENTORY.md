@@ -20,12 +20,10 @@ impl CompilerSession {
     pub fn new(limits: Limits) -> Self;
     pub fn load_package(&mut self, path: impl AsRef<Path>) -> Result<SourcePackage, String>;
     pub fn load_text(&mut self, name: impl Into<String>, text: impl Into<String>) -> FileId;
-    pub fn parse_text(&self, text: &str) -> (emath_core::tree::SyntaxTree, Diagnostics);
     pub fn check(&mut self, file: FileId) -> CheckResult;
     pub fn check_owned(&mut self, name: &str, text: &str) -> CheckResult;
     pub fn check_package(&mut self, main: FileId) -> CheckResult;
     pub fn plan(&mut self, file: FileId) -> PlanResult;
-    pub fn with_edition(limits: Limits, edition: emath_core::Edition) -> Self;
     pub fn edition(&self) -> emath_core::Edition;
 }
 ```

@@ -6,7 +6,7 @@
 use super::canvas::Tok;
 use super::model::RunModel;
 use super::render::{selected_key, Frame, HitAct, Mode};
-use super::view::{tab_panels, Ctx, Overlay, PanelId, RunBadge, View, ALL_PANELS, TAB_NAMES};
+use super::view::{Ctx, Overlay, PanelId, RunBadge, View, ALL_PANELS, TAB_NAMES};
 
 /// A decoded key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -277,7 +277,3 @@ pub fn on_wheel(view: &mut View, model: &RunModel, frame: &Frame, x: u16, y: u16
     }
 }
 
-/// Does `panel` belong to the current tab?
-pub fn on_tab(view: &View, panel: PanelId) -> bool {
-    tab_panels(view.tab).contains(&panel)
-}

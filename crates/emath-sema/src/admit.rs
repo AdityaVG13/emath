@@ -11,11 +11,6 @@ mod attributes;
 mod sections_meta;
 pub use sections_meta::{check_tree, check_tree_at};
 
-pub const E_DUPLICATE_FIELD: &str = "E-NAME-020";
-pub const E_UNKNOWN_VARIABLE: &str = "E-TYPE-002";
-pub const E_UNKNOWN_FUNCTION: &str = "E-TYPE-003";
-pub const E_UNSUPPORTED_TYPE: &str = "E-TYPE-010";
-
 /// Constructor-layer sections. Any other section is `E-SEC-101`.
 const PHASE1_SECTIONS: &[&str] = &[
     "parameters",

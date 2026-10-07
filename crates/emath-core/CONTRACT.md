@@ -50,10 +50,9 @@ history.
   `evaluate_statistic_kernel` (capsule kernel id, never a named-statistic
   public API), and the generic deterministic seed values `Seed`,
   `StreamPath`, and `local_stream_seed`.
-- `sigfigs`, `special`, and `units` remain available only as retained generic
+- `special` and `units` remain available only as retained generic
   presentation/representation plumbing re-exported at the crate root (for
-  example `count_sig_figs`, `PrecisionLedger`, `Quantity`, `UnitTable`,
-  `seed_table`). Their visibility is compatibility residue, not authority for
+  example `Quantity`, `UnitTable`, `seed_table`). Their visibility is compatibility residue, not authority for
   admission, labels, or applicability: admission and meaning must come from the
   installed language image.
 
@@ -75,7 +74,7 @@ history.
 
 Stable diagnostics through `Diagnostics`: `Diagnostic::error` / `warning`
 carry a stable `&'static str` code, message and primary span; notes and help
-are chained via `with_note` / `with_help`. No panic on user input.
+are chained via `with_help`. No panic on user input.
 
 ## Determinism class
 

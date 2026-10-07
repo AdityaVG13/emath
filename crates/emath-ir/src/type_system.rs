@@ -53,12 +53,6 @@ impl DischargeStatus {
             Self::ExternalAssumption => "external-assumption",
         }
     }
-
-    /// Whether the obligation is a compile-time concern.
-    #[must_use]
-    pub const fn is_compile_time(self) -> bool {
-        matches!(self, Self::Static | Self::Certificate)
-    }
 }
 
 /// A field of a record or variant scheme.

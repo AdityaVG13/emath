@@ -143,63 +143,6 @@ impl UnitTable {
         Self::default()
     }
 
-    /// Declare a unit. Redeclaring the same name with an identical spec is
-    /// idempotent; redeclaring with a different scale/offset/dims is refused
-    /// (two units whose names differ by more than zero are two units).
-    pub fn declare_unit(&mut self, spec: UnitSpec) -> Result<(), UnitRuleError> {
-        if let Some(existing) = self.units.iter().find(|unit| unit.name == spec.name) {
-            if existing == &spec {
-                return Ok(());
-            }
-            return Err(UnitRuleError {
-                code: E_UNIT_ALIAS_CONFLICT,
-                message: format!(
-                    "`{}` is already declared with scale {:e} offset {:e}; \
-                     a conversion that is not exact is a conversion function, never an alias",
-                    spec.name, existing.scale, existing.offset
-                ),
-            });
-        }
-        self.units.push(spec);
-        Ok(())
-    }
-
-    /// Declare `alias` as an identity alias of `canonical`. The target must
-    /// exist; an alias name already bound to a different target is refused
-    /// and the original binding survives.
-    pub fn declare_alias(&mut self, alias: &str, canonical: &str) -> Result<(), UnitRuleError> {
-        if self.resolve(canonical).is_err() {
-            return Err(UnitRuleError {
-                code: E_UNIT_ALIAS_CONFLICT,
-                message: format!("cannot alias `{alias}` to `{canonical}`: target is not declared"),
-            });
-        }
-        if let Some((_, existing)) = self.aliases.iter().find(|(name, _)| name == alias) {
-            if existing == canonical {
-                return Ok(());
-            }
-            return Err(UnitRuleError {
-                code: E_UNIT_ALIAS_CONFLICT,
-                message: format!(
-                    "`{alias}` is already an alias of `{existing}`; \
-                     rebinding over a different unit is refused"
-                ),
-            });
-        }
-        if self.resolve(alias).is_ok() {
-            return Err(UnitRuleError {
-                code: E_UNIT_ALIAS_CONFLICT,
-                message: format!(
-                    "`{alias}` is already a declared unit; \
-                     rebinding it as an alias of `{canonical}` is refused"
-                ),
-            });
-        }
-        self.aliases
-            .push((alias.to_string(), canonical.to_string()));
-        Ok(())
-    }
-
     /// Resolve a name through alias chains to its unit spec. An alias
     /// resolves to the target's spec wholesale, so identity hashes are
     /// equal by construction.

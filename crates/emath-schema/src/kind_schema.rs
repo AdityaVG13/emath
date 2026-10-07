@@ -281,32 +281,16 @@ impl KindSchema {
         self.sections.get(name)
     }
 
-    /// Removes a section (used by restricted lowering renames).
-    pub fn remove_section(&mut self, name: &str) {
-        self.sections.remove(name);
-    }
-
     /// Sections in deterministic order.
     #[must_use]
     pub fn sections(&self) -> Vec<(&str, &SectionSchema)> {
         self.sections.iter().map(|(k, v)| (k.as_str(), v)).collect()
     }
 
-    /// Declared default for a section.
-    #[must_use]
-    pub fn default_for(&self, section: &str) -> Option<&str> {
-        self.defaults.get(section).map(String::as_str)
-    }
-
     /// Schema name.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
-    }
-
-    /// Sets the schema name (schema-language `kind <name>`).
-    pub fn set_name(&mut self, name: impl Into<String>) {
-        self.name = name.into();
     }
 
     /// Deterministic identity over the schema (schema mutation moves
@@ -338,26 +322,6 @@ impl KindSchema {
             defaults.join(";"),
             self.predicate.clone().unwrap_or_default()
         )
-    }
-
-    /// Mutable sections (builder admission surface).
-    pub fn insert_section(&mut self, name: impl Into<String>, schema: SectionSchema) {
-        self.sections.insert(name.into(), schema);
-    }
-
-    /// Mutable default.
-    pub fn insert_default(&mut self, section: impl Into<String>, value: impl Into<String>) {
-        self.defaults.insert(section.into(), value.into());
-    }
-
-    /// Removes a default entry (used when renaming migrates provenance keys).
-    pub fn remove_default(&mut self, section: &str) {
-        self.defaults.remove(section);
-    }
-
-    /// Set the static predicate.
-    pub fn set_predicate(&mut self, predicate: impl Into<String>) {
-        self.predicate = Some(predicate.into());
     }
 }
 

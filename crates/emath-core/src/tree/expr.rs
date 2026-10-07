@@ -1,6 +1,6 @@
 //! Expression syntax: Expr, `ExprKind`, operators, binders, args.
 
-use super::{Span, GenericArg, TypeExpr};
+use super::{GenericArg, Span, TypeExpr};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
@@ -400,17 +400,6 @@ pub enum BinderKind {
     Exists,
     /// `series n in 0..inf: a[n]`: series convergence claim.
     Series,
-}
-
-/// Direction for one-sided limits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LimitDirection {
-    /// Two-sided limit: `limit x -> 0: f(x)`
-    TwoSided,
-    /// From above: `limit x -> 0+: f(x)`
-    FromAbove,
-    /// From below: `limit x -> 0-: f(x)`
-    FromBelow,
 }
 
 #[derive(Clone, Debug, PartialEq)]

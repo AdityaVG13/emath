@@ -378,15 +378,6 @@ pub enum LegacyIdKind {
     BootstrapContent,
 }
 
-impl LegacyIdKind {
-    const fn tag(self) -> &'static str {
-        match self {
-            Self::Fnv1a64 => "fnv1a64",
-            Self::BootstrapContent => "bootstrap-content",
-        }
-    }
-}
-
 /// A legacy identifier that cannot be confused with a `FeatureID`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacyId {
@@ -422,16 +413,6 @@ impl LegacyIdMapping {
             legacy_id,
             feature_id,
         }
-    }
-
-    #[must_use]
-    pub fn canonical_text(&self) -> String {
-        format!(
-            "legacy_id={}:{}\nfeature_id={}\n",
-            self.legacy_id.kind.tag(),
-            self.legacy_id.value,
-            self.feature_id
-        )
     }
 }
 

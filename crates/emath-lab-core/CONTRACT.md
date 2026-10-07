@@ -15,14 +15,13 @@ enters only as injected samples; the crate never reads a clock.
 ## Public types and semantics
 
 - `measure`: `Measurement`, `MeasurementKind`, `Summary` (with
-  `quarantined()` at `QUARANTINE_CV_PCT`), `DerivedMetric`, `HarnessReport`,
-  `EnergyCostModel`.
+  `quarantined()` at `QUARANTINE_CV_PCT`).
 - `stats`: `StatisticalProtocol`, `OutlierPolicy`, `PairedObservation`,
   `PairedResult`, `evaluate_paired`, and the pure helpers `mean`,
   `percentile`, `percentile_f64`.
 - `identity`: `EngineIdentity`, `EngineRole`; `require_distinct` refuses a
   comparison of an engine with itself.
-- `law_check`: `Law`, `WorldObligation`, `FiniteLawChecker`, `check_world`,
+- `law_check`: `Law`, `WorldObligation`, `FiniteLawChecker`,
   `WorldCheckReport`, `LawVerdict`, `MinimizedCounterexample`,
   `ScopedAuthority`, `CheckerReceipt`, `CheckerError`.
 - Crate root: `Sampler` (splitmix64-style seeded samples in `[-1, 1)`),

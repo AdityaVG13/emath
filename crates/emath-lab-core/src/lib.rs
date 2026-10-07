@@ -16,7 +16,7 @@ pub mod stats;
 
 pub use error::LabError;
 pub use identity::{EngineIdentity, EngineRole};
-pub use measure::{DerivedMetric, HarnessReport, Measurement, MeasurementKind, Summary};
+pub use measure::{Measurement, MeasurementKind, Summary};
 pub use stats::{
     OutlierPolicy, PairedObservation, PairedResult, StatisticalProtocol, evaluate_paired,
 };
@@ -69,17 +69,6 @@ impl Authority {
             Self::Tested => "tested",
             Self::Certified => "certified",
             Self::Proved => "proved",
-        }
-    }
-
-    /// Lattice rank: Structural = 0 … Proved = 3.
-    #[must_use]
-    pub const fn lattice_rank(self) -> u8 {
-        match self {
-            Self::Structural => 0,
-            Self::Tested => 1,
-            Self::Certified => 2,
-            Self::Proved => 3,
         }
     }
 }

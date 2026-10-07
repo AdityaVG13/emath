@@ -191,12 +191,13 @@
     "gauntlet pass 9: Field<7> carrier (FieldPrime\u2192i64) + E-SEC-133 default skips carrier-typed-input declarations; E-SEC-133 emitter list gains session/requests.rs; annex re-spliced (449 emitted, 0 newly covered). No new codes.",
     "gauntlet pass 10: emath run plans before executing (planned_package) \u2014 goal kinds become visible at the run boundary; non-evaluate goals on no-test declarations refuse E-GOAL-043 before any checkpoint (typed-hole discipline: never a produced crate); E-GOAL-043 emitter list gains cli/execution.rs. No new codes.",
     "gauntlet pass 10 coordination: CalmPine's category authored-reference migration (uncommitted in tree) removed native_kernels/category.rs from the E-TYPE-012 emitter list; annex re-spliced to the current emission set (449 emitted, 0 newly covered). No new codes.",
-    "dead-code deletion: genesis, world-ir, store, adapter-dew, adapter-rumoca, plan, hir, registry and provider-api crates removed. ERROR_CODES issued list pruned to the 154 emitted codes; 247 no-longer-emitted codes move to a Retired codes section (never reissued); E-INT-002, E-INT-003, E-NAME-026 and E-MEANING-001 gain issued entries; annex re-spliced. CRATE_MAP rebuilt for the 15 remaining crates. CLI_REFERENCE re-pinned after the earlier removal of the lab, verify and dead CLI lanes."
+    "dead-code deletion: genesis, world-ir, store, adapter-dew, adapter-rumoca, plan, hir, registry and provider-api crates removed. ERROR_CODES issued list pruned to the 154 emitted codes; 247 no-longer-emitted codes move to a Retired codes section (never reissued); E-INT-002, E-INT-003, E-NAME-026 and E-MEANING-001 gain issued entries; annex re-spliced. CRATE_MAP rebuilt for the 15 remaining crates. CLI_REFERENCE re-pinned after the earlier removal of the lab, verify and dead CLI lanes.",
+    "dead public items removed from core, ir, lab-core, schema, sema, syntax, term and tui (sigfigs, text, stage0, biform, cell projections, provider conversion contracts, world translation, the MIG node graph). E-CELL-007..011, E-PROV-410..412 and E-SHAPE-002 move to Retired codes; PUBLIC_API_INVENTORY drops CompilerSession::parse_text and with_edition."
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "bed8cfc8e3331d787840a43b1c0dedeb05a08c4cae779234fb2092e8150b37e9",
+    "implementation/ERROR_CODES.md": "f7fb23d92aac6b60bca8df7691a6dc30c56c06be7038e02b9b9cb6f53c07989c",
     "implementation/CLI_REFERENCE.md": "b5bc9a677be00b124be8140a2b53eb59a572051794f8c368803731f5918dbcd5",
     "implementation/CRATE_MAP.md": "cf6d869dece8572995c79320c43ac4c877efde203e7d656f4c62a357acccfd12",
-    "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"
+    "implementation/PUBLIC_API_INVENTORY.md": "51b7d3d4977eb884d4e5ddc439e9210732e5d0921a7b21115cea8ab30080c5db"
   }
 }

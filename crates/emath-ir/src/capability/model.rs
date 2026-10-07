@@ -188,19 +188,6 @@ impl AdmissionRefusal {
             Self::NumericPolicyMissing { .. } => "E-CELL-006",
         }
     }
-
-    /// Cell the refusal names (empty for class-level refusals).
-    #[must_use]
-    pub fn cell_name(&self) -> &str {
-        match self {
-            Self::UnknownCellClass { .. } => "",
-            Self::MissingVersion { name }
-            | Self::IdentityMutationRefused { name, .. }
-            | Self::ArityExceeded { name, .. }
-            | Self::MalformedName { name }
-            | Self::NumericPolicyMissing { name } => name,
-        }
-    }
 }
 
 impl fmt::Display for AdmissionRefusal {

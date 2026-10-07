@@ -7,7 +7,6 @@ pub mod authority;
 pub mod canonical;
 pub mod capability;
 pub mod constructor;
-pub mod contracts;
 pub mod domains;
 pub mod evidence;
 pub mod expression;
@@ -25,7 +24,6 @@ pub mod type_system;
 pub mod types;
 pub mod units;
 pub mod world;
-pub mod world_translation;
 
 pub use emath_schema::capsule_record as feature_capsule;
 pub use emath_schema::kind_schema;
@@ -35,17 +33,14 @@ pub use authority::{
     AuthorityEvidence, AuthorityLock, AuthorityReceipt, AuthorityState,
 };
 pub use capability::{
-    AdmissionRefusal, CAPABILITY_CELL_SCHEMA_V1, Capability, CellClass, CellSchema, ClosureRefusal,
-    MAX_CELL_ARITY, MigrationPolicy, ProjectionKind, ProjectionStatus, SuppliedProjection,
-    admit_cell, admit_cell_mutation, canonical_capability, canonical_cell, cell_id,
-    missing_required, plan_cell_closure, required_projections, softmax_axis_well_formed,
-    softmax_reference_strict_f64,
+    AdmissionRefusal, CAPABILITY_CELL_SCHEMA_V1, Capability, CellClass, CellSchema,
+    MAX_CELL_ARITY, MigrationPolicy, admit_cell, admit_cell_mutation, canonical_capability,
+    canonical_cell, cell_id, softmax_axis_well_formed, softmax_reference_strict_f64,
 };
 pub use constructor::{
     ConstructionObligation, ConstructionReceipt, Constructor, Field, ObligationClass,
     ObligationKind, TestCase, Visibility,
 };
-pub use contracts::{ContractRegistry, ProviderRepresentationContract};
 pub use domains::{BranchConvention, Domain, DomainError, Interval, branch_point};
 pub use evidence::{ClaimVerdict, EvidenceBundle, EvidenceClaim};
 pub use expression::{BinaryOp, BinderKind, BinderVariable, ExprNode, Literal, SliceAxis, UnaryOp};
@@ -69,7 +64,6 @@ pub use kind_schema::{
 pub use meaning::{MEANING_CANONICAL_SCHEMA_V1, MeaningError, canonical_meaning_bytes, meaning_id};
 pub use mig::{
     AgentContext, MeaningEdge, MeaningEdgeKind, MeaningResource, MeaningSpine, MeaningSpineError,
-    Mig, MigEdge, MigEdgeKind, MigNode, MigNodeId, MigNodeKind,
 };
 pub use numeric::{
     NumKind, NumericBehavior, NumericError, NumericProfile, NumericType, STRICT_F64_MACHINE_EPS,
@@ -108,5 +102,3 @@ pub use world::{
     MeaningHoleKind, MeaningHoleState, MeaningOrigin, OperatorDef, OperatorSemantics, SymbolDef,
     WorldId, WorldIr,
 };
-pub use world_translation::{EvidenceHandle, PreservationRelation, WorldMorphism};
-

@@ -225,14 +225,4 @@ impl SourceStore {
             |file| file.render_diagnostic(diagnostic),
         )
     }
-
-    /// Render all diagnostics separated by newlines.
-    #[must_use]
-    pub fn render_all(&self, diagnostics: &[Diagnostic]) -> String {
-        diagnostics
-            .iter()
-            .map(|d| self.render(d))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
 }

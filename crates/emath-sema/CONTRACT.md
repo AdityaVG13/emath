@@ -19,7 +19,6 @@
   older ids retain their source snapshots and line maps. Unchanged bytes reuse
   the latest id. Stored checks carry that id through parser and admission spans.
   `check_package` resolves loaded siblings to their latest matching revisions.
-  `parse_text` is anonymous, allocates no source, and uses `FileId(0)` spans.
 - `SourcePackage`, `CheckResult`, and `PlanResult`.
 - `CompilerPolicy`, `GeneratedCrate`, and `EmittedAnchor`.
 - `SemanticTrace` and `TraceEntry`.

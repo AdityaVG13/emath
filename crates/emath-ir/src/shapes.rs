@@ -24,18 +24,6 @@ impl std::fmt::Display for Extent {
     }
 }
 
-impl Extent {
-    /// Parse a surface type argument: numeric spellings become `Fixed`,
-    /// everything else `Symbolic`.
-    #[must_use]
-    pub fn from_surface(name: &str) -> Self {
-        if let Ok(size) = name.parse::<usize>() {
-            Self::Fixed(size)
-        } else {
-            Self::Symbolic(name.to_string())
-        }
-    }
-}
 
 /// Shape of a tensor/matrix value.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -143,28 +131,6 @@ impl Shape {
             .all(|(l, r)| l == r || is_one(r))
     }
 
-    /// Validated matrix product `(m, n) x (n, p) -> (m, p)`.
-    pub fn mat_mul(&self, right: &Self) -> Result<Shape, ShapeError> {
-        if self.rank() != 2 || right.rank() != 2 {
-            return Err(ShapeError {
-                code: "E-SHAPE-001",
-                message: "matrix product requires rank-2 operands".into(),
-            });
-        }
-        if self.extents[1] != right.extents[0] {
-            return Err(ShapeError {
-                code: "E-SHAPE-002",
-                message: format!(
-                    "inner extents differ: {:?} vs {:?}",
-                    self.extents[1], right.extents[0]
-                ),
-            });
-        }
-        Ok(Shape {
-            extents: vec![self.extents[0].clone(), right.extents[1].clone()],
-        })
-    }
-
     /// Slice result shape (`start..end` per axis).
     pub fn slice(&self, rows_start: usize, rows_end: usize) -> Result<Shape, ShapeError> {
         if rows_start > rows_end {
@@ -250,14 +216,5 @@ impl SparseLayout {
             Self::Csr => "csr",
             Self::BlockSparse => "block-sparse",
         }
-    }
-
-    /// Whether a layout may represent a rank-2 shape (target constraint).
-    #[must_use]
-    pub fn accepts_rank(&self, rank: usize) -> bool {
-        matches!(
-            (self, rank),
-            (Self::Dense, 0..=3) | (Self::Csc | Self::Csr | Self::BlockSparse, 2)
-        )
     }
 }

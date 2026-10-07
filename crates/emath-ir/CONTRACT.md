@@ -9,7 +9,6 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
 
 - `Constructor`, `Field`, `TestCase`, `Visibility`: constructor structure. `TestCase.expect` is `Option<ExprId>`: `Some` is an asserted example test; `None` is a worked example (given only).
 - `ObligationClass` (static/runtime/solver/certificate/deferred), `ObligationKind` (precondition/postcondition), `ConstructionObligation`, `ConstructionReceipt`: the constructor obligation taxonomy. `Constructor::obligation_matrix` classifies every textual `require`/`ensure`/`invariant` (all `Runtime` today); `Constructor::receipt` produces the receipt; `ConstructionReceipt::compose` merges delegate obligations first and never drops one; only `Deferred` obligations remain open after construction; `ConstructionReceipt::identity` is a deterministic content id.
-- `mig`: `Mig` / `MigNode` / `MigEdge` / `MigNodeKind` / `MigEdgeKind`; the mathematical intent graph (schema `emath.mig.v1`), derived deterministically from a `SemanticPackage`. Every semantic plane is represented by node kinds (definition, construction, goal, evidence, execution, evolution); every non-declaration node is owned by a declaration node (spine property). `Mig::identity` excludes presentation-only changes by construction (no spans enter the derivation; expression content enters via span-free `canonical_expr`).
 - `ExprNode`, `Literal`, `BinaryOp`, `UnaryOp`,
   `BinderKind`,
   `BinderVariable`: neutral expression trees.
@@ -41,8 +40,8 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
   projections: runtime-neutral records for the stable `emath.feature-capsule`
   schema. The twenty-class taxonomy is data; candidate capsules append to
   `SemanticPackage.feature_capsules` and grant no authority by admission.
-- `MeaningSpine`, `MeaningResource`, `MeaningEdgeKind`: the FeatureID/resource
-  projection of MIG. Twelve typed edges validate endpoints and cycles; closures
+- `MeaningSpine`, `MeaningResource`, `MeaningEdgeKind` (module `mig`): the
+  FeatureID/resource graph. Twelve typed edges validate endpoints and cycles; closures
   provide deterministic build dependencies, reverse impact, migrations,
   conformance, and minimum agent context. External nodes are restricted to
   normalized `ir://`, `test://`, and `doc://` resources.
@@ -73,7 +72,7 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
   `Interval::checked` and `Shape::declare` refuse inverted/empty shapes;
   `branch_point` resolves branch conventions; `Extent` / `SparseLayout`
   complete the shape surface.
-- `ContractRegistry`, `ProviderRepresentationContract`, `EvidenceBundle`,
+- `EvidenceBundle`,
   `EvidenceClaim`, `ClaimVerdict`, `SemanticPackage`, `ImportEntry`.
   `SemanticPackage::binding_provenance` participates in canonical package
   identity; it is intentionally excluded from mathematical MeaningID.

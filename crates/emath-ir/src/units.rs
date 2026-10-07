@@ -287,12 +287,6 @@ impl Unit {
         self.family == other.family && self.dims == other.dims
     }
 
-    /// Whether this unit is dimensionless SI (scale may be non-1).
-    #[must_use]
-    pub fn is_dimensionless(&self) -> bool {
-        self.family == UnitFamily::Si && self.dims == UnitDim::one()
-    }
-
     /// Convert a magnitude expressed in this unit to SI
     /// (`value_si = (value + offset) * scale`).
     #[must_use]

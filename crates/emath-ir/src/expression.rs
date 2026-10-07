@@ -221,25 +221,6 @@ impl BinaryOp {
             Self::Mod => "f64-mod",
         }
     }
-
-    #[must_use]
-    pub fn is_comparison(self) -> bool {
-        matches!(
-            self,
-            Self::Equal
-                | Self::NotEqual
-                | Self::Less
-                | Self::LessEqual
-                | Self::Greater
-                | Self::GreaterEqual
-                | Self::SetContains
-        )
-    }
-
-    #[must_use]
-    pub fn is_boolean(self) -> bool {
-        self.is_comparison() || matches!(self, Self::And | Self::Or)
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
