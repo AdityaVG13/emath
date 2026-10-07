@@ -78,51 +78,6 @@ pub(super) fn vector_of<'a>(
     }
 }
 
-pub(super) fn matrix_of<'a>(
-    registers: &'a [Value],
-    value: EmirValue,
-    op: &'static str,
-) -> Result<(usize, usize, &'a [f64]), EvalFault> {
-    match register(registers, value)? {
-        Value::Matrix { rows, cols, data } if rows.checked_mul(*cols) == Some(data.len()) => {
-            Ok((*rows, *cols, data))
-        }
-        Value::Matrix { .. } => Err(EvalFault::CarrierRefused {
-            op,
-            detail: "E-SHAPE-001".into(),
-        }),
-        _ => Err(EvalFault::TypeConfusion {
-            register: value.0,
-            op,
-        }),
-    }
-}
-
-pub(super) fn tensor_of<'a>(
-    registers: &'a [Value],
-    value: EmirValue,
-    op: &'static str,
-) -> Result<(&'a [usize], &'a [f64]), EvalFault> {
-    match register(registers, value)? {
-        Value::Tensor { shape, data }
-            if shape
-                .iter()
-                .try_fold(1usize, |size, axis| size.checked_mul(*axis))
-                == Some(data.len()) =>
-        {
-            Ok((shape, data))
-        }
-        Value::Tensor { .. } => Err(EvalFault::Arithmetic {
-            op,
-            detail: "tensor storage does not match shape",
-        }),
-        _ => Err(EvalFault::TypeConfusion {
-            register: value.0,
-            op,
-        }),
-    }
-}
-
 pub(super) fn eq_ne(
     registers: &[Value],
     left: EmirValue,

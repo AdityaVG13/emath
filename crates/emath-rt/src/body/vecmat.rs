@@ -5,29 +5,6 @@
 
 // ── Complex carriers (VM builtin backstops) ──────────────────────────────────
 
-/// Principal square root of `re + im i`. Negative reals with `im = +0`
-/// map to `+i` (`sqrt(-1) = i`).
-pub fn complex_sqrt(re: f64, im: f64) -> (f64, f64) {
-    if re == 0.0 && im == 0.0 {
-        return (0.0, 0.0);
-    }
-    let r = re.hypot(im);
-    let sr = ((r + re) * 0.5).sqrt();
-    let si = ((r - re) * 0.5).sqrt();
-    (sr, im.signum() * si)
-}
-
-/// Principal logarithm `ln|z| + i Arg(z)` with `Arg = atan2(im, re)`.
-pub fn complex_ln(re: f64, im: f64) -> (f64, f64) {
-    (re.hypot(im).ln(), im.atan2(re))
-}
-
-/// `exp(re + im i) = e^{re} (cos(im) + i sin(im))`.
-pub fn complex_exp(re: f64, im: f64) -> (f64, f64) {
-    let scale = re.exp();
-    (scale * im.cos(), scale * im.sin())
-}
-
 /// Complex scalar arithmetic, codegen parity twins of the interpreter's
 /// complex arm in the scalar apply (`exec-ir interp.rs`): same formulas,
 /// same IEEE-754 operation order, bit-for-bit same output.
@@ -110,37 +87,6 @@ pub fn whole_index(raw: f64, len: usize) -> Result<usize, IndexError> {
         });
     }
     Ok(index)
-}
-
-/// Row-major tensor `t[i, j, …]` with one index per axis.
-pub fn tensor_index_checked(
-    shape: &[usize],
-    data: &[f64],
-    indices: &[f64],
-) -> Result<f64, IndexError> {
-    if indices.len() != shape.len() {
-        return Err(IndexError::Arithmetic(
-            "tensor index rank does not match shape",
-        ));
-    }
-    let expected = shape_product(shape).ok_or(IndexError::Arithmetic("tensor size overflow"))?;
-    if data.len() != expected {
-        return Err(IndexError::Arithmetic(
-            "tensor data length does not match shape product",
-        ));
-    }
-    let mut offset = 0usize;
-    for (axis, &raw) in indices.iter().enumerate() {
-        let i = whole_index(raw, shape[axis])?;
-        offset = offset
-            .checked_mul(shape[axis])
-            .and_then(|base| base.checked_add(i))
-            .ok_or(IndexError::Arithmetic("tensor index offset overflow"))?;
-    }
-    data.get(offset).copied().ok_or(IndexError::OutOfBounds {
-        index: i64::try_from(offset).unwrap_or(i64::MAX),
-        len: data.len(),
-    })
 }
 
 /// Slice `t[0, :, :]` / `v[1:3]`: point axes drop rank, range axes keep

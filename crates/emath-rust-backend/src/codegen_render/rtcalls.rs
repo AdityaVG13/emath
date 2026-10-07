@@ -1,6 +1,6 @@
 //! Runtime calls and universal register/type helpers.
 
-use super::{EmirProgram, EmirValue, Expr, ValueKind, kind_at, render_expr, EmirOp, typed_operand, InputKinds, BackendError, EmirSliceAxis, FoldCombine};
+use super::{EmirProgram, EmirValue, Expr, ValueKind, kind_at, render_expr, EmirOp, typed_operand, BackendError, EmirSliceAxis};
 
 pub(crate) fn operand(_program: &EmirProgram, value: EmirValue) -> Expr {
     Expr::Var(format!("__e{}", value.0))
@@ -62,7 +62,7 @@ pub(super) fn borrowed_register(
         return false;
     }
     match program.ops.get(value.0 as usize).map(|(op, _)| op) {
-        Some(EmirOp::LoadInput(_) | EmirOp::LoadState(_)) => true,
+        Some(EmirOp::LoadInput(_)) => true,
         Some(EmirOp::RecordField { record, field }) => {
             let receiver = kind_at(kinds, *record);
             !(receiver == ValueKind::Node
@@ -151,45 +151,6 @@ pub(super) fn checked_integer_result(call: Expr) -> Expr {
     }
 }
 
-pub(crate) fn program_may_fault(program: &EmirProgram) -> bool {
-    program.ops.iter().any(|(op, _)| match op {
-        EmirOp::Branch { then_body, else_body, .. } => program_may_fault(then_body) || program_may_fault(else_body),
-        EmirOp::CallFrame { .. } | EmirOp::CallSelf { .. } | EmirOp::CallSibling { .. } | EmirOp::DenseRepack { .. } | EmirOp::DenseValues(_)
-        | EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::ListConcat(_)
-        | EmirOp::Iterate { .. } | EmirOp::Collect { .. } | EmirOp::Refuse(_) | EmirOp::RefuseValue(_) | EmirOp::ToInt(_) | EmirOp::IntegerQuotient(_, _) | EmirOp::ExactIntCall { .. } | EmirOp::CallProgram { .. } | EmirOp::CallScalarProgram { .. } | EmirOp::CallRealProgram { .. } | EmirOp::TryCallRealProgram { .. } | EmirOp::CallValue { .. } => true,
-        EmirOp::VectorIndex { .. }
-        | EmirOp::MatrixCreate { .. }
-        | EmirOp::MatrixRows(_)
-        | EmirOp::MatrixCols(_)
-        | EmirOp::MatrixPack { .. }
-        | EmirOp::TensorShape(_)
-        | EmirOp::F64PowI(..)
-        | EmirOp::TextTrim(_)
-        | EmirOp::TextLength(_)
-        | EmirOp::TextByte(..)
-        | EmirOp::FormatScientific(..)
-        | EmirOp::ParseF64(_)
-        | EmirOp::TensorPack { .. }
-        | EmirOp::DenseIndex { .. }
-        | EmirOp::MatrixIndex { .. }
-        | EmirOp::TensorIndex { .. }
-        | EmirOp::TensorSlice { .. } => true,
-        EmirOp::Fold { body, .. } => program_may_fault(body),
-        EmirOp::ApplyCapability { capability, .. } => {
-            if emath_exec_ir::native_kernel::checked::verified(capability).is_some() { return true; }
-            if super::artifact_may_fault(capability) { return true; }
-            emath_exec_ir::native_kernel::installed_reference_cell(capability).is_some_and(|cell| {
-                emath_exec_ir::native_kernel::installed_signature(capability).is_some_and(|signature| signature.inputs.iter().chain(std::iter::once(&signature.output)).any(|ty| matches!(ty.as_str(), "Int" | "Nat" | "I64")))
-                    || cell.program.ops.iter().any(|(op, _)| matches!(op, EmirOp::ConstI64(_)))
-                    || cell.params.iter().any(|(_, shape)| *shape == emath_exec_ir::term_compile::ParamShape::Rational)
-                    || cell.defaults.iter().any(|default| program_may_fault(default) || default.ops.iter().any(|(op, _)| matches!(op, EmirOp::ConstI64(_))))
-                    || program_may_fault(&cell.program)
-            })
-        }
-        _ => false,
-    })
-}
-
 pub(super) fn index_f64(program: &EmirProgram, value: EmirValue, kinds: &[ValueKind]) -> String {
     render_expr(&typed_operand(program, value, ValueKind::F64, kinds))
 }
@@ -249,23 +210,6 @@ fn slice_helper(axes: &[EmirSliceAxis]) -> &'static str {
     }
 }
 
-pub(super) fn tensor_index_call(
-    program: &EmirProgram,
-    tensor: EmirValue,
-    indices: &[EmirValue],
-    kinds: &[ValueKind],
-) -> Expr {
-    let indices = indices
-        .iter()
-        .map(|value| index_f64(program, *value, kinds))
-        .collect::<Vec<_>>()
-        .join(", ");
-    map_runtime_result(format!(
-        "{{ let (__s, __d) = emath_rt::EinsumIn::einsum_operand(&{}); emath_rt::tensor_index_checked(&__s, &__d, &[{indices}]) }}",
-        render_expr(&operand(program, tensor)),
-    ))
-}
-
 pub(super) fn tensor_slice_call(
     program: &EmirProgram,
     tensor: EmirValue,
@@ -282,47 +226,6 @@ pub(super) fn tensor_slice_call(
         "{{ let (__s, __d) = emath_rt::EinsumIn::einsum_operand(&{}); emath_rt::{helper}(&__s, &__d, &[{axes}]) }}",
         render_expr(&operand(program, tensor)),
     ))
-}
-
-pub(super) fn register_rust_ty(
-    program: &EmirProgram,
-    value: EmirValue,
-    kinds: &[ValueKind],
-    names: &[String],
-    states: &[String],
-    input_kinds: &InputKinds,
-) -> Option<String> {
-    let op = &program.ops.get(value.0 as usize)?.0;
-    match op {
-        EmirOp::ConstI64(_) => Some("i64".to_string()),
-        EmirOp::ConstExactInt(_) => Some("emath_rt::ExactInt".to_string()),
-        EmirOp::ExactIntCall { .. } => Some("emath_rt::ExactInt".to_string()),
-        EmirOp::ConstF64(_) | EmirOp::SeriesSample { .. } => Some("f64".to_string()),
-        EmirOp::ConstBool(_)
-        | EmirOp::SetContains { .. }
-        | EmirOp::OptionIsSome(_)
-        | EmirOp::ResultIsOk(_)
-        | EmirOp::VectorAllFinite(_)
-        | EmirOp::Fold {
-            combine: FoldCombine::And | FoldCombine::Or,
-            ..
-        } => Some("bool".to_string()),
-        EmirOp::ConstText(_) | EmirOp::FormatText { .. } => Some("String".to_string()),
-        EmirOp::ConstComplex(..) => Some("(f64, f64)".to_string()),
-        EmirOp::VectorCreate(_) | EmirOp::VectorMap { .. } | EmirOp::VectorMapScalar { .. } => {
-            Some("Vec<f64>".to_string())
-        }
-        EmirOp::MatrixCreate { .. } | EmirOp::MatrixPack { .. } => Some("emath_rt::Matrix".to_string()),
-        EmirOp::TensorCreate { .. } => Some("emath_rt::Tensor".to_string()),
-        EmirOp::SeriesCreate { .. } => Some("Vec<(f64, f64)>".to_string()),
-        EmirOp::LoadInput(index) => input_rust_ty(names.get(*index as usize), input_kinds),
-        EmirOp::LoadState(index) => input_rust_ty(states.get(*index as usize), input_kinds),
-        _ => kind_at(kinds, value).rust_ty().ok().map(|ty| crate::rust_ir::render::render_ty(&ty)),
-    }
-}
-
-fn input_rust_ty(name: Option<&String>, input_kinds: &InputKinds) -> Option<String> {
-    name.and_then(|name| input_kinds.get(name)).and_then(|kind| kind.rust_ty().ok()).map(|ty| crate::rust_ir::render::render_ty(&ty))
 }
 
 pub(super) fn exact_int_operand(
@@ -447,12 +350,3 @@ pub(super) fn exact_int_call_expr(
     Ok(map_runtime_result(code))
 }
 
-thread_local! { static LOCAL_STATE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
-pub(super) struct LocalStateScope(bool);
-impl LocalStateScope {
-    pub(super) fn enter() -> Self { Self(LOCAL_STATE.with(|state| state.replace(true))) }
-}
-impl Drop for LocalStateScope {
-    fn drop(&mut self) { LOCAL_STATE.with(|state| state.set(self.0)); }
-}
-pub(super) fn local_state() -> bool { LOCAL_STATE.with(std::cell::Cell::get) }

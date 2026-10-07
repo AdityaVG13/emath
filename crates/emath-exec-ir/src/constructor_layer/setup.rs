@@ -253,21 +253,6 @@ pub(super) fn package_of(tree: &SyntaxTree) -> Option<&[String]> {
     })
 }
 
-/// Where one `use` line of `tree` (the file at `source`) resolves, by
-/// the engine's own rules, and whether that file is a library module
-/// (under a `language/modules` or `language/domains` root) rather than
-/// a user file.
-pub fn resolve_use(
-    tree: &SyntaxTree,
-    path: &[String],
-    source: &Path,
-) -> Result<(PathBuf, bool), ConstructorError> {
-    let roots = module_roots_for(Some(source));
-    let file = resolve_import(path, &roots, Some(source), package_of(tree))?;
-    let library = roots.iter().any(|root| file.starts_with(root));
-    Ok((file, library))
-}
-
 pub(super) fn resolve_import(
     path: &[String],
     roots: &[PathBuf],
@@ -480,22 +465,6 @@ pub fn module_roots_for(source: Option<&Path>) -> Vec<PathBuf> {
     }
     modules.extend(domains);
     modules
-}
-
-/// Merge a file's `use` imports into one whole-program tree (the build
-/// lane's lowering input). All imported implementations join under their
-/// scoped keys, including private and unselected callees; selectors control
-/// source bindings, not implementation reachability. Nested imports merge
-/// before their parent's declarations (engine load order). `package` and
-/// `use` items stay the main file's authority; search roots follow the
-/// same discovery as the test lane (`module_roots_for`).
-pub fn merged_tree_with_imports(
-    tree: &SyntaxTree,
-    source: Option<&Path>,
-) -> Result<SyntaxTree, ConstructorError> {
-    let roots = module_roots_for(source);
-    let graph = scope::load_graph(tree, &roots, source)?;
-    merged_tree_from_graph(tree, &graph)
 }
 
 pub(super) fn merged_tree_from_graph(

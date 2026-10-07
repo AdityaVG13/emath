@@ -35,13 +35,6 @@ pub fn ratio_normalize(n: impl Into<ExactInt>, d: impl Into<ExactInt>) -> ExactR
     let (n, d) = exact_ratio(n.into(), d.into()).map_err(q_error)?;
     Ok(ExactRatio(n, d))
 }
-pub fn ratio_construct(n: i64, d: i64) -> ExactResult<ExactRatio> {
-    ratio_normalize(n, d)
-}
-pub fn ratio_norm(q: impl Into<ExactRatio>) -> ExactResult<ExactRatio> {
-    let q = q.into();
-    ratio_normalize(q.0, q.1)
-}
 fn q_require(q: &ExactRatio) -> ExactResult<()> {
     if q.1.signum() <= 0 || !q_gcd(&q.0, &q.1)?.is_one() {
         return Err("E-RAT-001: noncanonical rational".into());

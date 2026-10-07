@@ -43,47 +43,12 @@ impl CrateProfile {
         }
     }
 
-    /// Whether the profile needs the standard library.
-    #[must_use]
-    pub const fn requires_std(self) -> bool {
-        !matches!(self, Self::NoStd)
-    }
-
     /// Crate layout: `lib` or `bin`.
     #[must_use]
     pub const fn layout(self) -> &'static str {
         match self {
             Self::Binary => "bin",
             _ => "lib",
-        }
-    }
-
-    /// Manifest fragment for the profile (deterministic; the workspace
-    /// adds name/version/deps).
-    #[must_use]
-    pub fn manifest_fragment(self) -> String {
-        match self {
-            Self::Library => "[lib]\npath = \"src/lib.rs\"\n".to_string(),
-            Self::Binary => "[[bin]]\nname = \"generated\"\npath = \"src/main.rs\"\n".to_string(),
-            Self::NoStd => "[lib]\npath = \"src/lib.rs\"\ncrate-type = [\"rlib\"]\n".to_string(),
-            Self::WasmComponent | Self::Ffi => {
-                "[lib]\npath = \"src/lib.rs\"\ncrate-type = [\"cdylib\"]\n".to_string()
-            }
-            Self::ProviderPlugin => {
-                "[lib]\npath = \"src/lib.rs\"\ncrate-type = [\"cdylib\", \"rlib\"]\n".to_string()
-            }
-            Self::HostPatchCandidate => {
-                "[lib]\npath = \"src/lib.rs\"\nhost-patch = true\n".to_string()
-            }
-        }
-    }
-
-    /// Crate-level attribute for the profile (empty when none).
-    #[must_use]
-    pub fn crate_attribute(self) -> Option<&'static str> {
-        match self {
-            Self::NoStd => Some("#![no_std]"),
-            _ => None,
         }
     }
 

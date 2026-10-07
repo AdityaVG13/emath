@@ -4,7 +4,6 @@
 use crate::rust_ir::ast::{
     BinOp, Block, Expr, Item, Module, Param, Stmt, Ty, UnOp, Visibility, escape_ident,
 };
-use emath_core::{ContentId, fnv1a64_bytes};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,29 +29,7 @@ pub struct FileSet {
 }
 
 impl FileSet {
-    /// A file set with only the crate root.
-    #[must_use]
-    pub fn root_only(root: Module) -> Self {
-        Self {
-            root,
-            modules: BTreeMap::new(),
-        }
-    }
 
-    /// Content identity of one generated file: path-independent (only the
-    /// relative path and bytes contribute, never absolute host paths).
-    #[must_use]
-    pub fn file_identity(relative_path: &str, contents: &str) -> ContentId {
-        let mut payload = String::new();
-        payload.push_str("file:");
-        payload.push_str(relative_path);
-        payload.push('\n');
-        payload.push_str(contents);
-        ContentId(format!(
-            "fnv1a64:{:016x}",
-            fnv1a64_bytes(payload.as_bytes())
-        ))
-    }
 }
 
 /// Renders the file set partitioned into deterministic per-file contents:

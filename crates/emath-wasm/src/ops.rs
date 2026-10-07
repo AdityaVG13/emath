@@ -1,16 +1,14 @@
-//! Individual wasm operations: check, plan, mig, generate, run.
+//! Individual wasm operations: check, generate, run.
 
-use super::{prepare_source, session_from_source, JsonWriter, put_pipeline_status, diagnostic_objects, declaration_names, maybe_desugared, Mig, error_json, parse_run_payload, BTreeMap, serialize_constructor_report, Value, Cow, parse_json_document, JsonValue, first_duplicate_key};
+use super::{session_from_source, JsonWriter, put_pipeline_status, diagnostic_objects, declaration_names, error_json, parse_run_payload, BTreeMap, serialize_constructor_report, Value};
 
 pub(super) fn op_check(source: &str) -> String {
-    let prepared = prepare_source(source);
-    let (mut session, file) = session_from_source(&prepared.source);
+    let (mut session, file) = session_from_source(source);
     let result = session.check(file);
     let mut object = JsonWriter::object();
     put_pipeline_status(&mut object, &result.diagnostics);
     object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
     object.strings("declarations", &declaration_names(&result.package));
-    maybe_desugared(&mut object, prepared.desugared());
     object.finish()
 }
 
@@ -31,73 +29,8 @@ pub(super) fn refuse_kind_gone(op: &str) -> String {
     object.finish()
 }
 
-#[allow(unreachable_code, unused_variables)]
-pub(super) fn op_plan(source: &str) -> String {
-    let _ = source;
-    return refuse_kind_gone("plan");
-    let prepared = prepare_source(source);
-    let (mut session, file) = session_from_source(&prepared.source);
-    let result = session.plan(file);
-    let mut requests = Vec::with_capacity(result.requests.len());
-    for request in &result.requests {
-        let mut entry = JsonWriter::object();
-        entry.string("kind", &request.kind);
-        entry.string("target", &request.target);
-        entry.string("produce", &request.produce);
-        requests.push(entry.finish().trim_end().to_string());
-    }
-    let mut plan_items = Vec::with_capacity(result.plans.len());
-    for plan in &result.plans {
-        let mut steps = Vec::with_capacity(plan.nodes.len());
-        let mut providers = Vec::with_capacity(plan.nodes.len());
-        for node in plan.nodes.values() {
-            steps.push(node.operation.name().to_string());
-            if let Some(provider) = &node.provider {
-                if !providers.iter().any(|existing| existing == &provider.id) {
-                    providers.push(provider.id.clone());
-                }
-            }
-        }
-        let mut entry = JsonWriter::object();
-        entry.string("policy", &plan.policy);
-        entry.string("artifact_class", &plan.artifact_class);
-        entry.strings("steps", &steps);
-        entry.strings("providers", &providers);
-        plan_items.push(entry.finish().trim_end().to_string());
-    }
-    let mut plans = JsonWriter::object();
-    plans.int("count", result.plans.len() as u64);
-    plans.objects("items", &plan_items);
-    let mut object = JsonWriter::object();
-    put_pipeline_status(&mut object, &result.diagnostics);
-    object.objects("diagnostics", &diagnostic_objects(&result.diagnostics));
-    object.objects("requests", &requests);
-    object.object_field("plans", plans.finish().trim_end());
-    maybe_desugared(&mut object, prepared.desugared());
-    object.finish()
-}
-
-#[allow(unreachable_code, unused_variables)]
-pub(super) fn op_mig(source: &str) -> String {
-    let _ = source;
-    return refuse_kind_gone("mig");
-    let prepared = prepare_source(source);
-    let (mut session, file) = session_from_source(&prepared.source);
-    let result = session.plan(file);
-    let mig = Mig::from_package(&result.package);
-    let mut object = JsonWriter::object();
-    put_pipeline_status(&mut object, &result.diagnostics);
-    object.string("canonical", &mig.canonical());
-    object.int("nodes", mig.nodes.len() as u64);
-    object.int("edges", mig.edges.len() as u64);
-    object.string("identity", &mig.identity().0);
-    maybe_desugared(&mut object, prepared.desugared());
-    object.finish()
-}
-
 pub(super) fn op_generate(source: &str) -> String {
-    let prepared = prepare_source(source);
-    let (mut session, file) = session_from_source(&prepared.source);
+    let (mut session, file) = session_from_source(source);
     let checked = session.check(file);
     if checked.diagnostics.has_errors() {
         let mut object = JsonWriter::object();
@@ -109,7 +42,7 @@ pub(super) fn op_generate(source: &str) -> String {
         return refuse_kind_gone("generate");
     };
     let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(
-        &module, std::path::Path::new("input.emath"), &prepared.source,
+        &module, std::path::Path::new("input.emath"), source,
     ) {
         Ok(emission) => emission,
         Err(emath_rust_backend::constructor_crate::ConstructorEmitRefusal::NotConstructor(_)) => return refuse_kind_gone("generate"),
@@ -137,8 +70,7 @@ pub(super) fn op_run(payload: &str) -> String {
         Ok(envelope) => envelope,
         Err(message) => return error_json(&message),
     };
-    let prepared = prepare_source(&envelope.source);
-    let (mut session, file) = session_from_source(&prepared.source);
+    let (mut session, file) = session_from_source(&envelope.source);
     let checked = session.check(file);
     if checked.diagnostics.has_errors() {
         let mut object = JsonWriter::object();
@@ -244,39 +176,4 @@ fn value_to_cvalue(
             "given value `{other:?}` is not a constructor scalar, bool, or vector"
         )),
     }
-}
-
-pub(super) struct SolvePayload<'a> {
-    pub(super) source: Cow<'a, str>,
-    pub(super) apply: Option<emath_syntax::SolveWorld>,
-}
-
-pub(super) fn parse_solve_payload(payload: &str) -> Result<SolvePayload<'_>, String> {
-    if !payload.trim_start().starts_with('{') {
-        return Ok(SolvePayload {
-            source: Cow::Borrowed(payload),
-            apply: None,
-        });
-    }
-    let value = parse_json_document(payload.trim())
-        .map_err(|_| "solve_candidates expects source text or a JSON envelope".to_string())?;
-    if let JsonValue::Obj(entries) = &value
-        && let Some(key) = first_duplicate_key(entries)
-    {
-        return Err(format!("solve_candidates envelope duplicates `{key}`"));
-    }
-    let source = value
-        .string_field("source")
-        .map_err(|_| "solve_candidates envelope requires string `source`".to_string())?;
-    let apply = match value.string_field("apply") {
-        Ok(label) => Some(
-            emath_syntax::SolveWorld::parse_label(&label)
-                .ok_or_else(|| format!("unknown solve candidate `{label}`"))?,
-        ),
-        Err(_) => None,
-    };
-    Ok(SolvePayload {
-        source: Cow::Owned(source),
-        apply,
-    })
 }

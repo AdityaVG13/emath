@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use emath_adapter_dew::{EvalValue, evaluate_scalar, map_expression};
 use emath_adapter_dew_tests::TestResult;
 use emath_core::Span;
-use emath_exec_ir::lower_definition;
 use emath_ir::{ExprNode, Literal, SemanticPackage};
 use emath_test_harness::{Case, Probe, check_all};
 
@@ -55,7 +54,7 @@ fn probe() {
         let huge = format!("1{}", "0".repeat(400));
         p.eq("huge-verdict", int_verdict(&huge), TestResult::Pass);
         let mut package = SemanticPackage::new();
-        let expr = package.push_expr(ExprNode::Literal(Literal::Integer(huge.clone())), Span::default());
+        let expr = package.push_expr(ExprNode::Literal(Literal::Integer(huge)), Span::default());
         match map_expression(&package, expr) {
             Ok(_) => {
                 p.fail("huge", "must refuse");
@@ -64,9 +63,6 @@ fn probe() {
                 p.eq("huge/code", issue.code, "E-PROV-030");
             }
         }
-        let mut native = SemanticPackage::new();
-        let nexpr = native.push_expr(ExprNode::Literal(Literal::Integer(huge)), Span::default());
-        p.demand("native-refuses", lower_definition(&native, nexpr, &[], &[]).is_err(), "native must refuse the same literal");
     });
     p.finish();
 }

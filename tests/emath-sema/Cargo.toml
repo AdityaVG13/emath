@@ -12,9 +12,7 @@ emath-ir = { path = "../../crates/emath-ir" }
 emath-syntax = { path = "../../crates/emath-syntax" }
 emath-exec-ir = { path = "../../crates/emath-exec-ir" }
 emath-cli = { path = "../../crates/emath-cli" }
-emath-lab-core = { path = "../../crates/emath-lab-core" }
 emath-term = { path = "../../crates/emath-term" }
-emath-world-ir = { path = "../../crates/emath-world-ir" }
 
 [[test]]
 name = "admit_extern_negative"

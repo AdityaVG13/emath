@@ -181,9 +181,8 @@ impl TailLoopScope {
     pub(crate) fn enter(body: &EmirProgram, params: Vec<String>, states: usize) -> Self {
         let inputs = params.len() - states;
         let roots: Vec<Option<usize>> = (0..inputs).map(Some).collect();
-        let state_roots: Vec<Option<usize>> = (inputs..params.len()).map(Some).collect();
         let mut tails = std::collections::HashMap::new();
-        collect_tail_calls(body, &roots, &state_roots, &mut tails);
+        collect_tail_calls(body, &roots, &mut tails);
         TAIL_LOOP.with(|stack| stack.borrow_mut().push((params, tails)));
         Self
     }
@@ -195,17 +194,11 @@ impl Drop for TailLoopScope {
 }
 
 /// The wrapper parameter a register of `program` is, when it is one:
-/// a load of an input or state that the enclosing chain maps to a
-/// parameter position.
-fn param_of(
-    program: &EmirProgram,
-    value: EmirValue,
-    inputs: &[Option<usize>],
-    states: &[Option<usize>],
-) -> Option<usize> {
+/// a load of an input that the enclosing chain maps to a parameter
+/// position.
+fn param_of(program: &EmirProgram, value: EmirValue, inputs: &[Option<usize>]) -> Option<usize> {
     match program.ops.get(value.0 as usize).map(|(op, _)| op) {
         Some(EmirOp::LoadInput(index)) => inputs.get(*index as usize).copied().flatten(),
-        Some(EmirOp::LoadState(index)) => states.get(*index as usize).copied().flatten(),
         _ => None,
     }
 }
@@ -213,7 +206,6 @@ fn param_of(
 fn collect_tail_calls(
     program: &EmirProgram,
     inputs: &[Option<usize>],
-    states: &[Option<usize>],
     tails: &mut std::collections::HashMap<usize, Vec<bool>>,
 ) {
     let Some((op, _)) = program.ops.get(program.result.0 as usize) else {
@@ -225,7 +217,7 @@ fn collect_tail_calls(
                 .iter()
                 .enumerate()
                 .map(|(position, value)| {
-                    param_of(program, *value, inputs, states) == Some(position)
+                    param_of(program, *value, inputs) == Some(position)
                 })
                 .collect();
             tails.insert(std::ptr::from_ref(op) as usize, unchanged);
@@ -239,10 +231,10 @@ fn collect_tail_calls(
             // Arm input k is the branch's argument k in this program.
             let arm_inputs: Vec<Option<usize>> = args
                 .iter()
-                .map(|value| param_of(program, *value, inputs, states))
+                .map(|value| param_of(program, *value, inputs))
                 .collect();
-            collect_tail_calls(then_body, &arm_inputs, &[], tails);
-            collect_tail_calls(else_body, &arm_inputs, &[], tails);
+            collect_tail_calls(then_body, &arm_inputs, tails);
+            collect_tail_calls(else_body, &arm_inputs, tails);
         }
         _ => {}
     }
@@ -366,7 +358,6 @@ pub(crate) enum ValueKind {
     },
     /// Complex scalar `(f64, f64)`, the VM's complex carrier.
     Complex,
-    DenseLayout(Box<ValueKind>),
     Result(Box<ValueKind>, Box<ValueKind>),
     Vector(Box<ValueKind>),
     Matrix(Box<ValueKind>),
@@ -491,7 +482,6 @@ impl ValueKind {
             Self::CodeValue => Ty::Named("emath_rt::code::CodeValue".into()),
             Self::Evaluated => Ty::Named("emath_rt::code_tree::EvaluatedValue".into()),
             Self::Node => Ty::Named("emath_rt::code_tree::NodeValue".into()),
-            Self::DenseLayout(_) => Ty::Named("emath_rt::DenseLayout".into()),
             Self::Program => Ty::Named(
                 "std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>>"
                     .into(),
@@ -1552,34 +1542,16 @@ pub(super) fn kind_of_op(
     match op {
         EmirOp::ConstI64(_)
         | EmirOp::VectorLength(_)
-        | EmirOp::ToInt(_)
-        | EmirOp::MatrixRows(_)
-        | EmirOp::MatrixCols(_) => ValueKind::I64,
+         => ValueKind::I64,
         EmirOp::ConstExactInt(_) => ValueKind::ExactInt,
         EmirOp::BufferCreate { .. } => ValueKind::Buffer,
         EmirOp::BufferWrite { .. } => ValueKind::Unit,
         EmirOp::ExactIntCall { .. } => ValueKind::ExactInt,
-        EmirOp::IntegerQuotient(left, right) => {
-            if kind_at(kinds, *left) == ValueKind::ExactInt
-                || kind_at(kinds, *right) == ValueKind::ExactInt
-            {
-                ValueKind::ExactInt
-            } else {
-                ValueKind::I64
-            }
-        }
-        EmirOp::MatrixPack { .. } | EmirOp::MatrixCreate { .. } => {
-            ValueKind::Matrix(Box::new(ValueKind::F64))
-        }
-        EmirOp::TensorPack { .. } | EmirOp::TensorCreate { .. } => ValueKind::Tensor,
-        EmirOp::TensorShape(_) => ValueKind::Vector(Box::new(ValueKind::I64)),
-        EmirOp::F64Exp2(_) | EmirOp::F64PowI(..) | EmirOp::ParseF64(_) => ValueKind::F64,
+        EmirOp::ParseF64(_) => ValueKind::F64,
         EmirOp::TextTrim(_) | EmirOp::FormatScientific(..) | EmirOp::IndexText(_) => {
             ValueKind::Text
         }
         EmirOp::TextLength(_) | EmirOp::TextByte(..) => ValueKind::I64,
-        EmirOp::DenseIndex { .. } => ValueKind::F64,
-        EmirOp::ConstBigInt(_) => ValueKind::BigInt,
         EmirOp::ConstF64(_) => ValueKind::F64,
         EmirOp::ConstBool(_) => ValueKind::Bool,
         EmirOp::ConstText(_) | EmirOp::FormatText { .. } => ValueKind::Text,
@@ -1892,10 +1864,7 @@ pub(super) fn kind_of_op(
             refine_recursive_frame_kinds(body, &names, &states, &mut frame);
             with_self_call_scope(|| program_kind(body, &names, &states, &frame)).0
         }
-        EmirOp::SameDenseShape(..) => ValueKind::Bool,
-        EmirOp::ToF64(_) => ValueKind::F64,
-        EmirOp::DenseLayout(value) => ValueKind::DenseLayout(Box::new(kind_at(kinds, *value))),
-        EmirOp::VectorSlice { .. } | EmirOp::VectorConcat(_) | EmirOp::F64SortTotal(_) => {
+        EmirOp::F64SortTotal(_) => {
             ValueKind::Vector(Box::new(ValueKind::F64))
         }
         // Authored cons preserves the element carrier (records stay
@@ -1912,17 +1881,6 @@ pub(super) fn kind_of_op(
                 other => ValueKind::Vector(Box::new(other)),
             }
         }
-        EmirOp::DenseValues(_) => ValueKind::Vector(Box::new(ValueKind::F64)),
-        EmirOp::DenseRepack { template, .. } => match kind_at(kinds, *template) {
-            ValueKind::DenseLayout(kind) => {
-                if *kind == ValueKind::I64 {
-                    ValueKind::F64
-                } else {
-                    *kind
-                }
-            }
-            _ => ValueKind::Other,
-        },
         EmirOp::CallProgram { .. } | EmirOp::ToF64Vector(_) => {
             ValueKind::Vector(Box::new(ValueKind::F64))
         }
@@ -1976,9 +1934,7 @@ pub(super) fn kind_of_op(
             )
         }
         EmirOp::ListCreate(values)
-        | EmirOp::SetCreate {
-            elements: values, ..
-        } => {
+         => {
             // A list with any node-family element joins the node
             // family (its dynamic sequence): the walk's `[code, arg]`
             // argument lists mix Code and node values, exactly as
@@ -1997,16 +1953,6 @@ pub(super) fn kind_of_op(
                     .map_or(ValueKind::Other, |value| kind_at(kinds, *value))
             }))
         }
-        EmirOp::VectorCreate(values) => ValueKind::Vector(Box::new(
-            if values
-                .iter()
-                .any(|value| kind_at(kinds, *value) == ValueKind::Rational)
-            {
-                ValueKind::Rational
-            } else {
-                ValueKind::F64
-            },
-        )),
         EmirOp::VectorIndex { vector, .. } => match kind_at(kinds, *vector) {
             ValueKind::Buffer | ValueKind::Cell => ValueKind::Cell,
             ValueKind::Vector(element) => *element,
@@ -2023,31 +1969,8 @@ pub(super) fn kind_of_op(
             receiver if kind_is_never_indexable(&receiver) => ValueKind::Never,
             _ => ValueKind::F64,
         },
-        EmirOp::ConstComplex(..) => ValueKind::Complex,
-        EmirOp::SeriesCreate { .. }
-        | EmirOp::TensorSlice { .. }
-        | EmirOp::OptionSome(_)
-        | EmirOp::OptionNone
-        | EmirOp::ResultOk(_)
-        | EmirOp::ResultErr(_)
-        | EmirOp::ResultErrorOf(_)
-        | EmirOp::VectorMap { .. }
-        | EmirOp::VectorMapScalar { .. }
-        | EmirOp::VectorReduce { .. } => ValueKind::Other,
-        EmirOp::SeriesSample { .. } | EmirOp::F64Pow(..) => ValueKind::F64,
-        EmirOp::UnaryBuiltin(_, value) => {
-            // Transcendentals preserve the complex carrier when applied to
-            // a complex operand (`sqrt(-1) = i`); the op_arith renderer
-            // picks the complex builtin for those, others refuse typed.
-            if kind_at(kinds, *value) == ValueKind::Complex {
-                ValueKind::Complex
-            } else {
-                ValueKind::F64
-            }
-        }
-        EmirOp::BinaryBuiltin(..) | EmirOp::MatrixIndex { .. } | EmirOp::TensorIndex { .. } => {
-            ValueKind::F64
-        }
+        EmirOp::TensorSlice { .. }
+         => ValueKind::Other,
         EmirOp::ApplyCapability {
             capability, args, ..
         } => {
@@ -2096,7 +2019,6 @@ pub(super) fn kind_of_op(
             }
         }
         EmirOp::LoadInput(index) => input_kind(names.get(*index as usize), input_kinds),
-        EmirOp::LoadState(index) => input_kind(states.get(*index as usize), input_kinds),
         EmirOp::F64Add(left, right) | EmirOp::F64Sub(left, right) | EmirOp::F64Mul(left, right) => {
             // A Never operand (an op that always refuses - the
             // `vector-index` type confusion) never yields a value, so
@@ -2180,29 +2102,8 @@ pub(super) fn kind_of_op(
         }
         EmirOp::IsFinite(_)
         | EmirOp::SameBits(_, _)
-        | EmirOp::Imply(..)
-        | EmirOp::Iff(..)
-        | EmirOp::SetContains { .. }
-        | EmirOp::OptionIsSome(_)
         | EmirOp::ResultIsOk(_)
-        | EmirOp::VectorAllFinite(_) => ValueKind::Bool,
-        EmirOp::Select {
-            then_value,
-            else_value,
-            ..
-        } => {
-            let then_kind = kind_at(kinds, *then_value);
-            let else_kind = kind_at(kinds, *else_value);
-            if then_kind == else_kind {
-                then_kind
-            } else if matches!(then_kind, ValueKind::I64 | ValueKind::ExactInt)
-                && matches!(else_kind, ValueKind::I64 | ValueKind::ExactInt)
-            {
-                ValueKind::ExactInt
-            } else {
-                ValueKind::F64
-            }
-        }
+         => ValueKind::Bool,
         EmirOp::Fold {
             combine,
             init,
@@ -2227,7 +2128,7 @@ pub(super) fn kind_of_op(
                 }
             }
         },
-        EmirOp::OptionUnwrapOr(_, default) | EmirOp::ResultUnwrapOr(_, default) => {
+        EmirOp::ResultUnwrapOr(_, default) => {
             kind_at(kinds, *default)
         }
     }
@@ -2951,7 +2852,6 @@ fn owned_result(
             matches!(
                 op,
                 EmirOp::LoadInput(_)
-                    | EmirOp::LoadState(_)
                     | EmirOp::RecordField { .. }
                     | EmirOp::VectorIndex { .. }
                     | EmirOp::ConstText(_)

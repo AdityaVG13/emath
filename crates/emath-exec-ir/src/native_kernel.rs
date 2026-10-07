@@ -33,9 +33,6 @@ use crate::interp::Value;
 use crate::language_image::LanguageDistribution;
 use crate::term_compile::CompiledCell;
 
-#[path = "native_kernels/checked.rs"]
-pub mod checked;
-
 /// Generic argument-count contract parsed from capsule and kernel ABI data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KernelArity {
@@ -138,8 +135,7 @@ pub enum KernelBindingError {
 
 /// The immutable static table. Lookup is by `(kernel_id, signature)` so one
 /// domain-neutral operation may expose capsule-declared carrier refinements
-/// without inspecting a feature name (for example the two ratio-normalization
-/// carriers).
+/// without inspecting a feature name.
 static NATIVE_KERNELS: &[NativeKernel] = &[
     NativeKernel {
         kernel_id: "checked-add",
@@ -152,9 +148,7 @@ static NATIVE_KERNELS: &[NativeKernel] = &[
 fn kernels() -> impl Iterator<Item = &'static NativeKernel> {
     // Only checked scalar-carrier operations are native; mathematical
     // methods are authored `.emath`.
-    NATIVE_KERNELS
-        .iter()
-        .chain(checked::BINDINGS.iter().map(|binding| &binding.native))
+    NATIVE_KERNELS.iter()
 }
 
 /// The declared value ABI of an active capability, independent of its executor.
@@ -473,15 +467,6 @@ pub(crate) fn parse_kernel_arity(value: &str) -> Option<KernelArity> {
     } else {
         value.parse().ok().map(KernelArity::Exact)
     }
-}
-
-pub fn binding_semantic_hash(capability: &str) -> Option<String> {
-    LANGUAGE_BINDINGS.with(|bindings| {
-        bindings
-            .borrow()
-            .get(capability)
-            .map(|binding| binding.semantic_hash.clone())
-    })
 }
 
 /// Resolve an installed binding to its verified kernel identity.

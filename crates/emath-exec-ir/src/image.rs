@@ -356,24 +356,4 @@ impl SemanticImage {
             .map(|partition| partition.body.as_str())
     }
 
-    /// Canonical encoding (schema, version, pack, stamped partition ids).
-    #[must_use]
-    pub fn to_canonical(&self) -> String {
-        let mut out = String::new();
-        out.push_str(SEMANTIC_IMAGE_SCHEMA);
-        out.push('\n');
-        out.push_str(&SEMANTIC_IMAGE_VERSION.to_string());
-        out.push('\n');
-        out.push_str(&self.pack_name);
-        out.push('\n');
-        out.push_str(&self.image_id);
-        out.push('\n');
-        for partition in &self.partitions {
-            out.push_str(&partition.name);
-            out.push(':');
-            out.push_str(&partition.content_id);
-            out.push('\n');
-        }
-        out
-    }
 }

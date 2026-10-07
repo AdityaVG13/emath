@@ -6,7 +6,6 @@ use emath_exec_ir::optimize::{is_total, operand_registers};
 use emath_exec_ir::{CodeSubRef, EmirOp, EmirProgram, EmirSliceAxis, EmirValue, FoldCombine};
 
 use crate::BackendError;
-use crate::codegen_helpers::comparison;
 use crate::contains_call_self;
 
 mod op_arith;
@@ -25,7 +24,7 @@ mod kinds;
 mod record_layouts;
 mod rtcalls;
 
-use carrier::{carrier_payload_types, expect_carrier, op_self_index};
+use carrier::{expect_result_carrier, op_self_index};
 pub(crate) use flat::*;
 pub(crate) use kinds::*;
 pub(crate) use record_layouts::{
@@ -572,14 +571,7 @@ pub(crate) fn op_expr(
                 .join(", ");
             Ok(Expr::Raw(format!("{entry}({args})?")))
         }
-        EmirOp::SameDenseShape(..)
-        | EmirOp::DenseValues(_)
-        | EmirOp::DenseRepack { .. }
-        | EmirOp::ToF64(_)
-        | EmirOp::DenseLayout(_)
-        | EmirOp::VectorSlice { .. }
-        | EmirOp::VectorConcat(_)
-        | EmirOp::ListConcat(_)
+        EmirOp::ListConcat(_)
         | EmirOp::F64SortTotal(_) => op_collection_exprs(op, program, kinds),
         EmirOp::Branch { .. }
         | EmirOp::Iterate { .. }
@@ -726,30 +718,6 @@ pub(crate) fn op_expr(
                 Ok(Expr::Raw(format!("&{}", render_expr(&value))))
             }
         }
-        EmirOp::ToInt(value) => checked_integer_operand(program, *value, kinds),
-        EmirOp::IntegerQuotient(left, right) => {
-            let left_k = kind_at(kinds, *left);
-            let right_k = kind_at(kinds, *right);
-            if left_k == ValueKind::I64 && right_k == ValueKind::I64 {
-                return Ok(checked_integer_result(Expr::MethodCall {
-                    receiver: Box::new(operand(program, *left)),
-                    method: "checked_div_euclid".to_string(),
-                    args: vec![operand(program, *right)],
-                }));
-            }
-            if matches!(left_k, ValueKind::I64 | ValueKind::ExactInt)
-                && matches!(right_k, ValueKind::I64 | ValueKind::ExactInt)
-            {
-                return Ok(map_runtime_result(format!(
-                    "{}.quot({}).map_err(|err| err.to_string())",
-                    render_expr(&exact_int_operand(program, *left, kinds)),
-                    exact_int_ref(program, *right, kinds)
-                )));
-            }
-            Err(BackendError::UnsupportedType(
-                "quotient requires two Int operands".into(),
-            ))
-        }
         EmirOp::SameBits(left, right) => Ok(Expr::Raw(format!(
             "({}).to_bits() == ({}).to_bits()",
             render_expr(&typed_operand(program, *left, ValueKind::F64, kinds)),
@@ -761,30 +729,18 @@ pub(crate) fn op_expr(
             "emath_rt::ExactInt::parse(\"{digits}\").expect(\"const-exact-int digits\")"
         ))),
         EmirOp::ExactIntCall { name, args } => Ok(exact_int_call_expr(name, args, program, kinds)?),
-        EmirOp::ConstBigInt(digits) => Ok(Expr::Raw(format!(
-            "emath_rt::UBig::parse_decimal(\"{digits}\").expect(\"const-bigint digits\")"
-        ))),
         EmirOp::ConstText(value) => Ok(Expr::Str(value.clone())),
-        EmirOp::ConstComplex(..)
-        | EmirOp::ConstBool(..)
+        EmirOp::ConstBool(..)
         | EmirOp::LoadInput(..)
-        | EmirOp::LoadState(..)
         | EmirOp::FormatText { .. }
-        | EmirOp::SeriesCreate { .. }
-        | EmirOp::SeriesSample { .. }
-        | EmirOp::SetCreate { .. }
-        | EmirOp::SetContains { .. }
         | EmirOp::RecordCreate { .. } => {
-            op_data_exprs(op, program, names, states, input_kinds, kinds)
+            op_data_exprs(op, program, names, input_kinds, kinds)
         }
         EmirOp::F64Add(..)
         | EmirOp::F64Sub(..)
         | EmirOp::F64Mul(..)
         | EmirOp::F64Div(..)
-        | EmirOp::F64Pow(..)
         | EmirOp::Neg(..)
-        | EmirOp::UnaryBuiltin(..)
-        | EmirOp::BinaryBuiltin(..)
         | EmirOp::Lt(..)
         | EmirOp::Le(..)
         | EmirOp::Gt(..)
@@ -793,43 +749,21 @@ pub(crate) fn op_expr(
         | EmirOp::Ne(..)
         | EmirOp::And(..)
         | EmirOp::Or(..)
-        | EmirOp::Imply(..)
-        | EmirOp::Iff(..)
         | EmirOp::Not(..)
         | EmirOp::IsFinite(..) => op_arith_exprs(op, program, kinds),
-        EmirOp::Select { .. }
-        | EmirOp::VectorCreate(..)
-        | EmirOp::VectorLength(..)
-        | EmirOp::MatrixCreate { .. }
-        | EmirOp::MatrixRows(_)
-        | EmirOp::MatrixCols(_)
-        | EmirOp::MatrixPack { .. }
-        | EmirOp::TensorShape(_)
-        | EmirOp::F64Exp2(_)
-        | EmirOp::F64PowI(..)
+        EmirOp::VectorLength(..)
         | EmirOp::TextTrim(_)
         | EmirOp::TextLength(_)
         | EmirOp::IndexText(_)
         | EmirOp::TextByte(..)
         | EmirOp::FormatScientific(..)
         | EmirOp::ParseF64(_)
-        | EmirOp::TensorPack { .. }
-        | EmirOp::DenseIndex { .. }
-        | EmirOp::TensorCreate { .. }
         | EmirOp::VectorIndex { .. }
-        | EmirOp::MatrixIndex { .. }
-        | EmirOp::TensorIndex { .. }
         | EmirOp::TensorSlice { .. } => op_collection_exprs(op, program, kinds),
         EmirOp::Fold { .. }
-        | EmirOp::OptionSome(..)
-        | EmirOp::OptionNone
-        | EmirOp::OptionIsSome(..)
-        | EmirOp::OptionUnwrapOr(..)
-        | EmirOp::ResultOk(..)
-        | EmirOp::ResultErr(..)
         | EmirOp::ResultIsOk(..)
         | EmirOp::ResultUnwrapOr(..)
-        | EmirOp::ResultErrorOf(..) => {
+         => {
             op_flow_exprs(op, program, names, states, input_kinds, kinds)
         }
         EmirOp::ApplyCapability {
@@ -997,7 +931,7 @@ pub(crate) fn op_expr(
                         }
                         let already_borrowed =
                             program.ops.get(value.0 as usize).is_some_and(|(op, _)| {
-                                matches!(op, EmirOp::LoadInput(_) | EmirOp::LoadState(_))
+                                matches!(op, EmirOp::LoadInput(_))
                             });
                         Ok(if already_borrowed {
                             expression
@@ -1938,12 +1872,6 @@ pub(crate) fn op_expr(
             )),
         }
         }
-        EmirOp::VectorMap { .. }
-        | EmirOp::VectorMapScalar { .. }
-        | EmirOp::VectorReduce { .. }
-        | EmirOp::VectorAllFinite(_) => {
-            Err(BackendError::MissingArtifactContract(op.name().to_string()))
-        }
     }
 }
 
@@ -2026,33 +1954,6 @@ fn capability_artifact_expr(
                     }
                     _ => BackendError::StaleArtifactBinding(capability.to_string()),
                 })?;
-            if let Some(artifact) = emath_exec_ir::native_kernel::checked::verified(capability) {
-                let inputs = binding
-                    .signature
-                    .strip_prefix('(')
-                    .and_then(|s| s.split_once(")->"))
-                    .map_or("", |(s, _)| s);
-                let types: Vec<_> = inputs.split(',').collect();
-                let arguments = args
-                    .iter()
-                    .enumerate()
-                    .map(|(index, arg)| {
-                        let value = render_expr(&operand(program, *arg));
-                        if artifact.borrowed & (1 << index) != 0 {
-                            format!("&{value}")
-                        } else if types.get(index) == Some(&"Float64") {
-                            format!("({value}) as f64")
-                        } else {
-                            value
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                return Ok(map_runtime_result(format!(
-                    "emath_rt::{}({arguments})",
-                    artifact.rust_function
-                )));
-            }
             let artifact = KERNEL_ARTIFACTS
                 .iter()
                 .find(|artifact| {
@@ -2088,27 +1989,7 @@ enum KernelArtifactKind {
     CheckedAdd,
 }
 
-impl KernelArtifactKind {
-    /// Whether the artifact's rendered form can produce a runtime fault
-    /// (`Result`-typed render).
-    fn faults(&self) -> bool {
-        true
-    }
-}
 
-/// Whether a capability's codegen artifact can produce a runtime fault,
-/// for `program_may_fault` (the goal return's `Result` decision).
-pub(super) fn artifact_may_fault(capability: &str) -> bool {
-    let Ok(binding) = emath_exec_ir::native_kernel::verified_kernel_binding(capability) else {
-        return false;
-    };
-    KERNEL_ARTIFACTS.iter().any(|artifact| {
-        artifact.kernel_id == binding.kernel_id
-            && artifact.signature == binding.signature
-            && artifact.semantic_hash == binding.semantic_hash
-            && artifact.kind.faults()
-    })
-}
 
 impl KernelArtifact {
     fn render(&self, args: &[EmirValue], program: &EmirProgram) -> Option<Expr> {
@@ -2431,7 +2312,6 @@ fn literal_frame_expr(
         frame_kinds.insert(name.clone(), kind);
     }
     let _reference = ReferenceScope::enter();
-    let _state = LocalStateScope::enter();
     if owns_self && contains_call_self(body) {
         // A sibling body that recurses on itself cannot inline: its
         // `__self` would bind the entry's wrapper with the wrong
@@ -2524,4 +2404,12 @@ fn literal_frame_expr(
     )?));
     code.push_str(" }");
     Ok(Expr::Raw(code))
+}
+
+fn comparison(op: BinOp, left: EmirValue, right: EmirValue, program: &EmirProgram) -> Expr {
+    Expr::Bin {
+        op,
+        left: Box::new(operand(program, left)),
+        right: Box::new(operand(program, right)),
+    }
 }

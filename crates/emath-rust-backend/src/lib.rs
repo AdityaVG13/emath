@@ -1,69 +1,17 @@
-//! Rust backend: EMIR → deterministic Rust via the rust-ir AST.
-//!
-//! generates one crate per admission: a struct plus constructor
-//! for stateful declarations, a free function (not a method on an empty
-//! struct) when there is no state and no constructors, an evaluation
-//! item per `evaluate <target>` goal, and `#[test]` functions for the
-//! `tests:` section. Everything is std-only, `#![forbid(unsafe_code)]`,
-//! and byte-deterministic.
+//! Rust backend: constructor-lowered EMIR → deterministic Rust via the
+//! rust-ir AST. Everything is std-only, `#![forbid(unsafe_code)]`, and
+//! byte-deterministic.
 
 #![forbid(unsafe_code)]
 
-use crate::rust_ir::ast::{
-    Block, EnumDef, EnumVariant, Expr, FnDef, ImplDef, Item, Module, Param, Stmt, StructDef,
-    TestDef, Ty, UnOp, Visibility, escape_ident, snake_case,
-};
-use crate::rust_ir::render::{render_module, render_ty};
-use emath_exec_ir::{definition_order, lower_definition, lower_requirement};
-use emath_ir::{ConstructionReceipt, GoalKind, SemanticPackage, TypeId, TypeNode};
-use std::collections::{BTreeMap, BTreeSet};
-
-mod codegen_helpers;
-use codegen_helpers::{collect_var_names, emit_host_structs, field_value_kinds, add_obligations, expand_host_inputs, type_is_i64, sanitize_crate_name, sanitize_version};
 mod codegen_render;
-use codegen_render::{value_expr, coerce_to_ty, program_kind, program_may_fault, ValueKind};
 pub mod constructor_crate;
 pub mod rust_ir;
 
-#[derive(Clone, Debug)]
-pub struct BackendInput<'a> {
-    pub package: &'a SemanticPackage,
-    pub crate_name: String,
-    pub version: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BackendAnchor {
-    pub label: String,
-    pub file: String,
-    pub start: u32,
-    pub end: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct BackendOutput {
-    /// Relative path → file content (includes `Cargo.toml` and `src/lib.rs`).
-    pub files: BTreeMap<String, String>,
-    pub anchors: Vec<BackendAnchor>,
-    /// Domain obligations surfaced from lowering, first-encounter order.
-    pub assumptions: Vec<String>,
-    /// The generated module, so the build path can run
-    /// `CrateProfile::validate` (`E-CODEGEN-002`/`E-CODEGEN-004`) on the
-    /// exact items that were rendered.
-    pub module: Module,
-    /// One construction receipt per generated constructor: the obligation
-    /// matrix (class + kind per obligation) the emitted code discharges.
-    pub receipts: Vec<ConstructionReceipt>,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BackendError {
-    NoEvaluateGoal(String),
-    UnknownTarget(String),
     MissingInput(String),
-    MissingGiven(String),
     UnsupportedType(String),
-    MultipleConstructors(String),
     /// The artifact requests a provider/native binding that this backend
     /// cannot materialize. This is a refusal, never a generated stub.
     UnsupportedBinding {
@@ -85,25 +33,8 @@ pub enum BackendError {
 impl std::fmt::Display for BackendError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoEvaluateGoal(name) => {
-                write!(
-                    f,
-                    "declaration `{name}` needs an `evaluate` goal in the current subset"
-                )
-            }
-            Self::UnknownTarget(name) => write!(f, "evaluate target `{name}` is not a definition"),
-            Self::MissingInput(name) => write!(f, "test body does not supply input `{name}`"),
-            Self::MissingGiven(name) => {
-                write!(
-                    f,
-                    "test body does not supply constructor parameter `{name}`"
-                )
-            }
+            Self::MissingInput(name) => write!(f, "no value bound for {name}"),
             Self::UnsupportedType(detail) => write!(f, "unsupported type in the current subset: {detail}"),
-            Self::MultipleConstructors(name) => write!(
-                f,
-                "declaration `{name}` has multiple constructors (the current subset supports one)"
-            ),
             Self::UnsupportedBinding {
                 capability,
                 binding,
@@ -129,11 +60,6 @@ impl std::fmt::Display for BackendError {
 }
 
 impl std::error::Error for BackendError {}
-
-const DEFAULT_ERROR_TYPE: &str = "ConfigError";
-
-mod generate;
-mod ty;
 
 /// Emit standalone Rust for a constructor-lowered EMIR program.
 /// Unresolved programs must not be marked runnable by the caller.

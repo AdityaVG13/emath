@@ -6,15 +6,10 @@
 
 #![forbid(unsafe_code)]
 
-mod builtin;
-mod emitter;
-pub mod growth;
 pub mod image;
-pub mod install;
 pub mod interp;
 pub mod language_image;
 pub mod language_tables;
-pub mod lazy;
 pub mod module_index;
 pub mod native_kernel;
 pub mod progress;
@@ -24,16 +19,11 @@ pub mod exact_int;
 pub mod constructor_layer;
 pub mod constructor_emir;
 mod tree_distill;
-pub mod runner;
-pub mod shake;
 pub mod term_compile;
 
-pub use builtin::BuiltinId;
-pub use runner::definition_order;
 
 use emath_core::Span;
 pub use emath_ir::CellClass;
-use emath_ir::SemanticPackage;
 mod format;
 mod op;
 mod ops_impl;
@@ -46,39 +36,3 @@ pub use types::*;
 
 use format::write_nested_programs;
 
-/// SIR requirement lowering is leftover. Constructor emission uses
-/// `constructor_emir::lower_constructor_function`.
-#[allow(unreachable_code, unused_variables)]
-pub fn lower_requirement(
-    package: &SemanticPackage,
-    expr: EmirExprRef,
-    param_names: &[String],
-) -> Result<EmirProgram, String> {
-    let _ = (package, expr, param_names);
-    return Err(
-        "E-KIND-GONE: SIR requirement lowering is not constructor surface. Use constructor_emir::lower_constructor_function.".into(),
-    );
-    let mut program = emitter::lower(package, expr, param_names, &[])?;
-    optimize::optimize_program(&mut program);
-    Ok(program)
-}
-
-/// SIR definition lowering is leftover. Constructor emission uses
-/// `constructor_emir::lower_constructor_function`.
-#[allow(unreachable_code, unused_variables)]
-pub fn lower_definition(
-    package: &SemanticPackage,
-    expr: EmirExprRef,
-    inputs: &[String],
-    states: &[String],
-) -> Result<EmirProgram, String> {
-    let _ = (package, expr, inputs, states);
-    return Err(
-        "E-KIND-GONE: SIR definition lowering is not constructor surface. Use constructor_emir::lower_constructor_function.".into(),
-    );
-    let mut program = emitter::lower(package, expr, inputs, states)?;
-    optimize::optimize_program(&mut program);
-    Ok(program)
-}
-
-pub type EmirExprRef = emath_ir::ExprId;

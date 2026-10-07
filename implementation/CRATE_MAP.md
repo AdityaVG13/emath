@@ -92,7 +92,7 @@ metadata on 2026-10-05.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-build` | `crates/emath-build` | generated-crate host helpers: stable target dir, write-if-changed, bounded Cargo runs | (std only) |
-| `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity | core/ir/term |
+| `emath-lab-core` | `crates/emath-lab-core` | measurement harness, paired statistics, finite law checking | core/ir/term |
 | `emath-registry` | `crates/emath-registry` | package/provider records; registry services not implemented | artifact/core |
 | `emath-cli` | `crates/emath-cli` | production command routing, presentation, Lean translation | artifact/build/core/exec-ir/ir/lab-core/provider-api/rust-backend/sema/syntax/term/tui |
 | `emath-tui` | `crates/emath-tui` | loop/dream/experiment orchestration, scratch/native mirror, REPL/dashboard | artifact/build/core/exec-ir/rust-backend/sema/syntax |

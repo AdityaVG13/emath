@@ -1,6 +1,6 @@
 //! Run-payload parsing, session setup, and JSON value conversion.
 
-use super::{install_source_parser, op_check, op_plan, op_mig, op_generate, op_format, op_run, op_inputs, op_solve_candidates, JsonWriter, ABI_VERSION, OnceLock, curated_examples, CompilerSession, Limits, Diagnostics, Cow, BTreeMap, Value, parse_json_document, JsonValue, Severity};
+use super::{install_source_parser, op_check, op_generate, op_format, op_run, op_inputs, refuse_kind_gone, JsonWriter, ABI_VERSION, OnceLock, curated_examples, CompilerSession, Limits, Diagnostics, Cow, BTreeMap, Value, parse_json_document, JsonValue, Severity};
 
 /// Dispatch one engine op; `payload` is `.emath` source unless the op ignores
 /// it, and the reply is one JSON object with deterministic field order.
@@ -11,13 +11,11 @@ pub fn run_op(op: &str, payload: &str) -> String {
         "version" => op_version(),
         "examples" => op_examples(),
         "check" => op_check(payload),
-        "plan" => op_plan(payload),
-        "mig" => op_mig(payload),
         "generate" => op_generate(payload),
         "format" => op_format(payload),
         "run" => op_run(payload),
         "inputs" => op_inputs(payload),
-        "solve_candidates" => op_solve_candidates(payload),
+        "plan" | "mig" | "solve_candidates" => refuse_kind_gone(op),
         other => error_json(&format!("unknown op `{other}`")),
     }
 }
@@ -65,12 +63,6 @@ pub fn session_from_source(source: &str) -> (CompilerSession, emath_core::FileId
     let mut session = CompilerSession::new(Limits::default());
     let file = session.load_text("input.emath", source.to_string());
     (session, file)
-}
-
-pub(super) fn maybe_desugared(object: &mut emath_artifact::JsonObject, desugared: Option<&str>) {
-    if let Some(source) = desugared {
-        object.string("desugared_source", source);
-    }
 }
 
 /// Pipeline ran (`ok`) is not admission. Untrusted pane text stays

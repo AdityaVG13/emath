@@ -22,7 +22,6 @@ use crate::image::{ImagePartition, ImageRefusal, PartitionKind, SemanticImage};
 
 pub const LANGUAGE_IMAGE_SCHEMA: &str = "emath.language-image";
 pub const LANGUAGE_LOCK_SCHEMA: &str = "emath.language-lock";
-pub const LANGUAGE_SOURCE_MAP_SCHEMA: &str = "emath.language-source-map";
 pub const LANGUAGE_IMAGE_FILE: &str = "generated/language.image";
 pub const LANGUAGE_LOCK_FILE: &str = "language.lock";
 pub const LANGUAGE_SOURCE_MAP_FILE: &str = "generated/source-map.lock";
@@ -151,103 +150,6 @@ pub struct LanguageDistribution {
 }
 
 impl LanguageDistribution {
-    #[must_use]
-    pub fn authority_map(&self) -> BTreeMap<FeatureId, String> {
-        self.authority
-            .entries
-            .iter()
-            .map(|(id, entry)| (id.clone(), entry.state.as_str().to_string()))
-            .collect()
-    }
-
-    /// Scoped authority rollback: demotes one capsule-active feature to
-    /// `rollback-pending` and reseals the whole distribution. The image,
-    /// lock, authority partition, and reference views are rebuilt through
-    /// the same `LanguageImage::build` path as compile, with the superseded
-    /// distribution hash recorded in `prior_images`, so the result verifies
-    /// instead of tripping `StaleLock` at install. Feature identity and
-    /// capsule bytes are untouched; only the authority row changes state.
-    pub fn rollback_feature(&self, feature: &FeatureId) -> Result<Self, LanguageImageError> {
-        self.verify()?;
-        let Some(entry) = self.authority.entries.get(feature) else {
-            return Err(LanguageImageError::MissingAuthority(feature.clone()));
-        };
-        if entry.state != AuthorityState::CapsuleActive {
-            return Err(LanguageImageError::InvalidAuthority {
-                feature: feature.clone(),
-                state: entry.state.as_str().to_string(),
-            });
-        }
-        let mut authority = self.authority.clone();
-        let entry = authority.entries.get_mut(feature).expect("checked above");
-        entry.state = AuthorityState::RollbackPending;
-        entry.active_source = "legacy".to_string();
-
-        let authorities = authority
-            .entries
-            .iter()
-            .map(|(feature_id, entry)| FeatureAuthorityEntry {
-                feature_id: feature_id.clone(),
-                state: entry.state.as_str().to_string(),
-            })
-            .collect::<Vec<_>>();
-        let source_map = self
-            .image
-            .load_partition("language.sources")
-            .ok_or(LanguageImageError::InvalidSourceMap)?
-            .lines()
-            .filter_map(|line| {
-                let (id, source) = line.split_once('=')?;
-                Some(LanguageSourceMapEntry {
-                    feature_id: FeatureId::from_str(id).ok()?,
-                    authored_source: source.to_string(),
-                })
-            })
-            .collect::<Vec<_>>();
-        let tables = BTreeMap::from([("runtime".to_string(), self.runtime_tables.clone())]);
-        let mut prior_images = self.image.lock.prior_images.clone();
-        prior_images.push(self.image.distribution_hash.clone());
-        let image = LanguageImage::build(
-            &self.capsules,
-            &self.spine,
-            &tables,
-            &authorities,
-            &source_map,
-            prior_images,
-            None,
-        )?;
-        let reference_page = image
-            .load_partition(REFERENCE_PARTITION)
-            .ok_or(LanguageImageError::InvalidSourceMap)?;
-        let reference_programs = decode_reference_entries(reference_page)?
-            .into_iter()
-            .map(|(feature, entry)| (feature, entry.cell))
-            .collect();
-        let authority_states = authority
-            .entries
-            .iter()
-            .map(|(id, entry)| (id.to_string(), entry.state.as_str().to_string()))
-            .collect::<BTreeMap<_, _>>();
-        let views =
-            crate::reference_views::generate_reference_views(&self.capsules, &authority_states)
-                .map_err(|error| {
-                    LanguageImageError::OperationalContamination(format!("{error:?}"))
-                })?;
-        views
-            .verify()
-            .map_err(|error| LanguageImageError::OperationalContamination(format!("{error:?}")))?;
-        let distribution = Self {
-            capsules: self.capsules.clone(),
-            spine: self.spine.clone(),
-            image,
-            authority,
-            runtime_tables: self.runtime_tables.clone(),
-            reference_views: views.pages,
-            reference_programs,
-        };
-        distribution.verify()?;
-        Ok(distribution)
-    }
 
     pub fn verify(&self) -> Result<(), LanguageImageError> {
         self.image.verify()?;

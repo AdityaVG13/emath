@@ -1,405 +1,70 @@
 # emath-lab-core CONTRACT
 
 ## Purpose and layer
-- Laboratory core for the laboratory workbench (CRATE_MAP tier: core).
-- Experiment manifests, quality gates, measurement, statistical protocol, and promotion policy engine. Everything is std-only and deterministic; wall-clock timing enters only as injected raw samples.
-- Brings the std-only SHA-256 primitive used as the keep-gate identity.
 
-## Nucleus disposition (emath-3so27)
+Host-layer laboratory core. Three concerns, all std-only and deterministic:
 
-Recorded 2026-09-04. This crate is not compiler machinery (parse / admit /
-universal IR / VM / kernel ABI / artifacts). It is still-load-bearing for
-the production CLI (`fit`, `portfolio` `Authority`, `diagnostics` law
-check) and for `tests/emath-lab-core`, `tests/emath-cli` keep-gate,
-`tests/emath-sema` pedagogic diagnostics, and `tests/emath-adapter-dew`.
-The parse/admit/IR/VM path does not depend on it.
+- `measure`: deterministic measurement harness over injected samples.
+- `stats`: the paired statistical protocol (warmup, seeded shuffle, MAD
+  outlier trim, ratio statistics).
+- `law_check`: finite-world law obligations with minimized counterexamples.
 
-Decision: **peripheral to the compiler nucleus**. `emath-qbk53` extracted
-`fit` into `emath-cli-lab`, but this crate remains load-bearing for
-production `emath` (`diagnostics` law check, portfolio `Authority`) and
-for `emath-cli-lab` (`fit`), plus tests and wasm/sema consumers. Keep it
-in `crates/`. Do not park under `tests/` without written authorization.
-
-## Public types and semantics
-- `ExperimentManifest` (schema, experiment_id, baseline, candidate, admission_policy, promotion, created_by) plus `AdmissionPolicy` and `PromotionPolicy`.
-- `Observation`, `MetricDefinition`, `MetricKind`, `CandidateAdmission`, `AdmissionStatus` (observed experiment records).
-- `Sampler`: deterministic splitmix64-style pseudo-random samples in `[-1, 1)`.
-- Re-exported module surfaces: `qualitygate` (`GateCheckKind`, `GateVerdict`, `QualityGate`), `promotion` (`decide`, `PromotionDecision`, `PromotionReason`), `stats` (`StatisticalProtocol`, `evaluate_paired`, `OutlierPolicy`, `PairedResult`), `drift` (`DriftMonitor`, `DriftAlert`, `DriftKind`, `DriftBand`), `selector` (`Selector`, `Route`, `Telemetry`), `identity` (`EngineIdentity`, `EngineRole`), `sha256` (`digest`, `hex`), `error` (`LabError`).
-- More modules: `manifest`, `measure` (`HarnessReport`, `Summary`, `DerivedMetric`), `promotion` (`EnginePolicy`, `PromotionOutcome`), `adversarial`, `pilot` (`CachePilot`, `ServeResult`), `supervisor` (`Supervisor`, `TickOutcome`).
-- (not exhaustive; `failure` (`FailureBundle`, `TRUE_DIVERGENCE_POINTER`) and `receipt` (`DecisionReceipt`) also re-export at root.)
-
-## Invariants
-- Correctness/evidence gates precede performance gates (no promotion before evidence).
-- Promotion requires passing numeric gates (absolute/relative error tolerances) and performance gates (median speedup and p99 regression).
-- Sampling is deterministic and seeded; default seed is fixed so runs are reproducible.
-- Summary `cv_pct` quarantines noisy measurement cells; degenerate samples have zero cv.
-- Identity comparator gate: distinct engine identities pass, identical identities are refused.
-- Wall-clock timing enters only as injected raw samples; the engine never clocks internally.
-
-## Error model
-- Structured `LabError` (module `error`) for laboratory operations; drift surfaced as typed `DriftAlert` (`E-HOST-010`); `failure` bundles true divergence (with `TRUE_DIVERGENCE_POINTER`).
-- Statistical protocol returns explicit outcomes (e.g. empty percentiles are an `E-HOST-006` value, not an index panic).
-
-## Determinism class
-- Deterministic: std-only with fixed seed; no wall-clock, entropy, or environment dependence.
-
-## Cancellation behavior
-- Not applicable: std-only synchronous crate with no cancellation surface.
-
-## Unsafe boundary
-- None: crate declares `#![forbid(unsafe_code)]`; workspace lint forbids it.
-
-## Feature flags
-- None: no `[features]` in Cargo.toml.
-
-## Conformance tests
-- Workspace integration suite `tests/emath-lab-core` (one file per module; no `tests/` directory on disk in the crate and no `#[cfg(test)]` in `src/`):
-  - failure: `monitor_with_fired_alert`, `bundle_emitted_with_true_divergence_pointer`, `bundle_identity_is_deterministic_and_binds_to_identities`, `monitor_emits_bundle_only_after_true_divergence`.
-  - stats: `empty_percentile_is_e_host_006_not_an_index_panic`, `single_sample_percentile_is_the_sample`, `interpolated_percentile_of_two_samples`.
-  - identity: `distinct_identities_pass_the_comparator_gate`, `identical_identities_are_refused_by_the_comparator_gate`, `tokens_are_role_label_stable`.
-  - measure: `cv_pct_quarantines_noisy_cells`, `degenerate_samples_have_zero_cv`.
-  - promotion: `currently_promoted_non_regressed_stays_on_the_promoted_route`, `regressed_promoted_candidate_is_demoted_not_retained`, `not_promoted_candidate_between_targets_goes_canary`.
-  - sha256: `nist_vectors_match`, `digest_is_deterministic`.
-
-## No-claim boundaries
-- The keep-gate SHA-256 is an identity primitive, not release cryptographic hardening.
-- Wall-clock-injected samples are trusted input; the engine does not validate their provenance.
-- Multi-declaration and out-of-subset candidate workloads are outside this crate's guarantee.
-
-## Absorbed module: `calibration` (was `emath-calibration`)
-
-# CONTRACT; emath-calibration
-
-## Purpose and layer
-- Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
-- Semantic calibration: behavioral examples constrain candidate worlds.
-- Also hosts the generic fit-goal runtime: parameters, observable, residual/optimizer methods, weights, data rows, provenance, and identifiability.
-- Delivers deterministic example partitions, finite-carrier operator-table fitting, a held-out challenge, semantic drift, and forward-only world versioning.
-- Depends on: emath-term, emath-world-ir, emath-ir.
-
-## Public types and semantics
-- `PartitionedExamples` - examples keyed by content identity, split into construction / validation / held-out / adversarial partitions.
-- `CalibrationExample` / `ExampleKind` - one example and its partition kind.
-- `FittedTable` - finite-carrier operator table fitted over construction examples; supports `from_cells`, `get`, `cells`, `canonical`.
-- `CalibrationRecord` - fitted table, held-out outcome, per-partition example records, deterministic version.
-- `HeldOutChallenge` / `HeldOutResult` - held-out challenge and its outcome.
-- `FitFailure` - typed failure of fitting.
-- `SemanticDrift` - measured semantic difference between two fitted tables.
-- `WorldVersion` - deterministic stamped world version (seed `VERSION_SEED`).
-- (not exhaustive)
-
-## Invariants
-- No candidate is credited for a held-out challenge if it saw the challenged examples during construction.
-- Versioning is forward-only: a world invalidated by future examples becomes a new version, never a silent redefinition.
-- Partitions are deterministic, keyed by content identity.
-
-## Error model
-- Fitting returns typed `FitFailure` on failure; `calibrate` propagates it via `Result<CalibrationRecord, FitFailure>`.
-- Partitioning and versioning emit no errors; no panics.
-
-## Determinism class
-- Deterministic: partitions keyed by content identity, fitting order, record ordering, and version stamps are deterministic; example and record forms are canonical.
-
-## Cancellation behavior
-- Not applicable: std-only synchronous crate, no cancellation surface.
-
-## Unsafe boundary
-- None: `#![forbid(unsafe_code)]` and the workspace lint forbid `unsafe_code`.
-
-## Feature flags
-- None: Cargo.toml has no `[features]`.
-
-## Conformance tests
-- `tests/emath-lab-core/tests/` (law_check, synth, promotion, and siblings): the crate's live suites.
-
-## No-claim boundaries
-- A slice of the planned calibration surface, not the full calibration service.
-- Fitted tables are fitted approximations over finite examples, not certified semantics.
-- Held-out challenge is self-contained to the crate's partitions, not an independent audit.
-- Least-squares fitting math (Levenberg-Marquardt, central-difference Jacobian, Jacobi eigenvalues, Gauss-Jordan inversion) is authored `.emath` (`language/modules/numerics/levenberg.emath`), not Rust in this crate; the former fit-goal lane was removed with it.
-
-## Absorbed module: `law_check` (was `emath-law-check`)
-
-# CONTRACT; emath-law-check
-
-## Purpose and layer
-- Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
-- Independent world checking (WorldChecker): law obligations over finite worlds, minimized counterexamples, scoped authority, deterministic answer receipts.
-- Treats provider output (a `FittedTable` from emath-calibration) as untrusted candidate data and validates claimed law obligations against it.
-- Depends on: emath-term, emath-world-ir, emath-calibration, emath-portfolio.
-
-## Public types and semantics
-- `Law` - a claimed law obligation: `Commutative`, `Associative`, `Idempotent`, `Identity`, or `Custom`.
-- `WorldObligation` - one claimed obligation with a contract identity (`id`, `law`).
-- `FiniteLawChecker` - the independent finite-world checker (`check`) plus convenience `check_world`.
-- `WorldCheckReport` - candidate identity, verdicts, overall pass, scoped authority, deterministic receipt.
-- `LawVerdict` / `MinimizedCounterexample` - per-obligation verdict and, on failure, the minimized (lexicographically smallest) violating carrier tuple.
-- `ScopedAuthority` - authority the check endorses, at most `Tested`, limited to the obligation ids actually run.
-- `CheckerReceipt` - deterministic FNV-1a64 content identity over candidate and verdicts.
-- `CheckerError` - typed reason a check could not run.
-- (not exhaustive)
-
-## Invariants
-- A check endorses only the obligations it ran, at most `Tested`; no hidden escalation to `Certified`/`Proved`.
-- Empty obligation sets, empty tables, custom laws, and untotal tables are refused as typed errors, never vacuously passed.
-- Explicit laws are refused (not passed) if the candidate table has no row for the operator.
-- Enumeration is deterministic over the sorted carrier; the first violation found is the lexicographically smallest.
-- Receipt identity is deterministic: same candidate, obligations, and verdicts replay to the same id.
-
-## Error model
-- Typed `CheckerError`: `NoObligations`, `EmptyTable`, `UnknownOperator`, `UnsupportedLaw`, `Untotal`.
-- `check` / `check_world` return `Result<WorldCheckReport, CheckerError>`; no panics.
-
-## Determinism class
-- Deterministic: carrier sorted, enumeration ordered, counterexample minimized (lexicographically smallest), receipt id derived from candidate and verdicts.
-
-## Cancellation behavior
-- Not applicable: std-only synchronous crate, no cancellation surface.
-
-## Unsafe boundary
-- None: `#![forbid(unsafe_code)]` and the workspace lint forbid `unsafe_code`.
-
-## Feature flags
-- None: Cargo.toml has no `[features]`.
-
-## Conformance tests
-- Suites from the former `tests/emath-law-check` package, now `tests/law_check.rs`
-  (`empty_table_is_not_a_vacuous_pass`, `untotal_table_is_refused_not_passed`).
-- Integration property grids in `tests/laws.rs`:
-  `finite_max_is_commutative_over_seeded_carrier`,
-  `finite_max_is_associative_over_seeded_carrier`,
-  `finite_max_has_bottom_identity_over_seeded_carrier`
-  (Laws `Commutative` / `Associative` / `Identity` over a total 3-element
-  `max` table).
-
-## No-claim boundaries
-- Law admission is structural over finite tables, not certified authority.
-- `Custom` laws are not checked here and cannot pass; they require an external oracle.
-- Counterexamples are minimized over the finite carrier only; enumeration cost grows with carrier size.
-
-## Absorbed module: `holes` (was `emath-holes`)
-
-# CONTRACT; emath-holes
-
-## Purpose and layer
-- Layer: Tier 7, governance and operations (per implementation/CRATE_MAP.md).
-- Meaning holes and finite synthesis: an underconstrained construct is a meaning hole.
-- Delivers a deterministic hole graph (stable ids, kinds, states, dependencies, budget bookkeeping) and finite synthesis of operator tables validated by emath-law-check.
-- Depends on: emath-term, emath-world-ir, emath-calibration, emath-law-check.
-
-## Public types and semantics
-- `MeaningHole` / `MeaningHoleKind` / `HoleState` - one hole, its kind, and its state.
-- `HoleGraph` - deterministic hole graph with stable ids, dependencies (`dependencies`, `dependents`), and immutable `with_updated` continuations.
-- `SynthesisLaw` - a law a synthesized table must satisfy; `as_law` converts to an emath-law-check `Law`.
-- `SynthesisError` - typed refusal of a synthesis run (`EmptyCarrier`, `CarrierTooLarge`, `EmptyLaws`).
-- `SynthesisRun` - synthesized tables (deterministic enumeration order), count examined, and honest `exhaustive` flag.
-- `SolveReceipt` - deterministic receipt of one solver continuation.
-- `Continuation` - a new immutable problem state (next graph) plus a receipt.
-- `solve_op_hole` / `synthesize_tables` / `check_laws` - entry points; `MAX_CARRIER_SIZE` caps the enumeration. `check_laws` surfaces minimized counterexamples from emath-law-check for an existing table.
-- (not exhaustive)
-
-## Invariants
-- Solving a hole produces a new immutable problem state (the next graph) plus a receipt; the authoritative graph is never mutated.
-- Failed proposals never mutate the graph.
-- Law validation uses the independent finite-law checker, so only tables satisfying every declared law are synthesized.
-- An empty law set is refused (typed `EmptyLaws`), never reported as `Contradictory`.
-- Carrier is capped by `MAX_CARRIER_SIZE`; exhaustion status is reported honestly (untotal space yields `exhaustive == false`, not a silent promise).
-
-## Error model
-- Typed `SynthesisError` with stable ident requests: `EmptyCarrier`, `CarrierTooLarge`, `EmptyLaws` (documented as `E-RES-111` / `E-RES-110` refusals).
-- No panics on the refusal paths.
-
-## Determinism class
-- Deterministic: finite-carrier enumeration over `carrier^(n^2)`, stable hole ids, and deterministic continuation receipts.
-
-## Cancellation behavior
-- Not applicable: std-only synchronous crate, no cancellation surface. Enumeration is bounded by `MAX_CARRIER_SIZE`; budget cuts surface via the `exhaustive` flag rather than async cancellation.
-
-## Unsafe boundary
-- None: `#![forbid(unsafe_code)]` and the workspace lint forbid `unsafe_code`.
-
-## Feature flags
-- None: Cargo.toml has no `[features]`.
-
-## Conformance tests
-- Integration tests from the former `tests/emath-holes` package (`tests/synth.rs`, plus `tests/intent_completion_solve_unit.rs` from its package root): `n3_commutative_synthesis_is_exhaustive_over_the_full_table_space`, `budget_cut_reports_not_exhaustive`, `empty_laws_are_refused_not_contradictory`, `impossible_identity_laws_are_rejected_exhaustively` (seeded two-identity set, n=2, `tables.is_empty()` and `exhaustive == true`), `carrier8_table_space_is_honestly_not_exhaustive`, `noncommutative_table_is_rejected_with_minimized_counterexample`.
-- Production path: `cargo xtask demo holes-synthesis` synthesizes commutative-monoid tables on a 2-element carrier and exhaustively rejects `impossible_identity_laws`.
-- No `tests/` directory on disk in the crate and no `#[cfg(test)]` module in `src/`.
-
-## No-claim boundaries
-- A slice of the planned finite-synthesis surface, not the full production synthesis service.
-- Synthesis is limited to small carriers (`MAX_CARRIER_SIZE`); larger spaces are not exhaustively verified.
-- Synthesized tables satisfy declared laws over the finite carrier; this is not certified semantics.
-
-## Absorbed module: `search` (was `emath-search`)
-
-# CONTRACT.md; emath-search
-
-## Purpose and layer
-
-Artifact *corpus search* (id + kind + path + claim text) over the pinned
-frankensearch engine, spike of the FrankenStack adoption
-Layer: search adapter external to the
-protected set; it may import frankensearch; emath-core / emath-ir /
-emath-plan / emath-artifact / emath-cli / emath-store / emath-provenance stay Franken-free.
-
-This is a SPIKE, not a production search service. frankensearch is pinned to
-repository release v1.7.0 (facade v0.3.2), exact commit
-22859f74056c31fd3a713bacecd4a1f22f0cf82d, and is in active churn; the crate
-is feature-gated (`search`, default OFF) and the default build is std-only
-with zero third-party dependencies and no engine code compiled.
+Production user: `emath-cli` diagnostics (`law_check`). Wall-clock timing
+enters only as injected samples; the crate never reads a clock.
 
 ## Public types and semantics
 
-Always available (std-only, zero third-party deps):
-
-- ArtifactDoc { id, kind, path: Option<String>, text }; one artifact metadata
-  record; validates at construction.
-- DOC_ID_SEPARATOR (`\x1f`); unit separator of the single composite doc-id
-  scheme.
-- to_fs_doc_id(kind, id) / from_fs_doc_id(id); the ONE encoding pair;
-  `kind \x1f id`, both parts non-empty and separator-free (rejects otherwise).
-- SearchError { InvalidArgument, Open, Build, Query, NotReady, WorkerDown };
-  typed, actionable Display, implements std::error::Error. No E-* codes;
-  ERROR_CODES.md untouched.
-
-Feature `search` only (blocking facade, emath-store / emath-provenance
-worker-thread precedent):
-
-- CorpusSearch::create(path, docs); build via the engine's IndexBuilder
-  in a sibling staging directory, then swap onto `path` and write
-  `emath-search.index`. Empty corpus -> InvalidArgument (the engine
-  refuses zero-document builds). A non-empty directory without the marker
-  is InvalidArgument (never wiped).
-- CorpusSearch::open(path); open an existing index; typed Open error when
-  none is present.
-- CorpusSearch::reindex(docs); same as create: build aside, swap when the
-  new tree is marked. A failed rebuild leaves the previous on-disk index
-  and the live searcher unchanged. A leftover `.emath-search-backup` from
-  a crashed swap is restored only when dest is missing or empty; an
-  unmarked non-empty dest is never wiped.
-- CorpusSearch::remove_index(); delete index artifacts only when the
-  directory is empty or marked `emath-search.index` (the directory itself
-  remains); search then returns NotReady until a create/reindex.
-- CorpusSearch::search(query, k) -> Vec<Hit>; blocking; trimmed query must
-  be non-empty; k == 0 returns an empty vector without touching the engine.
-  Result order is the ENGINE's authoritative order; this crate never
-  re-sorts frankensearch results.
-- Hit { doc_id, kind, id, score: f32, source }; engine score carried as the
-  engine carries it (f32, never narrowed or re-derived).
-- IndexStats { source_count, doc_count, error_count, quality_indexed,
-  lexical: Option<LexicalArmStats> }; build receipts incl. the Quill arm.
+- `measure`: `Measurement`, `MeasurementKind`, `Summary` (with
+  `quarantined()` at `QUARANTINE_CV_PCT`), `DerivedMetric`, `HarnessReport`,
+  `EnergyCostModel`.
+- `stats`: `StatisticalProtocol`, `OutlierPolicy`, `PairedObservation`,
+  `PairedResult`, `evaluate_paired`, and the pure helpers `mean`,
+  `percentile`, `percentile_f64`.
+- `identity`: `EngineIdentity`, `EngineRole`; `require_distinct` refuses a
+  comparison of an engine with itself.
+- `law_check`: `Law`, `WorldObligation`, `FiniteLawChecker`, `check_world`,
+  `WorldCheckReport`, `LawVerdict`, `MinimizedCounterexample`,
+  `ScopedAuthority`, `CheckerReceipt`, `CheckerError`.
+- Crate root: `Sampler` (splitmix64-style seeded samples in `[-1, 1)`),
+  `Authority` (lattice Structural < Tested < Certified < Proved), `LabError`.
 
 ## Invariants
 
-- Determinism: identical corpus + identical query -> identical result
-  sequence (doc ids AND bit-exact f32 scores), across two builds in different
-  directories and across close/reopen; tested. No wall clock in the crate's
-  surface; id ordering is the caller's. The searcher disables the engine's
-  adaptive NQC down-weight (stateful across queries) and never reads
-  FRANKENSEARCH_* environment variables (no `with_env_overrides`), so the
-  spike lane is env-independent.
-- Single-writer: one CorpusSearch owner per index directory.
-- Composite-id integrity: every indexed doc id round-trips through
-  from_fs_doc_id with the original kind/id (tested).
-- Engine ordering is authoritative; the crate adds no second sort.
+- Every summary and paired result is a pure function of its inputs and seed.
+- Zero-duration paired samples refuse; they never produce an infinite ratio.
+- The first law violation over the sorted carrier is the lexicographically
+  smallest counterexample.
+- `Authority` is never escalated by ranking.
 
 ## Error model
 
-SearchError as above. Engine SearchError maps: InvalidConfig ->
-InvalidArgument, EmbedderUnavailable/QueryParseError/etc -> Query with engine
-Debug text, IndexCorrupted -> Open. Build embedding failures aggregate into
-Build with the per-document report. Channel loss -> WorkerDown.
+`LabError { code, message }` with stable codes: `E-HOST-006` insufficient
+evidence, `E-HOST-008` incomparable inputs, `E-HOST-012` invalid protocol,
+`E-HOST-016` self-comparison. `law_check` returns `CheckerError`.
 
 ## Determinism class
 
-Deterministic modulo the engine's own ordering: the searcher's RRF fusion and
-Quill BM25 are pure over (index, query). Verified by repeated identical
-queries on one searcher, two independent builds, and reopen. Uncertain
-upstream internals (tie-breaking among equal scores at this rev) are covered
-by the no-claims below.
+Deterministic and byte-comparable for identical inputs.
 
 ## Cancellation behavior
 
-Blocking facade over a dedicated engine worker thread (64 MiB stack) holding
-one asupersync current-thread runtime. Each call sends an op over an mpsc
-channel and blocks on the typed reply. No cancellation surface is exposed; a
-hung engine future can block the caller; acceptable for this spike lane.
-CorpusSearch is Send (only channels cross threads); Drop sends Close and joins
-the worker.
+None. All operations are bounded synchronous computations.
 
 ## Unsafe boundary
 
-None. `#![forbid(unsafe_code)]` at the crate root; the workspace lint
-(workspace.lints.rust.unsafe_code = forbid) forbids it everywhere else.
-(Upstream frankensearch itself uses `deny`, not `forbid`; that is upstream,
-not this crate.)
+`#![forbid(unsafe_code)]`.
 
 ## Feature flags
 
-- search (default OFF); pulls pinned frankensearch (repository release
-  v1.7.0, facade `frankensearch` v0.3.2 at rev
-  22859f74056c31fd3a713bacecd4a1f22f0cf82d) with features
-  `hash` + `quill`, plus asupersync. Feature set deliberately differs from the
-  skill's recommended `hybrid`: hybrid pulls model2vec/fastembed (tokenizers,
-  ORT binary acquisition) and auto-detect model discovery, which this offline
-  deterministic spike does not want.
-- asupersync unification: frankensearch declares asupersync as a crates.io
-  VERSION RANGE (`>=0.4.4, <0.5`), not an internal git rev like
-  frankengraphdb. This crate declares the same crates.io range, so Cargo
-  unifies one crates.io asupersync instance for the whole emath-search graph
-  (resolved to the workspace-locked 0.4.9 crates.io). The workspace git pin
-  9eb0600e... is a separate instance in other crates' graphs and never crosses
-  this boundary. Verified via `cargo tree -i asupersync`.
-- Default build (no features): std-only, first-party-only, zero third-party
-  deps, zero engine code.
+None.
 
 ## Conformance tests
 
-- `tests/corpus.rs` (from the former `tests/emath-search` package, always): composite id round trip
-  (`round_trip_composite_id`); empty-part rejection; separator-inside-part
-  rejection; malformed decode -> None; ArtifactDoc construction validation.
-- engine.rs (cfg(all(test, feature = "search"))): happy-path lexical hit with
-  composite ids + finite scores; mismatch -> empty; k = 0 and k > corpus
-  boundaries with repeated-query determinism; empty-query rejection; two
-  independent builds -> identical result sequences (ids + bit-exact scores);
-  reopen-preserves-results; reindex-replaces-corpus (old docs gone, new hit);
-  remove_index -> NotReady until rebuild; empty-corpus refusal; open-missing
-  index -> Open error; create refuses a foreign (unmarked) directory;
-  a stranded `.emath-search-backup` is restored rather than deleted;
-  rebuilds build aside and swap only a marked tree.
+`tests/emath-lab-core/tests/`: `identity`, `law_check`, `laws`, `measure`,
+`stats`.
 
 ## No-claim boundaries
 
-- SEMANTIC TIERS NOT WIRED: this pass drives the hash-control embedder stack
-  (HashEmbedder::default_256). The engine warns that a non-semantic fast
-  embedder makes semantic retrieval unavailable; results are lexical-only
-  (Quill BM25) fused through the same TwoTierSearcher/RRF pipeline. No
-  relevance or retrieval-quality claim of any kind. Unblock for semantic
-  tiers: enable the `hybrid` facade feature + FRANKENSEARCH_MODEL_DIR models
-  (model2vec/fastembed), then build with a semantic stack.
-- open_hybrid() is NOT used: it refuses hash-identity generations by upstream
-  design; the searcher is assembled per open_hybrid's documented manual shape
-  (TwoTierSearcher::new + with_lexical(Quill reader)).
-- No ability to open the engine's FSVI-v2 "admitted" product or the sync
-  (SyncTwoTierSearcher / InMemoryTwoTierIndex) surface; neither is exercised.
-- Quality refinement, rerank, ANN, storage/durability, graph ranking,
-  federated search, daemon embedder, FTS5, and API surfaces are NOT
-  exercised. Adaptive NQC is explicitly DISABLED (determinism), not
-  characterized.
-- Tie-breaking among equal fusion scores is the engine's internal behaviour
-  at the pinned rev; the crate claims only that it is stable for identical
-  inputs (tested), not what the tie-break rule is.
-- Upstream build hazard at this rev: frankensearch's workspace member
-  `tools/optimize_params` declares `fastcma = { path = "../../../fast_cmaes" }`
- ; an escape-path absolute dependency that does not exist in a clean
-  checkout (verified: pristine clone fails with "failed to read
-  /tmp/fast_cmaes/Cargo.toml"). Any workspace that consumes frankensearch as a
-  git dep must provide a stub crate at that absolute path (a 3-file lib named
-  `fastcma` with feature `test_utils`) until upstream fixes the manifest
-  (relative path, workspace member, or registry dep). This crate's build and
-  tests depend on that environment prerequisite; it is a frankensearch
-  manifest defect (the CASS /dp/ absolute-path class), not an emath defect.
-- Not a drop-in replacement for any search library; only the documented
-  surface is supported. The index layout on disk is frankensearch's and not
-  stable across revs; reindex after any pin move.
+- No timing claim: the crate summarizes samples it is given.
+- Law checking covers finite carriers only; it proves nothing about
+  infinite worlds.

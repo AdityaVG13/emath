@@ -1,4 +1,4 @@
-use super::{Value, EmirValue, EvalFault, register, rat_pair, exact_ratio_arithmetic, value_from_exact, value_from_rat, BuiltinId, f64_of, bool_of};
+use super::{Value, EmirValue, EvalFault, register, rat_pair, exact_ratio_arithmetic, value_from_exact, value_from_rat, f64_of, bool_of};
 
 /// Type-preserving scalar addition (control mail 66): two `Value::I64`
 /// operands add exactly via `i64::checked_add` and return `Value::I64`;
@@ -247,59 +247,6 @@ pub(super) fn scalar_neg(registers: &[Value], value: EmirValue) -> Result<Value,
             op: "neg",
         }),
     }
-}
-
-pub(super) fn scalar_unary(
-    registers: &[Value],
-    value: EmirValue,
-    builtin: BuiltinId,
-) -> Result<Value, EvalFault> {
-    if let Value::Complex { re, im } = register(registers, value)? {
-        let result = match builtin {
-            BuiltinId::Abs => return Ok(Value::F64(re.hypot(*im))),
-            BuiltinId::Sqrt => emath_rt::complex_sqrt(*re, *im),
-            BuiltinId::Ln => emath_rt::complex_ln(*re, *im),
-            BuiltinId::Exp => emath_rt::complex_exp(*re, *im),
-            BuiltinId::Log2 => {
-                let (re, im) = emath_rt::complex_ln(*re, *im);
-                (re / std::f64::consts::LN_2, im / std::f64::consts::LN_2)
-            }
-            BuiltinId::Log10 => {
-                let (re, im) = emath_rt::complex_ln(*re, *im);
-                (re / std::f64::consts::LN_10, im / std::f64::consts::LN_10)
-            }
-            _ => {
-                return Err(EvalFault::TypeConfusion {
-                    register: value.0,
-                    op: "unary-kernel",
-                });
-            }
-        };
-        return Ok(Value::Complex {
-            re: result.0,
-            im: result.1,
-        });
-    }
-    builtin
-        .eval_unary(f64_of(registers, value, "unary-kernel")?)
-        .map(Value::F64)
-        .ok_or(EvalFault::Arithmetic {
-            op: "unary-kernel",
-            detail: "binary scalar opcode used in unary instruction",
-        })
-}
-
-pub(super) fn scalar_binary(
-    registers: &[Value],
-    left: EmirValue,
-    right: EmirValue,
-    op: &'static str,
-    evaluate: impl FnOnce(f64, f64) -> f64,
-) -> Result<Value, EvalFault> {
-    Ok(Value::F64(evaluate(
-        f64_of(registers, left, op)?,
-        f64_of(registers, right, op)?,
-    )))
 }
 
 pub(super) fn comparison(

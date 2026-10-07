@@ -4,19 +4,15 @@
 //! source/token/nesting limits, recovery at statement boundaries.
 //! The syntax tree is owned by `emath-core`; this crate re-exports it and
 //! implements the kernel [`emath_core::parse::SourceParser`] seam.
-//! Leftover meaning-budget surfaces (`expand_scratch`, `apply_solve_candidate`,
-//! `exactness_ledger`) remain exported. Parse does not apply them.
 
 #![forbid(unsafe_code)]
 
 pub mod edition;
-pub mod exactness;
 pub mod formatter;
 pub mod genesis;
 pub mod layout;
 pub mod lexer;
 pub mod parser;
-pub mod scratch;
 pub mod stage0;
 pub mod token;
 pub mod tree;
@@ -26,16 +22,7 @@ pub use layout::{E_SYN_HANGING_INFIX, classify_line_break};
 // Facade fence: the formatter entry point callers consume
 // deep (`formatter::format`) is root-exported; the module stays public
 // for format_type and friends.
-pub use exactness::{
-    ExactnessDimension, ExactnessEntry, ExactnessLedger, ExactnessStatus, exactness_ledger,
-    exactness_ledger_raised, explanation_notes,
-};
 pub use formatter::format;
-pub use scratch::{
-    ExpansionOutcome, HoleCandidate, HoleContinuation, HoleKind, HoleRecord, HoleRejection,
-    ScratchExpansion, ScratchLevel, ScratchNote, ScratchRewriteLevel, SolveIntent, SolveWorld,
-    apply_solve_candidate, expand_scratch,
-};
 pub use stage0::{
     EXCLUDED_DOMAIN_FORMS, PreservedGlyph, STAGE0_FORMS, forbidden_domain_matches, unknown_glyphs,
 };
@@ -46,9 +33,7 @@ use tree::SyntaxTree;
 
 /// Parse an in-memory source into a syntax tree.
 ///
-/// Constructor source is parsed as written. Scratch wrap, `goals:`
-/// synthesis, and named-shorthand rewrite stay in leftover
-/// [`expand_scratch`]; parse does not apply them.
+/// Constructor source is parsed as written.
 #[must_use]
 pub fn parse(text: &str, file: FileId, limits: &Limits) -> (SyntaxTree, Diagnostics) {
     parse_with_edition(text, file, limits, Edition::Ed2026)

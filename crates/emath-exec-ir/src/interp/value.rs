@@ -13,14 +13,6 @@ pub enum Value {
     Bool(bool),
     /// UTF-8 text produced by a literal or pure interpolation.
     Text(String),
-    /// Immutable time-series data and its declared interpretation policy.
-    Series {
-        points: Vec<(f64, f64)>,
-        interpolation: String,
-        extrapolation: String,
-    },
-    /// Finite extensional set.
-    Set(Vec<Value>),
     /// Inline record value with a nominal type path.
     Record {
         type_name: String,
@@ -39,14 +31,6 @@ pub enum Value {
         num: emath_rt::ExactInt,
         den: emath_rt::ExactInt,
     },
-    /// Stage-2 big integer (emath-t63iz): exact NON-NEGATIVE field
-    /// element with |F| < 2^256, produced by `ConstBigInt` and the six
-    /// modular number-theory builtins when any operand is big. Never
-    /// coerced to f64/i64.
-    BigInt(emath_rt::UBig),
-    /// Vector of stage-2 big integers (the `rs_encode` codeword over a
-    /// big modulus).
-    BigVector(Vec<emath_rt::UBig>),
     /// Vector of Float64.
     Vector(Vec<f64>),
     /// Matrix of Float64 (row-major).
@@ -57,14 +41,6 @@ pub enum Value {
     },
     /// Rank-3+ tensor of Float64, row-major.
     Tensor { shape: Vec<usize>, data: Vec<f64> },
-    /// Certified interval `[lo, hi]`. Constructed only through
-    /// `IntervalCreate`, which refuses ill-formed bounds.
-    Interval { lo: f64, hi: f64 },
-    /// Option value semantics: `Some(inner)` or a
-    /// None that genuinely carries NOTHING (never a hidden zero; the
-    /// honesty gate is the TOTAL `OptionUnwrapOr`, since no panicking
-    /// unwrap exists at this layer).
-    Option(Option<Box<Value>>),
     /// Result value semantics: the `ok` flag
     /// distinguishes Ok-payload from Err-payload on ONE carrier (a
     /// shared Option carrier could not: Err(42) would read as
@@ -80,8 +56,6 @@ pub enum Value {
     /// rank-polymorphic operand list rides as one value).
     /// Domain-neutral: no operand-shape or capability naming.
     List(Vec<Value>),
-    /// Logical shape and storage size, without copying numeric data.
-    DenseLayout(emath_rt::DenseLayout),
 }
 
 /// A numeric callback with an explicit argument convention and typed captures.
@@ -98,20 +72,6 @@ impl Value {
         Self::Program(ProgramValue { body, captures: Vec::new(), vector_input: false })
     }
 
-    /// Stage-2 (emath-t63iz): parse an exact non-negative decimal
-    /// integer into the big lane. Used by the eval `--set` binding path;
-    /// admits |F| < 2^256 only.
-    pub fn parse_bigint(raw: &str) -> Option<Value> {
-        let trimmed = raw.trim();
-        if trimmed.starts_with('-') {
-            return None;
-        }
-        let value = emath_rt::UBig::parse_decimal(trimmed).ok()?;
-        if value.bits() > emath_rt::LIMIT_BITS {
-            return None;
-        }
-        Some(Value::BigInt(value))
-    }
 }
 
 impl PartialEq for Value {
@@ -181,38 +141,8 @@ impl PartialEq for Value {
             }
             (Self::I64(left), Self::F64(right)) => emath_rt::eq_i64_f64(*left, *right),
             (Self::F64(left), Self::I64(right)) => emath_rt::eq_i64_f64(*right, *left),
-            (Self::BigInt(left), Self::BigInt(right)) => left == right,
-            (Self::BigVector(left), Self::BigVector(right)) => left == right,
             (Self::Bool(left), Self::Bool(right)) => left == right,
             (Self::Text(left), Self::Text(right)) => left == right,
-            (
-                Self::Series {
-                    points: left_points,
-                    interpolation: left_interpolation,
-                    extrapolation: left_extrapolation,
-                },
-                Self::Series {
-                    points: right_points,
-                    interpolation: right_interpolation,
-                    extrapolation: right_extrapolation,
-                },
-            ) => {
-                left_interpolation == right_interpolation
-                    && left_extrapolation == right_extrapolation
-                    && left_points.len() == right_points.len()
-                    && left_points.iter().zip(right_points).all(
-                        |((left_time, left_value), (right_time, right_value))| {
-                            left_time.to_bits() == right_time.to_bits()
-                                && left_value.to_bits() == right_value.to_bits()
-                        },
-                    )
-            }
-            (Self::Set(left), Self::Set(right)) => {
-                left.len() == right.len()
-                    && left
-                        .iter()
-                        .all(|item| right.iter().any(|other| item == other))
-            }
             (
                 Self::Record {
                     type_name: left_name,
@@ -292,14 +222,6 @@ impl PartialEq for Value {
                         .zip(d2.iter())
                         .all(|(l, r)| l.to_bits() == r.to_bits())
             }
-            (Self::Interval { lo: l1, hi: h1 }, Self::Interval { lo: l2, hi: h2 }) => {
-                l1.to_bits() == l2.to_bits() && h1.to_bits() == h2.to_bits()
-            }
-            (Self::Option(left), Self::Option(right)) => match (left, right) {
-                (None, None) => true,
-                (Some(l), Some(r)) => l == r,
-                _ => false,
-            },
             (
                 Self::Result {
                     ok: ok1,
@@ -311,7 +233,6 @@ impl PartialEq for Value {
                 },
             ) => ok1 == ok2 && p1 == p2,
             (Self::Program(left), Self::Program(right)) => left == right,
-            (Self::DenseLayout(left), Self::DenseLayout(right)) => left == right,
             (Self::List(left), Self::List(right)) => left == right,
             _ => false,
         }
@@ -342,24 +263,6 @@ impl fmt::Display for Value {
             Self::ExactRat { num, den } => write!(f, "{num}/{den}"),
             Self::Bool(value) => write!(f, "{value}"),
             Self::Text(value) => f.write_str(value),
-            Self::Series {
-                points,
-                interpolation,
-                extrapolation,
-            } => write!(
-                f,
-                "Series({points:?}, interpolation: {interpolation}, extrapolation: {extrapolation})"
-            ),
-            Self::Set(values) => {
-                f.write_str("{")?;
-                for (index, value) in values.iter().enumerate() {
-                    if index > 0 {
-                        f.write_str(", ")?;
-                    }
-                    write!(f, "{value}")?;
-                }
-                f.write_str("}")
-            }
             Self::Record { type_name, fields } => {
                 write!(f, "{type_name}:{{")?;
                 for (index, (name, value)) in fields.iter().enumerate() {
@@ -379,17 +282,6 @@ impl fmt::Display for Value {
                 } else {
                     write!(f, "{} + {}i", format_f64(*re), format_f64(*im))
                 }
-            }
-            Self::BigInt(value) => f.write_str(&value.to_decimal()),
-            Self::BigVector(values) => {
-                f.write_str("[")?;
-                for (index, value) in values.iter().enumerate() {
-                    if index > 0 {
-                        f.write_str(", ")?;
-                    }
-                    f.write_str(&value.to_decimal())?;
-                }
-                f.write_str("]")
             }
             Self::Vector(vec) => {
                 f.write_str("[")?;
@@ -430,11 +322,6 @@ impl fmt::Display for Value {
                 }
                 f.write_str("]")
             }
-            Self::Interval { lo, hi } => {
-                write!(f, "[{}, {}]", format_f64(*lo), format_f64(*hi))
-            }
-            Self::Option(Some(inner)) => write!(f, "some({inner})"),
-            Self::Option(None) => f.write_str("none"),
             Self::Result { ok, payload } => {
                 if *ok {
                     write!(f, "ok({payload})")
@@ -445,7 +332,6 @@ impl fmt::Display for Value {
             // Canonical dump of the program artifact: the nested program's
             // own Debug form, bracketed so the carrier is unmistakable.
             Self::Program(program) => write!(f, "program({program:?})"),
-            Self::DenseLayout(layout) => write!(f, "layout({layout:?})"),
             Self::List(values) => {
                 f.write_str("[")?;
                 for (index, value) in values.iter().enumerate() {
@@ -519,12 +405,6 @@ pub enum EvalFault {
     },
     /// A scalar carrier operation refused; retain its full diagnostic.
     CarrierRefused { op: &'static str, detail: String },
-    /// A series with `extrapolation: refuse` was sampled outside its support.
-    SeriesOutOfSupport {
-        time_bits: u64,
-        start_bits: u64,
-        end_bits: u64,
-    },
     /// Capability-cell contract refusal surfaced from the capability
     /// layer (e.g. `E-CELL-006`: missing numeric policy, or non-finite
     /// logits under the strict-f64 finite policy). The strict vs
@@ -566,17 +446,6 @@ impl fmt::Display for EvalFault {
             }
             Self::Arithmetic { op, detail } => write!(f, "{op}: {detail}"),
             Self::CarrierRefused { op, detail } => write!(f, "{op}: {detail}"),
-            Self::SeriesOutOfSupport {
-                time_bits,
-                start_bits,
-                end_bits,
-            } => write!(
-                f,
-                "series-sample: t={} is outside support [{}, {}] under extrapolation: refuse",
-                f64::from_bits(*time_bits),
-                f64::from_bits(*start_bits),
-                f64::from_bits(*end_bits)
-            ),
             Self::CapabilityRefused { capability, code } => {
                 write!(
                     f,
@@ -606,13 +475,10 @@ impl Value {
         let mut out = JsonWriter::object();
         let kind = match self {
             Self::I64(_) => "Int", Self::ExactInt(_) => "Int", Self::F64(_) => "Float64", Self::Bool(_) => "Bool",
-            Self::Rat { .. } | Self::ExactRat { .. } => "Rat", Self::BigInt(_) => "BigInt", Self::BigVector(_) => "Vector<BigInt>",
+            Self::Rat { .. } | Self::ExactRat { .. } => "Rat", Self::Text(_) => "Text", Self::Record { .. } => "Record",
             Self::Vector(_) => "Vector<Float64>", Self::Matrix { .. } => "Matrix<Float64>",
             Self::Tensor { .. } => "Tensor<Float64>", Self::Complex { .. } => "Complex",
-            Self::Interval { .. } => "Interval<Float64>", Self::Text(_) => "Text", Self::Series { .. } => "Series",
-            Self::Set(_) => "Set", Self::Record { .. } => "Record", Self::Option(_) => "Option",
             Self::Result { .. } => "Result", Self::Program(_) => "Program", Self::List(_) => "List",
-            Self::DenseLayout(_) => "DenseLayout",
         };
         out.string("type", kind);
         out.string("value", &self.to_string());
@@ -626,9 +492,8 @@ impl Value {
                 for (name, value) in fields { members.object_field(name, &value.json()); }
                 out.object_field("fields", &members.finish());
             }
-            Self::List(values) | Self::Set(values) => { out.objects("elements", &values.iter().map(Self::json).collect::<Vec<_>>()); }
+            Self::List(values) => { out.objects("elements", &values.iter().map(Self::json).collect::<Vec<_>>()); }
             Self::Vector(values) => { out.strings("bits", &bits(values)); }
-            Self::BigVector(values) => { out.strings("elements", &values.iter().map(emath_rt::UBig::to_decimal).collect::<Vec<_>>()); }
             Self::Matrix { rows, cols, data } => {
                 out.int("rows", *rows as u64); out.int("columns", *cols as u64); out.strings("bits", &bits(data));
             }
@@ -636,50 +501,18 @@ impl Value {
                 out.strings("shape", &shape.iter().map(usize::to_string).collect::<Vec<_>>()); out.strings("bits", &bits(data));
             }
             Self::Complex { re, im } => { out.strings("bits", &bits(&[*re, *im])); }
-            Self::Interval { lo, hi } => { out.strings("bits", &bits(&[*lo, *hi])); }
-            Self::Option(value) => {
-                out.bool("some", value.is_some());
-                if let Some(value) = value { out.object_field("payload", &value.json()); }
-            }
             Self::Result { ok, payload } => { out.bool("ok", *ok); out.object_field("payload", &payload.json()); }
-            Self::Series { points, interpolation, extrapolation } => {
-                out.string("interpolation", interpolation); out.string("extrapolation", extrapolation);
-                out.strings("time_bits", &points.iter().map(|(time, _)| format!("{:016x}", time.to_bits())).collect::<Vec<_>>());
-                out.strings("value_bits", &points.iter().map(|(_, value)| format!("{:016x}", value.to_bits())).collect::<Vec<_>>());
-            }
             Self::Program(program) => {
                 out.string("program", &program.body.print());
                 out.bool("vector_input", program.vector_input);
                 out.objects("captures", &program.captures.iter().map(Self::json).collect::<Vec<_>>());
             }
-            Self::DenseLayout(layout) => { out.string("layout", &format!("{layout:?}")); }
-            Self::I64(_) | Self::Bool(_) | Self::Text(_) | Self::BigInt(_) | Self::ExactInt(_) | Self::ExactRat { .. } => {}
+            Self::I64(_) | Self::Bool(_) | Self::Text(_) | Self::ExactInt(_) | Self::ExactRat { .. } => {}
         }
         out.finish()
     }
 }
 
 impl Value {
-    pub fn dense_layout(&self) -> Option<emath_rt::DenseLayout> {
-        use emath_rt::DenseLayout;
-        Some(match self {
-            Self::F64(_) | Self::I64(_) => DenseLayout::Scalar,
-            Self::Vector(data) => DenseLayout::Vector(data.len()),
-            Self::Matrix { rows, cols, data } => DenseLayout::Matrix { rows: *rows, cols: *cols, len: data.len() },
-            Self::Tensor { shape, data } => DenseLayout::Tensor { shape: shape.clone(), len: data.len() },
-            _ => return None,
-        })
-    }
 
-    pub(super) fn matches_dense_layout(&self, layout: &emath_rt::DenseLayout) -> bool {
-        use emath_rt::DenseLayout;
-        match (layout, self) {
-            (DenseLayout::Scalar, Self::F64(_) | Self::I64(_)) => true,
-            (DenseLayout::Vector(len), Self::Vector(data)) => *len == data.len(),
-            (DenseLayout::Matrix { rows, cols, len }, Self::Matrix { rows: actual_rows, cols: actual_cols, data }) => rows == actual_rows && cols == actual_cols && *len == data.len(),
-            (DenseLayout::Tensor { shape, len }, Self::Tensor { shape: actual, data }) => shape == actual && *len == data.len(),
-            (expected, Self::DenseLayout(actual)) => expected == actual,
-            _ => false,
-        }
-    }
 }

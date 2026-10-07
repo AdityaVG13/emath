@@ -23,18 +23,6 @@ impl Drop for Restore {
     fn drop(&mut self) { CONTEXT.with(|slot| *slot.borrow_mut() = self.0.take()); }
 }
 
-pub fn with_frames<T>(previous: &[MethodFrame], advance: bool, run: impl FnOnce() -> T) -> (T, Vec<MethodFrame>) {
-    let old = CONTEXT.with(|slot| slot.replace(Some(Context {
-        previous: previous.iter().map(|frame| (frame.key.clone(), frame.clone())).collect(),
-        seen: BTreeMap::new(), path: Vec::new(),
-        advance: advance.then(|| previous.iter().filter(|frame| complete(&frame.state) != Some(true)).min_by(|left, right| left.key.cmp(&right.key)).map(|frame| frame.key.clone())).flatten(),
-    })));
-    let _restore = Restore(old);
-    let result = run();
-    let frames = CONTEXT.with(|slot| slot.borrow_mut().as_mut().map(|context| std::mem::take(&mut context.seen).into_values().collect()).unwrap_or_default());
-    (result, frames)
-}
-
 pub(crate) struct Site(bool);
 impl Drop for Site {
     fn drop(&mut self) {

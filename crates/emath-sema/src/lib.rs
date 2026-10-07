@@ -11,7 +11,6 @@ pub mod admit;
 pub mod language;
 pub mod live_adapter;
 pub mod migrate;
-pub mod proofs;
 pub mod recognition;
 pub mod session;
 

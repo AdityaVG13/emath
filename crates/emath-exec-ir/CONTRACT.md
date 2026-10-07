@@ -259,14 +259,6 @@ supplied Text, including dynamic index details.
 installed distribution. Artifact generation uses this same program when no
 native binding exists; it does not identify mathematical features by name.
 
-## Source case execution
-
-`runner::run_test` executes one admitted source example. `runner::run_direct`
-executes one declaration with explicit bindings. Both use the existing
-constructor, assumption, lowering, and verdict rules. They return `TestRun`
-values without evaluating sibling cases. The CLI uses these boundaries
-for saved progress; they do not suspend inside a capability or solver.
-
 ## Loop-session scratch checkpoints
 
 `constructor_layer::scratch` is the `emath.scratch.v1` host-side checkpoint
@@ -312,11 +304,6 @@ resume-through-file equality with the straight run, mutation divergence,
 identity refusal, and torn-file refusal.
 
 
-Case runners retain independent definitions after a lowering or execution fault.
-A failed definition never supplies a guessed binding to later expressions.
-The first failure remains the case verdict; a failed case cannot pass its expectation.
-Constructor and assumption checks remain strict. `eval_definitions_values`, used
-by numerical solver callers, remains fail-fast.
 
 ## Program-space quote emission
 
@@ -659,22 +646,3 @@ No mathematical algorithm or completion-field name is selected in Rust.
 Outside a progress scope, evaluation remains ordinary authored execution.
 `Value::json` preserves recursive records, exact rational components, and
 floating-point bits. Program values are output-only, not resumable arguments.
-
-## Authored model method boundary
-
-Explicit and residual Euler/RK4 use typed per-model programs and authored
-stage formulas. Residual models use authored Newton iteration and Gaussian
-elimination. The returned state includes accepted-point algebraic projection.
-Cash-Karp stage coefficients and adaptive policy, backward-Euler numerical
-updates, and Verlet updates and structure tolerances also use authored cells.
-The runner retains model frames, step scheduling, carrier checks, and events.
-Newton counts scalar components, not fields. Scalar and vector carriers remain
-distinct, including one-element vectors. A one-component residual can be
-scalar or a one-element vector. Each explicit rate must match its own state
-field shape, not only the total flat width. These API invariants do not add
-new source-syntax admission.
-
-Matrix row and column operations read carrier metadata without certifying
-the stored length. Authored guards can therefore return the method-specific
-shape refusal before arithmetic. Matrix element access still checks shape
-and bounds.

@@ -263,7 +263,7 @@ fn defer_boolean_rights(
     let mut moved = std::collections::HashSet::new();
     for i in 0..n {
         let (left, right) = match &program.ops[i].0 {
-            EmirOp::And(l, r) | EmirOp::Or(l, r) | EmirOp::Imply(l, r) => (*l, *r),
+            EmirOp::And(l, r) | EmirOp::Or(l, r)  => (*l, *r),
             _ => continue,
         };
         let right_idx = right.0 as usize;

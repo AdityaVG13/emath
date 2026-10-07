@@ -4,15 +4,12 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 
 use crate::term_compile::{CompiledCell, ResultGuard, run_guards};
-use crate::{
-    BuiltinId, CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget, FoldCombine, ReduceId,
-    VectorScalarOp,
-};
+use crate::{CellClass, EmirOp, EmirProgram, EmirValue, EvalBudget, FoldCombine};
 
 mod helpers;
 mod value;
 
-use helpers::{register, bool_of, i64_of, f64_of, eq_ne, vector_of, tensor_of, matrix_of, eval_tensor_slice};
+use helpers::{register, bool_of, i64_of, f64_of, eq_ne, vector_of, eval_tensor_slice};
 pub use value::{EvalFault, ProgramValue, Value, format_f64};
 
 pub fn evaluate(
@@ -171,17 +168,6 @@ impl Drop for EvaluationFuel {
         }
     }
 }
-
-pub fn evaluate_f64(
-    program: &EmirProgram,
-    inputs: &[f64],
-    state: &[f64],
-) -> Result<Value, EvalFault> {
-    let inputs = inputs.iter().copied().map(Value::F64).collect::<Vec<_>>();
-    let state = state.iter().copied().map(Value::F64).collect::<Vec<_>>();
-    evaluate(program, &inputs, &state)
-}
-
 
 thread_local! {
     /// Depth of ongoing reference-cell evaluations. Bounds recursive

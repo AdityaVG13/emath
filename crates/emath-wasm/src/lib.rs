@@ -12,15 +12,11 @@ pub mod ffi;
 
 pub use ffi::install_panic_hook;
 
-pub mod desugar;
 
-pub use desugar::prepare_source;
 
 use emath_artifact::{JsonValue, JsonWriter, parse_json_document};
 use emath_core::{Diagnostics, FileId, Severity, limits::Limits};
 use emath_exec_ir::interp::Value;
-use emath_genesis::{Disposition, ResultBundle, WorldResult};
-use emath_ir::Mig;
 use emath_sema::session::CompilerSession;
 use emath_syntax::{format_lossless, install_source_parser, parse_lossless};
 use std::borrow::Cow;
@@ -31,11 +27,9 @@ mod examples;
 mod ops;
 mod payload;
 mod serialize;
-mod solve;
 
 pub use examples::*;
-use ops::{op_check, op_plan, op_mig, op_generate, op_run, refuse_kind_gone, parse_solve_payload};
+use ops::{op_check, op_generate, op_run, refuse_kind_gone};
 pub use payload::*;
 use serialize::{serialize_constructor_report, op_format, op_inputs};
-use solve::op_solve_candidates;
 

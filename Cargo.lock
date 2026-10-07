@@ -744,9 +744,7 @@ version = "0.1.0"
 dependencies = [
  "emath-adapter-dew",
  "emath-core",
- "emath-exec-ir",
  "emath-ir",
- "emath-lab-core",
  "emath-test-harness",
 ]
 
@@ -865,7 +863,6 @@ dependencies = [
  "emath-rust-backend",
  "emath-schema",
  "emath-sema",
- "emath-store",
  "emath-syntax",
  "emath-test-harness",
 ]
@@ -951,11 +948,8 @@ dependencies = [
  "emath-core",
  "emath-ir",
  "emath-lab-core",
- "emath-syntax",
  "emath-term",
  "emath-test-harness",
- "emath-wasm",
- "emath-world-ir",
 ]
 
 [[package]]
@@ -1042,7 +1036,6 @@ version = "0.1.0"
 dependencies = [
  "emath-core",
  "emath-exec-ir",
- "emath-ir",
  "emath-rt",
 ]
 
@@ -1100,12 +1093,10 @@ dependencies = [
  "emath-core",
  "emath-exec-ir",
  "emath-ir",
- "emath-lab-core",
  "emath-sema",
  "emath-syntax",
  "emath-term",
  "emath-test-harness",
- "emath-world-ir",
 ]
 
 [[package]]
@@ -1210,7 +1201,6 @@ dependencies = [
  "emath-artifact",
  "emath-core",
  "emath-exec-ir",
- "emath-genesis",
  "emath-ir",
  "emath-rust-backend",
  "emath-sema",

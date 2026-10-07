@@ -10,8 +10,6 @@ the source build library, WASM generation and native loop export. A loading-only
 preparation is not evidence of semantic admission; callers must enforce the
 session's diagnostics before emission.
 
-The separate `generate(BackendInput)` API retains historical structural EMIR
-code but currently refuses `E-KIND-GONE`; it is not an active generation path.
 Mathematical meaning must arrive through executable contracts, never
 domain-named emitter branches. Direct constructor artifacts are std-only; engine-backed artifacts
 vendor first-party engine source and pin, but do not vendor, third-party
@@ -29,9 +27,6 @@ packaging. Conformance: the source-build `edition` integration test.
 
 ## Public types and semantics
 
-- `BackendInput { package, crate_name, version }`: input to `generate()`.
-- `BackendOutput { files, anchors, assumptions, module, receipts }`: relative path to file content (including `Cargo.toml` and `src/lib.rs`), source-map anchors, surfaced domain obligations, the rendered module for `CrateProfile::validate`, and one `ConstructionReceipt` per generated constructor (the obligation matrix the emitted code discharges).
-- `BackendAnchor`: byte-range anchor into generated `src/lib.rs`.
 - `BackendError`: typed backend failure (variant list below).
 
 ## Native numeric boundaries
@@ -292,7 +287,7 @@ change is introduced by this reuse.
   `#![allow(dead_code)]`; output is deterministic for the same checked snapshot,
   target inputs and embedded engine source.
 - Generated crates embed `mod emath_rt { ... }` (the verbatim `emath-rt` kernel source) with an outer `#[allow(dead_code)]` so hosts that strip inner attributes (an `include!` driver pattern) stay warning-free.
-- The emitter is exhaustive over the contracted universal `EmirOp`; active backend modules contain no removed domain-op references. Obsolete domain/dual helper files remain unreferenced only because deletion is forbidden.
+- The emitter is exhaustive over the contracted universal `EmirOp`; active backend modules contain no removed domain-op references.
 - The emitter never maps a mathematical feature name or legacy domain operation to a runtime function. A semantic operation without an `ApplyCapability` artifact contract fails as `MissingArtifactContract`.
 - `ApplyCapability` dispatches only on generic cell class. Unsupported provider and intrinsic/native bindings fail as `UnsupportedBinding`; other applications without an executable artifact body fail as `MissingArtifactContract`. No identity, interpreter fallback, or compatibility shim is emitted.
 - Generated manifest emits `edition = "2024"`, sanitized crate name/version; keywords and reserved identifiers are escaped (`type` to `type_`) and never emitted raw.
@@ -368,11 +363,11 @@ change is introduced by this reuse.
 
 ## Error model
 
-`BackendError` enum: `NoEvaluateGoal`, `UnknownTarget`, `MissingInput`, `MissingGiven`, `UnsupportedType`, `MultipleConstructors`, `UnsupportedBinding`, `MissingArtifactContract`, `Lowering`. Provider/native absence and semantic operations that bypass the universal artifact seam are typed backend refusals. All variants implement `Display`/`Error`. Profile validation surfaces E-CODEGEN-002/`E-CODEGEN-004` on the exact rendered module.
+`BackendError` enum: `MissingInput`, `UnsupportedType`, `UnsupportedBinding`, `MissingArtifactBinding`, `StaleArtifactBinding`, `MissingArtifactContract`, `Lowering`. Provider/native absence and semantic operations that bypass the universal artifact seam are typed backend refusals. All variants implement `Display`/`Error`. Profile validation surfaces E-CODEGEN-002/`E-CODEGEN-004` on the exact rendered module.
 
 ## Determinism class
 
-Deterministic and byte-comparable. Same `BackendInput` produces identical generated crate bytes repo-wide; `value_expr` materializes ops deterministically via `__e<i>` temporaries.
+Deterministic and byte-comparable. The same checked snapshot and target inputs produce identical generated crate bytes repo-wide; `value_expr` materializes ops deterministically via `__e<i>` temporaries.
 
 ## Cancellation behavior
 
@@ -410,9 +405,8 @@ The `codegen_steps` Euler/RK4/Newton emission templates and the CLI's
 `simulate_cmd` were removed outright after that verification (user
 authorization 2026-09-24): no caller from admitted source, no tests, the
 generate.rs model arms and the rate-context render lane went with them.
-The exec-ir `runner/simulate` refusal shell STAYS - its
-`CONSTRUCTOR_SIMULATE_GONE` entries are the pinned retirement surface
-(`tests/emath-exec-ir/tests/constructor_cutover.rs`).
+The exec-ir `runner/simulate` refusal shell was later deleted with the rest
+of the SIR runner.
 
 Legacy domain-render assertions are not part of this contract. They must be migrated outside this crate to construct `ApplyCapability` programs with executable artifact contracts.
 

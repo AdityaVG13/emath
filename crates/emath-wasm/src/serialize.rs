@@ -1,10 +1,9 @@
 //! Run-report serialization and JSON value helpers.
 
-use super::{prepare_source, session_from_source, JsonWriter, put_pipeline_status, diagnostic_objects, refuse_kind_gone, parse_lossless, FileId, Limits, format_lossless};
+use super::{session_from_source, JsonWriter, put_pipeline_status, diagnostic_objects, refuse_kind_gone, parse_lossless, FileId, Limits, format_lossless};
 
 pub(super) fn op_inputs(source: &str) -> String {
-    let prepared = prepare_source(source);
-    let (mut session, file) = session_from_source(&prepared.source);
+    let (mut session, file) = session_from_source(source);
     let checked = session.check(file);
     if checked.diagnostics.has_errors() {
         let mut object = JsonWriter::object();

@@ -954,7 +954,7 @@ fn scalar_entry_adapter(
     let arity = abi.inputs.len();
     let target = internal_entry_name(name);
     let value = crate::codegen_render::to_code_value(
-        crate::Expr::Raw(format!("crate::{target}({})?", args.join(", "))),
+        crate::rust_ir::ast::Expr::Raw(format!("crate::{target}({})?", args.join(", "))),
         &abi.result,
     )
     .ok()?;
@@ -981,7 +981,7 @@ fn node_entry_adapter(
         arguments.push(argument);
     }
     let value = crate::codegen_render::to_node(
-        crate::Expr::Raw("__node_result".into()), &abi.result,
+        crate::rust_ir::ast::Expr::Raw("__node_result".into()), &abi.result,
     ).ok()?;
     let value = crate::rust_ir::render::render_expr(&value);
     let target = internal_entry_name(name);

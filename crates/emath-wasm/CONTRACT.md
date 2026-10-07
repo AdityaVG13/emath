@@ -19,9 +19,8 @@
 - Ops: `version`, `examples`, `check`, `plan`, `mig`, `generate`, `format`, `run`, `inputs`, `solve_candidates`.
 - `plan`, `mig`, and `solve_candidates` refuse `E-KIND-GONE`. There is no
   `goals:` planner and no leftover solve-world menu.
-- Bare pane wrap is off. `prepare_source` passes text through. Scratch
-  expansion remains leftover in `emath-syntax`; this crate does not wrap
-  untrusted panes into inferred functions.
+- Pane text is checked as written; this crate does not wrap untrusted
+  panes into inferred functions.
 - `run` payload is either raw source or a JSON envelope
   `{"source":"…","given":{"x":4.0}}`. Detection: payload trims to `{`
   and parses as JSON with a `source` key; otherwise the bytes are raw

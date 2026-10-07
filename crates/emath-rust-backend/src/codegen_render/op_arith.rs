@@ -6,7 +6,6 @@ use super::{
     i64_or_f64_bin, kind_at, map_runtime_result, operand, operand_kind, render_expr, to_code_value,
     typed_operand, union_pair,
 };
-use emath_exec_ir::BuiltinId;
 
 /// Complex binop operand: complex carriers pass through; scalars widen
 /// to the tuple carrier exactly as the VM's `complex_parts` does
@@ -315,25 +314,6 @@ pub(super) fn op_arith_exprs(
             return Ok(Expr::Raw(format!("(-({rendered}).0, -({rendered}).1)")));
         }
     }
-    if let EmirOp::UnaryBuiltin(id, value) = op {
-        if kind_at(kinds, *value) == ValueKind::Complex {
-            let function = match id {
-                BuiltinId::Sqrt => "complex_sqrt",
-                BuiltinId::Ln => "complex_ln",
-                BuiltinId::Exp => "complex_exp",
-                other => {
-                    let _ = other;
-                    return Err(BackendError::UnsupportedType(
-                        "unary builtin on a Complex carrier requires sqrt/ln/exp".into(),
-                    ));
-                }
-            };
-            return Ok(Expr::Raw(format!(
-                "emath_rt::{function}(({arg}).0, ({arg}).1)",
-                arg = render_expr(&operand(program, *value))
-            )));
-        }
-    }
     match op {
         EmirOp::F64Add(l, r) => Ok(i64_or_f64_bin(
             BinOp::Add,
@@ -386,11 +366,6 @@ pub(super) fn op_arith_exprs(
                 right: Box::new(typed_operand(program, *r, ValueKind::F64, kinds)),
             })
         }
-        EmirOp::F64Pow(l, r) => Ok(Expr::Bin {
-            op: BinOp::Pow,
-            left: Box::new(typed_operand(program, *l, ValueKind::F64, kinds)),
-            right: Box::new(typed_operand(program, *r, ValueKind::F64, kinds)),
-        }),
         EmirOp::Neg(value) => {
             if operand_kind(kinds, *value) == ValueKind::I64 {
                 Ok(checked_integer_result(Expr::MethodCall {
@@ -414,15 +389,6 @@ pub(super) fn op_arith_exprs(
             op: UnOp::Not,
             value: Box::new(operand(program, *value)),
         }),
-        EmirOp::UnaryBuiltin(id, value) => {
-            let arg = render_expr(&typed_operand(program, *value, ValueKind::F64, kinds));
-            Ok(Expr::Raw(unary_builtin(*id, &arg)?))
-        }
-        EmirOp::BinaryBuiltin(id, left, right) => {
-            let left = render_expr(&typed_operand(program, *left, ValueKind::F64, kinds));
-            let right = render_expr(&typed_operand(program, *right, ValueKind::F64, kinds));
-            Ok(Expr::Raw(binary_builtin(*id, &left, &right)?))
-        }
         EmirOp::IsFinite(value) => Ok(Expr::MethodCall {
             receiver: Box::new(typed_operand(program, *value, ValueKind::F64, kinds)),
             method: "is_finite".to_string(),
@@ -436,65 +402,6 @@ pub(super) fn op_arith_exprs(
         EmirOp::Ne(l, r) => cmp_expr(BinOp::Ne, program, *l, *r, kinds),
         EmirOp::And(l, r) => Ok(comparison(BinOp::And, *l, *r, program)),
         EmirOp::Or(l, r) => Ok(comparison(BinOp::Or, *l, *r, program)),
-        // `==>` = `!l || r`
-        EmirOp::Imply(l, r) => Ok(Expr::Bin {
-            op: BinOp::Or,
-            left: Box::new(Expr::Un {
-                op: UnOp::Not,
-                value: Box::new(operand(program, *l)),
-            }),
-            right: Box::new(operand(program, *r)),
-        }),
-        // `<==>` = `l == r` for Bool
-        EmirOp::Iff(l, r) => Ok(comparison(BinOp::Eq, *l, *r, program)),
         _ => unreachable!("op_arith_exprs routed a non-matching op"),
-    }
-}
-
-fn unary_builtin(id: BuiltinId, value: &str) -> Result<String, BackendError> {
-    let method = match id {
-        BuiltinId::Exp => "exp",
-        BuiltinId::Ln => "ln",
-        BuiltinId::Sqrt => "sqrt",
-        BuiltinId::Sin => "sin",
-        BuiltinId::Cos => "cos",
-        BuiltinId::Tan => "tan",
-        BuiltinId::Tanh => "tanh",
-        BuiltinId::Abs => "abs",
-        BuiltinId::Floor => "floor",
-        BuiltinId::Ceil => "ceil",
-        BuiltinId::Round => "round",
-        BuiltinId::Log2 => "log2",
-        BuiltinId::Log10 => "log10",
-        BuiltinId::Sinh => "sinh",
-        BuiltinId::Cosh => "cosh",
-        BuiltinId::Atan => "atan",
-        BuiltinId::Cbrt => "cbrt",
-        BuiltinId::Recip => "recip",
-        BuiltinId::Fract => "fract",
-        BuiltinId::Sign => {
-            return Ok(format!(
-                "if {value} == 0.0 {{ 0.0 }} else {{ {value}.signum() }}"
-            ));
-        }
-        BuiltinId::Hypot | BuiltinId::Min | BuiltinId::Max | BuiltinId::Atan2 | BuiltinId::Mod => {
-            return Err(BackendError::MissingArtifactContract(
-                "binary builtin used as unary bytecode".to_string(),
-            ));
-        }
-    };
-    Ok(format!("{value}.{method}()"))
-}
-
-fn binary_builtin(id: BuiltinId, left: &str, right: &str) -> Result<String, BackendError> {
-    match id {
-        BuiltinId::Hypot => Ok(format!("{left}.hypot({right})")),
-        BuiltinId::Min => Ok(format!("{left}.min({right})")),
-        BuiltinId::Max => Ok(format!("{left}.max({right})")),
-        BuiltinId::Atan2 => Ok(format!("{left}.atan2({right})")),
-        BuiltinId::Mod => Ok(format!("{left} % {right}")),
-        _ => Err(BackendError::MissingArtifactContract(
-            "unary builtin used as binary bytecode".to_string(),
-        )),
     }
 }

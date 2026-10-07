@@ -1,9 +1,9 @@
 //! Finite law-checker refusal tests: empty and untotal tables never pass.
 
-use emath_lab_core::calibration::FittedTable;
+use emath_ir::{FittedTable, WorldId};
 use emath_lab_core::law_check::{CheckerError, FiniteLawChecker, Law, WorldObligation};
 use emath_term::SymbolId;
-use emath_world_ir::{WorldId, fnv1a64};
+use emath_core::fnv1a64_bytes as fnv1a64;
 use emath_test_harness::Probe;
 
 fn commutative_obligation(operator: &str) -> WorldObligation {

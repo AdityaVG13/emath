@@ -1,6 +1,6 @@
 //! Universal instructions for the stable executable machine.
 
-use super::{EmirValue, BuiltinId, EmirSliceAxis, EmirProgram, FoldCombine, CellClass, VectorScalarOp, ReduceId};
+use super::{EmirValue, EmirSliceAxis, EmirProgram, FoldCombine, CellClass};
 
 /// How an evaluated quoted function is used, which fixes its carrier.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,14 +34,11 @@ pub enum CodeSubRef {
 pub enum EmirOp {
     ConstF64(u64),
     ConstI64(i64),
-    ConstBigInt(String),
     /// Signed arbitrary-precision integer decimal (constructor `ExactInt`).
     ConstExactInt(String),
     ConstText(String),
-    ConstComplex(f64, f64),
     ConstBool(bool),
     LoadInput(u16),
-    LoadState(u16),
 
     // Closed scalar reference-bytecode vocabulary. These instructions carry no
     // FeatureID and are not independently admitted language features.
@@ -49,20 +46,11 @@ pub enum EmirOp {
     F64Sub(EmirValue, EmirValue),
     F64Mul(EmirValue, EmirValue),
     F64Div(EmirValue, EmirValue),
-    F64Pow(EmirValue, EmirValue),
     Neg(EmirValue),
-    /// Exact integral binary64-to-i64 conversion; rejects rounding and overflow.
-    ToInt(EmirValue),
-    /// Convert a numeric scalar to binary64 without applying arithmetic.
-    ToF64(EmirValue),
-    /// Euclidean signed integer quotient; rejects zero divisors.
-    IntegerQuotient(EmirValue, EmirValue),
     /// Generic exact-integer machine call (`quot`, `rem`, `root`, `gcd`, ...).
     ExactIntCall { name: String, args: Vec<EmirValue> },
     /// Binary64 representation equality, including signed zero and NaN payloads.
     SameBits(EmirValue, EmirValue),
-    UnaryBuiltin(BuiltinId, EmirValue),
-    BinaryBuiltin(BuiltinId, EmirValue, EmirValue),
     Lt(EmirValue, EmirValue),
     Le(EmirValue, EmirValue),
     Gt(EmirValue, EmirValue),
@@ -71,37 +59,13 @@ pub enum EmirOp {
     Ne(EmirValue, EmirValue),
     And(EmirValue, EmirValue),
     Or(EmirValue, EmirValue),
-    Imply(EmirValue, EmirValue),
-    Iff(EmirValue, EmirValue),
     Not(EmirValue),
     IsFinite(EmirValue),
-    Select {
-        condition: EmirValue,
-        then_value: EmirValue,
-        else_value: EmirValue,
-    },
 
     // Universal construction, storage, and indexing.
     FormatText {
         template: String,
         arguments: Vec<EmirValue>,
-    },
-    SeriesCreate {
-        points: Vec<(f64, f64)>,
-        interpolation: String,
-        extrapolation: String,
-    },
-    SeriesSample {
-        series: EmirValue,
-        time: EmirValue,
-    },
-    SetCreate {
-        elements: Vec<EmirValue>,
-        guards: Vec<Option<EmirValue>>,
-    },
-    SetContains {
-        element: EmirValue,
-        set: EmirValue,
     },
     RecordCreate {
         type_name: String,
@@ -113,29 +77,13 @@ pub enum EmirOp {
     BufferCreate { size: EmirValue, fill: EmirValue },
     BufferWrite { buffer: EmirValue, index: EmirValue, value: EmirValue },
     RecordField { record: EmirValue, field: String },
-    VectorCreate(Vec<EmirValue>),
     VectorLength(EmirValue),
     /// Pack a homogeneous Float64 sequence without widening exact carriers.
     ToF64Vector(EmirValue),
-    MatrixCreate {
-        rows: usize,
-        cols: usize,
-        elements: Vec<EmirValue>,
-    },
-    TensorCreate {
-        shape: Vec<usize>,
-        elements: Vec<EmirValue>,
-    },
     VectorIndex {
         vector: EmirValue,
         index: EmirValue,
     },
-    /// Matrix storage metadata and checked row-major packing.
-    MatrixRows(EmirValue),
-    TensorShape(EmirValue),
-    /// IEEE binary64 intrinsics and UTF-8/decimal representation operations.
-    F64Exp2(EmirValue),
-    F64PowI(EmirValue, EmirValue),
     TextTrim(EmirValue),
     TextLength(EmirValue),
     /// Native unsigned-index conversion followed by decimal representation.
@@ -143,32 +91,12 @@ pub enum EmirOp {
     TextByte(EmirValue, EmirValue),
     FormatScientific(EmirValue, EmirValue),
     ParseF64(EmirValue),
-    TensorPack { shape: EmirValue, data: EmirValue },
-    DenseIndex { dense: EmirValue, index: EmirValue },
-    MatrixCols(EmirValue),
-    MatrixPack { rows: EmirValue, cols: EmirValue, data: EmirValue },
-    MatrixIndex {
-        matrix: EmirValue,
-        row: EmirValue,
-        col: EmirValue,
-    },
-    TensorIndex {
-        tensor: EmirValue,
-        indices: Vec<EmirValue>,
-    },
     TensorSlice {
         tensor: EmirValue,
         axes: Vec<EmirSliceAxis>,
     },
-    OptionSome(EmirValue),
-    OptionNone,
-    OptionIsSome(EmirValue),
-    OptionUnwrapOr(EmirValue, EmirValue),
-    ResultOk(EmirValue),
-    ResultErr(EmirValue),
     ResultIsOk(EmirValue),
     ResultUnwrapOr(EmirValue, EmirValue),
-    ResultErrorOf(EmirValue),
 
     // Universal binding/control.
     /// Evaluate only the selected program, with explicit captured arguments.
@@ -272,17 +200,8 @@ pub enum EmirOp {
         declared: Vec<String>,
         result: String,
     },
-    /// Compare scalar/dense carrier layout, including stored element counts.
-    SameDenseShape(EmirValue, EmirValue),
-    DenseLayout(EmirValue),
-    VectorSlice { vector: EmirValue, offset: EmirValue, count: EmirValue },
-    VectorConcat(Vec<EmirValue>),
     /// Stable binary64 representation ordering, including signed zero and NaNs.
     F64SortTotal(EmirValue),
-    /// Copy numeric storage into a Float64 vector; scalar Int explicitly widens.
-    DenseValues(EmirValue),
-    /// Rebuild a floating dense carrier with the template layout.
-    DenseRepack { template: EmirValue, data: EmirValue },
 
     ProgramLiteral {
         body: EmirProgram,
@@ -469,20 +388,6 @@ pub enum EmirOp {
     TryCallRealProgram { program: EmirValue, inputs: EmirValue },
 
     // Closed carrier bytecode used by authored reference programs.
-    VectorMap {
-        builtin: BuiltinId,
-        source: EmirValue,
-    },
-    VectorMapScalar {
-        op: VectorScalarOp,
-        vector: EmirValue,
-        scalar: EmirValue,
-    },
-    VectorReduce {
-        reduce: ReduceId,
-        source: EmirValue,
-    },
-    VectorAllFinite(EmirValue),
 }
 
 impl EmirOp {

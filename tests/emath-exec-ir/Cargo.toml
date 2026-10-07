@@ -13,7 +13,6 @@ emath-core = { path = "../../crates/emath-core" }
 emath-sema = { path = "../../crates/emath-sema" }
 emath-syntax = { path = "../../crates/emath-syntax" }
 emath-rt = { path = "../../crates/emath-rt" }
-emath-store = { path = "../../crates/emath-store" }
 emath-schema = { path = "../../crates/emath-schema" }
 emath-rust-backend = { path = "../../crates/emath-rust-backend" }
 

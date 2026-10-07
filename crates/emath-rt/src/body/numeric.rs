@@ -85,7 +85,6 @@ impl<T> Matrix<T> {
     pub fn rows(&self) -> usize { self.rows }
     pub fn cols(&self) -> usize { self.cols }
     pub fn as_slice(&self) -> &[T] { &self.data }
-    pub fn into_data(self) -> Vec<T> { self.data }
     pub fn get(&self, row: usize, col: usize) -> Option<&T> {
         if row >= self.rows || col >= self.cols { return None; }
         self.data.get(row * self.cols + col)
@@ -104,25 +103,6 @@ pub fn format_scientific(value: f64, precision: i64) -> Result<String, &'static 
     text.try_reserve_exact(capacity).map_err(|_| "E-SCALAR-CONVERT: formatting allocation failed")?;
     write!(&mut text, "{value:.precision$e}").map_err(|_| "E-SCALAR-CONVERT: formatting failed")?;
     Ok(text)
-}
-
-/// Numeric storage layout. The stored length does not certify shape validity.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DenseLayout {
-    Scalar,
-    Vector(usize),
-    Matrix { rows: usize, cols: usize, len: usize },
-    Tensor { shape: Vec<usize>, len: usize },
-}
-
-impl DenseLayout {
-    pub fn len(&self) -> usize {
-        match self {
-            Self::Scalar => 1,
-            Self::Vector(len) | Self::Matrix { len, .. } | Self::Tensor { len, .. } => *len,
-        }
-    }
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
 /// Numeric callback result carrier. Float64, Int, and vector results remain distinct.
