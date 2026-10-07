@@ -247,6 +247,9 @@ pub struct SemanticPackage {
     /// Admitted imports (front-end).
     pub imports: Vec<ImportEntry>,
     pub declarations: Vec<Declaration>,
+    /// Complete constructor semantics from the checked, scoped import graph.
+    /// Legacy programmatic SIR packages leave this absent.
+    pub constructor_semantics: Option<crate::meaning::ConstructorSemantics>,
     /// Admitted capability cells. Domain operations are arena data: adding
     /// a cell appends here and never adds an `ExprNode` variant.
     pub capabilities: Vec<crate::capability::Capability>,
@@ -295,6 +298,7 @@ impl SemanticPackage {
             package_path: None,
             imports: Vec::new(),
             declarations: Vec::new(),
+            constructor_semantics: None,
             capabilities: Vec::new(),
             field_packs: Vec::new(),
             feature_capsules: Vec::new(),

@@ -40,6 +40,57 @@ fn def_expr<'a>(tree: &'a emath_core::tree::SyntaxTree, name: &str) -> Option<&'
 use emath_test_harness::{Probe, boot};
 
 #[test]
+fn binder_applications_preserve_call_and_operator_shape() {
+    for binder in [
+        "function x in Int: x + 1",
+        "recur f in Int -> Int: function x in Int: x + 1",
+        "quote x in Int: x",
+        "sum x in [1, 2]: x",
+    ] {
+        for (expression, is_call) in [
+            (format!("({binder})(3)"), true),
+            (format!("({binder}) + 7"), false),
+        ] {
+            let source = format!(
+                "emath function P:\n    definitions:\n        result = {expression}\n"
+            );
+            let parsed = parse_lossless(&source, FileId(0), &Limits::default());
+            assert!(
+                !parsed.diagnostics.has_errors(),
+                "{source}: {:?}",
+                parsed.diagnostics
+            );
+            let canonical = format(&parsed.tree, &parsed.comments);
+            let reparsed = parse_lossless(&canonical, FileId(0), &Limits::default());
+            assert!(
+                !reparsed.diagnostics.has_errors(),
+                "{canonical}: {:?}",
+                reparsed.diagnostics
+            );
+            let root = def_expr(&reparsed.tree, "result").expect("retained expression");
+            if is_call {
+                assert!(
+                    matches!(&root.kind, ExprKind::Call { args, .. } if args.len() == 1),
+                    "binder swallowed application: {canonical}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        &root.kind,
+                        ExprKind::Binary {
+                            op: BinaryOp::Add,
+                            ..
+                        }
+                    ),
+                    "binder swallowed operator: {canonical}"
+                );
+            }
+            assert_eq!(format(&reparsed.tree, &reparsed.comments), canonical);
+        }
+    }
+}
+
+#[test]
 fn formatter() {
     boot();
     let mut probe = Probe::new("`emath-syntax` canonical formatter tests (migrated from `crates/emath-syntax/src/formatter.rs`).");

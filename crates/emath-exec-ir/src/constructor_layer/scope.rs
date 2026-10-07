@@ -38,6 +38,7 @@ pub(super) struct Module {
     /// The `use` path as written, for diagnostics.
     display: String,
     pub tree: SyntaxTree,
+    pub text: String,
     pub uses: Vec<ModUse>,
     /// Declared name -> declaration kind.
     names: BTreeMap<String, String>,
@@ -237,6 +238,7 @@ fn load_uses(
             label,
             display: path.join("."),
             tree: imported,
+            text,
             uses: nested,
             names,
             exports,
@@ -360,7 +362,13 @@ impl ImportGraph {
 
     fn scope_map(&self, own: &BTreeMap<String, String>, uses: &[ModUse], own_module: Option<&Module>) -> ScopeMap {
         let mut map = ScopeMap::new();
-        for name in self.clashing.union(&self.private) {
+        let mut names: BTreeSet<String> = self.clashing.union(&self.private).cloned().collect();
+        for u in uses {
+            if let UseTree::Named(selected) = &u.tree {
+                names.extend(selected.iter().filter_map(|(_, alias)| alias.clone()));
+            }
+        }
+        for name in &names {
             let declared = own
                 .get(name)
                 .is_some_and(|kind| kind == "function" || kind == "query");

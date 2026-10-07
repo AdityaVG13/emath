@@ -7,32 +7,26 @@ fn fail(request: &RunRequest, source: &str, err: &emath_exec_ir::constructor_lay
     super::diagnostic_with(request.json, error_exit(&err.code), &err.code, &err.message, &text)
 }
 
-pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Option<CliExit> {
-    let (tree, diagnostics) = emath_syntax::parse_str(source);
-    if diagnostics.has_errors() {
-        crate::cli_json::print_diagnostics_in(&diagnostics, &request.path.display().to_string(), source);
-        return Some(EXIT_ADMISSION);
+pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_build::CheckedSource) -> Option<CliExit> {
+    let source = checked.source();
+    let diagnostics = &checked.result.diagnostics;
+    if let Some(first) = diagnostics.errors().next() {
+        return Some(super::diagnostic_with(
+            request.json,
+            EXIT_ADMISSION,
+            first.code,
+            &first.message,
+            &crate::cli_json::diagnostics_text(diagnostics, &checked.store),
+        ));
     }
-    let constructor_only = tree.items.iter().all(|item| match item {
-        emath_core::tree::Item::Use { .. } => true,
-        emath_core::tree::Item::Declaration(decl) => {
-            matches!(decl.as_kind.as_str(), "object" | "function" | "query")
-        }
-        _ => true,
-    });
-    let has_constructor = tree.items.iter().any(|item| matches!(
-        item,
-        emath_core::tree::Item::Declaration(decl)
-            if matches!(decl.as_kind.as_str(), "object" | "function" | "query")
-    ));
-    if !constructor_only || !has_constructor {
+    let Some(module) = &checked.result.prepared else {
         return Some(diagnostic(
             request.json,
             EXIT_ADMISSION,
             "E-KIND-GONE",
             "`emath run` evaluates `emath object`, `emath function`, and `emath query`. Other declaration kinds are not constructors.",
         ));
-    }
+    };
     let inputs = match constructor_inputs(request) {
         Ok(inputs) => inputs,
         Err(exit) => return Some(exit),
@@ -46,35 +40,24 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
     let report = if request.function.is_some() {
         None
     } else {
-        let evaluated = if request.work_set {
-            emath_exec_ir::constructor_layer::evaluate_tree_budgeted_at(
-                &tree,
-                Some(&request.path),
-                request.work as u64,
-            )
+        let work = if request.work_set {
+            request.work as u64
         } else {
-            emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(&request.path))
+            emath_exec_ir::constructor_layer::DEFAULT_WORK
         };
-        match evaluated {
+        match module.evaluate_tests(work) {
             Ok(report) => Some(report),
             Err(err) => return Some(fail(request, source, &err)),
         }
     };
     if let Some(name) = &request.function {
-        // The same admission `check` and `test` run, so a mistyped file is
-        // a located admission error, not a runtime fault in the entry.
-        if let Err(mut err) = emath_exec_ir::constructor_layer::admit_tree_at(&tree, Some(&request.path)) {
-            err.code = emath_exec_ir::constructor_layer::constructor_admit_code(&err.code).to_string();
-            return Some(fail(request, source, &err));
-        }
         if request.work_set {
-            return Some(run_constructor_budgeted(request, source, &tree, name, &inputs));
+            return Some(run_constructor_budgeted(request, source, module, name, &inputs));
         }
-        match emath_exec_ir::constructor_layer::evaluate_function_at(
-            &tree,
+        match module.evaluate_function(
             name,
             &inputs,
-            Some(&request.path),
+            emath_exec_ir::constructor_layer::DEFAULT_WORK,
         ) {
             Ok(value) => {
                 return Some(print_constructor_json(
@@ -96,13 +79,11 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
             Err(err) if err.code == "unbound" && err.message == format!("unknown function `{name}`") => {}
             Err(err) => return Some(fail(request, source, &err)),
         }
-        if let Ok(receipt) = emath_exec_ir::constructor_layer::evaluate_query_at(
-            &tree,
-            name,
-            &inputs,
-            Some(&request.path),
-        )
-        {
+        if module.has_query(name) {
+            let receipt = match module.evaluate_query(name, &inputs) {
+                Ok(receipt) => receipt,
+                Err(err) => return Some(fail(request, source, &err)),
+            };
             let exit = match receipt.fulfillment.as_str() {
                 "satisfied" => EXIT_OK,
                 "partial" | "unmet" => EXIT_PARTIAL,
@@ -143,19 +124,17 @@ pub(super) fn run_constructor_layer(request: &RunRequest, source: &str) -> Optio
 pub(super) fn run_constructor_budgeted(
     request: &RunRequest,
     source: &str,
-    tree: &emath_core::tree::SyntaxTree,
+    module: &emath_exec_ir::constructor_layer::PreparedModule,
     name: &str,
     inputs: &BTreeMap<String, emath_exec_ir::constructor_layer::CValue>,
 ) -> CliExit {
     let source_id = content_id_of_str(source).0;
-    match emath_exec_ir::constructor_layer::evaluate_function_budgeted_reported(
-        tree,
+    match module.evaluate_function_budgeted_reported(
         name,
         inputs,
         request.work as u64,
         None,
         &source_id,
-        Some(&request.path),
         source,
     ) {
         Ok((value, work)) => print_constructor_json(
@@ -287,16 +266,18 @@ pub(super) fn constructor_step(request: &RunRequest) -> Option<CliExit> {
     } else {
         64
     };
-    match emath_exec_ir::constructor_layer::evaluate_function_budgeted_reported(
-        &tree,
-        &checkpoint.function,
-        &checkpoint.inputs,
-        checkpoint.work + extra,
-        Some(&checkpoint),
-        &checkpoint.source_id,
-        None,
-        &checkpoint.source,
-    ) {
+    match checkpoint.with_imports(|| {
+        emath_exec_ir::constructor_layer::evaluate_function_budgeted_reported(
+            &tree,
+            &checkpoint.function,
+            &checkpoint.inputs,
+            checkpoint.work + extra,
+            Some(&checkpoint),
+            &checkpoint.source_id,
+            checkpoint.imports.source_path.as_deref(),
+            &checkpoint.source,
+        )
+    }) {
         Ok((value, work)) => Some(print_constructor_json(
             request.json,
             "returned",

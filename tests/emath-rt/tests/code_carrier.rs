@@ -24,10 +24,10 @@ fn template() -> Code<ExactRatio> {
     open(
         vec!["a".to_string(), "b".to_string()],
         Rc::new(|values: &[ExactRatio]| {
-            let a = values[0];
-            let b = values[1];
+            let a = values[0].clone();
+            let b = values[1].clone();
             Ok(Rc::new(move |x: ExactRatio| {
-                ratio_add(ratio_mul(a, x)?, b)
+                ratio_add(ratio_mul(&a, x)?, &b)
             }))
         }),
     )
@@ -42,9 +42,9 @@ fn probe() {
     //    still splices each value at its own slot. A position-blind
     //    splice would swap a and b (5*3+2 = 17, not 11).
     p.case("substitute-binds-by-name", |p| {
-        let bound_b = substitute(&template(), "b", (5, 1));
-        let closed = substitute(&bound_b, "a", (2, 1));
-        match evaluate(&closed).and_then(|f| f((3, 1))) {
+        let bound_b = substitute(&template(), "b", (5, 1).into());
+        let closed = substitute(&bound_b, "a", (2, 1).into());
+        match evaluate(&closed).and_then(|f| f((3, 1).into())) {
             Ok(value) => {
                 p.eq("two-constants-in-reverse-order", value, (11, 1));
             }
@@ -60,7 +60,7 @@ fn probe() {
     // 2. An absent reference is a no-op (tree-substitution parity):
     //    the code is unchanged, so it stays open under its own names.
     p.case("absent-reference-is-no-op", |p| {
-        let untouched = substitute(&template(), "zz", (5, 1));
+        let untouched = substitute(&template(), "zz", (5, 1).into());
         p.demand(
             "free-names-unchanged",
             free_names(&untouched) == ["a".to_string(), "b".to_string()].as_slice(),
@@ -89,7 +89,7 @@ fn probe() {
                 );
             }
         }
-        let bound_a = substitute(&template(), "a", (2, 1));
+        let bound_a = substitute(&template(), "a", (2, 1).into());
         match evaluate(&bound_a) {
             Ok(_) => {
                 p.fail("one-open", "a one-constant template must refuse");
@@ -124,15 +124,15 @@ fn probe_union_kernels() {
     p.case("carrier-locking", |p| {
         let sum = code_add(&CodeValue::Int(2), &CodeValue::Int(3));
         p.eq("int-plus-int-stays-int", sum, Ok(CodeValue::Int(5)));
-        let rat_sum = code_add(&CodeValue::Rat((2, 1)), &CodeValue::Rat((3, 1)));
-        p.eq("rat-plus-rat-stays-rat", rat_sum, Ok(CodeValue::Rat((5, 1))));
-        let widened = code_add(&CodeValue::Int(2), &CodeValue::Rat((3, 1)));
-        p.eq("int-plus-rat-locks-rat", widened, Ok(CodeValue::Rat((5, 1))));
-        let collapse_guard = code_sub(&CodeValue::Rat((1, 4)), &CodeValue::Rat((1, 4)));
+        let rat_sum = code_add(&CodeValue::Rat((2, 1).into()), &CodeValue::Rat((3, 1).into()));
+        p.eq("rat-plus-rat-stays-rat", rat_sum, Ok(CodeValue::Rat((5, 1).into())));
+        let widened = code_add(&CodeValue::Int(2), &CodeValue::Rat((3, 1).into()));
+        p.eq("int-plus-rat-locks-rat", widened, Ok(CodeValue::Rat((5, 1).into())));
+        let collapse_guard = code_sub(&CodeValue::Rat((1, 4).into()), &CodeValue::Rat((1, 4).into()));
         p.eq(
             "rational-zero-never-collapses",
             collapse_guard,
-            Ok(CodeValue::Rat((0, 1))),
+            Ok(CodeValue::Rat((0, 1).into())),
         );
         let product = code_mul(&CodeValue::Int(4), &CodeValue::Int(2));
         p.eq("int-times-int-stays-int", product, Ok(CodeValue::Int(8)));
@@ -142,7 +142,7 @@ fn probe_union_kernels() {
     //    zero denominator refuses `division_by_zero`.
     p.case("division-laws", |p| {
         let quotient = code_div(&CodeValue::Int(4), &CodeValue::Int(2));
-        p.eq("division-stays-rational", quotient, Ok(CodeValue::Rat((2, 1))));
+        p.eq("division-stays-rational", quotient, Ok(CodeValue::Rat((2, 1).into())));
         let by_zero = code_div(&CodeValue::Int(4), &CodeValue::Int(0));
         match by_zero {
             Ok(_) => {
@@ -160,11 +160,11 @@ fn probe_union_kernels() {
 
     // 3. Equality compares VALUES (`2 == 2/1` is true), Bool equality
     //    is structural, mixed kinds are never equal; ordering
-    //    cross-multiplies exactly.
+    //    compares the exact rational values.
     p.case("value-equality-and-ordering", |p| {
         p.eq(
             "int-equals-rat-by-value",
-            code_eq(&CodeValue::Int(2), &CodeValue::Rat((2, 1))),
+            code_eq(&CodeValue::Int(2), &CodeValue::Rat((2, 1).into())),
             Ok(true),
         );
         p.eq(
@@ -173,8 +173,8 @@ fn probe_union_kernels() {
             Ok(false),
         );
         p.eq(
-            "ordering-cross-multiplies",
-            code_cmp(&CodeValue::Rat((3, 2)), &CodeValue::Int(1)),
+            "exact-ordering",
+            code_cmp(&CodeValue::Rat((3, 2).into()), &CodeValue::Int(1)),
             Ok(core::cmp::Ordering::Greater),
         );
     });
@@ -202,8 +202,8 @@ fn probe_union_kernels() {
         p.eq("neg-int", code_neg(&CodeValue::Int(5)), Ok(CodeValue::Int(-5)));
         p.eq(
             "neg-rat",
-            code_neg(&CodeValue::Rat((1, 2))),
-            Ok(CodeValue::Rat((-1, 2))),
+            code_neg(&CodeValue::Rat((1, 2).into())),
+            Ok(CodeValue::Rat((-1, 2).into())),
         );
         p.demand(
             "neg-refuses-bool",
@@ -219,9 +219,9 @@ fn probe_union_kernels() {
         p.eq(
             "rat-widens-int-exactly",
             project_ratio(&CodeValue::Int(5), "result"),
-            Ok((5, 1)),
+            Ok((5, 1).into()),
         );
-        match project_i64(&CodeValue::Rat((5, 1)), "result") {
+        match project_i64(&CodeValue::Rat((5, 1).into()), "result") {
             Ok(_) => {
                 p.fail("int-refuses-rational", "a Rational must refuse an Int output");
             }
@@ -242,7 +242,7 @@ fn probe_union_kernels() {
 
     // 7. The expression carrier obeys the same laws as the function
     //    carrier: by-name binding, absent no-op, guarded evaluate.
-    //    The dual representation (bead emath-shared-tree-view-make-bp8nu)
+    //    The dual representation
     //    carries the distilled tree beside the factory; this case
     //    exercises the FACTORY lane (a static template literal's
     //    shape), with the tree lane's laws pinned in code_tree.rs.
@@ -287,6 +287,25 @@ fn probe_union_kernels() {
                 );
             }
         }
+    });
+
+    p.case("callable-factory-has-an-execution-scope", |p| {
+        let code = open_expr(
+            vec![],
+            CodeTree::Literal(CodeValue::Int(3)),
+            Some(Rc::new(|_| {
+                emath_rt::execution::charge(2)?;
+                Ok(CodeValue::Int(3))
+            })),
+            Default::default(),
+        );
+        let result = code.evaluate_callable(&ModuleTable::EMPTY).and_then(|callable| callable(&[]));
+        p.eq("ordinary-type-refusal", result, Err("type: value is not callable: 3".into()));
+        let exhausted = emath_rt::execution::with_budget(1, 10, || code.evaluate_callable(&ModuleTable::EMPTY));
+        p.demand("explicit-budget-still-enforced",
+            exhausted.err().is_some_and(|error| error.starts_with("E-NATIVE-WORK")),
+            "factory execution must not bypass a caller's work budget");
+        p.eq("independent-run-restores-scope", code.evaluate(&ModuleTable::EMPTY), Ok(CodeValue::Int(3)));
     });
 
     p.finish();

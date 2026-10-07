@@ -1,0 +1,82 @@
+use fold.reduce
+
+emath function down:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 0: 7 else: down(n - 1)
+    tests:
+        example <tail_value>:
+            given n = 3
+            expect result == 7
+
+emath function deep:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 0: 0 else: 1 + deep(n - 1)
+    tests:
+        example <recursive_value>:
+            given n = 3
+            expect result == 3
+
+emath function even:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if n <= 0: true else: odd(n - 1)
+
+emath function odd:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = if n <= 0: false else: even(n - 1)
+    tests:
+        example <mutual_value>:
+            given n = 3
+            expect result
+
+emath function sum_down:
+    inputs:
+        count: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function acc in Int: function n in Int: acc + down(2), 0, range(0, count))
+    tests:
+        example <loop_value>:
+            given count = 3
+            expect result == 21
+
+emath function maker:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function n in Int: down(n)
+
+emath function applied:
+    inputs:
+        f: Int -> Int
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = f(n)
+
+emath function MakeCode:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(3)

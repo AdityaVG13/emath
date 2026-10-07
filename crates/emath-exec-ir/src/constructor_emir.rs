@@ -2362,26 +2362,26 @@ fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut
             collect_free_names_bound(else_value, bound, out);
         }
         ExprKind::FunctionAbs { param, body, .. } => {
-            bound.insert(param.clone());
+            let inserted = bound.insert(param.clone());
             collect_free_names_bound(body, bound, out);
-            bound.remove(param);
+            if inserted { bound.remove(param); }
         }
         // The declared type is a type expression, never a value
         // reference (the VM's `free_path_names`).
         ExprKind::Recur { name, body, .. } => {
-            bound.insert(name.clone());
+            let inserted = bound.insert(name.clone());
             collect_free_names_bound(body, bound, out);
-            bound.remove(name);
+            if inserted { bound.remove(name); }
         }
         ExprKind::QuoteBind {
             param,
             domain,
             body,
         } => {
-            bound.insert(param.clone());
+            let inserted = bound.insert(param.clone());
             collect_free_names_bound(domain, bound, out);
             collect_free_names_bound(body, bound, out);
-            bound.remove(param);
+            if inserted { bound.remove(param); }
         }
         ExprKind::CallableBinder {
             callee,
@@ -2389,11 +2389,11 @@ fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut
             domain,
             body,
         } => {
-            bound.insert(param.clone());
+            let inserted = bound.insert(param.clone());
             collect_free_names_bound(callee, bound, out);
             collect_free_names_bound(domain, bound, out);
             collect_free_names_bound(body, bound, out);
-            bound.remove(param);
+            if inserted { bound.remove(param); }
         }
         ExprKind::Cases {
             subject,
@@ -2948,51 +2948,6 @@ fn const_exact_int(text: &str) -> Result<EmirOp, String> {
 
 fn emir_values_equal(left: &crate::interp::Value, right: &crate::interp::Value) -> bool {
     match (left, right) {
-        (crate::interp::Value::ExactInt(a), crate::interp::Value::ExactInt(b)) => a == b,
-        (crate::interp::Value::ExactInt(a), crate::interp::Value::I64(b)) => {
-            a == &ExactInt::from(*b)
-        }
-        (crate::interp::Value::I64(a), crate::interp::Value::ExactInt(b)) => {
-            ExactInt::from(*a) == *b
-        }
-        (
-            crate::interp::Value::ExactRat { num: an, den: ad },
-            crate::interp::Value::ExactRat { num: bn, den: bd },
-        ) => an
-            .mul(bd)
-            .is_ok_and(|left| bn.mul(ad).is_ok_and(|right| left == right)),
-        (
-            crate::interp::Value::ExactRat { num: an, den: ad },
-            crate::interp::Value::Rat { num: bn, den: bd },
-        )
-        | (
-            crate::interp::Value::Rat { num: bn, den: bd },
-            crate::interp::Value::ExactRat { num: an, den: ad },
-        ) => an
-            .mul(&ExactInt::from(*bd))
-            .is_ok_and(|left| ExactInt::from(*bn).mul(ad).is_ok_and(|right| left == right)),
-        (
-            crate::interp::Value::Rat { num: a, den: ad },
-            crate::interp::Value::Rat { num: b, den: bd },
-        ) => a * bd == b * ad,
-        (crate::interp::Value::ExactInt(a), crate::interp::Value::Rat { num, den })
-        | (crate::interp::Value::Rat { num, den }, crate::interp::Value::ExactInt(a)) => a
-            .mul(&ExactInt::from(*den))
-            .is_ok_and(|left| left == ExactInt::from(*num)),
-        (crate::interp::Value::ExactInt(a), crate::interp::Value::ExactRat { num, den })
-        | (crate::interp::Value::ExactRat { num, den }, crate::interp::Value::ExactInt(a)) => {
-            a.mul(den).is_ok_and(|left| left == *num)
-        }
-        (crate::interp::Value::I64(a), crate::interp::Value::ExactRat { num, den })
-        | (crate::interp::Value::ExactRat { num, den }, crate::interp::Value::I64(a)) => {
-            ExactInt::from(*a).mul(den).is_ok_and(|left| left == *num)
-        }
-        (crate::interp::Value::I64(a), crate::interp::Value::Rat { num, den }) => {
-            i128::from(*a) * *den == *num
-        }
-        (crate::interp::Value::Rat { num, den }, crate::interp::Value::I64(b)) => {
-            *num == i128::from(*b) * *den
-        }
         (crate::interp::Value::List(a), crate::interp::Value::List(b)) => {
             a.len() == b.len()
                 && a.iter()
@@ -3186,6 +3141,14 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         return None;
     }
     let (op, coeff) = plus_self_pred(else_value, name, param)?;
+    // Folding in descending index order is only equivalent for a
+    // constant base and coefficient. Other shapes keep general recursion.
+    let mut free = BTreeSet::new();
+    collect_free_names(then_value, "", &mut free);
+    collect_free_names(coeff, "", &mut free);
+    if free.contains(param) {
+        return None;
+    }
     let mut step = Lowerer {
         inputs: vec!["__index".into(), "__acc".into(), param.to_string()],
         locals: BTreeMap::new(),
@@ -3202,16 +3165,7 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
         hints: std::rc::Rc::default(),
     };
     let acc = step.push(EmirOp::LoadInput(1));
-    let coeff = if contains_path(coeff, param) {
-        let shift = dummy_emir_expr(ExprKind::Binary {
-            op: BinaryOp::Sub,
-            left: Box::new(path_emir(param)),
-            right: Box::new(path_emir("__index")),
-        });
-        step.expr(&replace_path(coeff, param, &shift)).ok()?
-    } else {
-        step.expr(coeff).ok()?
-    };
+    let coeff = step.expr(coeff).ok()?;
     let updated = step.push(match op {
         BinaryOp::Add => EmirOp::F64Add(acc, coeff),
         BinaryOp::Sub => EmirOp::F64Sub(acc, coeff),
@@ -3247,63 +3201,6 @@ fn lower_int_primitive_recur(name: &str, param: &str, body: &Expr) -> Option<Emi
     Some(outer.finish(result))
 }
 
-fn dummy_emir_expr(kind: ExprKind) -> Expr {
-    Expr {
-        kind,
-        source: Span::default(),
-    }
-}
-
-fn path_emir(name: &str) -> Expr {
-    dummy_emir_expr(ExprKind::Path {
-        segments: vec![name.into()],
-        generics: None,
-    })
-}
-
-fn contains_path(expr: &Expr, name: &str) -> bool {
-    match &expr.kind {
-        ExprKind::Path { segments, .. } => segments.join(".") == name,
-        ExprKind::Binary { left, right, .. } => {
-            contains_path(left, name) || contains_path(right, name)
-        }
-        ExprKind::Unary { value, .. } => contains_path(value, name),
-        ExprKind::Call { function, args } => {
-            contains_path(function, name) || args.iter().any(|arg| contains_path(arg, name))
-        }
-        _ => false,
-    }
-}
-
-fn replace_path(expr: &Expr, name: &str, replacement: &Expr) -> Expr {
-    if is_path(expr, name) {
-        return replacement.clone();
-    }
-    let kind = match &expr.kind {
-        ExprKind::Binary { op, left, right } => ExprKind::Binary {
-            op: *op,
-            left: Box::new(replace_path(left, name, replacement)),
-            right: Box::new(replace_path(right, name, replacement)),
-        },
-        ExprKind::Unary { op, value } => ExprKind::Unary {
-            op: *op,
-            value: Box::new(replace_path(value, name, replacement)),
-        },
-        ExprKind::Call { function, args } => ExprKind::Call {
-            function: Box::new(replace_path(function, name, replacement)),
-            args: args
-                .iter()
-                .map(|arg| replace_path(arg, name, replacement))
-                .collect(),
-        },
-        other => other.clone(),
-    };
-    Expr {
-        kind,
-        source: expr.source,
-    }
-}
-
 fn is_path(expr: &Expr, name: &str) -> bool {
     matches!(&expr.kind, ExprKind::Path { segments, .. } if segments.join(".") == name)
 }
@@ -3315,11 +3212,14 @@ fn is_int(expr: &Expr, want: i64) -> bool {
 fn is_zero_test(expr: &Expr, param: &str) -> bool {
     match &expr.kind {
         ExprKind::Binary {
-            op: BinaryOp::Eq | BinaryOp::Le,
+            op: BinaryOp::Eq,
             left,
             right,
         } => {
             (is_path(left, param) && is_int(right, 0)) || (is_path(right, param) && is_int(left, 0))
+        }
+        ExprKind::Binary { op: BinaryOp::Le, left, right } => {
+            is_path(left, param) && is_int(right, 0)
         }
         _ => false,
     }
@@ -3358,7 +3258,9 @@ fn plus_self_pred<'a>(expr: &'a Expr, name: &str, param: &str) -> Option<(Binary
     if is_self_pred(left, name, param) && !contains_self_call(right, name) {
         return Some((*op, right));
     }
-    if is_self_pred(right, name, param) && !contains_self_call(left, name) {
+    if matches!(*op, BinaryOp::Add | BinaryOp::Mul)
+        && is_self_pred(right, name, param) && !contains_self_call(left, name)
+    {
         return Some((*op, left));
     }
     None

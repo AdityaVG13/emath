@@ -264,7 +264,10 @@ fn probe_exact_boundaries() {
         );
         p.demand(
             "no equality against a parenthesized f64 cast",
-            !lib.contains(" == (__"),
+            !lib.lines().any(|line| {
+                line.split_once(" == (__")
+                    .is_some_and(|(_, right)| right.contains(") as f64"))
+            }),
             "Rat == Int-literal equality compares exact ratio parts (the `(i128, i128)` carrier), never the blanket `== (__expr) as f64` cast, which is E0308 against the tuple and silently inexact where it compiled",
         );
     });

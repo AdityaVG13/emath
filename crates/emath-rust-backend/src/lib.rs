@@ -157,11 +157,11 @@ pub fn emit_constructor_program(
     if contains_call_self(program) {
         let call_args = input_names.join(", ");
         Ok(format!(
-            "pub fn entry({params}) -> Result<impl core::fmt::Debug, String> {{\n    fn __self({params}) -> Result<i64, String> {{\n        Ok({body})\n    }}\n    Ok(__self({call_args})?)\n}}\n"
+            "pub fn entry({params}) -> Result<impl core::fmt::Debug, String> {{\n    let __native_entry = emath_rt::execution::Frame::enter()?;\n    fn __self({params}) -> Result<i64, String> {{\n        let __native_call = emath_rt::execution::Frame::enter()?;\n        let __native_value = {body};\n        __native_call.check()?;\n        Ok(__native_value)\n    }}\n    let __native_value = __self({call_args})?;\n    __native_entry.check()?;\n    Ok(__native_value)\n}}\n"
         ))
     } else {
         Ok(format!(
-            "pub fn entry({params}) -> Result<impl core::fmt::Debug, String> {{\n    Ok({body})\n}}\n"
+            "pub fn entry({params}) -> Result<impl core::fmt::Debug, String> {{\n    let __native_entry = emath_rt::execution::Frame::enter()?;\n    let __native_value = {body};\n    __native_entry.check()?;\n    Ok(__native_value)\n}}\n"
         ))
     }
 }
@@ -436,7 +436,7 @@ pub(crate) fn emit_constructor_entry_abi(
     let (entry_name, wrapper) = if contains_tree_ops(program) {
         let body_name = crate::codegen_render::tree_entry_body_name(function_name);
         let wrapper = format!(
-            "pub fn {}({params}) -> Result<{result_ty}, String> {{\n    emath_rt::code_tree::reset_mint();\n    {body_name}({})\n}}\n#[doc(hidden)]\n",
+            "pub fn {}({params}) -> Result<{result_ty}, String> {{\n    emath_rt::execution::run(|| {{ emath_rt::code_tree::reset_mint(); {body_name}({}) }})\n}}\n#[doc(hidden)]\n",
             escape_ident(function_name),
             input_names.iter().map(|name| escape_ident(name)).collect::<Vec<_>>().join(", ")
         );
@@ -455,14 +455,14 @@ pub(crate) fn emit_constructor_entry_abi(
         let call_args = self_args.join(", ");
         Ok((
             format!(
-                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    #[allow(unused_mut, unreachable_code)]\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        loop {{ return Ok({body}); }}\n    }}\n    Ok(__self({call_args})?)\n}}\n"
+                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    let __native_entry = emath_rt::execution::Frame::enter()?;\n    #[allow(unused_mut, unreachable_code)]\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        let __native_call = emath_rt::execution::Frame::enter()?;\n        loop {{ return Ok({body}); }}\n    }}\n    let __native_value = __self({call_args})?;\n    __native_entry.check()?;\n    Ok(__native_value)\n}}\n"
             ),
             abi,
         ))
     } else {
         Ok((
             format!(
-                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    Ok({body})\n}}\n"
+                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    let __native_entry = emath_rt::execution::Frame::enter()?;\n    let __native_value = {body};\n    __native_entry.check()?;\n    Ok(__native_value)\n}}\n"
             ),
             abi,
         ))

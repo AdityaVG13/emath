@@ -2,6 +2,7 @@ use super::super::{Engine, CValue, ConstructorError, fault, cint, Code, call_mem
 use super::prelude::{fragment_term, substitute_path, value_to_expr};
 use super::super::world::{with_world, world_value, CarrierWorld};
 use crate::exact_int::ExactInt;
+use super::super::checkpoint::memoizable_value;
 
 /// The arguments as a `ScalarArgs` key, when they all fit one.
 fn scalar_args(args: &[CValue]) -> Option<ScalarArgs> {
@@ -44,13 +45,13 @@ impl Engine {
         args: &[CValue],
     ) -> Option<CValue> {
         if let Some(key) = self.scalar_key(name, args) {
-            return self.scalar_memo.get(name)?.get(&key).cloned();
+            return self.scalar_memo.get(name)?.get(&key).filter(|value| memoizable_value(value)).cloned();
         }
         if self.memo.is_empty() || !self.memoizes(name, args) {
             return None;
         }
         let key = call_memo_key(name, args)?;
-        let hit = self.memo.get(&key).cloned();
+        let hit = self.memo.get(&key).filter(|value| memoizable_value(value)).cloned();
         if hit.is_some() && name.starts_with(FACT_PREFIX) {
             self.fact_hits.set(self.fact_hits.get() + 1);
         }
@@ -63,6 +64,9 @@ impl Engine {
         args: &[CValue],
         value: CValue,
     ) {
+        if !memoizable_value(&value) {
+            return;
+        }
         if let Some(key) = self.scalar_key(name, args) {
             let calls = match self.scalar_memo.get_mut(name) {
                 Some(calls) => calls,
@@ -132,7 +136,7 @@ impl Engine {
             return None;
         }
         let key = closure_memo_key(clos, args)?;
-        self.memo.get(&key).cloned()
+        self.memo.get(&key).filter(|value| memoizable_value(value)).cloned()
     }
 
     pub(in crate::constructor_layer) fn remember_closure(
@@ -141,7 +145,7 @@ impl Engine {
         args: &[CValue],
         value: CValue,
     ) {
-        if !self.memoizes_closure(clos) {
+        if !self.memoizes_closure(clos) || !memoizable_value(&value) {
             return;
         }
         if let Some(key) = closure_memo_key(clos, args) {
@@ -259,9 +263,10 @@ impl Engine {
         )
     }
 
-    pub(in crate::constructor_layer) fn push_frame(&mut self, function: &str) {
+    pub(in crate::constructor_layer) fn push_frame(&mut self, function: &str, kind: super::super::ContinuationKind) {
         self.frames.push(ContinuationFrame {
             function: function.to_string(),
+            kind,
             pc: self.visit as u64,
             next: String::new(),
             env: Environment::default(),

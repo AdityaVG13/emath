@@ -13,8 +13,8 @@ workspace = true
 # frankensqlite evidence-state lane. Optional by
 # design, mirroring the asupersync doctrine: consumers decide whether to pull
 # the pinned fsqlite git revision and the asupersync runtime that drives it.
-# The default build stays std-only + first-party-only (emath-core / emath-ir /
-# emath-artifact for the manifest schema) with zero third-party deps.
+# The default build omits SQLite and its async runtime. First-party
+# dependencies still carry their own third-party dependency graphs.
 sqlite-store = ["dep:fsqlite", "dep:asupersync"]
 
 [dependencies]

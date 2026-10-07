@@ -103,12 +103,20 @@ impl SemanticTrace {
 
 #[derive(Clone, Debug)]
 pub struct CheckResult {
+    /// Syntax consumed by this check, retained even when semantic admission
+    /// refuses it. This is not an execution or translation permission.
+    pub syntax: Option<emath_core::tree::SyntaxTree>,
+    /// Parser diagnostics from the same session input.
+    pub parse_diagnostics: Diagnostics,
     pub package: emath_ir::SemanticPackage,
     pub diagnostics: Diagnostics,
     pub trace: SemanticTrace,
     /// Effective per-declaration units-profile table, in
     /// source order; empty when no `@units_profile` attribute exists.
     pub units_profiles: Vec<(String, String)>,
+    /// The exact module admitted by this result, with imports already resolved.
+    /// Absent on any parse or semantic error. Execution starts with fresh state.
+    pub prepared: Option<emath_exec_ir::constructor_layer::PreparedModule>,
 }
 
 struct Admitter {

@@ -162,7 +162,8 @@ impl SourceStore {
         }
     }
 
-    /// Add a source by name (path) and text; returns the new file id.
+    /// Add a source snapshot. Unchanged text reuses the latest id for its
+    /// display name; changed text gets a new id, preserving earlier snapshots.
     /// Fails on `u32::MAX` file-id exhaustion or non-`u32`-addressable text.
     pub fn try_add(
         &mut self,
@@ -170,20 +171,22 @@ impl SourceStore {
         text: impl Into<String>,
     ) -> Result<FileId, String> {
         let name = name.into();
-        if let Some(&id) = self.by_name.get(&name) {
+        let text = text.into();
+        if let Some(&id) = self.by_name.get(&name)
+            && self.get(id).is_some_and(|file| file.text == text)
+        {
             return Ok(id);
         }
         let id = FileId(
             u32::try_from(self.files.len())
                 .map_err(|_| "source store file count exceeds u32::MAX".to_string())?,
         );
-        self.files
-            .push(SourceFile::build(text.into(), id, name.clone())?);
+        self.files.push(SourceFile::build(text, id, name.clone())?);
         self.by_name.insert(name, id);
         Ok(id)
     }
 
-    /// Add a source by name (path) and text; returns the new file id.
+    /// Add a source snapshot, preserving earlier revisions of the same name.
     /// # Panics
     /// If [`Self::try_add`] would fail (oversized text or file-id exhaustion); prefer it at fallible boundaries.
     pub fn add(&mut self, name: impl Into<String>, text: impl Into<String>) -> FileId {

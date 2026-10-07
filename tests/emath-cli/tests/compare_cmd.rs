@@ -460,3 +460,28 @@ fn divergent_inputs(compact: &str, name: &str) -> Vec<String> {
         })
         .collect()
 }
+
+#[test]
+fn compare_preserves_semantic_admission() {
+    let path = std::env::temp_dir().join(format!("emath_compare_admission_{}.emath", std::process::id()));
+    std::fs::write(&path, "emath function _:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n + 1
+").unwrap();
+    let output = Command::new(emath_bin())
+        .args(["compare", &path.to_string_lossy(), "--function", "_",
+            "--set", "n=7", "--world", "reference", "--json"])
+        .env("EMATH_ROOT", workspace())
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(), Some(emath_cli::EXIT_ADMISSION as i32),
+        "compare must reject the same reserved name as check: {output:?}"
+    );
+    let json = String::from_utf8(output.stdout).unwrap();
+    assert!(json.contains("E-NAME-023"), "{json}");
+}

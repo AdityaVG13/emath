@@ -46,6 +46,19 @@ Admission and module identity are checked on every export. Identical generated
 artifact/host sources and manifests preserve mtimes through the shared generated
 file writer; changed contents still rebuild through Cargo.
 
+Opening a loop or experiment evaluator retains the session's checked module,
+including imports, before any evaluation. Surface scanning, meaning identity,
+fact identity, Seed/Step, dream observation seams and experiment decisions
+consume that snapshot with fresh execution state. Dream retention checks the
+complete proposed library before writing; next-level verification runs tests
+from the same host check. Explicit carried facts and work policies remain.
+Parse diagnostics retain `loop_parse`; later semantic refusals use
+`loop_identity`. Categorization reuses the check's retained diagnostics.
+Native export deliberately checks a fresh module and compares both root
+meaning and retained dependency sources with the open host. Dependency byte
+changes, including comments, conservatively require reopening. Export then
+emits from that fresh checked snapshot without another source read.
+
 ## Public types and semantics
 
 - `LoopHost::open(module, target)` - parse, scan, choose surface,
@@ -85,7 +98,7 @@ file writer; changed contents still rebuild through Cargo.
   constructor-crate emitter (`emath-rust-backend`'s
   `constructor_crate`, the same core `emath build` uses, so the two
   emissions are byte-identical by construction), then generates and
-  compiles a standalone std-only epoch-host bin as the artifact's
+  compiles a standalone epoch-host bin with only its artifact dependency as the artifact's
   path sibling (the compiled-probe doctrine). The host bin drives
   `Seed<Name>(0)` / `Step<Name>(state, budget)` over the artifact
   ABI, projects the ledger, enforces the ledger law, and writes an
@@ -98,7 +111,11 @@ file writer; changed contents still rebuild through Cargo.
   to the VM lane's for the same schedule) is enforced by tests, not
   by shared code; the state shape is parsed from the emitted artifact
   itself and checked against the loop-state contract at generation
-  time. The bin's transcript mirrors the REPL's seed/batch/end lines
+  time. Integer state uses either the machine or exact carrier; rational and
+  sequence rendering borrows non-copy values and preserves exact scratch bytes.
+  Ledger Int fields and score parts project checked to i128, batch to u64;
+  overflow refuses `loop_state_contract`, never truncates.
+  The bin's transcript mirrors the REPL's seed/batch/end lines
   plus a measured `timing native_step_total_ns` line - timing is
   reported, never claimed as a ratio. Before emitting, the export
   re-admits the module on disk and refuses `loop_export_emit` if it no
@@ -393,6 +410,13 @@ granularity. Stdout must be whitespace-separated integers. After all
 pairs, the host calls the evaluator with the declared facts and stores
 the returned record. The host never ranks, filters or averages.
 
+- **Process completion:** Unix socket pairs make stdin writes and stdout/stderr
+  reads nonblocking in the same bounded poll loop, with no detached IO threads.
+  Timeout, cancellation and stdout limits remain active after the trial parent
+  exits, until stdio completes. Retained descendant handles cannot postpone
+  return indefinitely. Successful trial measurements still end at parent reap,
+  not at output EOF. Stderr capture retains at most the first 64 KiB while
+  additional bytes are drained without retaining them.
 - **Outcomes:** success, `timeout`, cancellation, `crash` (exit code or
   signal), `invalid_output`, `output_limit`, `spawn_failed`,
   `build_failed`, `build_timeout`, and `experiment_budget` are distinct.
@@ -433,11 +457,17 @@ and replay, faster-but-wrong rejection, A → B → A audit reuse, timeout,
 cancellation, interrupted resume with an injected pending pair, and
 evaluator/workload identity refusals). The following mutants each fail a
 test: ignoring the ledger, a constant checkpoint identity, and dropping
-the uncertain-attempt record.
+the uncertain-attempt record. Direct process regressions in the same file
+cover inherited stdin/stdout/stderr after parent exit under timeout and
+cancellation, successful delayed descendant output, and its stdout byte limit.
 
 No-claims: `sandbox-exec` is deprecated by Apple, and it is not a
 hardened security boundary. There is no ledger file locking, so run one
-host per ledger. A decision's status 1 means that every observed paired
+host per ledger. Bounded subprocess stdio currently requires Unix socket pairs;
+other hosts return `SpawnFailed` before spawning. Direct-child cleanup is best
+effort, not recursive descendant containment; reparented or escaped descendants
+may survive. No process groups or terminal signal-routing changes are made.
+A decision's status 1 means that every observed paired
 gain was positive. It is not statistical significance, and it does not
 extend to other workloads or machines. Candidates are explicitly
 supplied; there is no proposal loop.

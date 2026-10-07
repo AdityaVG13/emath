@@ -222,8 +222,11 @@ A grid may also be a range: `--grid n=1..100` tries every integer, and
 ## build
 
 `emath build` writes a Rust crate with one Rust function per emath
-function. It has no dependencies: the runtime is included in
-`src/lib.rs`.
+function. Direct native entries include their runtime in `src/lib.rs`.
+Functions that run through the reference engine instead carry first-party
+engine crates under `vendor/` and pinned third-party dependencies in
+`Cargo.lock`. That profile builds offline only when those third-party packages
+are already cached.
 
 ```console
 $ emath build docs/guide/examples/programs/basics.emath --dry-run

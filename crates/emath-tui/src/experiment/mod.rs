@@ -40,15 +40,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use emath_artifact::{JsonValue, parse_json_document};
-use emath_core::tree::{Item, SyntaxTree};
+use emath_core::tree::Item;
 use emath_core::{json_quote, sha256_digest};
 use emath_exec_ir::constructor_layer::{
-    CValue, IMAGE_IDENTITY, ScratchIdentity, evaluate_function_at, load_scratch, save_scratch,
+    CValue, IMAGE_IDENTITY, ScratchIdentity, PreparedModule, DEFAULT_WORK, load_scratch, save_scratch,
 };
 use emath_exec_ir::exact_int::ExactInt;
-use emath_syntax::parse_str;
 
-use crate::host::{HostFault, admitted_meaning_id, section_fields, value_int};
+use crate::host::{HostFault, checked_source, section_fields, value_int};
 use process::{CancelToken, RunOutcome, RunSpec, TrialAccess};
 
 /// The manifest schema line.
@@ -282,21 +281,15 @@ impl ExperimentManifest {
 /// The declared evaluator, admitted.
 #[derive(Clone, Debug)]
 struct Evaluator {
-    tree: SyntaxTree,
+    prepared: PreparedModule,
     meaning_id: String,
     inputs: Vec<String>,
 }
 
 fn admit_evaluator(manifest: &ExperimentManifest) -> Result<Evaluator, HostFault> {
     let module = &manifest.evaluator_module;
-    let source = std::fs::read_to_string(module)
-        .map_err(|err| fault("experiment_evaluator", format!("cannot read {}: {err}", module.display())))?;
-    emath_syntax::install_source_parser();
-    let (tree, diagnostics) = parse_str(&source);
-    if diagnostics.has_errors() {
-        return Err(fault("experiment_evaluator", format!("{} does not parse: {diagnostics:?}", module.display())));
-    }
-    let meaning_id = admitted_meaning_id(module, &source).map_err(|f| fault("experiment_evaluator", f.message))?;
+    let (_, meaning_id, prepared) = checked_source(module).map_err(|f| fault("experiment_evaluator", f.message))?;
+    let tree = prepared.tree();
     let name = &manifest.evaluator_function;
     let decl = tree
         .items
@@ -319,7 +312,7 @@ fn admit_evaluator(manifest: &ExperimentManifest) -> Result<Evaluator, HostFault
             ));
         }
     }
-    Ok(Evaluator { tree, meaning_id, inputs })
+    Ok(Evaluator { prepared, meaning_id, inputs })
 }
 
 fn command_text(program: &str, args: &[&str]) -> String {
@@ -1449,11 +1442,10 @@ impl ExperimentHost {
             write_ledger(&s.config.audit_ledger, &ledger)?;
         }
         let inputs = self.facts(&s.state, &consumed);
-        let decision = evaluate_function_at(
-            &self.evaluator.tree,
+        let decision = self.evaluator.prepared.evaluate_function(
             &self.manifest.evaluator_function,
             &inputs,
-            Some(&self.manifest.evaluator_module),
+            DEFAULT_WORK,
         )
         .map_err(|err| fault("experiment_evaluation", format!("{}: {}", err.code, err.message)))?;
         value_int(&decision, "status").map_err(|f| {

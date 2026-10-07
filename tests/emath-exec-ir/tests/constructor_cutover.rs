@@ -1048,6 +1048,102 @@ emath function sum_tree:
         );
     });
 
+    probe.case("natural_boolean_suspension_keeps_short_circuiting", |p| {
+        let source = "emath function Slow:
+    inputs:
+        n: Int
+        flag: Bool
+    outputs:
+        result: Bool
+    definitions:
+        result = if n == 0: flag else: Slow(n - 1, flag)
+emath function LiteralAnd:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = false and constructor_refuse(quote(trap))
+emath function LiteralOr:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = true or constructor_refuse(quote(trap))
+emath function CallAnd:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = Slow(n, false) and constructor_refuse(quote(trap))
+emath function CallOr:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        result = Slow(n, true) or constructor_refuse(quote(trap))
+";
+        let (tree, diagnostics) = parse_str(source);
+        assert!(!diagnostics.has_errors(), "{diagnostics:?}");
+        let inputs = BTreeMap::from([("n".into(), int(3))]);
+        for (name, expected) in [("LiteralAnd", false), ("LiteralOr", true), ("CallAnd", false), ("CallOr", true)] {
+            let mut stops = 0;
+            for budget in 1..80 {
+                match evaluate_function_budgeted(&tree, name, &inputs, budget, None, "bool-resume") {
+                    Ok(value) => {
+                        p.eq(&format!("{name}-fresh"), value, CValue::Bool(expected));
+                        break;
+                    }
+                    Err((err, checkpoint)) => {
+                        assert_eq!(err.code, "budget_exhausted");
+                        stops += 1;
+                        let checkpoint = emath_exec_ir::constructor_layer::Checkpoint::decode(&checkpoint.encode()).unwrap();
+                        let resumed = evaluate_function_budgeted(&tree, name, &inputs, 10_000, Some(&checkpoint), "bool-resume");
+                        p.demand(name, resumed.as_ref().ok() == Some(&CValue::Bool(expected)), format!("budget {budget}: {resumed:?}"));
+                        if resumed.is_err() { break; }
+                    }
+                }
+            }
+            p.demand(&format!("{name}-suspended"), stops > 0, "must exercise a natural checkpoint");
+        }
+    });
+
+    probe.case("length_prefixed_decoders_refuse_split_utf8", |p| {
+        use emath_exec_ir::language_image::{LanguageImage, LanguageImageError};
+        let program = emath_exec_ir::EmirProgram {
+            ops: vec![(emath_exec_ir::EmirOp::ConstText("λ".into()), emath_core::Span::default())],
+            result: emath_exec_ir::EmirValue(0),
+            input_count: 1,
+            state_count: 0,
+            domain_obligations: Vec::new(),
+        }.print();
+        let page = format!("reference std.test.text\nparams unused:scalar\ndefaults 0\nterm const(text:λ)\nprogram {}\n{program}", program.len());
+        p.demand("valid-reference-page", LanguageImage::decode_reference_partition(&page).is_ok(), &page);
+        let split = program.find('λ').unwrap() + 1;
+        let bad = page.replace(&format!("program {}\n", program.len()), &format!("program {split}\n"));
+        p.demand(
+            "reference-split-refuses",
+            matches!(LanguageImage::decode_reference_partition(&bad), Err(LanguageImageError::ReferencePartitionMalformed(_))),
+            "a byte length inside a UTF-8 character must be a typed refusal",
+        );
+        let checkpoint = emath_exec_ir::constructor_layer::Checkpoint {
+            abi: emath_exec_ir::constructor_layer::CHECKPOINT_ABI.into(),
+            source: "λ".into(),
+            ..Default::default()
+        };
+        let valid = checkpoint.encode();
+        p.eq("valid-checkpoint-source", emath_exec_ir::constructor_layer::Checkpoint::decode(&valid).unwrap().source, "λ".to_string());
+        let bad = valid.replace("source_len=2\n", "source_len=1\n");
+        p.demand(
+            "checkpoint-split-refuses",
+            emath_exec_ir::constructor_layer::Checkpoint::decode(&bad).is_err_and(|fault| fault.code == "incompatible_checkpoint"),
+            "checkpoint source byte lengths must not panic",
+        );
+    });
+
     probe.case("forged-checker-cannot-rewrite-host-receipt", |p| {
         let source = r#"
 emath query Forged:

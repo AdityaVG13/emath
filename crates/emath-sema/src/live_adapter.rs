@@ -67,8 +67,11 @@ pub fn inspect_live_source(
         return Err(LiveAdapterError::InvalidImage);
     }
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let (tree, parse_diagnostics) = session.parse_text(request.source);
     let checked = session.check_owned(request.source_name, request.source);
+    let tree = checked.syntax.clone().unwrap_or_else(|| emath_core::tree::SyntaxTree {
+        source: emath_core::Span::default(),
+        items: Vec::new(),
+    });
     let source_hash = content_id_of_str(request.source).0;
     let cst_identity = content_id_of_str(&format!("{tree:?}")).0;
     let mut features = infer_constructor_features(&tree);
@@ -82,13 +85,13 @@ pub fn inspect_live_source(
     let mut stages = BTreeMap::new();
     stages.insert(
         "parse".to_string(),
-        if parse_diagnostics.has_errors() {
+        if checked.parse_diagnostics.has_errors() {
             StageStatus::Unavailable("parse diagnostics".to_string())
         } else {
             StageStatus::Available(cst_identity.clone())
         },
     );
-    let constructor_admitted = emath_exec_ir::constructor_layer::admit_tree(&tree).is_ok();
+    let constructor_admitted = checked.prepared.is_some();
     stages.insert(
         "admit".to_string(),
         if constructor_admitted {
@@ -123,7 +126,7 @@ pub fn inspect_live_source(
             StageStatus::Unavailable("no world plan".to_string())
         },
     );
-    let result = evaluate_constructor(&tree).unwrap_or_else(|| {
+    let result = checked.prepared.as_ref().and_then(evaluate_constructor).unwrap_or_else(|| {
         checked.diagnostics.errors().next().map_or_else(
             || "unavailable: execution stage has no supported constructor result".to_string(),
             |diagnostic| format!("diagnosis:{}", diagnostic.code),
@@ -131,7 +134,7 @@ pub fn inspect_live_source(
     });
     stages.insert(
         "execute".to_string(),
-        if result.starts_with("value:") || result.starts_with("diagnosis:") {
+        if result.starts_with("value:") || result.starts_with("diagnosis:") || result.starts_with("receipt:") {
             StageStatus::Available(result.clone())
         } else {
             StageStatus::Unavailable(result.clone())
@@ -208,8 +211,8 @@ fn infer_constructor_features(tree: &emath_core::tree::SyntaxTree) -> Vec<Featur
     features
 }
 
-fn evaluate_constructor(tree: &emath_core::tree::SyntaxTree) -> Option<String> {
-    let name = tree.items.iter().find_map(|item| match item {
+fn evaluate_constructor(module: &emath_exec_ir::constructor_layer::PreparedModule) -> Option<String> {
+    let name = module.tree().items.iter().find_map(|item| match item {
         emath_core::tree::Item::Declaration(decl)
             if matches!(decl.as_kind.as_str(), "function" | "query") =>
         {
@@ -217,7 +220,14 @@ fn evaluate_constructor(tree: &emath_core::tree::SyntaxTree) -> Option<String> {
         }
         _ => None,
     })?;
-    match emath_exec_ir::constructor_layer::evaluate_function(tree, name, &BTreeMap::new()) {
+    if module.has_query(name) {
+        return Some(match module.evaluate_query(name, &BTreeMap::new()) {
+            Ok(receipt) => format!("receipt:{receipt:?}"),
+            Err(err) => format!("diagnosis:{}", err.code),
+        });
+    }
+    let value = module.evaluate_function(name, &BTreeMap::new(), emath_exec_ir::constructor_layer::DEFAULT_WORK);
+    match value {
         Ok(emath_exec_ir::constructor_layer::CValue::Int(value)) => {
             Some(format!("value:{value}:exact-int"))
         }

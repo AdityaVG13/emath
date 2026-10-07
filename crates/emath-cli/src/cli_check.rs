@@ -1,6 +1,6 @@
 //! `emath check`: admission, data verification, and source reading.
 
-use super::{Path, CliExit, refuse_malformed_project_lock, run_check, check_json_document, exit_from_diagnostics, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_IO, run_check_source, CompilerSession, Diagnostics, refuse_coded, EXIT_REFUSED};
+use super::{Path, CliExit, refuse_malformed_project_lock, check_json_document, exit_from_diagnostics, print_json_diagnostics, json_diagnostic_entry, EXIT_USAGE, EXIT_IO, Diagnostics, refuse_coded, EXIT_REFUSED};
 
 /// `check <file> [--verify-data] [--json]`: parse + admit, no codegen.
 /// `--verify-data` re-hashes every
@@ -14,19 +14,23 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
         return code;
     }
     let path = path.to_path_buf();
-    let (mut diagnostics, package_id, units_profiles) = run_check(&path);
+    let checked = crate::cli_build::checked_file(&path);
+    let package_id = if checked.store.files().is_empty() {
+        String::new()
+    } else {
+        checked.result.package.content_id().0
+    };
+    let mut diagnostics = checked.result.diagnostics;
+    let units_profiles = checked.result.units_profiles;
     if verify_data && !diagnostics.has_errors() {
-        verify_declared_data(&path, &mut diagnostics);
+        verify_declared_data(&path, &checked.result.package, &mut diagnostics);
     }
-    let source = std::fs::read_to_string(&path).unwrap_or_default();
     let meaning_id = if diagnostics.has_errors() {
         None
     } else {
-        admitted_meaning_id(&path, &source)
+        checked.result.package.meaning_id(&[]).ok()
     };
-    let name = path.display().to_string();
-    let lines = crate::cli_json::source_lines(&name, &source);
-    crate::cli_json::print_diagnostics_in(&diagnostics, &name, &source);
+    crate::cli_json::print_diagnostics_from(&diagnostics, &checked.store);
     if !json && !units_profiles.is_empty() {
         // pack-table: the effective honesty declaration, printed
         // deterministically in source order (admission order).
@@ -46,7 +50,7 @@ pub fn check(path: &Path, json: bool, verify_data: bool) -> CliExit {
                 &diagnostics,
                 meaning_id.as_ref().map(emath_core::MeaningId::as_str),
                 &units_profiles,
-                Some(&lines),
+                Some(&checked.store),
             )
         );
     }
@@ -89,14 +93,16 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
         }
         return EXIT_IO;
     }
-    let (diagnostics, package_id, units_profiles) = run_check_source("<stdin>", &source);
+    let checked = crate::cli_build::checked_text("<stdin>", &source);
+    let package_id = checked.result.package.content_id().0;
+    let diagnostics = checked.result.diagnostics;
+    let units_profiles = checked.result.units_profiles;
     let meaning_id = if diagnostics.has_errors() {
         None
     } else {
-        admitted_meaning_id(Path::new("<stdin>"), &source)
+        checked.result.package.meaning_id(&[]).ok()
     };
-    let lines = crate::cli_json::source_lines("<stdin>", &source);
-    crate::cli_json::print_diagnostics_in(&diagnostics, "<stdin>", &source);
+    crate::cli_json::print_diagnostics_from(&diagnostics, &checked.store);
     if !json && !units_profiles.is_empty() {
         // pack-table, same contract as file mode.
         for (declaration, profile) in &units_profiles {
@@ -112,7 +118,7 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
                 &diagnostics,
                 meaning_id.as_ref().map(emath_core::MeaningId::as_str),
                 &units_profiles,
-                Some(&lines),
+                Some(&checked.store),
             )
         );
     }
@@ -121,14 +127,8 @@ fn check_stdin(json: bool, verify_data: bool) -> CliExit {
 
 /// Declared raw-data digests: `InstrumentRun` provenance rows
 /// carrying a `sha256`, as (binding, file, declared digest).
-pub(super) fn declared_data_digests(path: &Path) -> Vec<(String, String, String)> {
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let Ok(package) = session.load_package(path) else {
-        return Vec::new();
-    };
-    let result = session.check(package.file);
-    result
-        .package
+fn declared_data_digests(package: &emath_ir::SemanticPackage) -> Vec<(String, String, String)> {
+    package
         .binding_provenance
         .iter()
         .filter_map(|(site, provenance)| match provenance {
@@ -145,9 +145,9 @@ pub(super) fn declared_data_digests(path: &Path) -> Vec<(String, String, String)
 /// Re-hash every declared data digest; append `E-OBS-HASH` on drift or
 /// unreadable data. Changed data under an unchanged model is a different
 /// artifact identity.
-pub(super) fn verify_declared_data(path: &Path, diagnostics: &mut Diagnostics) {
+pub(super) fn verify_declared_data(path: &Path, package: &emath_ir::SemanticPackage, diagnostics: &mut Diagnostics) {
     let base = path.parent().map(Path::to_path_buf).unwrap_or_default();
-    for (binding, file, declared) in declared_data_digests(path) {
+    for (binding, file, declared) in declared_data_digests(package) {
         let data_path = base.join(&file);
         let Some(bytes) = std::fs::read(&data_path).ok() else {
             diagnostics.error(
@@ -178,8 +178,7 @@ pub(super) fn verify_declared_data(path: &Path, diagnostics: &mut Diagnostics) {
 }
 
 pub fn admitted_meaning_id(path: &Path, source: &str) -> Option<emath_core::MeaningId> {
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let result = session.check_owned(&path.display().to_string(), source);
+    let result = crate::cli_build::checked_text(&path.display().to_string(), source).result;
     if result.diagnostics.has_errors() {
         return None;
     }

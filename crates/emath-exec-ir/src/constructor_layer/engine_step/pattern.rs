@@ -1,5 +1,5 @@
-use super::super::{Engine, CValue, Expr, ConstructorError, ExprKind, Code, fault, Closure};
-use super::prelude::{domain_shape_of_expr, eq_values, is_refused_recipe, open_fragment};
+use super::super::{Engine, CValue, Expr, ConstructorError, ExprKind, Code, fault, Kont};
+use super::prelude::{eq_values, is_refused_recipe, open_fragment, dummy_expr};
 
 impl Engine {
     pub(in crate::constructor_layer) fn pattern_binds(
@@ -68,29 +68,19 @@ impl Engine {
     ) -> Result<CValue, ConstructorError> {
         if let ExprKind::Path { segments, .. } = &callee.kind {
             let name = segments.join(".");
-            if name == "quote.view" {
-                let fragment = self.eval(domain)?;
-                let node = self.quote_view(fragment)?;
-                let saved = self.env.clone();
-                self.env.insert(param.to_string(), node);
-                let result = self.eval(body);
-                self.env = saved;
-                return result;
-            }
             if name == "quote.bind" {
                 let expr = self.bind_fresh(param, domain, body);
                 let deps = self.dependency_snapshot(&expr);
                 return Ok(CValue::Code(Box::new(Code { expr, deps })));
             }
-            if name == "quote.open" {
-                let package = self.eval(domain)?;
-                self.check_fragment_scope(&package)?;
-                let opened = open_fragment(package)?;
-                let saved = self.env.clone();
-                self.env.insert(param.to_string(), opened);
-                let result = self.eval(body);
-                self.env = saved;
-                return result;
+            if matches!(name.as_str(), "quote.view" | "quote.open") {
+                let value = self.eval_with_kont(domain, || Kont::BindAfterDomain {
+                    name: name.clone(),
+                    param: param.to_string(),
+                    domain: Box::new(domain.clone()),
+                    body: Box::new(body.clone()),
+                })?;
+                return self.finish_quote_binder(&name, param, body, value);
             }
             if segments.last().map(String::as_str) == Some("open") {
                 return self.open_object(&segments[0], param, domain, body);
@@ -112,16 +102,31 @@ impl Engine {
                 ));
             }
         }
-        let cal = self.eval(callee)?;
-        let dom = self.eval(domain)?;
-        let clos = CValue::Closure(std::sync::Arc::new(Closure {
+        let closure = dummy_expr(ExprKind::FunctionAbs {
             param: param.to_string(),
-            domain: domain_shape_of_expr(domain),
-            body: body.clone(),
-            env: self.env.captured_by(body),
-            recursive: None,
-            body_key: Default::default(),
-        }));
-        self.apply_value(cal, &[dom, clos])
+            domain: Box::new(domain.clone()),
+            body: Box::new(body.clone()),
+        });
+        self.eval_call(callee, &[domain.clone(), closure])
+    }
+
+    pub(in crate::constructor_layer) fn finish_quote_binder(
+        &mut self,
+        name: &str,
+        param: &str,
+        body: &Expr,
+        value: CValue,
+    ) -> Result<CValue, ConstructorError> {
+        let opened = match name {
+            "quote.view" => self.quote_view(value)?,
+            "quote.open" => {
+                self.check_fragment_scope(&value)?;
+                open_fragment(value)?
+            }
+            _ => return Err(fault("incompatible_checkpoint", "unknown scoped quote binder")),
+        };
+        let saved = self.env.clone();
+        self.env.insert(param.to_string(), opened);
+        self.eval_scoped(body, saved)
     }
 }

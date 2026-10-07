@@ -30,7 +30,8 @@ pub(crate) use flat::*;
 pub(crate) use kinds::*;
 pub(crate) use record_layouts::{
     AuthoredRecordScope, RecordTemplate, RecordTemplateScope, infer_instantiation, record_ident,
-    record_layout, record_template, take_instantiations, touch_record_kinds,
+    record_layout, record_template, stored_field_signature, take_instantiations,
+    touch_record_kinds,
 };
 pub(crate) use rtcalls::*;
 
@@ -68,7 +69,7 @@ pub(crate) fn replace_ident_prefix(
 /// carry other kinds, so an unsupported crossing is an emission refusal.
 pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError> {
     Ok(match kind {
-        ValueKind::CodeValue => expr,
+        ValueKind::CodeValue => Expr::Raw(format!("({}).clone()", render_expr(&expr))),
         ValueKind::Evaluated => Expr::Raw(format!("({}).to_scalar()?", render_expr(&expr))),
         ValueKind::Cell => Expr::Raw(format!("({}).scalar()?", render_expr(&expr))),
         ValueKind::Node => Expr::Raw(format!("({}).to_scalar()?", render_expr(&expr))),
@@ -77,7 +78,7 @@ pub(crate) fn to_code_value(expr: Expr, kind: &ValueKind) -> Result<Expr, Backen
             render_expr(&expr)
         )),
         ValueKind::Rational => Expr::Raw(format!(
-            "emath_rt::code::CodeValue::Rat({})",
+            "emath_rt::code::CodeValue::Rat(({}).clone())",
             render_expr(&expr)
         )),
         ValueKind::Bool => Expr::Raw(format!(
@@ -197,7 +198,7 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError
             ))
         }
         ValueKind::CodeValue => Expr::Raw(format!(
-            "emath_rt::code_tree::NodeValue::Scalar({})",
+            "emath_rt::code_tree::NodeValue::Scalar(({}).clone())",
             render_expr(&expr)
         )),
         ValueKind::I64 => Expr::Raw(format!(
@@ -211,7 +212,7 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError
             render_expr(&kinds::coerce_to_ty(expr, ValueKind::ExactInt, &Ty::I64))
         )),
         ValueKind::Rational => Expr::Raw(format!(
-            "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Rat({}))",
+            "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Rat(({}).clone()))",
             render_expr(&expr)
         )),
         ValueKind::Bool => Expr::Raw(format!(
@@ -231,6 +232,14 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError
 /// expression, deterministic and allocation-minimal.
 pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
     use emath_rt::code_tree::{CodeTree, TreeBinary, TreeUnary};
+    fn integer(value: &emath_rt::ExactInt) -> String {
+        match value {
+            emath_rt::ExactInt::Small(value) => format!("emath_rt::ExactInt::Small({value}i128)"),
+            emath_rt::ExactInt::Big { neg, limbs } => {
+                format!("emath_rt::ExactInt::Big {{ neg: {neg}, limbs: vec!{limbs:?} }}")
+            }
+        }
+    }
     fn binary(op: TreeBinary) -> String {
         format!("emath_rt::code_tree::TreeBinary::{op:?}")
     }
@@ -242,8 +251,8 @@ pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
             emath_rt::code::CodeValue::Int(n) => {
                 format!("emath_rt::code::CodeValue::Int({n}i64)")
             }
-            emath_rt::code::CodeValue::Rat((num, den)) => {
-                format!("emath_rt::code::CodeValue::Rat(({num}i128, {den}i128))")
+            emath_rt::code::CodeValue::Rat(emath_rt::ExactRatio(num, den)) => {
+                format!("emath_rt::code::CodeValue::Rat(emath_rt::ExactRatio({}, {}))", integer(num), integer(den))
             }
             emath_rt::code::CodeValue::Bool(b) => {
                 format!("emath_rt::code::CodeValue::Bool({b})")
@@ -489,13 +498,17 @@ pub(crate) fn op_expr(
                 .unwrap_or_else(|| program_kind(program, names, states, input_kinds));
             let declared =
                 if result.is_empty() { ValueKind::Other } else { ValueKind::from_signature(&bound_signature(result)) };
-            let site_kind = if !matches!(declared, ValueKind::Other) {
-                declared
-            } else {
-                inputs
-                    .first()
-                    .map_or(ValueKind::I64, |value| kind_at(kinds, *value))
-            };
+            let site_kind = op_self_index(program, op)
+                .map(|index| kind_at(kinds, EmirValue(index)))
+                .unwrap_or_else(|| {
+                    if !matches!(declared, ValueKind::Other) {
+                        declared
+                    } else {
+                        inputs
+                            .first()
+                            .map_or(ValueKind::I64, |value| kind_at(kinds, *value))
+                    }
+                });
             let call = Expr::Raw(format!("__self({args})?"));
             let crossed = numeric_boundary_value(&call, &callee_kind, &site_kind, "call result")
                 .map(|converted| render_expr(&converted))
@@ -663,8 +676,7 @@ pub(crate) fn op_expr(
                 }
             }
             // A part projection off the Rational carrier reads the
-            // `(i128, i128)` tuple (`numer` = `.0`, `denom` = `.1`) and
-            // widens to the exact-integer carrier, mirroring the VM's
+            // exact parts (`numer` = `.0`, `denom` = `.1`), mirroring the VM's
             // `CValue::Rat { num, den }` parts. Anything but
             // numer/denom is a typed refusal, never a silent default.
             if kind_at(kinds, *record) == ValueKind::Rational {
@@ -678,7 +690,7 @@ pub(crate) fn op_expr(
                     }
                 };
                 return Ok(Expr::Raw(format!(
-                    "emath_rt::ExactInt::from(({}).{index})",
+                    "(({}).{index}).clone()",
                     render_expr(&operand(program, *record))
                 )));
             }
@@ -962,7 +974,9 @@ pub(crate) fn op_expr(
                             "call argument",
                         ) {
                             let converted = render_expr(&converted);
-                            return Ok(if param.is_copy() {
+                            return Ok(if param.is_copy()
+                                || matches!(param, ValueKind::Closure { .. })
+                            {
                                 converted
                             } else {
                                 format!("&({converted})")
@@ -1079,11 +1093,11 @@ pub(crate) fn op_expr(
                     )
                 };
                 Ok(Expr::Raw(format!(
-                    "{{ {capture_bindings} let __program: std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>> = std::sync::Arc::new(move |__program_inputs: &[f64]| {{ {arity_guard} {bindings} Ok({result}) }}); __program }}"
+                    "{{ {capture_bindings} let __program: std::sync::Arc<dyn Fn(&[f64]) -> Result<emath_rt::NumericProgramResult, String>> = std::sync::Arc::new(move |__program_inputs: &[f64]| {{ let __native_call = emath_rt::execution::Frame::enter()?; {arity_guard} {bindings} Ok({result}) }}); __program }}"
                 )))
             } else {
-                // Typed literal: the authored parameter domain fixes the
-                // callable ABI. One explicit parameter, owned captures
+                // Typed literal: call-site inference retains the native
+                // representation of its authored domain. Owned captures
                 // moved into the closure, body ops propagate with `?`,
                 // and the inferred result kind types the return.
                 if *vector_input {
@@ -1098,8 +1112,7 @@ pub(crate) fn op_expr(
                 }
                 let param_kind = op_self_index(program, op)
                     .and_then(|index| match kinds.get(index as usize) {
-                        Some(ValueKind::Closure { params, .. }) => params.first()
-                            .filter(|param| **param == ValueKind::Node).cloned(),
+                        Some(ValueKind::Closure { params, .. }) => params.first().cloned(),
                         _ => None,
                     })
                     .unwrap_or_else(|| ValueKind::from_signature(&bound_signature(signature)));
@@ -1221,7 +1234,7 @@ pub(crate) fn op_expr(
                     format!("Ok({body_code})")
                 };
                 Ok(Expr::Raw(format!(
-                    "{{ {capture_bindings} std::rc::Rc::new(move |{}: {param_ty}| -> Result<{result_ty}, String> {{ {bindings} {tail} }}) }}",
+                    "{{ {capture_bindings} std::rc::Rc::new(move |{}: {param_ty}| -> Result<{result_ty}, String> {{ let __native_call = emath_rt::execution::Frame::enter()?; {bindings} {tail} }}) }}",
                     parameters[0]
                 )))
             }
@@ -1297,7 +1310,7 @@ pub(crate) fn op_expr(
                         let bindings = free
                             .iter()
                             .enumerate()
-                            .map(|(index, name)| format!("let {name} = __code_free[{index}]; "))
+                            .map(|(index, name)| format!("let {name} = __code_free[{index}].clone(); "))
                             .collect::<String>();
                         format!(
                             "Some(std::rc::Rc::new(move |__code_free: &[emath_rt::code::CodeValue]| -> Result<emath_rt::code::CodeValue, String> {{ {bindings} Ok({body_code}) }}))"
@@ -1394,12 +1407,11 @@ pub(crate) fn op_expr(
             let bindings = free
                 .iter()
                 .enumerate()
-                .map(|(index, name)| format!("let {name} = __code_free[{index}]; "))
+                .map(|(index, name)| format!("let {name} = __code_free[{index}].clone(); "))
                 .collect::<String>();
-            // The inner closure owns the bound free values (Copy
-            // tuples) and forwards them with the parameter.
+            // Free values survive every invocation of the compiled template.
             let mut forwarded = vec![param.clone()];
-            forwarded.extend(free.iter().cloned());
+            forwarded.extend(free.iter().map(|name| format!("{name}.clone()")));
             let forwarded = forwarded.join(", ");
             let free_list = free
                 .iter()
@@ -1427,7 +1439,7 @@ pub(crate) fn op_expr(
                 ),
             };
             Ok(Expr::Raw(format!(
-                "{{ let __code_body = move |{closure_params}| -> Result<{carrier_ty}, String> {{ {tail} }}; {open_call} }}"
+                "{{ let __code_body = move |{closure_params}| -> Result<{carrier_ty}, String> {{ let __native_call = emath_rt::execution::Frame::enter()?; {tail} }}; {open_call} }}"
             )))
         }
         EmirOp::CodeSubstitute {
@@ -1500,7 +1512,7 @@ pub(crate) fn op_expr(
                         )));
                     }
                     Ok(Expr::Raw(format!(
-                        "emath_rt::code::substitute(&{}, {}, {})",
+                        "emath_rt::code::substitute(&{}, {}, ({}).clone())",
                         render_expr(&operand(program, *code)),
                         reference_code,
                         render_expr(&operand(program, *value))
@@ -1598,6 +1610,12 @@ pub(crate) fn op_expr(
                 render_expr(&operand(program, *code))
             };
             match code_kind {
+                ValueKind::Code(carrier) if !carrier.is_copy() => {
+                    let ty = crate::rust_ir::render::render_ty(&carrier.rust_ty()?);
+                    Ok(Expr::Raw(format!(
+                        "{{ let __closed = emath_rt::code::evaluate(&{target})?; let __typed: std::rc::Rc<dyn Fn(&{ty}) -> Result<{ty}, String>> = std::rc::Rc::new(move |__argument: &{ty}| __closed(__argument.clone())); __typed }}"
+                    )))
+                }
                 ValueKind::Code(_) => Ok(Expr::Raw(format!(
                     "emath_rt::code::evaluate(&{})?",
                     render_expr(&operand(program, *code))
@@ -1640,7 +1658,8 @@ pub(crate) fn op_expr(
                             .enumerate()
                             .map(|(index, kind)| {
                                 Ok(format!(
-                                    "__arg_{index}: {}",
+                                    "__arg_{index}: {}{}",
+                                    if kind.is_copy() { "" } else { "&" },
                                     crate::rust_ir::render::render_ty(&kind.rust_ty()?)
                                 ))
                             })
@@ -2486,7 +2505,7 @@ fn literal_frame_expr(
             body_code = render_expr(&owned_value(Expr::Raw(body_code), &result_kind));
         }
         code.push_str(&format!(
-            "#[allow(unused_mut, unreachable_code)] fn __frame_self({}) -> Result<{result_ty}, String> {{ loop {{ return Ok({body_code}); }} }} __frame_self({})? ",
+            "#[allow(unused_mut, unreachable_code)] fn __frame_self({}) -> Result<{result_ty}, String> {{ let __native_call = emath_rt::execution::Frame::enter()?; loop {{ return Ok({body_code}); }} }} __frame_self({})? ",
             params
                 .iter()
                 .map(|param| format!("mut {param}"))

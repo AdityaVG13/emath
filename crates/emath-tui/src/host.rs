@@ -34,12 +34,11 @@ use std::sync::Arc;
 
 use emath_core::tree::{Declaration, GenericArg, Item, StmtKind, SyntaxTree, TypeExpr, TypeKind};
 use emath_exec_ir::constructor_layer::{
-    evaluate_function_carrying, fact_identity, load_scratch, prepare_module, save_scratch, BatchLedgerEntry, PreparedModule,
+    evaluate_function_carrying, load_scratch, save_scratch, BatchLedgerEntry, PreparedModule,
     CValue, ConstructorError, ScratchIdentity, DEFAULT_WORK,
 };
 use emath_exec_ir::exact_int::ExactInt;
 use emath_sema::session::CompilerSession;
-use emath_syntax::parse_str;
 
 /// The engine image label a scratch carries as its language identity
 /// (the constructor-layer checkpoint family's own constant).
@@ -318,9 +317,8 @@ pub struct LoopHost {
     surface: SessionSurface,
     identity: ScratchIdentity,
     facts: Option<FactCarry>,
-    /// The module with its imports loaded, built at the first
-    /// evaluation and reused by every later one.
-    prepared: RefCell<Option<PreparedModule>>,
+    /// The checked declarations and imports retained at open time.
+    prepared: PreparedModule,
     /// Engine steps allowed per Seed/Step evaluation.
     work: u64,
     /// The observations bound to the Step's evidence input.
@@ -352,20 +350,8 @@ impl LoopHost {
     /// missing, non-surface, or ambiguous target refuses with the
     /// named lift diagnostic.
     pub fn open(module: &Path, target: Option<&str>) -> Result<Self, HostFault> {
-        let source = std::fs::read_to_string(module).map_err(|err| {
-            HostFault::fault(
-                "loop_read",
-                format!("cannot read module {}: {err}", module.display()),
-            )
-        })?;
-        emath_syntax::install_source_parser();
-        let (tree, diagnostics) = parse_str(&source);
-        if diagnostics.has_errors() {
-            return Err(HostFault::fault(
-                "loop_parse",
-                format!("{} does not parse: {:?}", module.display(), diagnostics),
-            ));
-        }
+        let (_, meaning_id, prepared) = checked_source(module)?;
+        let tree = prepared.tree().clone();
         let scan = scan_session_surfaces(&tree);
         let problems = if scan.problems.is_empty() {
             String::new()
@@ -415,12 +401,11 @@ impl LoopHost {
         };
 
         let identity = ScratchIdentity {
-            meaning_id: admitted_meaning_id(module, &source)?,
+            meaning_id,
             language_id: ENGINE_IMAGE.into(),
             target: surface.step.clone(),
         };
-        let facts = fact_identity(&tree, Some(module))
-            .map_err(HostFault::from)?
+        let facts = prepared.fact_identity()
             .map(|id| FactCarry {
                 id,
                 carried: RefCell::new(BTreeMap::new()),
@@ -433,7 +418,7 @@ impl LoopHost {
             surface,
             identity,
             facts,
-            prepared: RefCell::new(None),
+            prepared,
             work: DEFAULT_WORK,
             evidence: Arc::new(Vec::new()),
         })
@@ -495,12 +480,7 @@ impl LoopHost {
     }
 
     pub(crate) fn evaluate(&self, name: &str, inputs: &BTreeMap<String, CValue>) -> Result<CValue, HostFault> {
-        if self.prepared.borrow().is_none() {
-            let module = prepare_module(&self.tree, Some(&self.path)).map_err(HostFault::from)?;
-            *self.prepared.borrow_mut() = Some(module);
-        }
-        let prepared = self.prepared.borrow();
-        let module = prepared.as_ref().expect("prepared above");
+        let module = &self.prepared;
         let Some(facts) = &self.facts else {
             return evaluate_function_carrying(module, name, inputs, &mut BTreeMap::new(), self.work)
                 .map_err(HostFault::from)?
@@ -545,6 +525,10 @@ impl LoopHost {
         &self.tree
     }
 
+    pub(crate) fn prepared(&self) -> &PreparedModule {
+        &self.prepared
+    }
+
     /// Begin a session at the surface's seed state.
     pub fn begin(&self) -> Result<LoopSession, HostFault> {
         let inputs = BTreeMap::from([(
@@ -579,14 +563,25 @@ impl LoopHost {
     }
 }
 
-/// The meaning id a fresh admission of `source` would mint. The host
-/// uses it at open time; the native export re-runs it to prove the
-/// module on disk still admits to the SAME meaning before emitting an
-/// artifact over it (a session and its export must never pair a stale
-/// meaning id with edited math).
-pub(crate) fn admitted_meaning_id(module: &Path, source: &str) -> Result<String, HostFault> {
+/// Open and native export use one checked source snapshot. Export deliberately
+/// takes a fresh snapshot and compares its meaning with the opened session.
+pub(crate) fn checked_source(module: &Path) -> Result<(String, String, PreparedModule), HostFault> {
+    emath_syntax::install_source_parser();
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let result = session.check_owned(&module.display().to_string(), source);
+    let source = session.load_package(module).map_err(|error| {
+        HostFault::fault("loop_read", error)
+    })?;
+    let result = session.check(source.file);
+    if result.parse_diagnostics.has_errors() {
+        return Err(HostFault::fault(
+            "loop_parse",
+            format!(
+                "{} does not parse: {:?}",
+                module.display(),
+                result.parse_diagnostics
+            ),
+        ));
+    }
     if result.diagnostics.has_errors() {
         return Err(HostFault::fault(
             "loop_identity",
@@ -597,13 +592,17 @@ pub(crate) fn admitted_meaning_id(module: &Path, source: &str) -> Result<String,
             ),
         ));
     }
-    match result.package.meaning_id(&[]) {
-        Ok(id) => Ok(id.as_str().to_string()),
-        Err(err) => Err(HostFault::fault(
+    let meaning_id = match result.package.meaning_id(&[]) {
+        Ok(id) => id.as_str().to_string(),
+        Err(err) => return Err(HostFault::fault(
             "loop_identity",
             format!("{} has no admitted meaning id: {err}", module.display()),
         )),
-    }
+    };
+    let prepared = result.prepared.ok_or_else(|| {
+        HostFault::fault("loop_identity", "checked source has no executable module")
+    })?;
+    Ok((source.text, meaning_id, prepared))
 }
 
 fn demand_state_record(state: &CValue, state_type: &str) -> Result<(), HostFault> {

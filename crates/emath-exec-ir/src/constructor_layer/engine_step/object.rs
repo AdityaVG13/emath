@@ -3,15 +3,31 @@ use super::prelude::{eq_values};
 
 impl Engine {
     pub(in crate::constructor_layer) fn pack_object(&mut self, type_name: &str, args: &[Expr]) -> Result<CValue, ConstructorError> {
+        self.finish_pack_args(type_name, Vec::with_capacity(args.len()), args, None)
+    }
+
+    pub(in crate::constructor_layer) fn finish_pack_args<E: super::tail::PendingExpr>(
+        &mut self,
+        type_name: &str,
+        mut done: Vec<CValue>,
+        rest: &[E],
+        incoming: Option<CValue>,
+    ) -> Result<CValue, ConstructorError> {
+        if let Some(value) = incoming {
+            done.push(value);
+        }
+        self.eval_pending_items(&mut done, rest, |done, rest| Kont::PackArgs {
+            type_name: type_name.to_string(), done, rest,
+        })?;
+        self.finish_pack(type_name, done)
+    }
+
+    fn finish_pack(&mut self, type_name: &str, mut vals: Vec<CValue>) -> Result<CValue, ConstructorError> {
         let schema = self
             .objects
             .get(type_name)
             .cloned()
             .ok_or_else(|| fault("unbound", format!("unknown object `{type_name}`")))?;
-        let mut vals = Vec::new();
-        for arg in args {
-            vals.push(self.eval(arg)?);
-        }
         match schema.kind.as_str() {
             "abstract" => {
                 if vals.len() != 1 {
@@ -36,33 +52,10 @@ impl Engine {
                         ));
                     }
                 }
-                let saved = self.env.clone();
-                self.env.insert("n".into(), n.clone());
-                self.env.insert("data".into(), data.clone());
-                for (inv_name, pred) in &schema.invariants {
-                    match self.eval(pred)? {
-                        CValue::Bool(true) => {}
-                        CValue::Bool(false) => {
-                            self.env = saved;
-                            return Err(fault(
-                                "object_invariant_failed",
-                                format!("invariant `{inv_name}` failed"),
-                            ));
-                        }
-                        _ => {
-                            self.env = saved;
-                            return Err(fault(
-                                "object_invariant_failed",
-                                format!("invariant `{inv_name}` is not Bool"),
-                            ));
-                        }
-                    }
-                }
-                self.env = saved;
-                Ok(CValue::Record {
-                    type_name: type_name.into(),
-                    fields: Arc::new(BTreeMap::from([("n".into(), n), ("data".into(), data)])),
-                })
+                self.finish_record(
+                    vec![type_name.to_string()],
+                    BTreeMap::from([("n".into(), n), ("data".into(), data)]),
+                )
             }
             other => Err(fault(
                 "type",
@@ -122,11 +115,7 @@ impl Engine {
         };
         let saved = self.env.clone();
         self.env.insert(param.to_string(), opened);
-        let result = self.eval_with_kont(body, || Kont::EvalExpr {
-            expr: Rc::new(body.clone()),
-        });
-        self.env = saved;
-        result
+        self.eval_scoped(body, saved)
     }
 
     pub(in crate::constructor_layer) fn choose_match(
@@ -135,8 +124,37 @@ impl Engine {
         arms: &[(Expr, Expr)],
         else_arm: &Expr,
     ) -> Result<CValue, ConstructorError> {
-        for (cond, value) in arms {
-            if self.pattern_binds(&scrutinee, cond)? {
+        self.finish_match_arms(scrutinee, arms, else_arm, None)
+    }
+
+    pub(in crate::constructor_layer) fn finish_match_arms(
+        &mut self,
+        scrutinee: CValue,
+        arms: &[(Expr, Expr)],
+        else_arm: &Expr,
+        mut incoming: Option<CValue>,
+    ) -> Result<CValue, ConstructorError> {
+        for (i, (cond, value)) in arms.iter().enumerate() {
+            let taken = if let Some(result) = incoming.take() {
+                match result {
+                    CValue::Bool(flag) => flag,
+                    other => eq_values(&other, &scrutinee)?,
+                }
+            } else {
+                let position = self.kont_position();
+                let result = self.pattern_binds(&scrutinee, cond);
+                if result.is_err() {
+                    self.insert_konts(position, || {
+                        [Kont::MatchArm {
+                            scrutinee: scrutinee.clone(),
+                            arms: arms[i..].to_vec(),
+                            else_arm: Box::new(else_arm.clone()),
+                        }]
+                    });
+                }
+                result?
+            };
+            if taken {
                 return self.eval_with_kont(value, || Kont::EvalExpr {
                     expr: Rc::new(value.clone()),
                 });

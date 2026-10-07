@@ -72,6 +72,18 @@ fn ratio_float() {
     p.eq("huge-negative", exact_ratio_f64(&three.checked_neg().unwrap(), &ten_pow(400)), -3.0);
     p.eq("huge-integer-overflows", exact_ratio_f64(&ten_pow(400), &ExactInt::one()), f64::INFINITY);
     p.eq("tiny-underflows", exact_ratio_f64(&ExactInt::one(), &ten_pow(400)), 0.0);
+    // Valid operands at the carrier's memory bound must not overflow
+    // conversion scratch, including two similarly large operands.
+    let largest = ExactInt::Big { neg: false, limbs: vec![u32::MAX; 8192] };
+    let almost = largest.sub(&ExactInt::one()).unwrap();
+    p.eq("bounded-huge-underflows", exact_ratio_f64(&ExactInt::one(), &largest).to_bits(), 0);
+    p.eq(
+        "bounded-negative-underflows",
+        exact_ratio_f64(&ExactInt::from(-1), &largest).to_bits(),
+        (-0.0_f64).to_bits(),
+    );
+    p.eq("bounded-huge-overflows", exact_ratio_f64(&largest, &ExactInt::one()), f64::INFINITY);
+    p.eq("bounded-huge-pair", exact_ratio_f64(&largest, &almost), 1.0);
     p.eq("zero", exact_ratio_f64(&ExactInt::zero(), &ten_pow(400)), 0.0);
     p.eq("min-subnormal", exact_ratio_f64(&ExactInt::one(), &two_pow(1074)), f64::from_bits(1));
     // Half the smallest subnormal ties to even (zero); just above it rounds up.

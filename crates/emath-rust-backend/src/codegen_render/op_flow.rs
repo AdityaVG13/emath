@@ -368,7 +368,7 @@ pub(super) fn authored_control_expr(
                 .collect();
             let body = nested(body, argument_kinds)?;
             format!(
-                "{{ let __collect_count = {}; let __collect_size = usize::try_from(__collect_count).map_err(|_| String::from(\"collection count must be nonnegative and fit usize\"))?; let mut __collect_values = Vec::new(); __collect_values.try_reserve_exact(__collect_size).map_err(|_| String::from(\"collection allocation exceeds available capacity\"))?; {} for {prefix}arg_0 in 0..__collect_count {{ __collect_values.push({body}); }} __collect_values }}",
+                "{{ let __collect_count = {}; let __collect_size = usize::try_from(__collect_count).map_err(|_| String::from(\"collection count must be nonnegative and fit usize\"))?; emath_rt::execution::charge(__collect_size as u64)?; let mut __collect_values = Vec::new(); __collect_values.try_reserve_exact(__collect_size).map_err(|_| String::from(\"collection allocation exceeds available capacity\"))?; {} for {prefix}arg_0 in 0..__collect_count {{ __collect_values.push({body}); }} __collect_values }}",
                 render_expr(&checked_integer_operand(program, *count, kinds)?),
                 captures(args, 1)?
             )
@@ -392,7 +392,7 @@ pub(super) fn authored_control_expr(
             let body = nested(body, argument_kinds)?;
             let borrow = if state_kind.is_copy() { "" } else { "&" };
             format!(
-                "{{ let __control_count = {}; if __control_count < 0 {{ return Err(String::from(\"iteration count must be nonnegative\")); }} let mut __control_state = {}; for __control_index in 0..__control_count {{ let {prefix}arg_0 = __control_index; let {prefix}arg_1 = {borrow}__control_state; {} {stop} __control_state = {body}; }} __control_state }}",
+                "{{ let __control_count = {}; if __control_count < 0 {{ return Err(String::from(\"iteration count must be nonnegative\")); }} let mut __control_state = {}; for __control_index in 0..__control_count {{ emath_rt::execution::charge(1)?; let {prefix}arg_0 = __control_index; let {prefix}arg_1 = {borrow}__control_state; {} {stop} __control_state = {body}; }} __control_state }}",
                 render_expr(&checked_integer_operand(program, *count, kinds)?),
                 render_expr(&owned_operand(program, *init, kinds)),
                 captures(args, 2)?

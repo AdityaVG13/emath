@@ -20,10 +20,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use emath_artifact::JsonWriter;
-use emath_core::tree::{Item, StmtKind, TypeExpr};
 use emath_exec_ir::constructor_layer::{
-    CValue, CarrierWorld, DEFAULT_WORK, answer_gap, answers_agree, evaluate_function_carrying,
-    exact_rat, interval_width, prepare_module, with_world, world_input,
+    CValue, CarrierWorld, DEFAULT_WORK, answer_gap, answers_agree,
+    exact_rat, interval_width, with_world, world_input,
 };
 use emath_exec_ir::exact_int::ExactInt;
 
@@ -161,30 +160,6 @@ fn refuse(json: bool, code: &str, message: &str, exit: CliExit) -> CliExit {
     exit
 }
 
-/// Declared input types of the named entry in the main file.
-fn declared_inputs(
-    tree: &emath_core::tree::SyntaxTree,
-    function: &str,
-) -> BTreeMap<String, TypeExpr> {
-    let mut types = BTreeMap::new();
-    for item in &tree.items {
-        let Item::Declaration(decl) = item else {
-            continue;
-        };
-        if decl.name != function {
-            continue;
-        }
-        for section in decl.sections().filter(|s| s.name == "inputs") {
-            for stmt in &section.suite.statements {
-                if let StmtKind::FieldDecl { name, ty, .. } = &stmt.kind {
-                    types.insert(name.clone(), ty.clone());
-                }
-            }
-        }
-    }
-    types
-}
-
 fn representation(value: &CValue) -> &'static str {
     match value {
         CValue::Int(_) | CValue::Rat { .. } | CValue::Bool(_) => "exact_scalar",
@@ -218,36 +193,29 @@ pub(crate) fn run(request: CompareRequest) -> CliExit {
     if worlds.is_empty() {
         worlds = CarrierWorld::ALL.to_vec();
     }
-    let source = match std::fs::read_to_string(&request.path) {
-        Ok(text) => text,
-        Err(err) => {
-            return refuse(
-                request.json,
-                "E-CLI-IO",
-                &format!("cannot read {}: {err}", request.path.display()),
-                EXIT_IO,
-            );
-        }
-    };
     let language_id = match crate::cli_dispatch::load_verified_language(Some(&request.path)) {
         Ok(distribution) => distribution.image.distribution_hash.to_string(),
         Err(detail) => return refuse(request.json, "E-LANG-IMAGE", &detail, EXIT_REFUSED),
     };
+    let checked = crate::cli_build::checked_file(&request.path);
+    if let Some(first) = checked.result.diagnostics.errors().next() {
+        if checked.store.files().is_empty() {
+            return refuse(request.json, "E-CLI-IO", &first.message, EXIT_IO);
+        }
+        if request.json {
+            return refuse(true, first.code, &first.message, EXIT_ADMISSION);
+        }
+        eprintln!("{}", crate::cli_json::diagnostics_text(&checked.result.diagnostics, &checked.store));
+        return EXIT_ADMISSION;
+    }
     let identity = Identity {
         language_id,
-        source_id: emath_core::content_id_of_str(&source).0,
+        source_id: emath_core::content_id_of_str(checked.source()).0,
     };
-    let tree = match crate::cli_json::admitted_tree(&request.path, &source) {
-        Ok(tree) => tree,
-        Err(refusal) => {
-            if request.json {
-                return refuse(true, &refusal.code, &refusal.message, EXIT_ADMISSION);
-            }
-            eprintln!("{}", refusal.text);
-            return EXIT_ADMISSION;
-        }
+    let Some(module) = &checked.result.prepared else {
+        return refuse(request.json, "E-PKG-081", "checking produced no executable module", EXIT_ADMISSION);
     };
-    let declared = declared_inputs(&tree, &request.function);
+    let declared = module.input_types(&request.function).unwrap_or_default();
     let points = match grid_points(&request) {
         Ok(points) => points,
         Err(message) => return refuse(request.json, "E-CLI-USAGE", &message, EXIT_USAGE),
@@ -255,7 +223,6 @@ pub(crate) fn run(request: CompareRequest) -> CliExit {
     let mut per_point: Vec<Vec<Outcome>> = points.iter().map(|_| Vec::new()).collect();
     for &world in &worlds {
         with_world(world, || {
-            let module = prepare_module(&tree, Some(&request.path));
             for (point, outcomes) in points.iter().zip(&mut per_point) {
                 let inputs: Result<BTreeMap<String, CValue>, _> = point
                     .iter()
@@ -264,20 +231,16 @@ pub(crate) fn run(request: CompareRequest) -> CliExit {
                             .map(|value| (name.clone(), value))
                     })
                     .collect();
-                let (inputs, answer) = match (inputs, &module) {
-                    (Ok(inputs), Ok(module)) => {
-                        let answer = evaluate_function_carrying(
-                            module,
+                let (inputs, answer) = match inputs {
+                    Ok(inputs) => {
+                        let answer = module.evaluate_function(
                             &request.function,
                             &inputs,
-                            &mut BTreeMap::new(),
                             request.work,
-                        )
-                        .and_then(|run| run.value);
+                        );
                         (inputs, answer)
                     }
-                    (Err(err), _) => (BTreeMap::new(), Err(err)),
-                    (Ok(_), Err(err)) => (BTreeMap::new(), Err(err.clone())),
+                    Err(err) => (BTreeMap::new(), Err(err)),
                 };
                 outcomes.push(Outcome {
                     world,

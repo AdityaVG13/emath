@@ -32,7 +32,9 @@ impl Engine {
                 return Ok(value);
             }
         }
-        let cal = self.eval(function)?;
+        let cal = self.eval_with_kont(function, || Kont::CallCallee {
+            function: Box::new(function.clone()), args: args.to_vec(),
+        })?;
         self.finish_call_args(cal, Vec::with_capacity(args.len()), args, None)
     }
 
@@ -112,10 +114,10 @@ impl Engine {
         // refusal (`length` / `numer` / `denom` project here too, on
         // their own carriers, matching `project_field`).
         if segments.len() == 1 && args.len() == 1 {
-            let recv = self.eval(&args[0])?;
-            if let Some(field) = project_field(&recv, &segments[0]) {
-                return Ok(Some(field));
-            }
+            let recv = self.eval_with_kont(&args[0], || Kont::ProjectField {
+                name: name.to_string(), receiver: Box::new(args[0].clone()),
+            })?;
+            return self.finish_project_field(name, recv).map(Some);
         }
         // A name the user bound (env) is the user's; the recipe refusal is
         // for UNBOUND names, so a user closure named like a module method
@@ -134,6 +136,28 @@ impl Engine {
             };
         }
         Ok(None)
+    }
+
+    pub(in crate::constructor_layer) fn finish_project_field(
+        &mut self,
+        name: &str,
+        receiver: CValue,
+    ) -> Result<CValue, ConstructorError> {
+        if let Some(value) = project_field(&receiver, name) {
+            return Ok(value);
+        }
+        if is_refused_recipe(name) && !self.env.contains_key(name) {
+            return Err(fault("method_unavailable", format!(
+                "`{name}` is an ordinary module method, not a constructor operation; import it with `use`, or rename the record field: a field access `recv.{name}` resolves only when the receiver carries a field named `{name}`"
+            )));
+        }
+        if let Some(callee) = self.env.get(name).cloned() {
+            return self.apply_value(callee, &[receiver]);
+        }
+        if name == "length" {
+            return Err(fault("type", "length expects a sequence"));
+        }
+        Err(fault("unbound", format!("unbound `{name}`")))
     }
 
     pub(in crate::constructor_layer) fn eval_quote_call(&mut self, name: &str, args: &[Expr]) -> Result<CValue, ConstructorError> {
@@ -356,7 +380,7 @@ impl Engine {
             return Err(self.recursion_depth_exceeded(name));
         }
         self.call_depth += 1;
-        self.push_frame(name);
+        self.push_frame(name, super::super::ContinuationKind::Function);
         let saved = self.env.clone();
         let result = self.eval_fn_args(name, decl, Vec::with_capacity(args.len()), args);
         let exhausted = matches!(
@@ -475,9 +499,11 @@ impl Engine {
             let snapshot = !self.facts_only_memo;
             if let Some(frame) = self.frames.last_mut() {
                 frame.function = name.clone();
+                frame.kind = super::super::ContinuationKind::Function;
                 if snapshot {
                     frame.env = self.env.clone();
                 }
+                frame.next.clear();
                 frame.kont.clear();
             }
             self.charge()?;

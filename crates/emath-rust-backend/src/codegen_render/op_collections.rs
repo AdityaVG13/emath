@@ -497,7 +497,11 @@ pub(super) fn op_collection_exprs(
             // mirror the VM's `index_seq`.
             if kind_at(kinds, *vector) == ValueKind::Node {
                 let sequence = render_expr(&operand(program, *vector));
-                let index = render_expr(&operand(program, *index));
+                let index = render_expr(&super::coerce_to_ty(
+                    operand(program, *index),
+                    kind_at(kinds, *index),
+                    &super::Ty::I64,
+                ));
                 return Ok(Expr::Raw(format!("({sequence}).index({index})?")));
             }
             // A concrete non-sequence carrier cannot be indexed: the

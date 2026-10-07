@@ -11,8 +11,8 @@ name = "emath"
 path = "src/main.rs"
 
 [features]
-# Gates the async runtime dependency. Optional by design: the default build
-# stays std-only; this feature exposes the lab runtime entry (lsp::lab).
+# Gates the additional async runtime dependency; this feature exposes the
+# lab runtime entry (lsp::lab). The default transitive graph is not std-only.
 async-runtime = ["dep:asupersync"]
 
 [dependencies]

@@ -160,6 +160,11 @@ fn fmt_stdin() -> CliExit {
         eprintln!("error: cannot read `.emath` source from stdin");
         return EXIT_IO;
     }
+    let checked = crate::cli_build::checked_text("", &source);
+    if checked.result.diagnostics.has_errors() {
+        crate::cli_json::print_diagnostics_from(&checked.result.diagnostics, &checked.store);
+        return EXIT_ADMISSION;
+    }
     let limits = emath_core::limits::Limits::default();
     let lossless = emath_syntax::parse_lossless(&source, emath_core::FileId(0), &limits);
     if lossless.diagnostics.has_errors() {

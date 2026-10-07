@@ -47,7 +47,7 @@ pub(super) fn scalar_arithmetic(
                 ScalarOp::Div => emath_rt::ratio_div(a, b),
             };
             result
-                .map(|(num, den)| Value::Rat { num, den })
+                .map(|emath_rt::ExactRatio(num, den)| value_from_rat(num, den))
                 .map_err(|detail| EvalFault::CarrierRefused { op, detail })
         }
         (Value::I64(left), Value::I64(right)) => {
@@ -57,7 +57,7 @@ pub(super) fn scalar_arithmetic(
                 ScalarOp::Mul => left.checked_mul(*right).map(Value::I64),
                 ScalarOp::Div => {
                     return emath_rt::ratio_div((i128::from(*left), 1), (i128::from(*right), 1))
-                        .map(|(num, den)| Value::Rat { num, den })
+                        .map(|emath_rt::ExactRatio(num, den)| value_from_rat(num, den))
                         .map_err(|detail| EvalFault::CarrierRefused { op, detail });
                 }
             };
@@ -83,7 +83,7 @@ pub(super) fn scalar_arithmetic(
                 ScalarOp::Div => emath_rt::ratio_div(a, b),
             };
             result
-                .map(|(num, den)| Value::Rat { num, den })
+                .map(|emath_rt::ExactRatio(num, den)| value_from_rat(num, den))
                 .map_err(|detail| EvalFault::CarrierRefused { op, detail })
         }
         (Value::Rat { num, den }, Value::I64(right)) => {
@@ -96,7 +96,7 @@ pub(super) fn scalar_arithmetic(
                 ScalarOp::Div => emath_rt::ratio_div(a, b),
             };
             result
-                .map(|(num, den)| Value::Rat { num, den })
+                .map(|emath_rt::ExactRatio(num, den)| value_from_rat(num, den))
                 .map_err(|detail| EvalFault::CarrierRefused { op, detail })
         }
         (Value::Complex { .. }, _) | (_, Value::Complex { .. }) => {
@@ -238,7 +238,7 @@ pub(super) fn scalar_neg(registers: &[Value], value: EmirValue) -> Result<Value,
                 detail: err.to_string(),
             }),
         Value::Rat { num, den } => emath_rt::ratio_sub((0, 1), (*num, *den))
-            .map(|(num, den)| Value::Rat { num, den })
+            .map(|emath_rt::ExactRatio(num, den)| value_from_rat(num, den))
             .map_err(|detail| EvalFault::CarrierRefused { op: "neg", detail }),
         Value::F64(value) => Ok(Value::F64(-value)),
         Value::Complex { re, im } => Ok(Value::Complex { re: -*re, im: -*im }),

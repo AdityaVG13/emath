@@ -2,15 +2,9 @@
 //! artifact emission) lives in `emath-build`.
 
 use crate::admit::{CheckResult, check_tree_at};
-use emath_core::parse::source_parser;
-use emath_core::tree::{
-    CommandArgument, ExprKind, Item, Section, StmtKind, SyntaxTree,
-};
+use emath_core::tree::{Item, SyntaxTree};
 use emath_core::{Diagnostics, FileId, SourceStore, Span, limits::Limits};
-use emath_ir::{
-    GoalId, GoalKind, GoalPayload, RequestSpec, SemanticPackage, build_goal, native_plan,
-    simplify_integer_expression,
-};
+use emath_ir::{RequestSpec, SemanticPackage};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -100,7 +94,11 @@ impl CompilerSession {
     /// Load a source file from disk into the session store.
     pub fn load_package(&mut self, path: impl AsRef<Path>) -> Result<SourcePackage, String> {
         let path = path.as_ref();
-        if let Some(manifest) = nearest_manifest(path) {
+        // Ancestor search must include the CWD's parents for relative sources.
+        // Keep lexical paths, display names and symlink policy unchanged.
+        let manifest_source = std::path::absolute(path)
+            .map_err(|error| format!("failed to resolve {}: {error}", path.display()))?;
+        if let Some(manifest) = nearest_manifest(&manifest_source) {
             let manifest_text = std::fs::read_to_string(&manifest)
                 .map_err(|error| format!("failed to read {}: {error}", manifest.display()))?;
             self.edition = edition_from_manifest(&manifest_text)?;
@@ -113,7 +111,9 @@ impl CompilerSession {
                 path.display()
             ));
         }
-        let file = self.store.add(path.display().to_string(), text.clone());
+        let file = self
+            .store
+            .try_add(path.display().to_string(), text.clone())?;
         Ok(SourcePackage {
             file,
             name: path.display().to_string(),
@@ -126,9 +126,10 @@ impl CompilerSession {
         self.store.add(name, text)
     }
 
-    /// Parse a source string (no admission).
+    /// Parse an anonymous source string (no admission or store allocation).
+    /// Its spans use `FileId(0)`; use `load_text` and `check` for stored sources.
     pub fn parse_text(&self, text: &str) -> (emath_core::tree::SyntaxTree, Diagnostics) {
-        match parse_through(text, &self.limits, self.edition) {
+        match parse_through(text, FileId(0), &self.limits, self.edition) {
             Ok(pair) => pair,
             Err(diagnostics) => (
                 emath_core::tree::SyntaxTree {
@@ -146,28 +147,38 @@ impl CompilerSession {
             let mut diagnostics = Diagnostics::new();
             diagnostics.error("E-PKG-080", "source file was never loaded", Span::default());
             return CheckResult {
+                syntax: None,
+                parse_diagnostics: Diagnostics::new(),
                 package: SemanticPackage::new(),
                 diagnostics,
                 trace: crate::admit::SemanticTrace::default(),
                 units_profiles: Vec::new(),
+                prepared: None,
             };
         };
         let (tree, parse_diagnostics) =
-            match parse_through(&source_file.text, &self.limits, self.edition) {
+            match parse_through(&source_file.text, file, &self.limits, self.edition) {
                 Ok(pair) => pair,
                 Err(diagnostics) => {
                     return CheckResult {
+                        syntax: None,
+                        parse_diagnostics: diagnostics.clone(),
                         package: SemanticPackage::new(),
                         diagnostics,
                         trace: crate::admit::SemanticTrace::default(),
                         units_profiles: Vec::new(),
+                        prepared: None,
                     };
                 }
             };
         let source = Path::new(&source_file.name);
         let source = (!source_file.name.is_empty()).then_some(source);
         let mut result = check_tree_at(&tree, source);
+        result.parse_diagnostics = parse_diagnostics.clone();
         result.diagnostics.extend_from(&parse_diagnostics);
+        if result.diagnostics.has_errors() {
+            result.prepared = None;
+        }
         result
     }
 
@@ -194,21 +205,27 @@ impl CompilerSession {
             let mut diagnostics = Diagnostics::new();
             diagnostics.error("E-PKG-080", "source file was never loaded", Span::default());
             return CheckResult {
+                syntax: None,
+                parse_diagnostics: Diagnostics::new(),
                 package: SemanticPackage::new(),
                 diagnostics,
                 trace: crate::admit::SemanticTrace::default(),
                 units_profiles: Vec::new(),
+                prepared: None,
             };
         };
         let (tree, mut parse_diagnostics) =
-            match parse_through(&source_file.text, &self.limits, self.edition) {
+            match parse_through(&source_file.text, main, &self.limits, self.edition) {
                 Ok(pair) => pair,
                 Err(diagnostics) => {
                     return CheckResult {
+                        syntax: None,
+                        parse_diagnostics: diagnostics.clone(),
                         package: SemanticPackage::new(),
                         diagnostics,
                         trace: crate::admit::SemanticTrace::default(),
                         units_profiles: Vec::new(),
+                        prepared: None,
                     };
                 }
             };
@@ -248,6 +265,7 @@ impl CompilerSession {
                 .store
                 .files()
                 .iter()
+                .rev()
                 .find(|file| file.name == target || file.name.ends_with(&format!("/{target}")))
                 .cloned()
             else {
@@ -260,7 +278,7 @@ impl CompilerSession {
                 );
                 continue;
             };
-            match parse_through(&sibling.text, &self.limits, self.edition) {
+            match parse_through(&sibling.text, sibling.id, &self.limits, self.edition) {
                 Ok((sibling_tree, sibling_parse)) => {
                     parse_diagnostics.extend_from(&sibling_parse);
                     for sibling_item in sibling_tree.items {
@@ -288,13 +306,16 @@ impl CompilerSession {
         );
         result.diagnostics.extend_from(&parse_diagnostics);
         result.diagnostics.extend_from(&pre_diagnostics);
+        result.parse_diagnostics = parse_diagnostics;
+        if result.diagnostics.has_errors() {
+            result.prepared = None;
+        }
         result
     }
 
     /// Historical planner. Constructor work uses `check` and `emath run`.
     /// This entry still compiles leftover callers (RULE 1) and always
     /// refuses a `goals:` layer.
-    #[allow(unreachable_code, unused_variables)]
     pub fn plan(&mut self, file: FileId) -> PlanResult {
         let check = self.check(file);
         let mut diagnostics = check.diagnostics;
@@ -303,126 +324,10 @@ impl CompilerSession {
             "there is no `goals:` planner; write an ordinary `emath function` or `emath query` and `emath run`",
             Span::default(),
         );
-        return PlanResult {
+        PlanResult {
             package: check.package,
             requests: Vec::new(),
             plans: Vec::new(),
-            diagnostics,
-        };
-        let Some(source_file) = self.store.get(file) else {
-            // Missing source must be a typed refusal, not an empty-source
-            // plan that silently passes admission (E-PKG-080).
-            let mut diagnostics = Diagnostics::new();
-            diagnostics.error("E-PKG-080", "source file was never loaded", Span::default());
-            return PlanResult {
-                package: SemanticPackage::new(),
-                requests: Vec::new(),
-                plans: Vec::new(),
-                diagnostics,
-            };
-        };
-        let text = source_file.text.clone();
-        let (tree, parse_diagnostics) = match parse_through(&text, &self.limits, self.edition) {
-            Ok(pair) => pair,
-            Err(diagnostics) => {
-                return PlanResult {
-                    package: SemanticPackage::new(),
-                    requests: Vec::new(),
-                    plans: Vec::new(),
-                    diagnostics,
-                };
-            }
-        };
-        let source = Path::new(&source_file.name);
-        let source = (!source_file.name.is_empty()).then_some(source);
-        let mut check = check_tree_at(&tree, source);
-        check.diagnostics.extend_from(&parse_diagnostics);
-        let mut diagnostics = check.diagnostics;
-        let mut package = check.package;
-        let mut requests = Vec::new();
-        let mut plans = Vec::new();
-
-        let declarations = package.declarations.clone();
-        for (index, declaration) in declarations.iter().enumerate() {
-            // Recover this declaration's sections from the syntax tree.
-            let sections: Vec<emath_core::tree::Section> = tree
-                .items
-                .iter()
-                .filter_map(|item| match item {
-                    emath_core::tree::Item::Declaration(d) if d.name == declaration.name.leaf() => {
-                        Some(d.sections_vec())
-                    }
-                    _ => None,
-                })
-                .flatten()
-                .collect();
-            let decl_requests = elaborate_requests(
-                &package,
-                declaration.name.leaf(),
-                &sections,
-                &mut diagnostics,
-            );
-            // Goals attach by construction (the ids built for this
-            // declaration), never by span geometry: an overlapping offset
-            // in another file must not cross-attach a goal.
-            let mut goal_ids: Vec<GoalId> = Vec::new();
-            for request in &decl_requests {
-                let mut goal = build_goal(&mut package, request);
-                if let Some(expression) = declaration.definitions.get(&request.target).copied() {
-                    goal.expression = Some(expression);
-                    package.goals[goal.id.index()].expression = Some(expression);
-                }
-                goal_ids.push(goal.id);
-                let mut artifact_class = if goal.kind.as_str() == "evaluate" {
-                    "native"
-                } else {
-                    "diagnostic"
-                };
-                if goal.kind == GoalKind::Simplify {
-                    if let Some(expression) = goal.expression {
-                        let integer_contract = declaration.inputs.iter().all(|field| {
-                            matches!(
-                                package.ty(field.ty),
-                                Some(emath_ir::TypeNode::Int | emath_ir::TypeNode::Nat)
-                            )
-                        }) && declaration.outputs.iter().any(|field| {
-                            field.name == goal.target
-                                && matches!(
-                                    package.ty(field.ty),
-                                    Some(emath_ir::TypeNode::Int | emath_ir::TypeNode::Nat)
-                                )
-                        });
-                        if integer_contract {
-                            match simplify_integer_expression(&mut package, expression) {
-                                Ok(simplified) => {
-                                    goal.expression = Some(simplified.expression);
-                                    package.goals[goal.id.index()].expression =
-                                        Some(simplified.expression);
-                                    artifact_class = "native-symbolic";
-                                }
-                                Err(error) => {
-                                    diagnostics.error(error.code, error.message, goal.source);
-                                }
-                            }
-                        } else {
-                            diagnostics.error(
-                                "E-SYM-003",
-                                "`simplify` native v1 requires Int/Nat inputs and target output",
-                                goal.source,
-                            );
-                        }
-                    }
-                }
-                plans.push(native_plan(goal.id, artifact_class));
-            }
-            package.declarations[index].goals = goal_ids;
-            requests.extend(decl_requests);
-        }
-        package.seal();
-        PlanResult {
-            package,
-            requests,
-            plans,
             diagnostics,
         }
     }

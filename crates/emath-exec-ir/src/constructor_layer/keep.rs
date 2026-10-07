@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 
 use super::expr::{path_expr, substitute_path};
 use super::identity::mentioned_names;
-use super::setup::{module_roots_for, package_of, resolve_import, resolve_module_path};
 use super::{CValue, ConstructorError, ExprKind};
 use emath_core::tree::Item;
 use emath_syntax::formatter::{format_expr, Prec};
@@ -100,45 +99,51 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// directory). The library itself is never imported; a local module
 /// outside the library's directory refuses `E-KEEP-USE`.
 pub fn needed_uses(program: &CValue, source: &Path, library: &Path) -> Result<Vec<String>, ConstructorError> {
+    let text = std::fs::read_to_string(source)
+        .map_err(|err| keep_use(format!("cannot read {}: {err}", source.display())))?;
+    let (tree, diagnostics) = emath_syntax::parse_str(&text);
+    if diagnostics.has_errors() {
+        return Err(keep_use(format!("cannot parse {}: {diagnostics:?}", source.display())));
+    }
+    super::prepare_module(&tree, Some(source))?.needed_uses(program, library)
+}
+
+impl super::PreparedModule {
+    /// Imports for retained Code from this resolved graph, without rereading
+    /// source or declarations. The destination determines local path spelling.
+    pub fn needed_uses(&self, program: &CValue, library: &Path) -> Result<Vec<String>, ConstructorError> {
+        needed_uses_from_graph(self, program, library)
+    }
+}
+
+fn needed_uses_from_graph(
+    prepared: &super::PreparedModule,
+    program: &CValue,
+    library: &Path,
+) -> Result<Vec<String>, ConstructorError> {
     let CValue::Code(code) = program else {
         return Err(shape("the kept value is not Code"));
     };
     let mut mentioned = BTreeSet::new();
     mentioned_names(&code.expr, &mut mentioned);
-    let read = |file: &Path| {
-        let text = std::fs::read_to_string(file)
-            .map_err(|err| keep_use(format!("cannot read {}: {err}", file.display())))?;
-        Ok::<_, ConstructorError>(emath_syntax::parse_str(&text).0)
-    };
-    let tree = read(source)?;
-    let roots = module_roots_for(Some(source));
     let library_dir = library.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let imports_of = |tree: &emath_core::tree::SyntaxTree, from: &Path| -> Result<Vec<(Vec<String>, PathBuf)>, ConstructorError> {
-        tree.items
-            .iter()
-            .filter_map(|item| match item {
-                Item::Use { path, .. } => Some(path),
-                _ => None,
-            })
-            .map(|path| Ok((path.clone(), resolve_import(path, &roots, Some(from), package_of(tree))?)))
-            .collect()
-    };
     // Breadth first from the source's own imports: a program built
     // inside an imported module can call what that module imports, and
     // the nearest module exporting a name is the one in scope.
-    let mut queue: VecDeque<(Vec<String>, PathBuf)> = imports_of(&tree, source)?.into();
+    let mut queue: VecDeque<_> = prepared.imports.root_uses.iter().collect();
     let mut seen: Vec<PathBuf> = Vec::new();
     let mut covered: BTreeSet<String> = BTreeSet::new();
     let mut uses = Vec::new();
-    while let Some((path, file)) = queue.pop_front() {
-        let path = &path;
-        if same_file(&file, library) || seen.iter().any(|s| same_file(s, &file)) {
+    while let Some(import) = queue.pop_front() {
+        let path = &import.path;
+        let file = &import.file;
+        if same_file(file, library) || seen.iter().any(|s| same_file(s, file)) {
             continue;
         }
         seen.push(file.clone());
-        let module = read(&file)?;
-        queue.extend(imports_of(&module, &file)?);
-        let exports: Vec<&String> = module
+        let module = prepared.imports.module(file);
+        queue.extend(&module.uses);
+        let exports: Vec<&String> = module.tree
             .items
             .iter()
             .flat_map(|item| match item {
@@ -154,7 +159,7 @@ pub fn needed_uses(program: &CValue, source: &Path, library: &Path) -> Result<Ve
             let Some((name, tag)) = key.rsplit_once("__") else { continue };
             let labelled = tag == label
                 || tag.strip_prefix(label.as_str()).and_then(|rest| rest.strip_prefix('_')).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
-            let declared = module.items.iter().any(|item| matches!(item, Item::Declaration(decl) if decl.name == name));
+            let declared = module.tree.items.iter().any(|item| matches!(item, Item::Declaration(decl) if decl.name == name));
             if labelled && declared {
                 let module_name = path.join(".");
                 return Err(keep_use(if exports.iter().any(|e| e.as_str() == name) {
@@ -173,8 +178,8 @@ pub fn needed_uses(program: &CValue, source: &Path, library: &Path) -> Result<Ve
             continue;
         }
         covered.extend(provides);
-        let spelled = if resolve_module_path(path, &roots).is_ok() {
-            path.join(".")
+        let spelled = if let Some(relative) = prepared.roots.iter().find_map(|root| file.strip_prefix(root).ok()) {
+            relative.with_extension("").iter().map(|part| part.to_string_lossy()).collect::<Vec<_>>().join(".")
         } else {
             let (Ok(file), Ok(dir)) = (file.canonicalize(), library_dir.canonicalize()) else {
                 return Err(keep_use(format!("cannot locate `{}` for the library", path.join("."))));

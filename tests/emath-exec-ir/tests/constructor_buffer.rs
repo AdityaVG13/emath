@@ -140,6 +140,80 @@ fn probe() {
         p.eq("aliased-write-visible", value, CValue::Bool(true));
     });
 
+    p.case("fresh_mutable_results_never_alias_through_memo", |p| {
+        let t = tree("emath function Fresh:
+    inputs:
+        n: Int
+    outputs:
+        result: buffer
+    definitions:
+        result = buffer(n, false)
+emath function fact_fresh:
+    inputs:
+        n: Int
+    outputs:
+        result: buffer
+    definitions:
+        result = Fresh(n)
+emath function FreshNested:
+    inputs:
+        n: Int
+    outputs:
+        result: sequence(buffer)
+    definitions:
+        result = [Fresh(n)]
+emath function Independent:
+    inputs:
+        unused: Int
+    outputs:
+        named: Bool
+        fact: Bool
+        nested: Bool
+        recursive: Bool
+    definitions:
+        a = Fresh(1)
+        b = Fresh(1)
+        wrote = buffer_set(a, 0, true)
+        named = b[0]
+        fa = fact_fresh(1)
+        fb = fact_fresh(1)
+        fact_write = buffer_set(fa, 0, true)
+        fact = fb[0]
+        na = FreshNested(1)
+        nb = FreshNested(1)
+        nested_write = buffer_set(na[0], 0, true)
+        nested = nb[0][0]
+        factory = recur fresh in Int -> buffer: function n in Int: buffer(n, false)
+        ca = factory(1)
+        cb = factory(1)
+        closure_write = buffer_set(ca, 0, true)
+        recursive = cb[0]
+");
+        let inputs = [("unused".to_string(), CValue::Int(0_i128.into()))].into_iter().collect();
+        let expected = ["named", "fact", "nested", "recursive"];
+        for budgeted in [false, true] {
+            let value = if budgeted {
+                evaluate_function_budgeted_at(&t, "Independent", &inputs, 10_000, None, "fresh-results", None, "").unwrap()
+            } else {
+                emath_exec_ir::constructor_layer::evaluate_function(&t, "Independent", &inputs).unwrap()
+            };
+            let CValue::Record { fields, .. } = value else { panic!("multi-output record") };
+            for field in expected {
+                p.eq(&format!("{budgeted}-{field}"), fields.get(field).unwrap(), &CValue::Bool(false));
+            }
+        }
+        let module = emath_exec_ir::constructor_layer::prepare_module(&t, None).unwrap();
+        let mut carried = std::collections::BTreeMap::new();
+        for _ in 0..2 {
+            let result = emath_exec_ir::constructor_layer::evaluate_function_carrying(
+                &module, "Independent", &inputs, &mut carried, 10_000,
+            ).unwrap();
+            let CValue::Record { fields, .. } = result.value.unwrap() else { panic!("record") };
+            p.eq("carried-fresh", fields.get("fact").unwrap(), &CValue::Bool(false));
+            p.demand("mutable-facts-not-carried", result.fresh.is_empty(), format!("{:?}", result.fresh));
+        }
+    });
+
     p.case("bounds_refuse_by_name", |p| {
         let t = tree(BOUNDS_FAULT);
         let report = evaluate_tree_at(&t, None).expect("fault-row module evaluates");
@@ -150,6 +224,32 @@ fn probe() {
                 && report.tests[0].detail.contains("invalid_index"),
             format!("fault row outcome: {:?}", report.tests),
         );
+    });
+
+    p.case("invalid_primitive_prefix_does_not_run_later_effects", |p| {
+        let t = tree("emath function Bump:
+    inputs:
+        flags: buffer
+    outputs:
+        result: Int
+    definitions:
+        wrote = buffer_set(flags, 0, flags[0] + 1)
+        result = flags[0]
+emath function Bad:
+    inputs:
+        flags: buffer
+    outputs:
+        result: buffer
+    definitions:
+        result = buffer(false, Bump(flags))
+");
+        let cell = std::sync::Arc::new(std::sync::Mutex::new(vec![CValue::Int(0.into())]));
+        let inputs = [("flags".to_string(), CValue::Buffer(cell.clone()))].into_iter().collect();
+        let fault = emath_exec_ir::constructor_layer::evaluate_function(
+            &t, "Bad", &inputs,
+        ).expect_err("invalid size must refuse before evaluating the fill");
+        p.eq("type-refusal", fault.code, "type".to_string());
+        p.eq("later-write-not-executed", cell.lock().unwrap()[0].clone(), CValue::Int(0.into()));
     });
 
     p.case("equality_refuses_at_admission", |p| {

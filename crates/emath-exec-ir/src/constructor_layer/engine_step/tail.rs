@@ -1,4 +1,4 @@
-use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, Rc, BTreeMap, Arc};
+use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, Rc, BTreeMap, Arc, Environment};
 use super::prelude::project_field;
 
 /// An expression waiting in a resume record: evaluated in place, and
@@ -145,13 +145,84 @@ impl Engine {
         op: &str,
         args: &[Expr],
     ) -> Result<CValue, ConstructorError> {
+        let arity = match op {
+            "buffer" => 2,
+            "buffer_set" => 3,
+            _ => return Err(fault(
+                "implementation_unavailable",
+                format!("unknown buffer op `{op}`"),
+            )),
+        };
+        if args.len() != arity {
+            return Err(fault("arity", format!("`{op}` expects {arity} arguments")));
+        }
+        self.finish_machine_call(op, Vec::with_capacity(args.len()), args, None)
+    }
+
+    pub(in crate::constructor_layer) fn finish_machine_call<E: PendingExpr>(
+        &mut self,
+        op: &str,
+        mut done: Vec<CValue>,
+        rest: &[E],
+        incoming: Option<CValue>,
+    ) -> Result<CValue, ConstructorError> {
+        if let Some(value) = incoming {
+            done.push(value);
+        }
+        let validate = |i: usize, value: &CValue| -> Result<(), ConstructorError> {
+            match (op, i) {
+                ("buffer", 0) | ("buffer_set", 1) | ("int_quot" | "int_rem" | "int_pow", _)
+                    if !matches!(value, CValue::Int(_)) =>
+                {
+                    expect_int(value.clone(), op)?;
+                }
+                ("buffer_set", 0) if !matches!(value, CValue::Buffer(_)) => {
+                    return Err(fault("type", "`buffer_set` expects a buffer"));
+                }
+                _ => {}
+            }
+            Ok(())
+        };
+        for (i, value) in done.iter().enumerate() {
+            validate(i, value)?;
+        }
+        for (i, item) in rest.iter().enumerate() {
+            let value = self.eval_with_konts(item.expr(), || {
+                [
+                    Kont::MachineCall {
+                        name: op.to_string(),
+                        done: done.clone(),
+                        rest: rest[i + 1..].iter().map(PendingExpr::shared).collect(),
+                    },
+                    Kont::EvalExpr {
+                        expr: item.shared(),
+                    },
+                ]
+            })?;
+            // Preserve the primitive's left-to-right refusal boundary:
+            // an invalid prefix must not execute later effectful arguments.
+            validate(done.len(), &value)?;
+            done.push(value);
+        }
+        if machine_buffer_basename(op).is_some() {
+            self.apply_machine_buffer(op, &done)
+        } else {
+            self.apply_machine_int(op, &done)
+        }
+    }
+
+    fn apply_machine_buffer(
+        &mut self,
+        op: &str,
+        args: &[CValue],
+    ) -> Result<CValue, ConstructorError> {
         match op {
             "buffer" => {
                 if args.len() != 2 {
                     return Err(fault("arity", "`buffer` expects a size and a fill value"));
                 }
-                let size = expect_int(self.eval(&args[0])?, op)?;
-                let fill = self.eval(&args[1])?;
+                let size = expect_int(args[0].clone(), op)?;
+                let fill = args[1].clone();
                 let Some(len) = size.to_usize() else {
                     return Err(fault("invalid_index", "buffer size must be non-negative"));
                 };
@@ -173,11 +244,11 @@ impl Engine {
                         "`buffer_set` expects a buffer, an index, and a value",
                     ));
                 }
-                let CValue::Buffer(cell) = self.eval(&args[0])? else {
+                let CValue::Buffer(cell) = &args[0] else {
                     return Err(fault("type", "`buffer_set` expects a buffer"));
                 };
-                let index = expect_int(self.eval(&args[1])?, op)?;
-                let value = self.eval(&args[2])?;
+                let index = expect_int(args[1].clone(), op)?;
+                let value = args[2].clone();
                 let Some(slot) = index.to_usize() else {
                     return Err(fault("invalid_index", "buffer index out of range"));
                 };
@@ -200,6 +271,18 @@ impl Engine {
         op: &str,
         args: &[Expr],
     ) -> Result<CValue, ConstructorError> {
+        let arity = if matches!(op, "int_sum" | "int_prod") { 1 } else { 2 };
+        if args.len() != arity {
+            return Err(fault("arity", format!("`{op}` expects {arity} arguments")));
+        }
+        self.finish_machine_call(op, Vec::with_capacity(args.len()), args, None)
+    }
+
+    fn apply_machine_int(
+        &mut self,
+        op: &str,
+        args: &[CValue],
+    ) -> Result<CValue, ConstructorError> {
         match op {
             "int_sum" | "int_prod" => {
                 if args.len() != 1 {
@@ -208,7 +291,7 @@ impl Engine {
                         format!("`{op}` expects one sequence(Int) argument"),
                     ));
                 }
-                let items = expect_ints(self.eval(&args[0])?, op)?;
+                let items = expect_ints(args[0].clone(), op)?;
                 let value = if op == "int_sum" {
                     exact_int_sum(&items)
                 } else {
@@ -220,8 +303,8 @@ impl Engine {
                 if args.len() != 2 {
                     return Err(fault("arity", format!("`{op}` expects two Int arguments")));
                 }
-                let left = expect_int(self.eval(&args[0])?, op)?;
-                let right = expect_int(self.eval(&args[1])?, op)?;
+                let left = expect_int(args[0].clone(), op)?;
+                let right = expect_int(args[1].clone(), op)?;
                 let value = match op {
                     "int_quot" => left.quot(&right),
                     "int_rem" => left.rem_euclid(&right),
@@ -338,31 +421,52 @@ impl Engine {
             for (name, value) in &map {
                 self.env.insert(name.clone(), value.clone());
             }
-            for (name, pred) in &schema.invariants {
-                match self.eval(pred)? {
-                    CValue::Bool(true) => {}
-                    CValue::Bool(false) => {
-                        self.env = saved;
-                        return Err(fault(
-                            "object_invariant_failed",
-                            format!("invariant `{name}` failed"),
-                        ));
-                    }
-                    _ => {
-                        self.env = saved;
-                        return Err(fault(
-                            "object_invariant_failed",
-                            format!("invariant `{name}` is not Bool"),
-                        ));
-                    }
-                }
-            }
-            self.env = saved;
-            let _ = schema.kind;
+            return self.finish_record_invariants(type_name, map, &schema.invariants, saved, None);
         }
         Ok(CValue::Record {
             type_name: type_name.into(),
             fields: Arc::new(map),
         })
+    }
+
+    pub(in crate::constructor_layer) fn finish_record_invariants(
+        &mut self,
+        type_name: String,
+        fields: BTreeMap<String, CValue>,
+        rest: &[(String, Expr)],
+        saved: Environment,
+        incoming: Option<(String, CValue)>,
+    ) -> Result<CValue, ConstructorError> {
+        let check = |name: &str, value: CValue| match value {
+            CValue::Bool(true) => Ok(()),
+            CValue::Bool(false) => Err(fault(
+                "object_invariant_failed", format!("invariant `{name}` failed"),
+            )),
+            _ => Err(fault(
+                "object_invariant_failed", format!("invariant `{name}` is not Bool"),
+            )),
+        };
+        let outcome = (|| {
+            if let Some((name, value)) = incoming {
+                check(&name, value)?;
+            }
+            for (i, (name, predicate)) in rest.iter().enumerate() {
+                let value = self.eval_with_konts(predicate, || [
+                    Kont::RecordInvariant {
+                        type_name: type_name.clone(),
+                        fields: fields.clone(),
+                        current: name.clone(),
+                        predicate: Box::new(predicate.clone()),
+                        rest: rest[i + 1..].to_vec(),
+                        env: saved.clone().into_map(),
+                    },
+                    Kont::EvalExpr { expr: Rc::new(predicate.clone()) },
+                ])?;
+                check(name, value)?;
+            }
+            Ok(CValue::Record { type_name: type_name.into(), fields: Arc::new(fields) })
+        })();
+        self.env = saved;
+        outcome
     }
 }

@@ -32,57 +32,43 @@ fn evaluate_tree_with(
     source: Option<&Path>,
     work_limit: u64,
 ) -> Result<ModuleReport, ConstructorError> {
-    let mut engine = empty_engine();
+    super::prepare_module(tree, source)?.evaluate_tests(work_limit)
+}
+
+impl super::PreparedModule {
+    /// Run authored examples from this snapshot, without resolving imports again.
+    pub fn evaluate_tests(&self, work_limit: u64) -> Result<ModuleReport, ConstructorError> {
+        if !self.admitted {
+            super::admit::admit_loaded(&self.fresh_engine(), &self.tree).map_err(|mut err| {
+                err.code = super::constructor_admit_code(&err.code).to_string();
+                err
+            })?;
+        }
+        evaluate_tests_on(self.fresh_engine(), &self.tree, work_limit)
+    }
+}
+
+fn evaluate_tests_on(
+    mut engine: super::Engine,
+    tree: &SyntaxTree,
+    work_limit: u64,
+) -> Result<ModuleReport, ConstructorError> {
     engine.work_limit = work_limit;
     // The test lane never resumes a suspended evaluation, so it skips
     // continuation snapshots and the all-calls memo (both exist only to
     // make a suspended run resumable).
     engine.facts_only_memo = true;
     let mut uses = Vec::new();
-    install_local_items(&mut engine, tree)?;
-    load_imports(
-        &mut engine,
-        tree,
-        &module_roots_for(source),
-        source,
-    )?;
     for item in &tree.items {
         if let Item::Use { path, .. } = item {
             uses.push(path.join("."));
         }
     }
-    for item in &tree.items {
-        match item {
-            Item::Use { .. } => {}
-            Item::Declaration(decl) => match decl.as_kind.as_str() {
-                "function" | "query" | "object" => {}
-                other => {
-                    return Err(fault(
-                        "E-KIND-GONE",
-                        format!("declaration kind `{other}` is not a core kind"),
-                    ));
-                }
-            },
-            _ => {}
-        }
-    }
-
     let mut tests = Vec::new();
     for item in &tree.items {
         let Item::Declaration(decl) = item else {
             continue;
         };
-        // The same admission `emath check` runs: a mistyped definition is
-        // a named refusal here too, never a wrong answer.
-        let admitted = match decl.as_kind.as_str() {
-            "function" => super::admit::admit_function(&engine, decl),
-            "query" => super::admit::admit_query(&engine, decl),
-            _ => super::admit::refuse_unknown_test_rows(decl),
-        };
-        admitted.map_err(|mut err| {
-            err.code = super::constructor_admit_code(&err.code).to_string();
-            err
-        })?;
         for section in decl.sections().filter(|section| section.name == "tests") {
             // every `example <label>:` block is its own case. Loose
             // givens/expects outside any example form one anonymous case.
@@ -412,9 +398,6 @@ pub fn evaluate_function_with_work_at(
     source: Option<&Path>,
     work_limit: u64,
 ) -> Result<CValue, ConstructorError> {
-    let mut engine = engine_from_tree_at(tree, source)?;
-    engine.work_limit = work_limit;
-    engine.facts_only_memo = true;
-    engine.eval_entry(name, inputs)
+    super::prepare_module(tree, source)?.evaluate_function(name, inputs, work_limit)
 }
 

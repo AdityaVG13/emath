@@ -13,6 +13,108 @@ use emath_tui::experiment::{
     ExperimentConfig, ExperimentHost, ExperimentReport, ExperimentStatus, candidate_first, read_ledger,
 };
 
+#[cfg(unix)]
+#[test]
+fn inherited_stdio_remains_bounded_after_parent_exit() {
+    use emath_tui::experiment::process::{RunOutcome, RunSpec, run_bounded};
+
+    let lab = Lab::new("process_deadline");
+    let program = lab.dir.join("trial");
+    std::fs::write(
+        &program,
+        "#!/bin/sh\nexec 3<&0\n/bin/sleep 2 <&3 &\nprintf parent\nexit 0\n",
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let mut runs = Vec::new();
+    for cancel_run in [false, true] {
+        let cancel = CancelToken::new();
+        let watcher = cancel_run.then(|| {
+            let cancel = cancel.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(100));
+                cancel.cancel();
+            })
+        });
+        // The descendant retains stdin too: the old writer blocks once
+        // the pipe fills, even though the actual trial parent has exited.
+        let input = vec![b'x'; 2 * 1024 * 1024];
+        let spec = RunSpec {
+            program: &program,
+            stdin: &input,
+            cwd: &lab.dir,
+            timeout: if cancel_run {
+                Duration::from_secs(5)
+            } else {
+                Duration::from_millis(100)
+            },
+            output_limit: 4096,
+            sandbox_profile: None,
+            address_space_limit: None,
+        };
+        let started = Instant::now();
+        let outcome = run_bounded(&spec, &cancel);
+        if let Some(watcher) = watcher {
+            watcher.join().unwrap();
+        }
+        runs.push((cancel_run, started.elapsed(), outcome));
+    }
+    for (cancel_run, elapsed, outcome) in runs {
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "inherited stdin/stdout/stderr must not block timeout or cancellation: {outcome:?}"
+        );
+        assert!(
+            matches!(
+                (cancel_run, &outcome),
+                (false, RunOutcome::Timeout { .. }) | (true, RunOutcome::Cancelled { .. })
+            ),
+            "parent exit must not hide the pending limit: {outcome:?}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn inherited_stdio_drains_and_checks_output_limit() {
+    use emath_tui::experiment::process::{RunOutcome, RunSpec, run_bounded};
+    use std::os::unix::fs::PermissionsExt;
+
+    let lab = Lab::new("process_drain");
+    let program = lab.dir.join("trial");
+    std::fs::write(
+        &program,
+        "#!/bin/sh\n( /bin/sleep 0.02; printf child ) &\nprintf parent\nexit 0\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+    for limit in [4096, 6] {
+        let spec = RunSpec {
+            program: &program,
+            stdin: b"",
+            cwd: &lab.dir,
+            timeout: Duration::from_secs(2),
+            output_limit: limit,
+            sandbox_profile: None,
+            address_space_limit: None,
+        };
+        let outcome = run_bounded(&spec, &CancelToken::new());
+        if limit == 6 {
+            assert_eq!(outcome, RunOutcome::OutputLimit { limit });
+        } else {
+            match outcome {
+                RunOutcome::Success { stdout, wall_ns } => {
+                    assert_eq!(stdout, b"parentchild");
+                    assert!(wall_ns > 0);
+                }
+                other => panic!("in-budget descendant output must be retained: {other:?}"),
+            }
+        }
+    }
+}
+
 fn repo() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().expect("repo root")
 }

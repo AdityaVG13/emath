@@ -26,15 +26,21 @@
   `{"source":"…","given":{"x":4.0}}`. Detection: payload trims to `{`
   and parses as JSON with a `source` key; otherwise the bytes are raw
   source. `given` is optional.
-- `run` admits constructor declarations and evaluates them on the
-  constructor VM (`evaluate_tree`). When `given` is present, the first
+- `run` consumes the semantic session's checked module and evaluates it on the
+  constructor VM. When `given` is present, the first
   `emath function` is also evaluated with those bindings. A missing
   required input is `ok:false` with `missing input \`name\``. Unknown
   sections such as `goals:` / `compile:` refuse `E-SEC-101`.
 - Successful `run` / `generate` / `inputs` use schema
   `emath.constructor.v1`. `generate` emits constructor EMIR Rust
-  (`pub fn entry`), not SIR/`goals:` crates.
-- `inputs` reads `inputs:` from the syntax tree, not hollow SIR.
+  with one named entry per root function, not SIR/`goals:` crates. `generate`
+  shares the native crate emitter and returns its complete file list, manifest,
+  `crate_name`, `runnable` flag and `unresolved` reasons. Admission does not
+  imply native target support.
+- `inputs` reads declarations from checked syntax, not hollow SIR.
+- `check`, `run`, `generate`, `inputs` and `format` share semantic-session
+  admission. `format` may still return formatted text for syntactically valid
+  but semantically refused source, with `admitted:false` and diagnostics.
 
 ## Invariants
 

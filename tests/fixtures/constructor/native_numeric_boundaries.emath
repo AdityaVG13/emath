@@ -111,6 +111,27 @@ emath function ClosureBoundary:
             given n = 12
             expect result == 5
 
+emath function HigherOrderClosure:
+    inputs:
+        f: Int -> Int
+    outputs:
+        result: Int
+    definitions:
+        apply = function g in Int -> Int: g(3)
+        result = apply(f)
+    tests:
+        example <converted_closure_ownership>:
+            given f = function x in Int: x + 1
+            expect result == 4
+
+emath function TinyRatio:
+    inputs:
+        n: Int
+    outputs:
+        result: Float64
+    definitions:
+        result = (1 / int_pow(2, n)) * 1.0f64
+
 emath function VectorRecord:
     inputs:
         n: Int
@@ -200,3 +221,119 @@ emath function WideTimesFloat:
         example <wide_widens>:
             given unused = 0
             expect result == 4611686018427387904.0f64
+
+emath function MixedEquality:
+    inputs:
+        n: Int
+    outputs:
+        rat_equal: Bool
+        rat_different: Bool
+        float_equal: Bool
+        float_different: Bool
+        float_precision_equal: Bool
+        float_precision_greater: Bool
+        float_precision_reverse_less: Bool
+        float_large_equal: Bool
+    definitions:
+        f = function x in Int: x == 1 / 1
+        g = function x in Int: 1 / 1 != x
+        h = function x in Int: x == 1.0f64
+        j = function x in Int: 1.0f64 != x
+        precise = function x in Int: x == 9007199254740992.0f64
+        above = function x in Int: x > 9007199254740992.0f64
+        below = function x in Int: 9007199254740992.0f64 < x
+        large = function x in Int: (int_pow(2, 200) + x) == 1606938044258990275541962092341162602522202993782792835301376.0f64
+        rat_equal = f(n)
+        rat_different = g(n)
+        float_equal = h(n)
+        float_different = j(n)
+        float_precision_equal = precise(n)
+        float_precision_greater = above(n)
+        float_precision_reverse_less = below(n)
+        float_large_equal = large(n)
+    tests:
+        example <equal>:
+            given n = 1
+            expect rat_equal and not rat_different and float_equal and not float_different
+        example <different>:
+            given n = 2
+            expect not rat_equal and rat_different and not float_equal and float_different
+        example <exact_float_boundary>:
+            given n = 9007199254740992
+            expect float_precision_equal and not float_precision_greater and not float_precision_reverse_less
+        example <rounded_float_boundary>:
+            given n = 9007199254740993
+            expect not float_precision_equal and float_precision_greater and float_precision_reverse_less
+        example <large_exact_float>:
+            given n = 0
+            expect float_large_equal
+        example <large_rounded_float>:
+            given n = 1
+            expect not float_large_equal
+
+emath object CountInput:
+    representation:
+        n: Int
+
+emath function AlternatingRecurrence:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur f in Int -> Int: function k in Int: if k == 0: 0 else: k - f(k - 1))(n)
+    tests:
+        example <right_subtraction>:
+            given n = 2
+            expect result == 1
+
+emath function ConstantRightSubtraction:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur f in Int -> Int: function k in Int: if k == 0: 0 else: 2 - f(k - 1))(n)
+    tests:
+        example <constant_right_subtraction>:
+            given n = 2
+            expect result == 0
+emath function ReversedGuard:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur f in Int -> Int: function k in Int: if 0 <= k: 9 else: f(k - 1) + 1)(n)
+    tests:
+        example <guard_orientation>:
+            given n = 2
+            expect result == 9
+
+emath function DependentBase:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (recur f in Int -> Int: function k in Int: if k == 0: k else: f(k - 1) + 1)(n)
+    tests:
+        example <terminal_base>:
+            given n = 2
+            expect result == 2
+
+emath function RecordIteration:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        obj = CountInput: {n: if n < 0: int_pow(2, 63) else: n}
+        result = (recur f in Int -> Int: function k in Int: if k == 0: 0 else: f(k - 1) + 1)(obj.n)
+    tests:
+        example <count>:
+            given n = 3
+            expect result == 3
+        example <empty>:
+            given n = 0
+            expect result == 0

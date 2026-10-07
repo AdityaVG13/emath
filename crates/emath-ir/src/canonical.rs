@@ -58,7 +58,8 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
             out.push(':');
             out.push_str(
                 &extent
-                    .as_ref().map_or_else(|| "-".to_string(), ToString::to_string),
+                    .as_ref()
+                    .map_or_else(|| "-".to_string(), ToString::to_string),
             );
         }
         TypeNode::Matrix {
@@ -71,12 +72,14 @@ fn encode_type(out: &mut String, ty: &TypeNode) {
             out.push(':');
             out.push_str(
                 &rows
-                    .as_ref().map_or_else(|| "-".to_string(), ToString::to_string),
+                    .as_ref()
+                    .map_or_else(|| "-".to_string(), ToString::to_string),
             );
             out.push(':');
             out.push_str(
                 &cols
-                    .as_ref().map_or_else(|| "-".to_string(), ToString::to_string),
+                    .as_ref()
+                    .map_or_else(|| "-".to_string(), ToString::to_string),
             );
         }
         TypeNode::Tensor { element, shape } => {
@@ -677,7 +680,24 @@ pub fn canonical_package(package: &SemanticPackage) -> ContentId {
             }
         }
     }
-    emath_core::hash::bootstrap_content_id(out.as_bytes())
+    let mut bytes = out.into_bytes();
+    if let Some(constructors) = &package.constructor_semantics {
+        // Binary framing avoids text/source serialization and retains the
+        // complete checked graph through seal and artifact composition.
+        bytes.extend_from_slice(b"\0emath.constructor.content.v1\0");
+        match constructors.content_bytes() {
+            Ok(meaning) => {
+                bytes.push(0);
+                bytes.extend_from_slice(&(meaning.len() as u64).to_be_bytes());
+                bytes.extend_from_slice(&meaning);
+            }
+            Err(error) => {
+                bytes.push(1);
+                bytes.extend_from_slice(error.to_string().as_bytes());
+            }
+        }
+    }
+    emath_core::hash::bootstrap_content_id(&bytes)
 }
 
 /// Canonical bytes for a single expression (used by goal identity).

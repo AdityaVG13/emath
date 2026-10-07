@@ -742,6 +742,230 @@ emath function NeedsInt:
         };
     });
 
+    probe.case("quoted_dependencies_ignore_caller_shadowing", |p| {
+        let source = "emath function helper:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n + 1
+emath function Main:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        program = quote(helper)
+        helper = function n in Int: n + 10
+        callable = quote.evaluate(program)
+        local = helper(0)
+        result = callable(0) + local
+";
+        let (tree, diagnostics) = parse_str(source);
+        assert!(!diagnostics.has_errors(), "{diagnostics:?}");
+        let inputs = BTreeMap::from([("unused".into(), CValue::Int(0_i128.into()))]);
+        p.eq("pinned-plus-restored-local", evaluate_function(&tree, "Main", &inputs).unwrap(), CValue::Int(11_i128.into()));
+        let checkpoint = emath_exec_ir::constructor_layer::Checkpoint {
+            abi: emath_exec_ir::constructor_layer::CHECKPOINT_ABI.into(),
+            memo: BTreeMap::from([("closure: \"λ\"\n\t\\key".into(), CValue::Str("answer\nλ\r\t\\\"".into()))]),
+            ..Default::default()
+        };
+        let decoded = emath_exec_ir::constructor_layer::Checkpoint::decode(&checkpoint.encode());
+        p.demand("quoted-memo-key-roundtrip", decoded.as_ref().is_ok_and(|decoded| decoded.memo == checkpoint.memo), format!("{decoded:?}"));
+        for budget in 1..=40 {
+            let first = evaluate_function_budgeted_at(&tree, "Main", &inputs, budget, None, "quoted-resume", None, source);
+            let value = match first {
+                Ok(value) => Ok(value),
+                Err((fault, checkpoint)) if fault.code == "budget_exhausted" => {
+                    let decoded = match emath_exec_ir::constructor_layer::Checkpoint::decode(&checkpoint.encode()) {
+                        Ok(decoded) => decoded,
+                        Err(fault) => {
+                            p.fail(format!("quoted-decode-{budget}"), format!("{fault:?}"));
+                            continue;
+                        }
+                    };
+                    evaluate_function_budgeted_at(&tree, "Main", &inputs, 1000, Some(&decoded), "quoted-resume", None, source)
+                        .map_err(|(fault, _)| fault)
+                }
+                Err((fault, _)) => Err(fault),
+            };
+            p.demand(format!("quoted-resume-{budget}"), value.as_ref().is_ok_and(|value| value == &CValue::Int(11_i128.into())), format!("{value:?}"));
+        }
+    });
+
+    probe.case("synthetic_quote_frame_cannot_call_authored_names", |p| {
+        let source = "emath function __quote:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 999
+emath function Main:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.evaluate(quote(1 + 2))
+";
+        let (tree, diagnostics) = parse_str(source);
+        assert!(!diagnostics.has_errors(), "{diagnostics:?}");
+        let inputs = BTreeMap::from([("unused".into(), CValue::Int(0.into()))]);
+        p.eq("uninterrupted", evaluate_function(&tree, "Main", &inputs).unwrap(), CValue::Int(3.into()));
+        let mut stops = 0;
+        for budget in 1..=10 {
+            match evaluate_function_budgeted_at(&tree, "Main", &inputs, budget, None, "quote-frame", None, source) {
+                Ok(value) => {
+                    p.eq(format!("completed-{budget}"), value, CValue::Int(3.into()));
+                }
+                Err((fault, checkpoint)) => {
+                    p.eq(format!("suspended-{budget}"), fault.code.as_str(), "budget_exhausted");
+                    stops += 1;
+                    let restored = emath_exec_ir::constructor_layer::Checkpoint::decode(&checkpoint.encode()).unwrap();
+                    let result = evaluate_function_budgeted_at(&tree, "Main", &inputs, 1000, Some(&restored), "quote-frame", None, source);
+                    p.demand(format!("resumed-{budget}"), result.as_ref().is_ok_and(|value| value == &CValue::Int(3.into())), format!("{result:?}"));
+                }
+            }
+        }
+        p.demand("natural-suspension", stops > 0, "must exercise checkpoint replay");
+    });
+
+    probe.case("repeated_suspension_retains_each_pending_operation", |p| {
+        let prefix = "emath object Box:
+    representation:
+        kind = \"abstract\"
+emath object Pair:
+    representation:
+        left: Int
+        right: Int
+emath function Bump:
+    inputs:
+        flags: buffer
+    outputs:
+        result: Int
+    definitions:
+        wrote = buffer_set(flags, 0, flags[0] + 1)
+        result = flags[0]
+emath function Slow:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 0: 7 else: Slow(n - 1)
+emath function Main:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        walker = recur go in Int -> Int: function k in Int: if k <= 0: 7 else: go(k - 1)
+";
+        let inputs = BTreeMap::from([("n".into(), CValue::Int(3.into()))]);
+        for (name, definitions, expected) in [
+            ("right", "result = quote.evaluate(quote(1 + 2)) + walker(n)", 10),
+            ("left", "result = walker(n) + 3", 10),
+            ("named", "result = 3 + Slow(n)", 10),
+            ("unary", "result = -walker(n)", -7),
+            ("index", "result = [2, 5][walker(n) - 7]", 2),
+            ("condition", "result = if walker(n) == 7: 11 else: 22", 11),
+            ("then", "result = if n > 0: walker(n) + 3 else: 0", 10),
+            ("else", "result = if n < 0: 0 else: walker(n) + 3", 10),
+            ("sequence", "items = [3, walker(n)]\n        result = items[0] + items[1]", 10),
+            ("record", "packed = [Pair: {left: 3, right: walker(n)}][0]\n        result = packed.left + packed.right", 10),
+            ("cons_head", "items = [walker(n), ..[3]]\n        result = items[0] + items[1]", 10),
+            ("cons_tail", "items = [3, ..[walker(n)]]\n        result = items[0] + items[1]", 10),
+            ("match", "result = match walker(n) { 7 => 11, _ => 22 }", 11),
+            ("case_condition", "result = cases: | walker(n) == 7 => 11 | else => 22", 11),
+            ("case_value", "result = cases: | n > 0 => walker(n) + 3 | else => 0", 10),
+            ("open", "packed = Box.pack(7)\n        result = Box.open value in packed: value + walker(n)", 14),
+            ("effects", "flags = buffer(1, 0)\n        sum = Bump(flags) + walker(n)\n        result = sum + flags[0] * 100", 108),
+            ("machine_int", "flags = buffer(1, 0)\n        quotient = int_quot(Bump(flags), walker(n))\n        result = quotient + flags[0] * 100", 100),
+        ] {
+            let source = format!("{prefix}        {definitions}\n");
+            let (tree, diagnostics) = parse_str(&source);
+            assert!(!diagnostics.has_errors(), "{name}: {diagnostics:?}");
+            admit_tree(&tree).unwrap_or_else(|fault| panic!("{name}: {fault}"));
+            p.eq(format!("{name}-uninterrupted"), evaluate_function(&tree, "Main", &inputs).unwrap(), CValue::Int(expected.into()));
+            for initial in [1, 3, 8] {
+                for extra in [3, 7, 11] {
+                    let label = format!("{name}-{initial}-{extra}");
+                    let mut outcome = evaluate_function_budgeted_at(
+                        &tree, "Main", &inputs, initial, None, "repeat-resume", None, &source,
+                    );
+                    let mut stops = 0;
+                    while let Err((fault, checkpoint)) = &outcome {
+                        if fault.code != "budget_exhausted" || stops >= 128 {
+                            break;
+                        }
+                        let restored = match emath_exec_ir::constructor_layer::Checkpoint::decode(&checkpoint.encode()) {
+                            Ok(restored) => restored,
+                            Err(error) => {
+                                p.demand(format!("{label}-decode"), false, format!("{error:?}"));
+                                break;
+                            }
+                        };
+                        let work = restored.work + extra;
+                        outcome = evaluate_function_budgeted_at(
+                            &tree, "Main", &inputs, work, Some(&restored), "repeat-resume", None, &source,
+                        );
+                        stops += 1;
+                        if extra == 3 && stops == 8 {
+                            // Tiny slices may not cover a call-entry quantum.
+                            // Check preservation across those stops, then finish
+                            // with enough work rather than asserting liveness.
+                            break;
+                        }
+                    }
+                    if extra == 3 && let Err((fault, checkpoint)) = &outcome
+                        && fault.code == "budget_exhausted"
+                    {
+                        let restored = emath_exec_ir::constructor_layer::Checkpoint::decode(&checkpoint.encode()).unwrap();
+                        outcome = evaluate_function_budgeted_at(
+                            &tree, "Main", &inputs, restored.work + 10_000, Some(&restored),
+                            "repeat-resume", None, &source,
+                        );
+                    }
+                    p.demand(format!("{label}-multiple-stops"), stops >= 2, format!("stops={stops}"));
+                    p.demand(label, outcome.as_ref().is_ok_and(|value| value == &CValue::Int(expected.into())),
+                        format!("expected {expected}, result={:?}", outcome.as_ref().map_err(|(fault, checkpoint)| (fault.code.as_str(), checkpoint.work, checkpoint.frames.len()))));
+                }
+            }
+        }
+    });
+
+    probe.case("nested_shadowing_keeps_closed_closure_emittable", |p| {
+        let source = "emath function Closed:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = function x in Int: (function x in Int: x)(0) + x
+";
+        let (tree, diagnostics) = parse_str(source);
+        assert!(!diagnostics.has_errors(), "{diagnostics:?}");
+        let vm = evaluate_function(&tree, "Closed", &BTreeMap::from([("unused".into(), CValue::Int(0_i128.into()))])).unwrap();
+        let converted = cvalue_to_emir(&vm);
+        p.demand("closed-carrier-converts", converted.is_ok(), format!("{converted:?}"));
+        if let Ok(Value::Program(program)) = converted {
+            p.eq("outer-binding-survives", evaluate(&program.body, &[Value::I64(7)], &[]).unwrap(), Value::I64(7));
+        }
+    });
+
+    probe.case("canonical_rat_equality_never_cross_multiplies", |p| {
+        let largest = ExactInt::Big { neg: false, limbs: vec![u32::MAX; 8192] };
+        let wide = Value::ExactRat { num: largest.clone(), den: largest.sub(&ExactInt::one()).unwrap() };
+        let small = Value::Rat { num: 3, den: 2 };
+        p.demand("overflow-is-not-equality", wide != small && small != wide, "both cross-products overflowing must not imply equality");
+        let rat = CValue::Rat { num: ExactInt::from(i128::MAX), den: ExactInt::from(2) };
+        p.eq("bounded-rat-reflexive", values_equal(&Value::Rat { num: i128::MAX, den: 2 }, &rat).unwrap(), true);
+        p.eq("integer-rat", values_equal(&Value::I64(7), &CValue::Rat { num: ExactInt::from(7), den: ExactInt::one() }).unwrap(), true);
+        p.eq("integer-not-fraction", values_equal(&Value::I64(i64::MAX), &rat).unwrap(), false);
+    });
+
     probe.case("wide_int_emir_round_trip", |p| {
         let path = fixture("wide_product.emath");
         let tree = parse_file(&path);

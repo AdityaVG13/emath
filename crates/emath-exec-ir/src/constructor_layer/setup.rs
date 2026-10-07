@@ -26,13 +26,22 @@ pub fn with_embedded_modules<T>(
     files: &[(&str, &str)],
     body: impl FnOnce() -> T,
 ) -> T {
-    let modules = EmbeddedModules {
-        roots: roots.iter().map(PathBuf::from).collect(),
-        files: files
+    with_module_files(
+        roots.iter().map(PathBuf::from).collect(),
+        files
             .iter()
             .map(|(path, text)| (PathBuf::from(path), (*text).to_string()))
             .collect(),
-    };
+        body,
+    )
+}
+
+pub(super) fn with_module_files<T>(
+    roots: Vec<PathBuf>,
+    files: BTreeMap<PathBuf, String>,
+    body: impl FnOnce() -> T,
+) -> T {
+    let modules = EmbeddedModules { roots, files };
     let previous = EMBEDDED.with(|cell| cell.replace(Some(Rc::new(modules))));
     struct Restore(Option<Rc<EmbeddedModules>>);
     impl Drop for Restore {
@@ -310,6 +319,14 @@ pub(super) fn load_imports(
     source: Option<&Path>,
 ) -> Result<(), ConstructorError> {
     let graph = scope::load_graph(tree, roots, source)?;
+    install_import_graph(engine, tree, &graph)
+}
+
+pub(super) fn install_import_graph(
+    engine: &mut Engine,
+    tree: &SyntaxTree,
+    graph: &scope::ImportGraph,
+) -> Result<(), ConstructorError> {
     graph.refuse_local_clobber(tree)?;
     let scoped = graph.scoped_modules()?;
     for (module, decls) in graph.modules.iter().zip(&scoped) {
@@ -466,10 +483,10 @@ pub fn module_roots_for(source: Option<&Path>) -> Vec<PathBuf> {
 }
 
 /// Merge a file's `use` imports into one whole-program tree (the build
-/// lane's lowering input). Imported declarations join under their bare
-/// names exactly as the engine installs them, the use selector filters
-/// what a named import contributes, and nested imports merge before
-/// their parent's declarations (engine load order). `package` and
+/// lane's lowering input). All imported implementations join under their
+/// scoped keys, including private and unselected callees; selectors control
+/// source bindings, not implementation reachability. Nested imports merge
+/// before their parent's declarations (engine load order). `package` and
 /// `use` items stay the main file's authority; search roots follow the
 /// same discovery as the test lane (`module_roots_for`).
 pub fn merged_tree_with_imports(
@@ -478,6 +495,13 @@ pub fn merged_tree_with_imports(
 ) -> Result<SyntaxTree, ConstructorError> {
     let roots = module_roots_for(source);
     let graph = scope::load_graph(tree, &roots, source)?;
+    merged_tree_from_graph(tree, &graph)
+}
+
+pub(super) fn merged_tree_from_graph(
+    tree: &SyntaxTree,
+    graph: &scope::ImportGraph,
+) -> Result<SyntaxTree, ConstructorError> {
     graph.refuse_local_clobber(tree)?;
     let scoped = graph.scoped_modules()?;
     let root_items = graph.scoped_root(tree)?;
@@ -489,7 +513,7 @@ pub fn merged_tree_with_imports(
     for (item, scoped_item) in tree.items.iter().zip(root_items) {
         if matches!(item, Item::Use { .. }) {
             if let Some(u) = uses.next() {
-                merge_use(&graph, &scoped, u, &mut installed, &mut items);
+                merge_use(graph, &scoped, u, &mut installed, &mut items);
             }
             continue;
         }
@@ -502,8 +526,8 @@ pub fn merged_tree_with_imports(
 }
 
 /// Expand one `use` line: the imported module's own imports merge first
-/// (engine install order), then this selector's chosen declarations join
-/// under their keys.
+/// (engine install order), then every implementation joins under its scoped
+/// key. Root references were already checked and rewritten by the scope graph.
 fn merge_use(
     graph: &scope::ImportGraph,
     scoped: &[scope::ScopedModule],
@@ -518,14 +542,7 @@ fn merge_use(
     for nested in &graph.modules[index].uses {
         merge_use(graph, scoped, nested, installed, items);
     }
-    for (name, decl) in &scoped[index] {
-        let selected = match &u.tree {
-            UseTree::All => true,
-            UseTree::Named(names) if names.is_empty() => true,
-            UseTree::Named(names) => names.iter().any(|(orig, _)| orig == name),
-        };
-        if selected {
-            items.push(Item::Declaration(decl.clone()));
-        }
+    for (_, decl) in &scoped[index] {
+        items.push(Item::Declaration(decl.clone()));
     }
 }

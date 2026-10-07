@@ -1,139 +1,147 @@
-// Exact kernels use the existing (numerator, denominator) representation.
-// Every public result has a positive, gcd-reduced denominator. Checked i128
-// intermediates can refuse; no operation converts an exact value to a float.
-pub type ExactRatio = (i128, i128);
+// Parts share the reference engine's exact integer representation and memory
+// bound. Every kernel result has a positive, gcd-reduced denominator.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExactRatio(pub ExactInt, pub ExactInt);
+
+impl<N: Into<ExactInt>, D: Into<ExactInt>> From<(N, D)> for ExactRatio {
+    fn from((numer, denom): (N, D)) -> Self {
+        Self(numer.into(), denom.into())
+    }
+}
+
+impl From<&ExactRatio> for ExactRatio {
+    fn from(value: &ExactRatio) -> Self {
+        value.clone()
+    }
+}
+
+impl<N: Clone + Into<ExactInt>, D: Clone + Into<ExactInt>> PartialEq<(N, D)> for ExactRatio {
+    fn eq(&self, other: &(N, D)) -> bool {
+        self.0 == other.0.clone().into() && self.1 == other.1.clone().into()
+    }
+}
+
 type ExactResult<T> = Result<T, String>;
-fn q_overflow() -> String {
-    "E-RAT-002: exact rational intermediate exceeds i128".into()
-}
-fn q_gcd(mut a: u128, mut b: u128) -> u128 {
-    while b != 0 {
-        (a, b) = (b, a % b);
+fn q_error(error: ExactError) -> String {
+    match error {
+        ExactError::DivisionByZero => "E-RAT-001: denominator is zero".into(),
+        ExactError::Overflow => "overflow: exact rational exceeded the integer memory bound".into(),
     }
-    a
 }
-pub fn ratio_normalize(n: i128, d: i128) -> ExactResult<ExactRatio> {
-    if d == 0 {
-        return Err("E-RAT-001: denominator is zero".into());
-    }
-    let g = q_gcd(n.unsigned_abs(), d.unsigned_abs());
-    let magnitude = n.unsigned_abs() / g;
-    let denominator = i128::try_from(d.unsigned_abs() / g).map_err(|_| q_overflow())?;
-    let negative = (n < 0) != (d < 0);
-    let numerator = if negative && magnitude == (1_u128 << 127) {
-        i128::MIN
-    } else {
-        let value = i128::try_from(magnitude).map_err(|_| q_overflow())?;
-        if negative { -value } else { value }
-    };
-    Ok((numerator, denominator))
+fn q_gcd(a: &ExactInt, b: &ExactInt) -> ExactResult<ExactInt> {
+    ExactInt::gcd(a, b).map_err(q_error)
+}
+pub fn ratio_normalize(n: impl Into<ExactInt>, d: impl Into<ExactInt>) -> ExactResult<ExactRatio> {
+    let (n, d) = exact_ratio(n.into(), d.into()).map_err(q_error)?;
+    Ok(ExactRatio(n, d))
 }
 pub fn ratio_construct(n: i64, d: i64) -> ExactResult<ExactRatio> {
-    ratio_normalize(i128::from(n), i128::from(d))
+    ratio_normalize(n, d)
 }
-pub fn ratio_norm(q: ExactRatio) -> ExactResult<ExactRatio> {
+pub fn ratio_norm(q: impl Into<ExactRatio>) -> ExactResult<ExactRatio> {
+    let q = q.into();
     ratio_normalize(q.0, q.1)
 }
-fn q_valid(q: ExactRatio) -> bool {
-    ratio_norm(q).is_ok_and(|canonical| canonical == q)
-}
-fn q_require(q: ExactRatio) -> ExactResult<()> {
-    if q_valid(q) {
-        Ok(())
-    } else {
-        Err("E-RAT-001: noncanonical rational".into())
+fn q_require(q: &ExactRatio) -> ExactResult<()> {
+    if q.1.signum() <= 0 || !q_gcd(&q.0, &q.1)?.is_one() {
+        return Err("E-RAT-001: noncanonical rational".into());
     }
+    Ok(())
 }
-pub fn ratio_add(a: ExactRatio, b: ExactRatio) -> ExactResult<ExactRatio> {
-    q_sum(a, b, false)
+pub fn ratio_add(a: impl Into<ExactRatio>, b: impl Into<ExactRatio>) -> ExactResult<ExactRatio> {
+    q_sum(a.into(), b.into(), false)
 }
-pub fn ratio_sub(a: ExactRatio, b: ExactRatio) -> ExactResult<ExactRatio> {
-    q_sum(a, b, true)
+pub fn ratio_sub(a: impl Into<ExactRatio>, b: impl Into<ExactRatio>) -> ExactResult<ExactRatio> {
+    q_sum(a.into(), b.into(), true)
 }
 fn q_sum(a: ExactRatio, b: ExactRatio, subtract: bool) -> ExactResult<ExactRatio> {
-    q_require(a)?;
-    q_require(b)?;
-    let g = q_gcd(a.1 as u128, b.1 as u128) as i128;
-    let left = a.0.checked_mul(b.1 / g).ok_or_else(q_overflow)?;
-    let right = b.0.checked_mul(a.1 / g).ok_or_else(q_overflow)?;
+    q_require(&a)?;
+    q_require(&b)?;
+    let g = q_gcd(&a.1, &b.1)?;
+    let ad = a.1.quot(&g).map_err(q_error)?;
+    let bd = b.1.quot(&g).map_err(q_error)?;
+    let left = a.0.mul(&bd).map_err(q_error)?;
+    let right = b.0.mul(&ad).map_err(q_error)?;
     let n = if subtract {
-        left.checked_sub(right)
+        left.sub(&right)
     } else {
-        left.checked_add(right)
+        left.add(&right)
     }
-    .ok_or_else(q_overflow)?;
-    let h = q_gcd(n.unsigned_abs(), g as u128) as i128;
+    .map_err(q_error)?;
+    let h = q_gcd(&n, &g)?;
     ratio_normalize(
-        n / h,
-        (a.1 / g).checked_mul(b.1 / h).ok_or_else(q_overflow)?,
+        n.quot(&h).map_err(q_error)?,
+        ad.mul(&b.1.quot(&h).map_err(q_error)?).map_err(q_error)?,
     )
 }
-pub fn ratio_mul(a: ExactRatio, b: ExactRatio) -> ExactResult<ExactRatio> {
-    q_require(a)?;
-    q_require(b)?;
-    let g = q_gcd(a.0.unsigned_abs(), b.1 as u128) as i128;
-    let h = q_gcd(b.0.unsigned_abs(), a.1 as u128) as i128;
+pub fn ratio_mul(a: impl Into<ExactRatio>, b: impl Into<ExactRatio>) -> ExactResult<ExactRatio> {
+    let (a, b) = (a.into(), b.into());
+    q_require(&a)?;
+    q_require(&b)?;
+    let g = q_gcd(&a.0, &b.1)?;
+    let h = q_gcd(&b.0, &a.1)?;
     ratio_normalize(
-        (a.0 / g).checked_mul(b.0 / h).ok_or_else(q_overflow)?,
-        (a.1 / h).checked_mul(b.1 / g).ok_or_else(q_overflow)?,
+        a.0.quot(&g)
+            .map_err(q_error)?
+            .mul(&b.0.quot(&h).map_err(q_error)?)
+            .map_err(q_error)?,
+        a.1.quot(&h)
+            .map_err(q_error)?
+            .mul(&b.1.quot(&g).map_err(q_error)?)
+            .map_err(q_error)?,
     )
 }
-pub fn ratio_div(a: ExactRatio, b: ExactRatio) -> ExactResult<ExactRatio> {
-    q_require(a)?;
-    q_require(b)?;
-    if b.0 == 0 {
+pub fn ratio_div(a: impl Into<ExactRatio>, b: impl Into<ExactRatio>) -> ExactResult<ExactRatio> {
+    let (a, b) = (a.into(), b.into());
+    q_require(&a)?;
+    q_require(&b)?;
+    if b.0.is_zero() {
         return Err("E-RAT-001: division by zero".into());
     }
-    // Reduce unsigned numerator magnitudes before forming the reciprocal. This
-    // permits MIN/MIN even though the positive reciprocal denominator cannot fit.
-    let g = q_gcd(a.0.unsigned_abs(), b.0.unsigned_abs());
-    let h = q_gcd(a.1 as u128, b.1 as u128) as i128;
-    let divide_magnitude = |n: i128| -> ExactResult<i128> {
-        let magnitude = n.unsigned_abs() / g;
-        if n < 0 && magnitude == (1_u128 << 127) {
-            Ok(i128::MIN)
-        } else {
-            let v = i128::try_from(magnitude).map_err(|_| q_overflow())?;
-            Ok(if n < 0 { -v } else { v })
-        }
-    };
+    let g = q_gcd(&a.0, &b.0)?;
+    let h = q_gcd(&a.1, &b.1)?;
     ratio_normalize(
-        divide_magnitude(a.0)?
-            .checked_mul(b.1 / h)
-            .ok_or_else(q_overflow)?,
-        (a.1 / h)
-            .checked_mul(divide_magnitude(b.0)?)
-            .ok_or_else(q_overflow)?,
+        a.0.quot(&g)
+            .map_err(q_error)?
+            .mul(&b.1.quot(&h).map_err(q_error)?)
+            .map_err(q_error)?,
+        a.1.quot(&h)
+            .map_err(q_error)?
+            .mul(&b.0.quot(&g).map_err(q_error)?)
+            .map_err(q_error)?,
     )
 }
-fn q_cmp(a: ExactRatio, b: ExactRatio) -> std::cmp::Ordering {
+fn q_cmp(a: ExactRatio, b: ExactRatio) -> ExactResult<std::cmp::Ordering> {
     use std::cmp::Ordering;
-    if (a.0 < 0) != (b.0 < 0) {
-        return a.0.cmp(&b.0);
+    if a.0.signum() != b.0.signum() {
+        return Ok(a.0.signum().cmp(&b.0.signum()));
     }
-    let (mut n, mut d, mut p, mut q) = (
-        a.0.unsigned_abs(),
-        a.1 as u128,
-        b.0.unsigned_abs(),
-        b.1 as u128,
-    );
-    let mut reverse = a.0 < 0;
+    let (mut n, mut d, mut p, mut q) = (a.0.abs(), a.1, b.0.abs(), b.1);
+    let mut reverse = a.0.is_negative();
     loop {
-        let order = (n / d).cmp(&(p / q));
+        let (left, r) = n.div_rem(&d).map_err(q_error)?;
+        let (right, s) = p.div_rem(&q).map_err(q_error)?;
+        let order = left.cmp(&right);
         if order != Ordering::Equal {
-            return if reverse { order.reverse() } else { order };
+            return Ok(if reverse { order.reverse() } else { order });
         }
-        let (r, s) = (n % d, p % q);
-        if r == 0 || s == 0 {
+        if r.is_zero() || s.is_zero() {
             let order = r.cmp(&s);
-            return if reverse { order.reverse() } else { order };
+            return Ok(if reverse { order.reverse() } else { order });
         }
         (n, d, p, q) = (d, r, q, s);
         reverse = !reverse;
     }
 }
-pub fn ratio_lt(a: ExactRatio, b: ExactRatio) -> ExactResult<bool> {
-    q_require(a)?;
-    q_require(b)?;
-    Ok(q_cmp(a, b).is_lt())
+pub fn ratio_cmp(
+    a: impl Into<ExactRatio>,
+    b: impl Into<ExactRatio>,
+) -> ExactResult<std::cmp::Ordering> {
+    let (a, b) = (a.into(), b.into());
+    q_require(&a)?;
+    q_require(&b)?;
+    q_cmp(a, b)
+}
+pub fn ratio_lt(a: impl Into<ExactRatio>, b: impl Into<ExactRatio>) -> ExactResult<bool> {
+    Ok(ratio_cmp(a, b)?.is_lt())
 }

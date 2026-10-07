@@ -7,6 +7,25 @@ use super::BTreeMap;
 
 pub(super) type RecordFields = Vec<(String, String)>;
 
+/// Integer state cannot depend on the width of its initializer.
+/// Callable fields retain the same exact carrier in both directions.
+pub(crate) fn stored_field_signature(signature: &str) -> String {
+    fn retain(kind: super::ValueKind) -> super::ValueKind {
+        use super::ValueKind;
+        match kind {
+            ValueKind::I64 => ValueKind::ExactInt,
+            ValueKind::Vector(element) => ValueKind::Vector(Box::new(retain(*element))),
+            ValueKind::Closure { params, result } => ValueKind::Closure {
+                params: params.into_iter().map(retain).collect(),
+                result: Box::new(retain(*result)),
+            },
+            other => other,
+        }
+    }
+    super::kind_signature(&retain(super::ValueKind::from_signature(signature)))
+        .unwrap_or_else(|| signature.to_string())
+}
+
 thread_local! {
     static AUTHORED_RECORDS: std::cell::RefCell<Vec<BTreeMap<String, RecordFields>>> =
         const { std::cell::RefCell::new(Vec::new()) };
@@ -118,7 +137,12 @@ fn instantiated_layout(name: &str) -> Option<RecordFields> {
         template
             .fields
             .iter()
-            .map(|(field, signature)| (field.clone(), super::substitute_signature_vars(signature, &bound)))
+            .map(|(field, signature)| {
+                (
+                    field.clone(),
+                    stored_field_signature(&super::substitute_signature_vars(signature, &bound)),
+                )
+            })
             .collect(),
     )
 }

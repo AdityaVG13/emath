@@ -1,6 +1,8 @@
 # A Rat meets a Float64 by rounding its exact value once. The ratio
 # 1 / (2^53 + 3) double-rounds when each side widens on its own.
 
+use exact.integers
+
 emath function widen:
     inputs:
         r: Rat
@@ -8,3 +10,77 @@ emath function widen:
         result: Float64
     definitions:
         result = r * 1.0
+
+emath object RatioBox:
+    representation:
+        value: Rat
+
+emath function wide_parts:
+    inputs:
+        exponent: Int
+    outputs:
+        result: Rat
+    definitions:
+        p = int_pow(2, exponent)
+        box = RatioBox: {value: (p + 1) / p}
+        result = box.value
+    tests:
+        example <wide_record>:
+            given exponent = 200
+            expect result.numer == int_pow(2, 200) + 1
+            expect result.denom == int_pow(2, 200)
+
+emath function wide_quoted:
+    inputs:
+        exponent: Int
+    outputs:
+        result: Rat
+    definitions:
+        r = wide_parts(exponent)
+        result = quote.evaluate(quote.substitute(quote(r * r), "r", r))
+    tests:
+        example <wide_quote>:
+            given exponent = 200
+            expect result.numer == int_pow(2, 400) + int_pow(2, 201) + 1
+            expect result.denom == int_pow(2, 400)
+
+emath function wide_cell:
+    inputs:
+        exponent: Int
+    outputs:
+        result: Rat
+    definitions:
+        r = wide_parts(exponent)
+        cells = buffer(1, r)
+        alias = cells
+        wrote = buffer_set(alias, 0, r / (r + 1 / 1))
+        result = cells[0]
+    tests:
+        example <wide_cell_alias>:
+            given exponent = 200
+            expect result.numer == int_pow(2, 200) + 1
+            expect result.denom == int_pow(2, 201) + 1
+
+emath function wide_engine:
+    inputs:
+        exponent: Int
+    outputs:
+        result: Rat
+    definitions:
+        r = wide_parts(exponent)
+        answer = quote.cost(function x in Rat: x + 1 / 1, r, 1000)
+        result = if answer.done: answer.value else: 0 / 1
+    tests:
+        example <wide_engine_result>:
+            given exponent = 200
+            expect result.numer == int_pow(2, 201) + 1
+            expect result.denom == int_pow(2, 200)
+
+emath function measure_ratio:
+    inputs:
+        r: Rat
+    outputs:
+        result: Rat
+    definitions:
+        answer = quote.cost(function x in Rat: x + 1 / 1, r, 1000)
+        result = if answer.done: answer.value else: 0 / 1

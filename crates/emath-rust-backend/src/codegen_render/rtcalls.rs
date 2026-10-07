@@ -347,7 +347,7 @@ pub(super) fn exact_int_operand(
             // bare `return`.
             let ratio = render_expr(&operand(program, value));
             Expr::Raw(format!(
-                "{{ let __ratio = {ratio}; ((__ratio).1 == 1i128).then(|| emath_rt::ExactInt::from((__ratio).0)).ok_or(\"E-INT-003: exact integer operand is a non-integral rational\")? }}"
+                "{{ let __ratio = {ratio}; __ratio.1.is_one().then(|| __ratio.0.clone()).ok_or(\"E-INT-003: exact integer operand is a non-integral rational\")? }}"
             ))
         }
         kind @ (ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node | ValueKind::Cell) => {

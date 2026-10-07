@@ -80,10 +80,39 @@ evidence IR. Provider-free by constitution: no upstream type may appear here.
   identity; it is intentionally excluded from mathematical MeaningID.
 - `meaning_id` / `SemanticPackage::meaning_id`: SHA-256 MeaningID over
   `emath.meaning.canonical.v1` length-framed admitted semantics and sorted
-  dependency MeaningIDs. Presentation, local/declaration/binder names,
+  dependency MeaningIDs. Presentation, hygienic local/binder and non-nominal declaration names,
   tests, evidence attachments, prose, spans, and host bindings are excluded.
 - `MeaningError`: malformed SIR refusal for missing/cyclic expression/type
   references; malformed graphs never receive a MeaningID.
+- `ConstructorSemantics` / `SemanticPackage::constructor_semantics`: retained
+  checked constructor syntax as neutral structural data, not source text.
+  Constructor MeaningID uses `emath.meaning.constructor.canonical.v1`, with
+  exhaustive expression/type/statement tags, ordered executable definitions,
+  de Bruijn local/binder/generic slots, and first-encounter global graph slots.
+  Resolved aliases and direct/transitive dependency bodies enter through the
+  checked scoped graph, including private helpers. Object names and field
+  labels remain nominal; unresolved free names and quotation atoms remain
+  distinct. Object layout, generic bounds, refinements, guards, query, export
+  visibility and opaque policies enter meaning. Spans, tests and presentation
+  sections do not. Quotation isolates ambient value bindings; type paths and
+  function/quote binder domains use the type namespace. Callable binders such
+  as quote.view/open use value references for their domains; quote.bind uses a
+  type domain. Policy atoms and single-name quote.substitute references remain
+  literal. Machine/projection call heads retain their operational spelling.
+  Free quoted call heads also retain their observable spelling alongside
+  dependency edges. Query identity retains runtime-selected target/question,
+  payload/result bindings and the lexically first unchecked-candidate fallback.
+  Call heads retain named-function and nominal-field fallback edges
+  unless a known scalar-domain local closure unambiguously shadows them.
+  Output declarations do not bind executable values before their definitions.
+  Returned-value edges select produced slots; multi-output record labels and
+  their function-name tags remain nominal.
+  Package content/sealing uses the same structural traversal
+  with names, tests and attachments retained; missing/duplicate graph keys or
+  mismatched root arenas refuse with `MeaningError::InvalidConstructor`.
+  Absent constructor data preserves the existing programmatic SIR encoder
+  byte-for-byte. Identity records admitted syntax, not extensional equivalence
+  or a proof that a rewrite preserves behavior.
 - Modules: `canonical`, `capability`, `constructor`, `contracts`, `domains`,
   `evidence`, `expression`, `goal`, `ids`, `kind_schema`, `numeric`,
   `operator`, `package`, `provenance`, `shapes`, `symbolic`, `type_system`,

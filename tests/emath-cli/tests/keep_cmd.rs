@@ -206,6 +206,151 @@ fn keep_cmd() {
     let golden = std::fs::read_to_string(fixtures.join("lib/explored.emath")).expect("explored golden");
     probe.demand("explored-matches-golden", written == golden, written.clone());
 
-    let _ = std::fs::remove_dir_all(&dir);
     probe.finish();
+}
+
+const CODE_BUILDER: &str = "emath function Build:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(recur f in Int -> Int: function x in Int: x + 1)
+";
+
+#[test]
+fn keep_preserves_semantic_admission() {
+    let dir = std::env::temp_dir().join(format!("emath_keep_admission_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("build.emath"), CODE_BUILDER.replace("Build", "_")).unwrap();
+    let (text, code) = emath(&dir, &[
+        "keep", "build.emath", "--function", "_", "--name", "next",
+        "--to", "library.emath", "--set", "unused=0",
+    ]);
+    assert_eq!(code, emath_cli::EXIT_ADMISSION as i32, "{text}");
+    assert!(text.contains("E-NAME-023"), "{text}");
+    assert!(!dir.join("library.emath").exists(), "refused source must not create a library");
+}
+
+#[test]
+fn kept_library_is_admitted_before_publication() {
+    let dir = std::env::temp_dir().join(format!("emath_keep_publication_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("build.emath"), CODE_BUILDER).unwrap();
+    let original = "exports: existing
+emath function existing:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n
+";
+    std::fs::write(dir.join("library.emath"), original).unwrap();
+    let (text, code) = emath(&dir, &[
+        "keep", "build.emath", "--function", "Build", "--name", "_",
+        "--to", "library.emath", "--set", "unused=0",
+    ]);
+    assert_eq!(code, EXIT_REFUSED as i32, "{text}");
+    assert!(text.contains("E-NAME-023"), "{text}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("library.emath")).unwrap(),
+        original,
+        "a semantically invalid proposed library must leave the original untouched"
+    );
+}
+
+#[test]
+fn kept_imports_come_from_the_checked_module() {
+    use emath_exec_ir::constructor_layer::CValue;
+    use std::collections::BTreeMap;
+    emath_syntax::install_source_parser();
+    let dir = std::env::temp_dir().join(format!("emath_keep_snapshot_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("build.emath");
+    let helper = dir.join("helper.emath");
+    std::fs::write(&helper, "exports: next
+emath function next:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n + 1
+").unwrap();
+    let source = "use helper
+emath function Build:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote(recur f in Int -> Int: function x in Int: next(x))
+";
+    std::fs::write(&path, source).unwrap();
+    let mut session = emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
+    let loaded = session.load_package(&path).unwrap();
+    let checked = session.check(loaded.file);
+    assert!(!checked.diagnostics.has_errors(), "{:?}", checked.diagnostics);
+    let module = checked.prepared.unwrap();
+    let program = module.evaluate_function(
+        "Build", &BTreeMap::from([("unused".into(), CValue::Int(0.into()))]), 1000,
+    ).unwrap();
+    std::fs::write(&path, CODE_BUILDER).unwrap();
+    // Both the import line and its export surface change after checking.
+    std::fs::write(&helper, "exports: other
+emath function other:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n
+").unwrap();
+    assert_eq!(
+        module.needed_uses(&program, &dir.join("library.emath")).unwrap(),
+        ["helper"],
+        "keeping must use the import graph whose definitions produced this Code"
+    );
+
+    let root = dir.join("language/modules");
+    std::fs::create_dir_all(root.join("pkg")).unwrap();
+    std::fs::write(root.join("pkg/helper.emath"), "exports: next
+emath function next:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n + 1
+").unwrap();
+    std::fs::write(root.join("pkg/builder.emath"), format!("exports: Build\n{source}")).unwrap();
+    std::fs::write(dir.join("discover.emath"), "use pkg.builder
+emath function Main:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = Build(0)
+").unwrap();
+    let local_emath = |args: &[&str]| {
+        Command::new(emath_bin()).args(args).current_dir(workspace())
+            .env_remove("EMATH_ROOT").output().unwrap()
+    };
+    let destination = root.join("library.emath");
+    let discover = dir.join("discover.emath");
+    let output = local_emath(&[
+        "keep", discover.to_str().unwrap(), "--function", "Main", "--name", "inc",
+        "--to", destination.to_str().unwrap(), "--set", "unused=0",
+    ]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let library = std::fs::read_to_string(&destination).unwrap();
+    assert!(library.lines().any(|line| line == "use pkg.helper"), "{library}");
+    let output = local_emath(&[
+        "run", destination.to_str().unwrap(), "--function", "inc", "--set", "x=2", "--json",
+    ]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("\"payload\": \"3\""), "{text}");
 }

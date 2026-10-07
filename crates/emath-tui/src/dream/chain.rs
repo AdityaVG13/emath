@@ -29,10 +29,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use emath_core::tree::{Item, SyntaxTree};
-use emath_exec_ir::constructor_layer::{evaluate_tree_budgeted_at, named_programs, kept_definition, needed_uses, place_definition, prepare_module, CValue, NamedProgram, Placed,
+use emath_exec_ir::constructor_layer::{named_programs, kept_definition, place_definition, CValue, NamedProgram, Placed,
 };
 use emath_exec_ir::exact_int::ExactInt;
-use emath_syntax::parse_str;
 
 use super::journal::io_fault;
 use super::rundir::write_atomic;
@@ -215,7 +214,7 @@ impl KeepSeam {
                 Some(note) => format!("{origin}; {note}"),
                 None => origin.to_string(),
             };
-            let uses = needed_uses(&program, host.path(), library)?;
+            let uses = host.prepared().needed_uses(&program, library)?;
             let (placed, content) = place_definition(text.as_deref(), &name, &program, &origin, true, &uses)?;
             if let Placed::Kept(updated) = placed {
                 text = Some(updated);
@@ -225,7 +224,11 @@ impl KeepSeam {
         }
         if let (true, Some(text)) = (changed, &text) {
             emath_syntax::install_source_parser();
-            prepare_module(&parse_str(text).0, Some(library))?;
+            let mut session = emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
+            let checked = session.check_owned(&library.display().to_string(), text);
+            if let Some(error) = checked.diagnostics.errors().next() {
+                return Err(HostFault::fault(&error.code, &error.message));
+            }
             if let Some(parent) = library.parent() {
                 fs::create_dir_all(parent).map_err(|err| io_fault("dream_io", parent, &err))?;
             }
@@ -273,14 +276,8 @@ pub fn literal(value: &CValue) -> Result<String, String> {
 /// admission, surface) and every authored test passes, each under the
 /// run's per-evaluation work allowance.
 pub fn verify(path: &Path, target: &str, work: u64) -> Result<(), String> {
-    LoopHost::open(path, Some(target)).map_err(|fault| format!("{}: {}", fault.code, fault.message))?;
-    let source = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    emath_syntax::install_source_parser();
-    let (tree, diagnostics) = parse_str(&source);
-    if diagnostics.has_errors() {
-        return Err(format!("does not parse: {diagnostics:?}"));
-    }
-    let report = evaluate_tree_budgeted_at(&tree, Some(path), work).map_err(|err| format!("does not evaluate: {err}"))?;
+    let host = LoopHost::open(path, Some(target)).map_err(|fault| format!("{}: {}", fault.code, fault.message))?;
+    let report = host.prepared().evaluate_tests(work).map_err(|err| format!("does not evaluate: {err}"))?;
     let failed: Vec<&str> = report.tests.iter().filter(|t| !t.passed).map(|t| t.label.as_str()).collect();
     if failed.is_empty() {
         Ok(())

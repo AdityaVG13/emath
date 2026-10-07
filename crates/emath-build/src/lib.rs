@@ -39,9 +39,10 @@ use emath_artifact::{
 };
 use emath_core::{Diagnostics, SchemaId, content_id_of_str};
 use emath_ir::{ClaimVerdict, EvidenceClaim, EvidenceLevel, ResolutionPlan};
+use emath_rust_backend::constructor_crate::ConstructorCrateEmission;
 use emath_rust_backend::rust_ir::profiles::CrateProfile;
 use emath_rust_backend::{BackendInput, BackendOutput};
-use emath_sema::session::CompilerSession;
+use emath_sema::session::{CompilerSession, SourcePackage};
 use emath_syntax::install_source_parser;
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
@@ -156,101 +157,57 @@ pub fn build_file(
     target_dir: impl AsRef<Path>,
     options: BuildOptions,
 ) -> Result<BuildReport, BuildError> {
-    let path = specification_path.as_ref();
-    let text = std::fs::read_to_string(path)
-        .map_err(|error| BuildError::ReadFailed(format!("{}: {error}", path.display())))?;
-    let name = path.file_name().map_or_else(
-        || "spec.emath".to_string(),
-        |n| n.to_string_lossy().into_owned(),
-    );
-    build_text(&name, &text, target_dir, options)
+    let (source, emission) = prepare_constructor_file(specification_path.as_ref())?;
+    let _ = options;
+    write_constructor_crate(&source.text, target_dir.as_ref(), emission)
+}
+
+fn prepare_constructor_file(
+    path: &Path,
+) -> Result<(SourcePackage, ConstructorCrateEmission), BuildError> {
+    install_source_parser();
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    let source = session.load_package(path).map_err(BuildError::ReadFailed)?;
+    let checked = session.check(source.file);
+    let emission = emit_constructor_text(&source.name, &source.text, checked)?;
+    Ok((source, emission))
 }
 
 /// Full pipeline over in-memory text (used by the CLI, tests and hosts).
-#[allow(unreachable_code, unused_variables)]
 pub fn build_text(
     name: &str,
     text: &str,
     target_dir: impl AsRef<Path>,
-    options: BuildOptions,
+    _options: BuildOptions,
 ) -> Result<BuildReport, BuildError> {
     // The session parses `.emath` text, so the source-parser backend must
     // be installed for every host that builds (CLI, build scripts,
     // builders). Idempotent.
     install_source_parser();
     let target_dir = target_dir.as_ref();
-    std::fs::create_dir_all(target_dir).map_err(|error| {
-        BuildError::Io(format!("cannot create {}: {error}", target_dir.display()))
-    })?;
-    return build_constructor_text(name, text, target_dir);
-
-    let mut collector = MetricsCollector::new();
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let file = session.load_text(name, text.to_string());
-    let check_started = std::time::Instant::now();
-    let plan_result = session.plan(file);
-    collector.record_duration_ns(
-        "check_plan",
-        u64::try_from(check_started.elapsed().as_nanos()).unwrap_or(u64::MAX),
-    );
-    let diagnostics = plan_result.diagnostics;
-
-    let mut refusal_codes: Vec<String> = diagnostics
-        .items()
-        .iter()
-        .filter(|d| d.severity == emath_core::Severity::Error)
-        .map(|d| d.code.to_string())
-        .collect();
-    refusal_codes.sort();
-    refusal_codes.dedup();
-
-    let mut package = plan_result.package;
-    package.seal();
-
-    if !refusal_codes.is_empty() {
-        // Typed refusal: no artifact, no half-built crate.
-        return Err(BuildError::AdmittedWithErrors(refusal_codes));
-    }
-
-    collector.record_count("plan_count", plan_result.plans.len() as u64);
-    collector.record_count("diagnostics", diagnostics.items().len() as u64);
-    let artifact_started = std::time::Instant::now();
-    let report = build_package(
-        &package,
-        name,
-        &diagnostics,
-        &plan_result.plans,
-        target_dir,
-        options,
-    )?;
-    collector.record_duration_ns(
-        "artifact_pipeline",
-        u64::try_from(artifact_started.elapsed().as_nanos()).unwrap_or(u64::MAX),
-    );
-    collector.record_count("compile_success", 1);
-    collector.record_count(
-        "artifact_bytes",
-        published_artifact_bytes(&report.artifact_dir),
-    );
-
-    // Benchmark receipt: sibling of the published artifact directory, never
-    // inside it (the artifact's staged file set is identity-verified).
-    let receipt = collector.benchmark_receipt(name, &report.artifact_id.0);
-    let receipt_path = target_dir.join("benchmark-receipt.json");
-    std::fs::write(&receipt_path, receipt).map_err(|error| {
-        BuildError::Io(format!("cannot write {}: {error}", receipt_path.display()))
-    })?;
-    Ok(report)
+    let checked = session.check_owned(name, text);
+    build_constructor_text(name, text, target_dir, checked)
 }
 
 fn build_constructor_text(
     name: &str,
     text: &str,
     target_dir: &Path,
+    checked: emath_sema::admit::CheckResult,
 ) -> Result<BuildReport, BuildError> {
-    let (tree, diagnostics) = emath_syntax::parse_str(text);
-    if diagnostics.has_errors() {
-        let mut codes: Vec<String> = diagnostics
+    let emission = emit_constructor_text(name, text, checked)?;
+    write_constructor_crate(text, target_dir, emission)
+}
+
+fn emit_constructor_text(
+    name: &str,
+    text: &str,
+    checked: emath_sema::admit::CheckResult,
+) -> Result<ConstructorCrateEmission, BuildError> {
+    if checked.diagnostics.has_errors() {
+        let mut codes: Vec<String> = checked
+            .diagnostics
             .items()
             .iter()
             .filter(|item| item.severity == emath_core::Severity::Error)
@@ -260,96 +217,49 @@ fn build_constructor_text(
         codes.dedup();
         return Err(BuildError::AdmittedWithErrors(codes));
     }
-    let constructor_only = tree.items.iter().all(|item| match item {
-        emath_core::tree::Item::Use { .. } | emath_core::tree::Item::Package { .. } => true,
-        emath_core::tree::Item::Declaration(decl) => {
-            matches!(decl.as_kind.as_str(), "object" | "function" | "query")
-        }
-        _ => false,
-    });
-    if !constructor_only {
-        return Err(BuildError::AdmittedWithErrors(vec!["E-KIND-GONE".into()]));
-    }
-    if let Err(err) = emath_exec_ir::constructor_layer::admit_tree(&tree) {
-        return Err(BuildError::AdmittedWithErrors(vec![err.code]));
-    }
-    let functions: Vec<String> = tree
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            emath_core::tree::Item::Declaration(decl) if decl.as_kind == "function" => {
-                Some(decl.name.clone())
+    let module = checked
+        .prepared
+        .ok_or_else(|| BuildError::AdmittedWithErrors(vec!["E-KIND-GONE".into()]))?;
+    emath_rust_backend::constructor_crate::emit_constructor_crate(&module, Path::new(name), text)
+        .map_err(|refusal| match refusal {
+            emath_rust_backend::constructor_crate::ConstructorEmitRefusal::NotConstructor(_) => {
+                BuildError::AdmittedWithErrors(vec!["E-KIND-GONE".into()])
             }
-            _ => None,
+            emath_rust_backend::constructor_crate::ConstructorEmitRefusal::ImportsRefused {
+                e_code,
+                ..
+            } => BuildError::AdmittedWithErrors(vec![e_code]),
         })
-        .collect();
-    if functions.is_empty() {
-        return Err(BuildError::AdmittedWithErrors(vec!["E-KIND-GONE".into()]));
-    }
-    let mut rust = String::from("#![forbid(unsafe_code)]\n\n");
-    let mut unresolved = Vec::new();
-    for function in &functions {
-        match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, function) {
-            Ok(lowered) if lowered.runnable => {
-                match emath_rust_backend::emit_constructor_program(
-                    &lowered.program,
-                    &lowered.inputs,
-                ) {
-                    Ok(body) => {
-                        rust.push_str(&format!("// function `{function}`\n"));
-                        rust.push_str(&body);
-                        rust.push('\n');
-                    }
-                    Err(err) => unresolved.push(err.to_string()),
-                }
-            }
-            Ok(lowered) => unresolved.extend(lowered.unresolved),
-            Err(err) => unresolved.push(err),
+}
+
+fn write_constructor_crate(
+    text: &str,
+    target_dir: &Path,
+    emission: ConstructorCrateEmission,
+) -> Result<BuildReport, BuildError> {
+    for (relative, contents) in emission.files() {
+        let path = target_dir.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                BuildError::Io(format!("cannot create {}: {error}", parent.display()))
+            })?;
         }
+        write_generated_file(&path, contents.as_bytes())
+            .map_err(|error| BuildError::Io(format!("cannot write {}: {error}", path.display())))?;
     }
-    let src = target_dir.join("src");
-    std::fs::create_dir_all(&src)
-        .map_err(|error| BuildError::Io(format!("cannot create {}: {error}", src.display())))?;
-    let lib = src.join("lib.rs");
-    std::fs::write(&lib, &rust)
-        .map_err(|error| BuildError::Io(format!("cannot write {}: {error}", lib.display())))?;
-    let artifact_id = content_id_of_str(&rust);
+    let artifact_id = content_id_of_str(&emission.lib);
     let package_id = content_id_of_str(text);
-    let crate_name = functions
-        .first()
-        .cloned()
-        .unwrap_or_else(|| name.to_string());
     Ok(BuildReport {
         artifact_dir: target_dir.to_path_buf(),
         artifact_id,
         package_id,
-        crate_name,
+        crate_name: emission.package_name,
         plan_ids: Vec::new(),
-        assumptions: unresolved,
-        exports: functions,
+        assumptions: emission.unresolved,
+        exports: emission.functions,
         refusal_codes: Vec::new(),
         probe_binary: None,
     })
-}
-
-/// Total bytes of the published artifact files (recursive).
-fn published_artifact_bytes(artifact_dir: &Path) -> u64 {
-    fn walk(dir: &Path, total: &mut u64) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, total);
-            } else if let Ok(meta) = entry.metadata() {
-                *total = total.saturating_add(meta.len());
-            }
-        }
-    }
-    let mut total = 0;
-    walk(artifact_dir, &mut total);
-    total
 }
 
 mod package;

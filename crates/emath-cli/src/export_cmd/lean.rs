@@ -36,8 +36,22 @@ pub(crate) const LAW: &str = include_str!("Law.lean");
 /// `@PACKAGES_DIR@` for the shared package directory. Lake takes the
 /// manifest's `packagesDir` over the lakefile's, so both must name it,
 /// or Lake clones a fresh Mathlib beside the project and compiles it.
-const MANIFEST: &str = include_str!("lake-manifest.json");
+pub(crate) const MANIFEST: &str = include_str!("lake-manifest.json");
 pub(crate) const TOOLCHAIN: &str = "leanprover/lean4:v4.34.1\n";
+
+pub(crate) fn manifest(packages: &Path) -> String {
+    MANIFEST.replace("\"@PACKAGES_DIR@\"", &quoted(&packages.to_string_lossy()))
+}
+
+/// A shared cache-only workspace. Mathlib's cache extracts dependency
+/// artifacts into `.lake/packages` even with an absolute packagesDir.
+pub(crate) fn cache_lakefile(packages: &Path) -> String {
+    format!(
+        "import Lake\nopen Lake DSL\n\npackage emath_export where\n  packagesDir := {}\n\n\
+         require mathlib from git \"https://github.com/leanprover-community/mathlib4\" @ \"v4.34.1\"\n",
+        quoted(&packages.to_string_lossy())
+    )
+}
 /// Letters, digits and `_`, not starting with a digit: a name Lean (and
 /// a Lake glob) reads as one identifier, keywords aside.
 fn plain(name: &str) -> bool {
@@ -404,6 +418,7 @@ pub(crate) struct Export {
     pub laws: usize,
     pub sites: Vec<ExampleSite>,
     pub law_sites: Vec<LawSite>,
+    pub snapshots: BTreeMap<PathBuf, emath_exec_ir::constructor_layer::PreparedModule>,
     /// Each translated function's qualified Lean name and the user
     /// functions it calls.
     calls: BTreeMap<String, BTreeSet<String>>,
@@ -416,6 +431,7 @@ struct Source {
     text: String,
     rel: String,
     tree: SyntaxTree,
+    prepared: Option<emath_exec_ir::constructor_layer::PreparedModule>,
     /// (selection, file) for each sibling user file this one uses.
     local_uses: Vec<(UseTree, PathBuf)>,
     /// (dotted path, selection, file) for each library module.
@@ -523,7 +539,7 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path, work: Optio
     let mut order = Vec::new();
     let mut visiting = BTreeSet::new();
     for root in roots {
-        load(root, None, base, &mut sources, &mut order, &mut visiting)?;
+        load(root, None, base, &mut sources, &mut order, &mut visiting, None)?;
     }
     let mut libraries: BTreeMap<PathBuf, SyntaxTree> = BTreeMap::new();
     let mut modules: BTreeMap<PathBuf, Module> = BTreeMap::new();
@@ -538,7 +554,7 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path, work: Optio
         for (_, _, file) in &source.library_uses {
             library_files.insert(file.clone());
             if !libraries.contains_key(file) {
-                libraries.insert(file.clone(), parse_library(file)?);
+                libraries.insert(file.clone(), sources.get(file).ok_or_else(|| format!("{}: imported source was not retained", file.display()))?.tree.clone());
             }
         }
         let (module, lean, refusals, used) =
@@ -547,6 +563,9 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path, work: Optio
         used_prelude.extend(used);
         export.files.push((lean_path(&source.rel), lean));
         modules.insert(path.clone(), module);
+        if let Some(module) = &source.prepared {
+            export.snapshots.insert(path.clone(), module.clone());
+        }
     }
     let checks = library_checks(&used_prelude, &library_files, &libraries, &mut export);
     export.files.insert(0, ("Emath/Checks.lean".to_string(), checks));
@@ -554,7 +573,7 @@ pub(crate) fn export(roots: &[PathBuf], base: &Path, mathlib: &Path, work: Optio
     export.files.insert(0, ("lean-toolchain".to_string(), TOOLCHAIN.to_string()));
     let rels: Vec<&str> = order.iter().map(|path| sources[path].rel.as_str()).collect();
     if export.laws > 0 {
-        let manifest = MANIFEST.replace("\"@PACKAGES_DIR@\"", &quoted(&mathlib.to_string_lossy()));
+        let manifest = manifest(mathlib);
         export.files.insert(0, ("Emath/Law.lean".to_string(), LAW.to_string()));
         export.files.insert(0, ("lake-manifest.json".to_string(), manifest));
         export.files.insert(0, ("lakefile.lean".to_string(), lakefile(Some(mathlib), &rels)));
@@ -578,6 +597,7 @@ fn load(
     sources: &mut BTreeMap<PathBuf, Source>,
     order: &mut Vec<PathBuf>,
     visiting: &mut BTreeSet<PathBuf>,
+    retained: Option<(&emath_exec_ir::constructor_layer::PreparedModule, &str, &SyntaxTree)>,
 ) -> Result<(), String> {
     if sources.contains_key(path) {
         return Ok(());
@@ -586,20 +606,41 @@ fn load(
         return Err(format!("{}: cyclic import", path.display()));
     }
     let library = library.filter(|_| relative(path, base).is_none());
-    let text = std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    let (tree, diagnostics) = emath_syntax::parse_str(&text);
-    if diagnostics.has_errors() {
+    let (text, mut admission) = match retained {
+        Some((module, text, tree)) => (
+            text.to_string(),
+            module.with_imports(|| emath_sema::admit::check_tree_at(tree, Some(path))),
+        ),
+        None => {
+            let checked = crate::cli_build::checked_file(path);
+            (checked.source().to_string(), checked.result)
+        }
+    };
+    if admission.parse_diagnostics.has_errors() {
         return Err(format!("{}: does not parse; run `emath check` on it", path.display()));
     }
     // Lean must never accept a file emath refuses. emath admits a file
     // that uses a library module it would refuse on its own; that
     // module's functions then do not translate.
-    let (admission, _, _) = crate::run_check(path);
-    let refused = admission.errors().next().map(|error| format!("does not admit: {}: {}", error.code, error.message));
+    let refused = admission.diagnostics.errors().next().map(|error| format!("does not admit: {}: {}", error.code, error.message));
     if let Some(refused) = &refused
         && library.is_none()
     {
         return Err(format!("{}: {refused}; run `emath check` on it", path.display()));
+    }
+    let tree = admission.syntax.take().ok_or_else(|| format!("{}: source could not be loaded", path.display()))?;
+    let prepared = admission.prepared;
+    // Independently checked roots must agree on shared dependencies, including
+    // transitive ones hidden behind an already-loaded direct import.
+    if let Some(module) = &prepared {
+        for (file, text, _) in module.imported_modules() {
+            if sources.get(file).is_some_and(|source| source.text != text) {
+                return Err(format!(
+                    "{}: dependency {} changed during export; retry with stable sources",
+                    path.display(), file.display()
+                ));
+            }
+        }
     }
     let rel = match library {
         Some(dotted) => format!("lib/{}.emath", dotted.replace('.', "/")),
@@ -612,11 +653,11 @@ fn load(
         let Item::Use { path: use_path, tree: selection, .. } = item else {
             continue;
         };
-        let (file, is_library) = emath_exec_ir::constructor_layer::resolve_use(&tree, use_path, path)
-            .map_err(|error| format!("{rel}: {}: {}", error.code, error.message))?;
-        let file = file.canonicalize().unwrap_or(file);
+        let module = prepared.as_ref().ok_or_else(|| format!("{rel}: source has no checked module"))?;
+        let (file, is_library) = module.resolved_use(use_path).ok_or_else(|| format!("{rel}: import `{}` was not retained", use_path.join(".")))?;
         let dotted = use_path.join(".");
-        load(&file, is_library.then_some(dotted.as_str()), base, sources, order, visiting)?;
+        let (_, imported_text, imported_tree) = module.imported_modules().find(|(path, _, _)| *path == file).ok_or_else(|| format!("{rel}: imported file {} was not retained", file.display()))?;
+        load(&file, is_library.then_some(dotted.as_str()), base, sources, order, visiting, Some((module, imported_text, imported_tree)))?;
         if is_library {
             library_uses.push((dotted, selection.clone(), file.clone()));
         }
@@ -626,7 +667,7 @@ fn load(
     order.push(path.to_path_buf());
     sources.insert(
         path.to_path_buf(),
-        Source { path: path.to_path_buf(), text, rel, tree, local_uses, library_uses, library: library.is_some(), refused },
+        Source { path: path.to_path_buf(), text, rel, tree, prepared, local_uses, library_uses, library: library.is_some(), refused },
     );
     Ok(())
 }
@@ -637,14 +678,6 @@ fn relative(path: &Path, base: &Path) -> Option<String> {
     Some(parts.join("/"))
 }
 
-fn parse_library(file: &Path) -> Result<SyntaxTree, String> {
-    let text = std::fs::read_to_string(file).map_err(|error| format!("{}: {error}", file.display()))?;
-    let (tree, diagnostics) = emath_syntax::parse_str(&text);
-    if diagnostics.has_errors() {
-        return Err(format!("library module {} does not parse", file.display()));
-    }
-    Ok(tree)
-}
 
 fn functions(tree: &SyntaxTree) -> impl Iterator<Item = &Declaration> {
     tree.items.iter().filter_map(|item| match item {
@@ -1407,10 +1440,13 @@ fn emath_faults(
             }
         }
     }
-    let report = match work {
-        Some(limit) => emath_exec_ir::constructor_layer::evaluate_tree_budgeted_at(&tree, Some(&source.path), limit),
-        None => emath_exec_ir::constructor_layer::evaluate_tree_at(&tree, Some(&source.path)),
+    let module = source.prepared.as_ref().ok_or_else(|| format!("{}: source has no checked module", source.rel))?;
+    let checked = module.with_imports(|| emath_sema::admit::check_tree_at(&tree, Some(&source.path)));
+    if let Some(error) = checked.diagnostics.errors().next() {
+        return Err(format!("{}: emath could not admit its examples: {}: {}", source.rel, error.code, error.message));
     }
+    let report = checked.prepared.ok_or_else(|| format!("{}: examples have no checked module", source.rel))?
+        .evaluate_tests(work.unwrap_or(emath_exec_ir::constructor_layer::DEFAULT_WORK))
     .map_err(|error| {
         format!("{}: emath could not run its examples: {}: {}", source.rel, error.code, error.message)
     })?;
@@ -1447,12 +1483,9 @@ fn emath_call(text: &str, call: &str, args: &[Expr]) -> String {
 /// Whether emath certifies each law call (`LawSite::emath_call`) stated
 /// in `path`, each run on its own beside the file's declarations. A law
 /// emath cannot run counts as not certified.
-pub(crate) fn emath_certifies(path: &Path, calls: &[&str]) -> Vec<bool> {
+pub(crate) fn emath_certifies(path: &Path, module: &emath_exec_ir::constructor_layer::PreparedModule, calls: &[&str]) -> Vec<bool> {
     let mut certified = vec![false; calls.len()];
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return certified;
-    };
-    let (mut tree, _) = emath_syntax::parse_str(&text);
+    let mut tree = module.tree().clone();
     for item in &mut tree.items {
         if let Item::Declaration(decl) = item {
             decl.body.retain(|stmt| !matches!(&stmt.kind, StmtKind::Section(section) if section.name == "tests"));
@@ -1472,7 +1505,11 @@ pub(crate) fn emath_certifies(path: &Path, calls: &[&str]) -> Vec<bool> {
     // The call's own limit bounds each point it evaluates; this bounds
     // the whole certificate far above what a law that Lean proves needs.
     let work = 1_000_000_000_000;
-    let Ok(report) = emath_exec_ir::constructor_layer::evaluate_tree_budgeted_at(&tree, Some(path), work) else {
+    let checked = module.with_imports(|| emath_sema::admit::check_tree_at(&tree, Some(path)));
+    let Some(checked_module) = checked.prepared else {
+        return certified;
+    };
+    let Ok(report) = checked_module.evaluate_tests(work) else {
         return certified;
     };
     for test in report.tests {

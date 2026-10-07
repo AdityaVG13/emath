@@ -2,12 +2,116 @@
 
 ## Constructor evaluator resource behavior
 
+`PreparedModule` retains immutable function/query/object declarations, origins,
+the authored test tree, resolved import graph and search roots. It does not
+retain an evaluated engine. Preparation
+resolves imports once; constructor admission can use that same environment.
+The semantic session owns additional package, name, section and attribute
+validation, and exposes the prepared module only after those checks succeed.
+Bare `prepare_module` remains a loading API, not full semantic admission.
+
+Prepared function, query and authored-test evaluation create fresh environments,
+work/depth counters, memo tables and continuation state. Buffers allocated by
+one evaluation are not cached in the module. Caller-supplied mutable values
+retain their normal aliasing contract; this does not deep-copy inputs.
+Carried facts and restored checkpoints are explicit state supplied by the host,
+not implicit state left by a previous use of the module.
+Memoized results must be immutable carrier values, recursively through records,
+sequences, and tuples. Buffers, closures, Code, and receipts are excluded both
+when storing results and when reading carried/restored entries. Repeated
+allocating calls therefore produce independent mutable cells.
+Closure calls bind only their captured environment and explicit arguments.
+Caller locals cannot shadow globals reached by a named-function wrapper,
+including passing `score` to a parameter also named `score`. Tail-call frame
+reuse and continuation restoration preserve that lexical boundary.
+Quoted code also evaluates outside the caller's local environment: stamped
+global dependencies cannot be replaced by a same-named caller local.
+Resumable quoted evaluation uses a typed expression continuation frame so
+suspension retains the caller's environment. Expression frames, including
+closure frames, never resolve through the authored function namespace.
+The `constructor-layer/scoped-continuation-abi` records the frame kind, pending
+operations, original root source path, search roots, and exact dependency
+bytes. Older ABIs refuse inspection and resume: missing context cannot be
+reconstructed from checkpoints produced by the earlier dispatcher.
+Repeated suspension retains a popped operation below its unfinished child,
+without replaying completed operands. Index receivers, match pattern checks,
+and machine integer/buffer arguments have explicit pending slots. Primitive
+arguments retain their left-to-right type-refusal boundary. Record expressions
+round-trip through the checkpoint codec. Temporary quote/object bindings carry
+the caller's environment restoration. Record and package invariants retain
+their completed fields, current check, remaining checks, and final construction;
+resume never treats an invariant's Boolean as the constructed object or skips
+a later refusal. Field receivers, object-pack arguments, callable-binder domains
+and computed callees retain their pending consumers.
+Conformance: `constructor_carrier` repeated-resume matrix and
+`constructor_buffer` effect/refusal checks.
+Closure entry records the pending body
+before its work charge; named tail-call frame reuse clears the previous
+definition cursor before charging the new callee.
+Conformance: TUI `dream_journal` tuning, rewrite retention and replay.
+Budgeted prepared evaluation retains the existing world restore, checkpoint
+validation and work-accounting policy. Prepared evaluation does not reread
+imports after checking, including resume against the same in-memory module.
+Serialized checkpoints capture this already-resolved dependency graph, not
+fresh file reads. `Checkpoint::with_imports` installs that frozen namespace
+only for its callback, restoring the previous resolver on return or unwind.
+Resuming against a prepared module with different paths, roots or dependency
+bytes refuses `incompatible_checkpoint`. The codec requires absolute UTF-8
+paths and rejects duplicate imported files. This is a captured graph, not
+an atomic filesystem snapshot or an authenticated checkpoint.
+Conformance: CLI `check_snapshot` and `run_work_receipt`; evaluator
+`constructor_carrier` and `constructor_cutover`.
+Fresh execution and both Boolean continuation resume paths share the same
+short-circuit rule. A suspended false `and` or true `or` never evaluates its
+right operand. Length-prefixed checkpoint sources and reference programs
+refuse byte lengths inside UTF-8 characters instead of panicking.
+
+`PreparedModule::input_types` exposes the resolved callable's declared inputs,
+including import aliases, for host carrier conversion; it does not instantiate
+generic parameters or implement another type checker. `needed_uses` traverses
+that module's retained import graph to spell the imports a kept Code value
+needs at its destination. It does not reread source or export declarations.
+Modules beneath a search root use the resolved file's root-relative path,
+not the spelling of a possibly directory-relative original import.
+The free `needed_uses(program, source, library)` entry still prepares from its
+explicit source path, for existing callers without a retained module.
+Private/clashing helper refusals, nearest-export breadth-first order and
+destination path restrictions remain unchanged. A later ordinary library
+import is not guaranteed to see unchanged dependency file contents.
+Conformance: CLI `keep_cmd` and `compare_cmd`.
+
+`tree`, `merged_tree`, `imported_modules`, `resolved_use` and `import_files`
+expose the retained syntax, lowering context, import resolution and original
+dependency bytes. Native emission never reloads those files.
+The lowering context includes each imported module's private and unselected
+implementations, even for named imports. Selectors control source bindings and
+resolution priority, not which callees implement a selected function. Aliases
+rewrite to the selected implementation key in the lowering context.
+Repeated selections and import diamonds carry each module once.
+Conformance: backend `numeric_boundaries` named-import regression.
+`fact_identity`
+uses the declarations the prepared module actually executes. `with_imports`
+temporarily resolves a callback's derived/imported trees only against those
+retained sources; the callback must still perform semantic checking. The
+thread-local import scope restores on return or unwind. `same_imports` is a
+conservative export fence, not a new mathematical identity: dependency byte
+or load-order changes, including comments, require reopening the host.
+`meaning_tree` exposes the complete scoped declaration graph, including private
+and unselected imported helpers, export flags and engine-visible alias edges.
+It uses only this retained graph, not fresh file reads. Unlike `merged_tree`,
+it is an identity projection, not a lowering input or another admission pass.
+Conformance: sema `declaration_kinds` constructor MeaningID regressions.
+Conformance: WASM `wasm_ops`, build `edition`, TUI `host_sessions`, CLI
+`build_cmd` and `export_lean`.
+
 The sequential constructor evaluator preserves its environment snapshots.
-Bindings now use interpreter-local copy-on-write storage: saving or refreshing
-a frame shares an immutable map; mutation detaches through `Rc::make_mut`.
+Bindings use an interpreter-local persistent chain: saving or refreshing
+a frame shares immutable binding nodes; a new binding prepends one node.
 Snapshot timing, program counters, binding restoration, and buffer-cell aliasing
 remain unchanged. External checkpoints materialize the same owned, ordered maps
-and retain the same encoding. `ContinuationFrame` defaults to that owned-map
+and retain their carrier encoding. Memo keys are quoted and escaped, and quoted
+checkpoint strings escape line breaks and tabs. Decoding still accepts bare
+memo keys from earlier checkpoints. `ContinuationFrame` defaults to that owned-map
 representation; only private interpreter frames use shared bindings.
 
 Empty memo tables bypass key construction. Nonmemoizable callback, code, receipt,
@@ -22,7 +126,7 @@ reduce allocation work; they do not impose an OS CPU or memory quota.
 
 Two evaluation modes. A resumable run (`evaluate_function_budgeted*`, the
 budgeted `emath run` lane that writes a checkpoint) snapshots continuations and memoizes every call so a
-suspension can replay. Every entry that returns no checkpoint runs
+suspension can replay, except calls returning nonmemoizable carriers. Every entry that returns no checkpoint runs
 non-suspending (`facts_only_memo`): the test lane (`evaluate_tree*`),
 `evaluate_function_at`, `evaluate_code_at`, the carrying host, and
 `emath keep`. It skips snapshots and memoizes only fact calls and

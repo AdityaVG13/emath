@@ -24,6 +24,15 @@ pub fn is_constructor_checkpoint(text: &str) -> bool {
 }
 
 impl Checkpoint {
+    /// Rebuild only from the dependency bytes captured at suspension.
+    pub fn with_imports<T>(&self, body: impl FnOnce() -> T) -> T {
+        super::setup::with_module_files(
+            self.imports.roots.clone(),
+            self.imports.files.clone(),
+            body,
+        )
+    }
+
     pub fn encode(&self) -> String {
         let mut ctx = EncodeCtx::default();
         let mut out = String::new();
@@ -40,6 +49,23 @@ impl Checkpoint {
         if !self.worlds.is_empty() {
             out.push_str(&format!("worlds={}\n", self.worlds.join(",")));
         }
+        out.push_str("import_source=");
+        encode_quoted(self.imports.source_path.as_deref().and_then(std::path::Path::to_str).unwrap_or(""), &mut out);
+        out.push('\n');
+        out.push_str(&format!("import_root_count={}\n", self.imports.roots.len()));
+        for root in &self.imports.roots {
+            out.push_str("import_root ");
+            encode_quoted(root.to_str().expect("checkpoint paths checked at capture"), &mut out);
+            out.push('\n');
+        }
+        out.push_str(&format!("import_file_count={}\n", self.imports.files.len()));
+        for (path, text) in &self.imports.files {
+            out.push_str("import_file ");
+            encode_quoted(path.to_str().expect("checkpoint paths checked at capture"), &mut out);
+            out.push(' ');
+            encode_quoted(text, &mut out);
+            out.push('\n');
+        }
         out.push_str(&format!("scope_count={}\n", self.scopes.len()));
         for id in &self.scopes {
             out.push_str(&format!("scope {id}\n"));
@@ -47,8 +73,12 @@ impl Checkpoint {
         out.push_str(&format!("frame_count={}\n", self.frames.len()));
         for frame in &self.frames {
             out.push_str(&format!(
-                "frame function={} pc={} next={} env_count={} kont_count={}\n",
+                "frame function={} kind={} pc={} next={} env_count={} kont_count={}\n",
                 frame.function,
+                match frame.kind {
+                    super::ContinuationKind::Function => "function",
+                    super::ContinuationKind::Expression => "expression",
+                },
                 frame.pc,
                 frame.next,
                 frame.env.len(),
@@ -76,7 +106,7 @@ impl Checkpoint {
         out.push_str(&format!("memo_count={}\n", self.memo.len()));
         for (id, value) in &self.memo {
             out.push_str("memo ");
-            out.push_str(id);
+            encode_quoted(id, &mut out);
             out.push(' ');
             encode_cvalue(value, &mut ctx, &mut out);
             out.push('\n');
@@ -123,6 +153,46 @@ impl Checkpoint {
                 checkpoint.accounting = value.to_string();
             } else if let Some(value) = line.strip_prefix("worlds=") {
                 checkpoint.worlds = value.split(',').map(str::to_string).collect();
+            } else if let Some(value) = line.strip_prefix("import_source=") {
+                let mut cursor = Cursor::new(value);
+                let path = cursor.string()?;
+                if !cursor.rest().trim().is_empty() {
+                    return Err(fault("incompatible_checkpoint", "malformed import source"));
+                }
+                if !path.is_empty() {
+                    let path = std::path::PathBuf::from(path);
+                    if !path.is_absolute() {
+                        return Err(fault("incompatible_checkpoint", "import source must be absolute"));
+                    }
+                    checkpoint.imports.source_path = Some(path);
+                }
+            } else if let Some(value) = line.strip_prefix("import_root_count=") {
+                let count: usize = value.parse().map_err(|_| fault("incompatible_checkpoint", "invalid import root count"))?;
+                for _ in 0..count {
+                    let row = lines.next().and_then(|row| row.strip_prefix("import_root "))
+                        .ok_or_else(|| fault("incompatible_checkpoint", "missing import root"))?;
+                    let mut cursor = Cursor::new(row);
+                    let root = std::path::PathBuf::from(cursor.string()?);
+                    if !root.is_absolute() || !cursor.rest().trim().is_empty() {
+                        return Err(fault("incompatible_checkpoint", "malformed import root"));
+                    }
+                    checkpoint.imports.roots.push(root);
+                }
+            } else if let Some(value) = line.strip_prefix("import_file_count=") {
+                let count: usize = value.parse().map_err(|_| fault("incompatible_checkpoint", "invalid import file count"))?;
+                for _ in 0..count {
+                    let row = lines.next().and_then(|row| row.strip_prefix("import_file "))
+                        .ok_or_else(|| fault("incompatible_checkpoint", "missing import file"))?;
+                    let mut cursor = Cursor::new(row);
+                    let path = std::path::PathBuf::from(cursor.string()?);
+                    cursor.skip_ws();
+                    let text = cursor.string()?;
+                    if !path.is_absolute() || !cursor.rest().trim().is_empty()
+                        || checkpoint.imports.files.insert(path, text).is_some()
+                    {
+                        return Err(fault("incompatible_checkpoint", "malformed or duplicate import file"));
+                    }
+                }
             } else if let Some(value) = line.strip_prefix("remaining=") {
                 checkpoint.remaining = value
                     .parse()
@@ -155,6 +225,7 @@ impl Checkpoint {
                         return Err(fault("incompatible_checkpoint", "missing checkpoint frame"));
                     };
                     let mut function = String::new();
+                    let mut kind = None;
                     let mut pc = 0_u64;
                     let mut next = String::new();
                     let mut env_count = 0_usize;
@@ -162,6 +233,12 @@ impl Checkpoint {
                     for part in header.split_whitespace() {
                         if let Some(name) = part.strip_prefix("function=") {
                             function = name.to_string();
+                        } else if let Some(value) = part.strip_prefix("kind=") {
+                            kind = Some(match value {
+                                "function" => super::ContinuationKind::Function,
+                                "expression" => super::ContinuationKind::Expression,
+                                _ => return Err(fault("incompatible_checkpoint", "unknown frame kind")),
+                            });
                         } else if let Some(value) = part.strip_prefix("pc=") {
                             pc = value.parse().map_err(|_| {
                                 fault("incompatible_checkpoint", "frame pc is not an integer")
@@ -197,6 +274,7 @@ impl Checkpoint {
                     }
                     checkpoint.frames.push(ContinuationFrame {
                         function,
+                        kind: kind.ok_or_else(|| fault("incompatible_checkpoint", "missing frame kind"))?,
                         pc,
                         next,
                         env,
@@ -241,13 +319,20 @@ impl Checkpoint {
                             "malformed checkpoint memo",
                         ));
                     };
-                    let Some((id, encoded)) = rest.split_once(' ') else {
-                        return Err(fault(
-                            "incompatible_checkpoint",
-                            "malformed checkpoint memo",
-                        ));
+                    let (id, encoded) = if rest.starts_with('"') {
+                        let mut cursor = Cursor::new(rest);
+                        let id = cursor.string()?;
+                        if !cursor.rest().starts_with(' ') {
+                            return Err(fault("incompatible_checkpoint", "malformed checkpoint memo"));
+                        }
+                        (id, cursor.rest().trim_start())
+                    } else {
+                        let Some((id, encoded)) = rest.split_once(' ') else {
+                            return Err(fault("incompatible_checkpoint", "malformed checkpoint memo"));
+                        };
+                        (id.to_string(), encoded)
                     };
-                    if id.is_empty() || id.contains(' ') {
+                    if id.is_empty() {
                         return Err(fault(
                             "incompatible_checkpoint",
                             "malformed checkpoint memo",
@@ -255,29 +340,30 @@ impl Checkpoint {
                     }
                     checkpoint
                         .memo
-                        .insert(id.to_string(), decode_cvalue(encoded, &mut ctx)?);
+                        .insert(id, decode_cvalue(encoded, &mut ctx)?);
                 }
             } else if let Some(value) = line.strip_prefix("source_len=") {
                 let len: usize = value.parse().map_err(|_| {
                     fault("incompatible_checkpoint", "source_len is not an integer")
                 })?;
-                let Some((_, after)) = rest.split_once("source_len=") else {
-                    return Err(fault(
-                        "incompatible_checkpoint",
-                        "truncated checkpoint source",
-                    ));
-                };
-                let Some((_, remainder)) = after.split_once('\n') else {
-                    checkpoint.source = String::new();
-                    break;
-                };
+                // This header came from `rest.lines()`: locate that exact
+                // slice, not a header-like string inside an encoded import.
+                let offset = line.as_ptr() as usize - rest.as_ptr() as usize + line.len();
+                let tail = &rest[offset..];
+                let remainder = tail.strip_prefix("\r\n")
+                    .or_else(|| tail.strip_prefix('\n')).unwrap_or(tail);
                 if remainder.len() < len {
                     return Err(fault(
                         "incompatible_checkpoint",
                         "truncated checkpoint source",
                     ));
                 }
-                checkpoint.source = remainder[..len].to_string();
+                checkpoint.source = remainder.get(..len).ok_or_else(|| {
+                    fault(
+                        "incompatible_checkpoint",
+                        "checkpoint source length splits a UTF-8 character",
+                    )
+                })?.to_string();
                 break;
             }
         }
@@ -300,6 +386,16 @@ fn is_nonmemo_leaf(value: &CValue) -> bool {
         value,
         CValue::Closure(_) | CValue::Code(_) | CValue::Receipt(_) | CValue::Buffer(_)
     )
+}
+
+pub(super) fn memoizable_value(value: &CValue) -> bool {
+    match value {
+        CValue::Sequence(items) => items.iter().all(memoizable_value),
+        CValue::Tuple(items) => items.iter().all(memoizable_value),
+        CValue::Record { fields, .. } => fields.values().all(memoizable_value),
+        CValue::Variant { fields, .. } => fields.iter().all(memoizable_value),
+        _ => !is_nonmemo_leaf(value),
+    }
 }
 
 pub(super) fn call_memo_key(name: &str, args: &[CValue]) -> Option<String> {
@@ -533,9 +629,59 @@ pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
                 out.push('\n');
             }
         }
-        Kont::FnCall { name, done, rest } => {
+        Kont::CallCallee { function, args } => {
+            out.push_str(&format!("kont CallCallee {}\n", args.len()));
+            out.push_str("expr ");
+            encode_expr(function, out);
+            out.push('\n');
+            for arg in args {
+                out.push_str("expr ");
+                encode_expr(arg, out);
+                out.push('\n');
+            }
+        }
+        Kont::ProjectField { name, receiver } => {
+            out.push_str("kont ProjectField\n");
+            out.push_str(&format!("name {name}\nexpr "));
+            encode_expr(receiver, out);
+            out.push('\n');
+        }
+        Kont::BindAfterDomain { name, param, domain, body } => {
+            out.push_str(&format!("kont BindAfterDomain\nname {name}\nname {param}\nexpr "));
+            encode_expr(domain, out);
+            out.push_str("\nexpr ");
+            encode_expr(body, out);
+            out.push('\n');
+        }
+        Kont::RestoreEnv { env } => {
+            out.push_str(&format!("kont RestoreEnv {}\n", env.len()));
+            encode_bindings(env, ctx, out);
+        }
+        Kont::RecordInvariant { type_name, fields, current, predicate, rest, env } => {
             out.push_str(&format!(
-                "kont FnCall {name} {} {}\n",
+                "kont RecordInvariant {} {} {}\nname {type_name}\nname {current}\nexpr ",
+                fields.len(), rest.len(), env.len(),
+            ));
+            encode_expr(predicate, out);
+            out.push('\n');
+            encode_bindings(fields, ctx, out);
+            for (name, expr) in rest {
+                out.push_str(&format!("name {name}\nexpr "));
+                encode_expr(expr, out);
+                out.push('\n');
+            }
+            encode_bindings(env, ctx, out);
+        }
+        Kont::FnCall { name, done, rest }
+        | Kont::MachineCall { name, done, rest }
+        | Kont::PackArgs { type_name: name, done, rest } => {
+            let tag = match kont {
+                Kont::FnCall { .. } => "FnCall",
+                Kont::PackArgs { .. } => "PackArgs",
+                _ => "MachineCall",
+            };
+            out.push_str(&format!(
+                "kont {tag} {name} {} {}\n",
                 done.len(),
                 rest.len()
             ));
@@ -608,6 +754,17 @@ pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
                 out.push('\n');
             }
         }
+        Kont::IndexBeforeSeq { value, indices } => {
+            out.push_str(&format!("kont IndexBeforeSeq {}\n", indices.len()));
+            out.push_str("expr ");
+            encode_expr(value, out);
+            out.push('\n');
+            for index in indices {
+                out.push_str("expr ");
+                encode_expr(index, out);
+                out.push('\n');
+            }
+        }
         Kont::IndexAfterSeq { seq, index } => {
             out.push_str("kont IndexAfterSeq\n");
             out.push_str("value ");
@@ -676,6 +833,23 @@ pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
             encode_expr(else_arm, out);
             out.push('\n');
         }
+        Kont::MatchArm { scrutinee, arms, else_arm } => {
+            out.push_str(&format!("kont MatchArm {}\n", arms.len()));
+            out.push_str("value ");
+            encode_cvalue(scrutinee, ctx, out);
+            out.push('\n');
+            for (cond, value) in arms {
+                out.push_str("expr ");
+                encode_expr(cond, out);
+                out.push('\n');
+                out.push_str("expr ");
+                encode_expr(value, out);
+                out.push('\n');
+            }
+            out.push_str("expr ");
+            encode_expr(else_arm, out);
+            out.push('\n');
+        }
         Kont::CasesArm {
             cond,
             value,
@@ -728,6 +902,29 @@ pub(super) fn encode_kont(kont: &Kont, ctx: &mut EncodeCtx, out: &mut String) {
             out.push('\n');
         }
     }
+}
+
+fn encode_bindings(values: &BTreeMap<String, CValue>, ctx: &mut EncodeCtx, out: &mut String) {
+    for (name, value) in values {
+        out.push_str(&format!("name {name}\nvalue "));
+        encode_cvalue(value, ctx, out);
+        out.push('\n');
+    }
+}
+
+fn decode_bindings<'a>(
+    lines: &mut impl Iterator<Item = &'a str>,
+    count: usize,
+    ctx: &mut DecodeCtx,
+) -> Result<BTreeMap<String, CValue>, ConstructorError> {
+    let mut values = BTreeMap::new();
+    for _ in 0..count {
+        let name = decode_name_line(lines)?;
+        if values.insert(name, decode_value_line(lines, ctx)?).is_some() {
+            return Err(fault("incompatible_checkpoint", "duplicate continuation binding"));
+        }
+    }
+    Ok(values)
 }
 
 pub(super) fn decode_kont<'a>(
@@ -796,7 +993,50 @@ pub(super) fn decode_kont<'a>(
             }
             Ok(Kont::CallArgs { callee, done, rest })
         }
-        "FnCall" => {
+        "CallCallee" => {
+            let count: usize = parts.next().unwrap_or("").parse()
+                .map_err(|_| fault("incompatible_checkpoint", "callee continuation arity"))?;
+            let function = Box::new(decode_expr_line(lines)?);
+            let mut args = Vec::new();
+            for _ in 0..count {
+                args.push(decode_expr_line(lines)?);
+            }
+            Ok(Kont::CallCallee { function, args })
+        }
+        "ProjectField" => Ok(Kont::ProjectField {
+            name: decode_name_line(lines)?,
+            receiver: Box::new(decode_expr_line(lines)?),
+        }),
+        "BindAfterDomain" => Ok(Kont::BindAfterDomain {
+            name: decode_name_line(lines)?,
+            param: decode_name_line(lines)?,
+            domain: Box::new(decode_expr_line(lines)?),
+            body: Box::new(decode_expr_line(lines)?),
+        }),
+        "RestoreEnv" => {
+            let count: usize = parts.next().unwrap_or("").parse()
+                .map_err(|_| fault("incompatible_checkpoint", "scope continuation arity"))?;
+            Ok(Kont::RestoreEnv { env: decode_bindings(lines, count, ctx)? })
+        }
+        "RecordInvariant" => {
+            let count: usize = parts.next().unwrap_or("").parse()
+                .map_err(|_| fault("incompatible_checkpoint", "invariant field count"))?;
+            let rest_count: usize = parts.next().unwrap_or("").parse()
+                .map_err(|_| fault("incompatible_checkpoint", "invariant predicate count"))?;
+            let env_count: usize = parts.next().unwrap_or("").parse()
+                .map_err(|_| fault("incompatible_checkpoint", "invariant scope count"))?;
+            let type_name = decode_name_line(lines)?;
+            let current = decode_name_line(lines)?;
+            let predicate = Box::new(decode_expr_line(lines)?);
+            let fields = decode_bindings(lines, count, ctx)?;
+            let mut rest = Vec::new();
+            for _ in 0..rest_count {
+                rest.push((decode_name_line(lines)?, decode_expr_line(lines)?));
+            }
+            let env = decode_bindings(lines, env_count, ctx)?;
+            Ok(Kont::RecordInvariant { type_name, fields, current, predicate, rest, env })
+        }
+        "FnCall" | "MachineCall" | "PackArgs" => {
             let name = parts
                 .next()
                 .ok_or_else(|| fault("incompatible_checkpoint", "fn continuation name"))?
@@ -819,7 +1059,11 @@ pub(super) fn decode_kont<'a>(
             for _ in 0..rest_count {
                 rest.push(Rc::new(decode_expr_line(lines)?));
             }
-            Ok(Kont::FnCall { name, done, rest })
+            Ok(match tag {
+                "FnCall" => Kont::FnCall { name, done, rest },
+                "PackArgs" => Kont::PackArgs { type_name: name, done, rest },
+                _ => Kont::MachineCall { name, done, rest },
+            })
         }
         "SeqItems" => {
             let as_tuple = parts.next() == Some("tuple");
@@ -884,6 +1128,16 @@ pub(super) fn decode_kont<'a>(
                 rest,
             })
         }
+        "IndexBeforeSeq" => {
+            let count: usize = parts.next().unwrap_or("0").parse()
+                .map_err(|_| fault("incompatible_checkpoint", "index continuation arity"))?;
+            let value = Box::new(decode_expr_line(lines)?);
+            let mut indices = Vec::new();
+            for _ in 0..count {
+                indices.push(decode_expr_line(lines)?);
+            }
+            Ok(Kont::IndexBeforeSeq { value, indices })
+        }
         "IndexAfterSeq" => Ok(Kont::IndexAfterSeq {
             seq: decode_value_line(lines, ctx)?,
             index: Box::new(decode_expr_line(lines)?),
@@ -919,6 +1173,20 @@ pub(super) fn decode_kont<'a>(
             }
             Ok(Kont::MatchWaiting {
                 subject: Box::new(subject),
+                arms,
+                else_arm: Box::new(decode_expr_line(lines)?),
+            })
+        }
+        "MatchArm" => {
+            let count: usize = parts.next().unwrap_or("0").parse()
+                .map_err(|_| fault("incompatible_checkpoint", "match continuation arity"))?;
+            let scrutinee = decode_value_line(lines, ctx)?;
+            let mut arms = Vec::new();
+            for _ in 0..count {
+                arms.push((decode_expr_line(lines)?, decode_expr_line(lines)?));
+            }
+            Ok(Kont::MatchArm {
+                scrutinee,
                 arms,
                 else_arm: Box::new(decode_expr_line(lines)?),
             })
@@ -1198,6 +1466,9 @@ pub(super) fn encode_quoted(text: &str, out: &mut String) {
         match ch {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
             _ => out.push(ch),
         }
     }
@@ -1542,7 +1813,12 @@ impl<'a> Cursor<'a> {
                         .next()
                         .ok_or_else(|| fault("incompatible_checkpoint", "truncated escape"))?;
                     self.pos += next.len_utf8();
-                    out.push(next);
+                    out.push(match next {
+                        'n' => '\n',
+                        'r' => '\r',
+                        't' => '\t',
+                        other => other,
+                    });
                 }
                 other => out.push(other),
             }
@@ -1917,7 +2193,12 @@ pub(super) fn decode_expr_cur(cur: &mut Cursor<'_>) -> Result<Expr, ConstructorE
     let tag = cur.ident()?;
     let kind = match tag {
         "int" => ExprKind::Int(cur.string()?),
+        "rat" => ExprKind::Rational {
+            numer: cur.string()?,
+            denom: cur.string()?,
+        },
         "float" => ExprKind::Float(cur.string()?),
+        "str" => ExprKind::Str(cur.string()?),
         "bool" => {
             let name = cur.ident()?;
             ExprKind::Bool(name == "true")
@@ -1995,6 +2276,18 @@ pub(super) fn decode_expr_cur(cur: &mut Cursor<'_>) -> Result<Expr, ConstructorE
                 items.push(decode_expr_cur(cur)?);
             }
             return Ok(dummy_expr(ExprKind::Tuple(items)));
+        }
+        "record" => {
+            let type_path = cur.string()?.split('.').map(str::to_string).collect();
+            let mut fields = Vec::new();
+            while !cur.eat_char(')') {
+                let name = cur.string()?;
+                if !cur.eat_char('=') {
+                    return Err(fault("incompatible_checkpoint", "record field missing `=`"));
+                }
+                fields.push((name, decode_expr_cur(cur)?));
+            }
+            return Ok(dummy_expr(ExprKind::Record { type_path, fields }));
         }
         "idx" => {
             let value = decode_expr_cur(cur)?;

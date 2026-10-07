@@ -2,7 +2,30 @@
 
 ## Purpose and layer
 
-Rust backend: universal EMIR and artifact contracts to deterministic Rust via the rust-ir AST. Layer: `rust-ir` (per CRATE_MAP.md). The backend emits structural operations and universal control/data operations; mathematical meaning is not selected by feature names or domain-specific emitter branches. Semantic operations must arrive through `ApplyCapability` plus a materializable artifact contract. The backend generates one crate per admission: a struct plus constructor for stateful declarations, a free function (not a method on an empty struct) when there is no state and no constructors, an evaluation item per `evaluate <target>` goal, explicit step methods for `model` declarations, and `#[test]` functions for the `tests:` section. Every generated crate embeds the `emath-rt` kernel module verbatim (`mod emath_rt { ... }` from `emath_rt::SOURCE`) and remains std-only, `#![forbid(unsafe_code)]`, and byte-deterministic.
+Rust target backend, not a source admission authority. The current constructor
+crate path consumes a semantically checked `PreparedModule`, lowers its retained
+declarations and emits named entries, runtime, manifest and any reference-engine
+sources needed by explicit engine-backed operations. It is shared by CLI build,
+the source build library, WASM generation and native loop export. A loading-only
+preparation is not evidence of semantic admission; callers must enforce the
+session's diagnostics before emission.
+
+The separate `generate(BackendInput)` API retains historical structural EMIR
+code but currently refuses `E-KIND-GONE`; it is not an active generation path.
+Mathematical meaning must arrive through executable contracts, never
+domain-named emitter branches. Direct constructor artifacts are std-only; engine-backed artifacts
+vendor first-party engine source and pin, but do not vendor, third-party
+dependencies. Offline compilation requires those packages in the local cache.
+Artifact roots forbid unsafe code; dependencies have their own boundaries.
+Artifacts using runtime carriers expose `emath_rt` to their consumers, either
+as the embedded module or as a re-export of the single vendored runtime crate.
+Both the named-entry and standalone-program emitters establish execution
+frames, including recursive calls; hosts need not install a frame to call them.
+Conformance: `numeric_boundaries`, `export_native`'s engine-backed scratch parity.
+Engine-backed artifacts retain root, search-root and dependency keys under
+one lexical absolute-path policy, including relative source-build inputs.
+They do not reread checked source bytes or follow changed symlinks during
+packaging. Conformance: the source-build `edition` integration test.
 
 ## Public types and semantics
 
@@ -19,11 +42,12 @@ Code/node carrier support is pinned by the expanded
 Every module artifact compiles offline. This is a compilation census,
 not a claim that every user workflow executes within every native carrier.
 Full workflow probes pass deterministic neural training, learning, and
-exploration (including engine-authored work measurements). Formula search
-reaches the bounded rational carrier. Conjecture now compiles with structured,
-curried callable checks, but its full workflow reaches native i64 arithmetic
-overflow. Neither boundary is a complete native workflow claim.
-Their authored reference-engine examples pass.
+exploration (including engine-authored work measurements). The complete formula
+probe rediscovers Euler, Brouncker, Apéry and Catalan fractions and checks
+their authored witnesses with exact rational and integer state.
+The complete conjecture probe passes:
+three rounds, kept-law discrimination, and curried two-sequence checks.
+These are named workflow claims, not a guarantee for every user program.
 
 ## Native mutable buffers
 
@@ -53,14 +77,26 @@ than casting incompatible Rust closure types. Arguments cross contravariantly;
 results cross covariantly, including vectors and nested curried functions.
 The adapter clones the callable handle once, keeps non-copy arguments borrowed
 where no conversion is needed, and retains checked narrowing at fixed slots.
-The generic-record conformance lane exercises vector and curried results and
-named overflow refusals.
+Converted closure arguments remain owned `Rc` handles, not borrowed data
+carriers. The numeric-boundary fixture exercises a higher-order local binder
+receiving an externally supplied machine-width callable.
+Native authored record sequence slots retain exact integer elements, including
+the argument and result sequences of callable fields. Local binder inference
+retains incoming exact integers through generic bindings and captured callables.
+Fixed scalar slots still narrow checked. The generic-record conformance lane
+exercises wide transforms, capture, storage, callable results, and fixed-slot
+refusals against the VM.
+Quoted scalar-call adapters also accept ExactInt entry arguments and results:
+arguments lift from the fixed scalar union, and results project back with
+the existing `E-INT-002` bound check. Rebuilding a quoted tree does not remove
+an otherwise callable small integer entry. This does not widen CodeValue's
+i64 integer carrier.
 
 - Code, nested Code records/sequences, and shared arbitrary-precision integers
   cross the existing reference-engine bridge. Cost and WorldAnswer records use
   the node family so done/value and fault variants retain their actual fields.
-- Locally emitted closures and recursive accumulators retain viewed schema
-  names as nodes, separately from Text. Carrier inference follows call and
+- Locally emitted closures and recursive accumulators retain exact integers.
+  Viewed schema names use nodes, separately from Text. Carrier inference follows call and
   capture edges; mutual-cycle argument carriers settle before entry emission.
   Externally supplied closure ABIs are not rewritten.
 - Generic signature inference represents Code and the scalar union explicitly.
@@ -77,9 +113,16 @@ Recursive-call arguments and results, closure-call arguments, and authored recor
 fields share numeric representation conversion, including sequence elements and
 sequence index operands. A fixed
 `i64` slot checks an `ExactInt` with `to_i64` and returns `E-INT-002` outside
-that lane. Int-to-Rat widens exactly, with `E-RAT-002` when a wide part cannot
-fit the native i128 pair. Inferred-wide sibling frames and results stay wide;
+that lane. Int-to-Rat retains both exact integer parts without an i128
+crossing. Authored integer fields and local mathematical binders retain
+`ExactInt`, including scalar accumulators initialized with small literals.
+Inferred-wide recursive and sibling frames and results stay wide;
 there is no blanket narrowing of the arbitrary-precision VM carrier.
+Mixed Int/Rat comparisons lift integers exactly and preserve operand order.
+Mixed ExactInt/Float64 comparisons decode the finite float exactly, without
+rounding the integer, including beyond binary64 and i128 integer precision.
+Machine control counts accept exact integers through checked i64 projection;
+out-of-range counts refuse `E-SCALAR-CONVERT` rather than wrapping.
 
 The same boundary laws govern the kind inference, so a register's kind always
 predicts the rendered Rust type:
@@ -131,6 +174,9 @@ predicts the rendered Rust type:
   same frame-input laws (numeric boundaries, closure handle clones, owned
   non-copy carriers), and the register kind carries the callee's declared
   result.
+- Cycle ABI inference settles returned carriers as well as argument carriers.
+  A wider stored value returned by one member cannot leave its caller's
+  register or capture annotated as a machine-integer sequence.
 - Entry reuse: an inlined sibling frame names its callee
   (`CallFrame.callee`). Entries emit callees-first (post-order over the
   named-call graph) and register their ABI (parameter carriers, returned
@@ -241,13 +287,17 @@ change is introduced by this reuse.
 
 ## Invariants
 
-- Generated crates are std-only, `#![forbid(unsafe_code)]`, `#![allow(dead_code)]`, and byte-deterministic.
+- Direct generated crates are std-only. Engine-backed crates carry the explicit
+  dependency profile above. Artifact roots use `#![forbid(unsafe_code)]` and
+  `#![allow(dead_code)]`; output is deterministic for the same checked snapshot,
+  target inputs and embedded engine source.
 - Generated crates embed `mod emath_rt { ... }` (the verbatim `emath-rt` kernel source) with an outer `#[allow(dead_code)]` so hosts that strip inner attributes (an `include!` driver pattern) stay warning-free.
 - The emitter is exhaustive over the contracted universal `EmirOp`; active backend modules contain no removed domain-op references. Obsolete domain/dual helper files remain unreferenced only because deletion is forbidden.
 - The emitter never maps a mathematical feature name or legacy domain operation to a runtime function. A semantic operation without an `ApplyCapability` artifact contract fails as `MissingArtifactContract`.
 - `ApplyCapability` dispatches only on generic cell class. Unsupported provider and intrinsic/native bindings fail as `UnsupportedBinding`; other applications without an executable artifact body fail as `MissingArtifactContract`. No identity, interpreter fallback, or compatibility shim is emitted.
 - Generated manifest emits `edition = "2024"`, sanitized crate name/version; keywords and reserved identifiers are escaped (`type` to `type_`) and never emitted raw.
-- Constructor emit lane (`emit_constructor_entry` / `emit_record_definitions`, driven by `emath build`): one named typed entry per runnable function. The CLI assembles the artifact as a self-contained crate - a generated `Cargo.toml` with zero dependencies (except that a function using `quote.cost`, `quote.world`, or `quote.worlds` runs in the reference engine, so its artifact carries the engine's crates under `vendor/` (the `emath-*` dependency closure of `emath-exec-ir`, found and embedded by `build.rs`, with a `Cargo.lock` pinning the third-party versions; the vendored `emath-rt` crate replaces the inline `mod emath_rt`), names them by relative path, and embeds the module source, its path, every module its `use` imports resolve to (path and text, so the artifact never reads them from disk or `EMATH_ROOT`), and the build's world list) plus `mod emath_rt { emath_rt::SOURCE }` embedded verbatim whenever the emitted code references the runtime (use-gated: an artifact that never calls `emath_rt` stays lean), so `cargo build` works offline outside this repository. Closure carriers are shared `Rc<dyn Fn(P...) -> Result<R, String>>` at every position. No-claim boundary: emitted code enforces authored budgets and refusals only - the engine work budget is a VM-host safety net and does not exist natively, so an authored non-terminating recursion that the VM would budget-stop runs unbounded in an emitted crate.
+- Constructor emit lane (`emit_constructor_entry` / `emit_record_definitions`, driven by `emath build`): one named typed entry per runnable function. The CLI assembles the artifact as a self-contained crate - a generated `Cargo.toml` with zero dependencies (except that a function using `quote.cost`, `quote.world`, or `quote.worlds` runs in the reference engine, so its artifact carries the engine's crates under `vendor/` (the `emath-*` dependency closure of `emath-exec-ir`, found and embedded by `build.rs`, with a `Cargo.lock` pinning the third-party versions; the vendored `emath-rt` crate replaces the inline `mod emath_rt`), names them by relative path, and embeds the module source, its path, every module its `use` imports resolve to (path and text, so the artifact never reads them from disk or `EMATH_ROOT`), and the build's world list) plus `mod emath_rt { emath_rt::SOURCE }` embedded verbatim whenever the emitted code references the runtime, so `cargo build` works offline outside this repository. Closure carriers are shared `Rc<dyn Fn(P...) -> Result<R, String>>` at every position. Constructor entries now require the runtime for cooperative execution budgets.
+- Constructor execution shares the runtime's thread-local work/depth budget across entries, local recursive helpers, returned closures, host reentry and dynamic Code. Tail-loop iterations retain their entry scope; body evaluation and collection/control loops charge work. Defaults are 50,000,000 native units and depth 128; an explicit `emath_rt::execution::with_budget` scope can select depth up to 512 before entry. Exhaustion is sticky and named `E-NATIVE-WORK` / `E-NATIVE-DEPTH`. Native units are not VM instruction counts. Synchronous kernels and opaque host callbacks are not preempted, and separate threads do not share an allowance. Conformance: `emission_conformance_native_budget`; complete learning/exploration and conjecture workflows select explicit host budgets without changing mathematical assertions.
 - A declaration with no `state` and no constructors emits a free `fn` per evaluate target (no `self`, no unit struct). Worked-example tests call that function directly.
 - Constructors are controlled entry points: every `require` precondition and `ensure`/`invariant` postcondition is checked in generated code before a value escapes.
 - Goals and tests attach by declared ids, never by span geometry.
@@ -273,7 +323,13 @@ change is introduced by this reuse.
   fields use the same checked projection law, including dynamic
   nodes and recursive sequence joins. Non-scalar expression bodies
   retain a factory-free tree instead of forcing a scalar union.
-- The residual lane splits the work with the union lane (the pre-existing quote-elimination law): a substitute-then-evaluate chain over statically-known templates folds to plain arithmetic over the function's declared inputs, and the union `CodeLiteral` remains for template VALUES (a function whose def IS the bare quote) and non-residualizable consumers. Mixed Int/Rational arithmetic (`x + 1/2` with Int `x` - the residualized expression lane's shape) now widens the Int operand exactly (`(i128::from(n), 1)`) and computes rationally, matching the VM's `as_rat` law and locking the Rational carrier - previously this shape fell to the float lane and emitted a non-compiling `f64 + (i128, i128)`; the kind rule promotes the mixed pair to Rational. No-claim: mixed `ExactInt`/Rational pairs (an `ExactIntCall` result beside a rational constant) keep the pre-existing float fallback.
+- The residual lane splits the work with the union lane: a
+  substitute-then-evaluate chain over statically known templates folds to plain
+  arithmetic over the declared inputs. The union `CodeLiteral` remains for
+  template values and non-residualizable consumers. Mixed Int/Rational
+  arithmetic (`x + 1/2`) retains the integer as an exact numerator over 1,
+  including wide `ExactInt` operands. A rational operand locks the rational
+  carrier; no Float64 fallback implements this crossing.
 - Shared tree view/make:
   `open_expr(free, TREE, factory, DEPS)` carries the distilled
   `CodeTree` and stamped dependencies; scalar templates also retain
@@ -382,11 +438,22 @@ Frequently re-exported types (not exhaustive):
 - `CrateProfile`, `ProfileProblem` (module `profiles`): `parse_profile`.
 - `FileSet`, `Anchor`, `RenderResult` (module `render`): `render_module`, `render_file_set`, `render_file_set_partitioned`, `render_generics`, `coverage_gaps`.
 - Module `ast`: full AST item types (`Module`, `Item`, `StructDef`, `FnDef`, `ImplDef`, `EnumDef`, `Expr`, `Stmt`, `Ty`, etc.) and helpers `escape_ident`, `snake_case`, `RUST_KEYWORDS`.
-- `ConstructorCrateEmission`, `ConstructorEmitRefusal` (module `constructor_crate`): `emit_constructor_crate(main_tree, spec_path)` - the `emath build` emission core (import merge, authored-record collection, one named entry per main-file function, the `mod emath_rt` self-containment embed, and the manifest), shared with the loop host's `export-native` so the two callers' artifact crates are byte-identical by construction. Pure: it returns the lib text, the manifest, the package name, and the admission facts (runnable, functions, unresolved), plus the authored `records` with their EMATH field names - the emitted Rust escapes keywords (`move` becomes `move_` via `escape_ident`, a non-injective escape), so consumers that must recover the authored names map back through that list, never by heuristic.
+- `ConstructorCrateEmission`, `ConstructorEmitRefusal` (module
+  `constructor_crate`): `emit_constructor_crate(prepared, spec_path, root_text)`.
+  Callers pass the session's preparation and matching original root text. Import
+  merging and engine source packaging use retained trees/bytes, not file reloads.
+  `spec_path` still determines package/source names and may be canonicalized;
+  this is not an atomic filesystem snapshot or transitive identity seal.
+  The result includes lib text, manifest, files, package name, runnable/functions/
+  unresolved status and authored records. Hosts recover escaped Rust field
+  names using those records, never a heuristic. Complete crate files, including
+  named entries for multiple root functions, are shared across current hosts.
 
 ## Invariants
 
-- All generation goes through the structured AST and its renderer; no string-concatenated Rust emission elsewhere.
+- The elaborated-package path uses the structured Rust AST and its renderer.
+  Constructor entries use the constructor program renderer; crate assembly
+  concatenates their named entries, headers and embedded source.
 - Identifier hygiene: Rust keywords and reserved names are escaped, never emitted raw.
 - `Expr::F64` renders finite values with Debug (`1.0`); NaN/Inf use `f64::from_bits(0x…)` so generated crates compile (Debug `NaN`/`inf` are not Rust literals).
 - Byte-range anchors are produced for source maps (`Anchor`, `coverage_gaps`).
@@ -402,7 +469,7 @@ Deterministic. Rendering is byte-stable given the same AST; no RNG or wall-clock
 
 ## Cancellation behavior
 
-Not applicable. Std-only synchronous crate, no cancellation surface documented.
+Synchronous target rendering, no async cancellation surface documented.
 
 ## Unsafe boundary
 
@@ -421,7 +488,8 @@ No `crates/`-side tests for the profile surface. The former
 
 ## No-claim boundaries
 
-No additional no-claim boundaries documented.
+Source admission, atomic snapshots, transitive identity and offline dependency
+availability remain the explicit boundaries stated above.
 
 ## Shared authored carriers
 

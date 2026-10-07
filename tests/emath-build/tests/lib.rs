@@ -4,6 +4,46 @@ mod run_cargo_timed_tests {
     use std::process::Command;
     use std::time::Duration;
 
+    #[cfg(unix)]
+    #[test]
+    fn inherited_stdio_remains_under_deadline() {
+        let mut runs = Vec::new();
+        for script in [
+            "/bin/sleep 2 & printf parent; exit 0",
+            "/bin/sh -c '/bin/sleep 2 &' ; /bin/sleep 2",
+        ] {
+            let mut command = Command::new("/bin/sh");
+            command.args(["-c", script]);
+            let started = std::time::Instant::now();
+            let result = run_cargo_timed(command, Duration::from_millis(100));
+            runs.push((started.elapsed(), result));
+        }
+        for (elapsed, result) in runs {
+            assert!(
+                elapsed < Duration::from_secs(1),
+                "inherited stdout/stderr must not postpone the wall deadline: {result:?}"
+            );
+            assert!(
+                result.is_err_and(|error| error.contains("E-RES-120")),
+                "a parent exit does not complete a run with inherited stdio still open"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inherited_stdio_drains_before_deadline() {
+        let mut command = Command::new("/bin/sh");
+        command.args([
+            "-c",
+            "( /bin/sleep 0.02; printf child; printf diagnostic >&2 ) & printf parent; exit 0",
+        ]);
+        let output = run_cargo_timed(command, Duration::from_secs(2)).unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"parentchild");
+        assert_eq!(output.stderr, b"diagnostic");
+    }
+
     #[test]
     fn child_resource_defaults_and_overrides() {
         for (jobs, threads) in [(None, None), (Some("3"), Some("2"))] {

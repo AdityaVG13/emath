@@ -1,6 +1,10 @@
 //! Type and declaration encoding.
 
-use super::{Encoder, SemanticPackage, TypeId, MeaningError, TypeNode, BTreeMap, ImportSelection, LocalSlot, Field, Visibility, ExactnessPolicy, Declaration, MeaningContext, BTreeSet, GoalKind, DeterminismPolicy, FallbackPolicy, MeaningId, ExprNode, MEANING_CANONICAL_SCHEMA_V1};
+use super::{
+    BTreeMap, BTreeSet, Declaration, DeterminismPolicy, Encoder, ExactnessPolicy, ExprNode,
+    FallbackPolicy, Field, GoalKind, ImportSelection, LocalSlot, MEANING_CANONICAL_SCHEMA_V1,
+    MeaningContext, MeaningError, MeaningId, SemanticPackage, TypeId, TypeNode, Visibility,
+};
 
 pub(super) fn encode_type_id(
     out: &mut Encoder,
@@ -389,12 +393,39 @@ pub fn canonical_meaning_bytes(
             }
         }
     }
-    let aliases = alias_map(package);
-    let mut declarations = package
-        .declarations
-        .iter()
-        .map(|declaration| encode_declaration(package, declaration, &aliases))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut declarations = if let Some(constructors) = &package.constructor_semantics {
+        if constructors.roots.len() != package.declarations.len() {
+            return Err(MeaningError::InvalidConstructor(
+                "root arena length mismatch".into(),
+            ));
+        }
+        let mut out = Encoder::default();
+        out.text("emath.constructor.package.v1");
+        out.blob(&constructors.bytes()?);
+        // Current constructor numeric policy lives on the SIR shells. Bind each
+        // override to its root's graph, not to arena order or an unqualified name.
+        let mut policies = Vec::new();
+        for (root, declaration) in constructors.roots.iter().zip(&package.declarations) {
+            let mut policy = Encoder::default();
+            policy.blob(&constructors.root_bytes(root)?);
+            policy.text(declaration.compile_spec.numeric.as_str());
+            policy.bool(declaration.compile_spec.unresolved.is_some());
+            policies.push(policy.finish());
+        }
+        policies.sort();
+        out.usize(policies.len());
+        for policy in policies {
+            out.blob(&policy);
+        }
+        vec![out.finish()]
+    } else {
+        let aliases = alias_map(package);
+        package
+            .declarations
+            .iter()
+            .map(|declaration| encode_declaration(package, declaration, &aliases))
+            .collect::<Result<Vec<_>, _>>()?
+    };
     declarations.sort();
 
     let mut dependency_ids = dependencies
@@ -405,7 +436,11 @@ pub fn canonical_meaning_bytes(
     dependency_ids.dedup();
 
     let mut out = Encoder::default();
-    out.text(MEANING_CANONICAL_SCHEMA_V1);
+    out.text(if package.constructor_semantics.is_some() {
+        "emath.meaning.constructor.canonical.v1"
+    } else {
+        MEANING_CANONICAL_SCHEMA_V1
+    });
     out.usize(declarations.len());
     for declaration in declarations {
         out.blob(&declaration);

@@ -1,5 +1,6 @@
 //! Scalar-kind inference and typed operand/expression helpers.
 
+use super::op_arith::exact_int_ratio_parts;
 use super::{
     BTreeMap, BackendError, BinOp, Block, EmirOp, EmirProgram, EmirValue, Expr, FoldCombine, Stmt,
     Ty, UnOp, checked_integer_result, escape_ident, exact_int_ref, flat_ssa, op_expr, operand,
@@ -39,6 +40,20 @@ thread_local! {
     /// entry instead of re-inlining the body at the site.
     static ENTRY_ABIS: std::cell::RefCell<Vec<(BTreeMap<String, EntryAbi>, std::collections::BTreeSet<String>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    static COLLECTING_LITERAL_PARAMETERS: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+struct LiteralParameterCollection(bool);
+impl LiteralParameterCollection {
+    fn enter() -> Self {
+        Self(COLLECTING_LITERAL_PARAMETERS.with(|active| active.replace(true)))
+    }
+}
+impl Drop for LiteralParameterCollection {
+    fn drop(&mut self) {
+        COLLECTING_LITERAL_PARAMETERS.with(|active| active.set(self.0));
+    }
 }
 
 /// One emitted entry's carrier ABI: the parameter carriers in input
@@ -522,7 +537,7 @@ impl ValueKind {
     pub(crate) fn is_copy(&self) -> bool {
         matches!(
             self,
-            Self::I64 | Self::F64 | Self::Rational | Self::Bool | Self::Unit | Self::Complex | Self::CodeValue
+            Self::I64 | Self::F64 | Self::Bool | Self::Unit | Self::Complex
         )
     }
 }
@@ -534,7 +549,7 @@ impl ValueKind {
 pub(super) fn union_promotable(kind: &ValueKind) -> bool {
     matches!(
         kind,
-        ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node | ValueKind::Cell | ValueKind::I64 | ValueKind::Rational | ValueKind::Bool
+        ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Node | ValueKind::Cell | ValueKind::I64 | ValueKind::ExactInt | ValueKind::Rational | ValueKind::Bool
     )
 }
 
@@ -807,7 +822,7 @@ pub(crate) fn substitute_signature_vars(signature: &str, bound: &BTreeMap<String
 
 /// The signature spelling `from_signature` parses back to `kind`, for
 /// the carriers a type parameter can stand for.
-fn kind_signature(kind: &ValueKind) -> Option<String> {
+pub(super) fn kind_signature(kind: &ValueKind) -> Option<String> {
     Some(match kind {
         ValueKind::I64 => "Int".into(),
         ValueKind::ExactInt => "ExactInt".into(),
@@ -1043,6 +1058,10 @@ pub(super) fn checked_integer_operand(
 ) -> Result<Expr, BackendError> {
     match kind_at(kinds, value) {
         ValueKind::I64 => Ok(operand(program, value)),
+        ValueKind::ExactInt => Ok(Expr::Raw(format!(
+            "({}).to_i64().ok_or_else(|| String::from(\"E-SCALAR-CONVERT: value must be an exact integer in i64 range\"))?",
+            render_expr(&operand(program, value))
+        ))),
         ValueKind::F64 => Ok(Expr::Raw(format!(
             "{{ let __convert = {}; if !(__convert >= i64::MIN as f64 && __convert < -(i64::MIN as f64) && __convert.fract() == 0.0) {{ return Err(String::from(\"E-SCALAR-CONVERT: value must be an exact integer in i64 range\")); }} __convert as i64 }}",
             render_expr(&operand(program, value))
@@ -1113,10 +1132,28 @@ pub(super) fn value_kinds(
     for (i, (op, _)) in program.ops.iter().enumerate() {
         kinds[i] = kind_of_op(op, &kinds, names, states, input_kinds, resolved.as_ref());
     }
+    // The collector follows these same nested bodies with the outer
+    // literal origins. Starting another collector while it computes
+    // their provisional kinds repeats the dependency tree exponentially.
+    if COLLECTING_LITERAL_PARAMETERS.with(std::cell::Cell::get) {
+        return kinds;
+    }
+    fn has_exact_data(kind: &ValueKind) -> bool {
+        match kind {
+            ValueKind::ExactInt => true,
+            ValueKind::Vector(element) | ValueKind::Matrix(element) => has_exact_data(element),
+            ValueKind::Record(name) => record_layout(name).is_some_and(|fields| {
+                fields.iter().any(|(_, signature)| signature.contains("ExactInt"))
+            }),
+            _ => false,
+        }
+    }
+    let exact_data = kinds.iter().any(has_exact_data);
     if !program.ops.iter().enumerate().any(|(index, (op, _))| {
         matches!(op, EmirOp::ProgramLiteral { .. })
             && matches!(&kinds[index], ValueKind::Closure { params, .. }
-                if params.iter().any(|param| widen_name_carrier(param, &ValueKind::Node) != *param))
+                if params.iter().any(|param| locally_widenable(param) &&
+                    (exact_data || widen_name_carrier(param, &ValueKind::Node) != *param)))
     }) {
         return kinds;
     }
@@ -1124,7 +1161,10 @@ pub(super) fn value_kinds(
     for _ in 0..n {
         let before = parameters.clone();
         let roots = (0..n).map(Some).collect::<Vec<_>>();
-        collect_literal_parameters(program, &kinds, &roots, true, &mut parameters);
+        {
+            let _collection = LiteralParameterCollection::enter();
+            collect_literal_parameters(program, &kinds, &roots, true, &mut parameters);
+        }
         if before == parameters {
             break;
         }
@@ -1141,9 +1181,18 @@ pub(super) fn value_kinds(
     kinds
 }
 
-/// Viewed names are schema tags, not Text. When a local binder or
-/// recursive accumulator receives both, retain both in the node family.
-/// Scalar and Code boundaries still use their checked projections.
+fn locally_widenable(kind: &ValueKind) -> bool {
+    match kind {
+        ValueKind::I64 | ValueKind::Text => true,
+        ValueKind::Vector(element) => locally_widenable(element),
+        _ => false,
+    }
+}
+
+/// Local binders and generic accumulators retain the incoming carrier.
+/// Exact integers absorb machine integers, including sequence elements;
+/// viewed schema names absorb Text into the node family. Externally
+/// supplied callable ABIs still cross through checked adapters.
 pub(crate) fn widen_name_carrier(current: &ValueKind, incoming: &ValueKind) -> ValueKind {
     fn contains_text(kind: &ValueKind) -> bool {
         match kind {
@@ -1152,10 +1201,13 @@ pub(crate) fn widen_name_carrier(current: &ValueKind, incoming: &ValueKind) -> V
             _ => false,
         }
     }
-    if *incoming == ValueKind::Node && contains_text(current) {
-        ValueKind::Node
-    } else {
-        current.clone()
+    match (current, incoming) {
+        (ValueKind::I64, ValueKind::ExactInt) => ValueKind::ExactInt,
+        (ValueKind::Vector(left), ValueKind::Vector(right)) => {
+            ValueKind::Vector(Box::new(widen_name_carrier(left, right)))
+        }
+        (_, ValueKind::Node) if contains_text(current) => ValueKind::Node,
+        _ => current.clone(),
     }
 }
 
@@ -1200,11 +1252,18 @@ fn collect_literal_parameters(
 ) {
     let mut origins = vec![None; program.ops.len()];
     for (index, (op, _)) in program.ops.iter().enumerate() {
-        origins[index] = match op {
-            EmirOp::LoadInput(input) => roots.get(*input as usize).copied().flatten(),
-            EmirOp::ProgramLiteral { .. } if local_roots => Some(index),
-            _ => None,
-        };
+        // Origins identify callable parameters, not every data input.
+        // A record or scalar origin cannot receive a binder request;
+        // following it would traverse unrelated inlined dependencies.
+        if matches!(&kinds[index], ValueKind::Closure { params, .. }
+            if params.len() == 1 && locally_widenable(&params[0]))
+        {
+            origins[index] = match op {
+                EmirOp::LoadInput(input) => roots.get(*input as usize).copied().flatten(),
+                EmirOp::ProgramLiteral { .. } if local_roots => Some(index),
+                _ => None,
+            };
+        }
         let mut request = |value: EmirValue, actual: &ValueKind| {
             if let Some(root) = origins[value.0 as usize]
                 && let ValueKind::Closure { params, .. } = kind_at(kinds, value)
@@ -1217,6 +1276,21 @@ fn collect_literal_parameters(
             }
         };
         match op {
+            EmirOp::RecordCreate { fields, .. } => {
+                if let ValueKind::Record(name) = &kinds[index]
+                    && let Some(layout) = record_layout(name)
+                {
+                    for (field, value) in fields {
+                        if let Some((_, signature)) = layout.iter().find(|(name, _)| name == field)
+                            && let ValueKind::Closure { params, .. } =
+                                ValueKind::from_signature(signature)
+                            && params.len() == 1
+                        {
+                            request(*value, &params[0]);
+                        }
+                    }
+                }
+            }
             EmirOp::CallValue {
                 program: target,
                 inputs,
@@ -1599,7 +1673,11 @@ pub(super) fn kind_of_op(
             if signature.is_empty() {
                 return ValueKind::Program;
             }
-            literal_kind(body, captures, ValueKind::from_signature(&bound_signature(signature)), kinds)
+            // Local mathematical binders retain integer width, including an
+            // accumulator whose initial value happens to fit a machine word.
+            let parameter =
+                super::record_layouts::stored_field_signature(&bound_signature(signature));
+            literal_kind(body, captures, ValueKind::from_signature(&parameter), kinds)
         }
         // The quoted-template carrier. A FUNCTION template is open
         // code over its declared scalar carrier (a CodeLiteral or a
@@ -2377,6 +2455,20 @@ pub(super) fn cmp_expr(
         (ValueKind::ExactInt, ValueKind::I64) | (ValueKind::I64, ValueKind::ExactInt) => {
             exact_comparison(op, program, left, right, kinds)
         }
+        (ValueKind::Rational, ValueKind::Rational) => {
+            let left = format!("({}).clone()", render_expr(&operand(program, left)));
+            let right = format!("({}).clone()", render_expr(&operand(program, right)));
+            let raw = match op {
+                BinOp::Eq => format!("{left} == {right}"),
+                BinOp::Ne => format!("{left} != {right}"),
+                BinOp::Lt => format!("emath_rt::ratio_lt({left}, {right})?"),
+                BinOp::Gt => format!("emath_rt::ratio_lt({right}, {left})?"),
+                BinOp::Le => format!("!emath_rt::ratio_lt({right}, {left})?"),
+                BinOp::Ge => format!("!emath_rt::ratio_lt({left}, {right})?"),
+                _ => unreachable!("cmp_expr only emits comparisons"),
+            };
+            Expr::Raw(raw)
+        }
         // One representation for mixed Rat/Int comparisons: the Int
         // side widens to canonical ratio parts: equality compares
         // the tuples elementwise, order cross-multiplies through
@@ -2384,22 +2476,32 @@ pub(super) fn cmp_expr(
         // an f64 roundtrip: the blanket Int arms below would cast a
         // Rational tuple through `as f64` (E0308 against (i128,i128),
         // and a 2^53 lie even where it compiled).
-        (ValueKind::Rational, ValueKind::I64) | (ValueKind::I64, ValueKind::Rational) => {
+        (ValueKind::Rational, ValueKind::I64 | ValueKind::ExactInt)
+        | (ValueKind::I64 | ValueKind::ExactInt, ValueKind::Rational) => {
             let (rat, int) = if lk == ValueKind::Rational {
                 (left, right)
             } else {
                 (right, left)
             };
-            let rat_e = render_expr(&operand(program, rat));
+            let rat_e = format!("({}).clone()", render_expr(&operand(program, rat)));
             let int_e = render_expr(&operand(program, int));
-            let int_ratio = format!("((({int_e}) as i128), 1i128)");
+            let int_ratio = if operand_kind(kinds, int) == ValueKind::ExactInt {
+                exact_int_ratio_parts(&int_e)
+            } else {
+                format!("((({int_e}) as i128), 1i128)")
+            };
+            let (left, right) = if lk == ValueKind::Rational {
+                (&rat_e, &int_ratio)
+            } else {
+                (&int_ratio, &rat_e)
+            };
             let raw = match op {
                 BinOp::Eq => format!("{rat_e} == {int_ratio}"),
                 BinOp::Ne => format!("{rat_e} != {int_ratio}"),
-                BinOp::Lt => format!("emath_rt::ratio_lt({rat_e}, {int_ratio})?"),
-                BinOp::Gt => format!("emath_rt::ratio_lt({int_ratio}, {rat_e})?"),
-                BinOp::Le => format!("!emath_rt::ratio_lt({int_ratio}, {rat_e})?"),
-                BinOp::Ge => format!("!emath_rt::ratio_lt({rat_e}, {int_ratio})?"),
+                BinOp::Lt => format!("emath_rt::ratio_lt({left}, {right})?"),
+                BinOp::Gt => format!("emath_rt::ratio_lt({right}, {left})?"),
+                BinOp::Le => format!("!emath_rt::ratio_lt({right}, {left})?"),
+                BinOp::Ge => format!("!emath_rt::ratio_lt({left}, {right})?"),
                 BinOp::Add
                 | BinOp::Sub
                 | BinOp::Mul
@@ -2410,6 +2512,27 @@ pub(super) fn cmp_expr(
                 | BinOp::Or => unreachable!("cmp_expr only emits comparison BinOps"),
             };
             Expr::Raw(raw)
+        }
+        (ValueKind::ExactInt, ValueKind::F64) | (ValueKind::F64, ValueKind::ExactInt) => {
+            let (int, float) = if lk == ValueKind::ExactInt {
+                (left, right)
+            } else {
+                (right, left)
+            };
+            let comparison = format!(
+                "emath_rt::cmp_exact_int_f64({}, {})?",
+                exact_int_ref(program, int, kinds),
+                render_expr(&typed_operand(program, float, ValueKind::F64, kinds)),
+            );
+            Expr::Bin {
+                op,
+                left: Box::new(Expr::Raw(if lk == ValueKind::ExactInt {
+                    comparison
+                } else {
+                    format!("({comparison}).reverse()")
+                })),
+                right: Box::new(Expr::Raw("core::cmp::Ordering::Equal".into())),
+            }
         }
         (ValueKind::I64, ValueKind::F64) => mixed_i64_f64_cmp(
             op,
@@ -2676,12 +2799,16 @@ pub(crate) fn numeric_boundary_value(
             render_expr(expression)
         ))),
         (ValueKind::I64, ValueKind::Rational) => Some(Expr::Raw(format!(
-            "(i128::from({}), 1i128)",
+            "emath_rt::ExactRatio::from(({}, 1))",
             render_expr(expression)
         ))),
         (ValueKind::ExactInt, ValueKind::Rational) => Some(Expr::Raw(
             super::op_arith::exact_int_ratio_parts(&render_expr(expression)),
         )),
+        (ValueKind::Rational, ValueKind::ExactInt) => Some(Expr::Raw(format!(
+            "{{ let __ratio = {}; let (__quotient, __remainder) = __ratio.0.div_rem(&__ratio.1).map_err(|e| e.to_string())?; if !__remainder.is_zero() {{ return Err(String::from(\"E-INT-003: exact integer operand is a non-integral rational\")); }} __quotient }}",
+            render_expr(expression),
+        ))),
         // A ratio narrowing onto the i64 lane carries the emission
         // lane's checked law (E-INT-002 by name): the division must
         // be exact and the quotient in range. A Rat-computed actual
@@ -2690,10 +2817,8 @@ pub(crate) fn numeric_boundary_value(
         // Int-recursive tail) admits exactly the integral values the
         // VM's arbitrary-precision Int lane would carry.
         (ValueKind::Rational, ValueKind::I64) => Some(Expr::Raw(format!(
-            "{{ let (__narrow_num, __narrow_den) = {}; if __narrow_den == 0 || __narrow_num % __narrow_den != 0 || !({} <= __narrow_num / __narrow_den && __narrow_num / __narrow_den <= {}) {{ return Err(String::from(\"E-INT-002: ratio result does not narrow exactly onto the i64 lane\")); }} (__narrow_num / __narrow_den) as i64 }}",
+            "{{ let __ratio = {}; let (__quotient, __remainder) = __ratio.0.div_rem(&__ratio.1).map_err(|e| e.to_string())?; if !__remainder.is_zero() {{ return Err(String::from(\"E-INT-002: ratio result does not narrow exactly onto the i64 lane\")); }} __quotient.to_i64().ok_or_else(|| String::from(\"E-INT-002: ratio result does not narrow exactly onto the i64 lane\"))? }}",
             render_expr(expression),
-            i64::MIN as i128,
-            i64::MAX as i128,
         ))),
         // The union collapses onto a declared carrier through the
         // checked projections - the same law the declared output
@@ -2790,21 +2915,27 @@ pub(crate) fn value_expr(
             input_kinds,
             &kinds,
         )?;
-        return owned_result(program, expression, &result_kind);
+        let expression = owned_result(program, expression, &result_kind)?;
+        return Ok(Expr::Raw(format!(
+            "{{ emath_rt::execution::charge(1)?; let __native_result = {}; emath_rt::execution::check()?; __native_result }}",
+            render_expr(&expression)
+        )));
     }
     let flat = flat_ssa(program, names, states, input_kinds, &kinds)?;
-    let mut statements: Vec<Stmt> = Vec::with_capacity(flat.e_lets.len() + 1);
+    let mut statements: Vec<Stmt> = Vec::with_capacity(flat.e_lets.len() + 4);
+    statements.push(Stmt::Expr(Expr::Raw("emath_rt::execution::charge(1)?".into())));
     for (pattern, src) in flat.e_lets {
         statements.push(Stmt::Let {
             pattern,
             value: Box::new(Expr::Raw(src)),
         });
     }
-    statements.push(Stmt::Expr(owned_result(
-        program,
-        Expr::Raw(flat.e_tail),
-        &result_kind,
-    )?));
+    statements.push(Stmt::Let {
+        pattern: "__native_result".into(),
+        value: Box::new(owned_result(program, Expr::Raw(flat.e_tail), &result_kind)?),
+    });
+    statements.push(Stmt::Expr(Expr::Raw("emath_rt::execution::check()?".into())));
+    statements.push(Stmt::Expr(Expr::Raw("__native_result".into())));
     Ok(Expr::Block(Box::new(Stmt::Block(Block { statements }))))
 }
 

@@ -297,7 +297,7 @@ pub fn node_cmp(
 /// declared Int/Rat/Bool parameter; any other node refuses.
 pub fn node_scalar(node: impl std::borrow::Borrow<NodeValue>) -> Result<CodeValue, String> {
     match node.borrow() {
-        NodeValue::Scalar(value) => Ok(*value),
+        NodeValue::Scalar(value) => Ok(value.clone()),
         _ => Err(String::from(
             "type: a scalar parameter received a non-scalar value",
         )),
@@ -744,7 +744,7 @@ fn view_record(tag: &str, fields: Vec<(&str, NodeValue)>) -> NodeValue {
 pub fn view_tree(tree: &CodeTree, module: &ModuleTable) -> NodeValue {
     match tree {
         CodeTree::Literal(value) => {
-            view_record("Literal", vec![("value", NodeValue::Scalar(*value))])
+            view_record("Literal", vec![("value", NodeValue::Scalar(value.clone()))])
         }
         CodeTree::Path(segments) => {
             let name = segments.join(".");
@@ -1118,7 +1118,7 @@ fn canonical_tree_bytes(
             out.push(b'I');
             text_bytes(&value.to_string(), out);
         }
-        CodeTree::Literal(CodeValue::Rat((numer, denom))) => {
+        CodeTree::Literal(CodeValue::Rat(super::ExactRatio(numer, denom))) => {
             out.push(b'R');
             text_bytes(&numer.to_string(), out);
             text_bytes(&denom.to_string(), out);
@@ -1264,7 +1264,7 @@ pub fn node_as_code(node: impl std::borrow::Borrow<NodeValue>) -> Result<ExprCod
 pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
     match value {
         NodeValue::Code(code) => Ok(code.tree.clone()),
-        NodeValue::Scalar(value) => Ok(CodeTree::Literal(*value)),
+        NodeValue::Scalar(value) => Ok(CodeTree::Literal(value.clone())),
         NodeValue::Text(_) => Err(String::from("type: Text literals are not emitted in artifact trees")),
         NodeValue::Sequence(items) => {
             let trees = items
@@ -1283,7 +1283,7 @@ pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
         NodeValue::Record(type_name, fields) => {
             match record_kind(type_name, fields).as_str() {
                 "Literal" => match fields.get("value") {
-                    Some(NodeValue::Scalar(value)) => Ok(CodeTree::Literal(*value)),
+                    Some(NodeValue::Scalar(value)) => Ok(CodeTree::Literal(value.clone())),
                     Some(NodeValue::Code(code)) => Ok(code.tree.clone()),
                     Some(NodeValue::Sequence(items)) => Ok(CodeTree::Tuple(
                         items
@@ -1530,7 +1530,7 @@ pub fn substitute_tree(tree: &CodeTree, reference: &str, replacement: &CodeTree)
     match tree {
         CodeTree::Path(segments) if segments.join(".") == reference => replacement.clone(),
         CodeTree::Path(segments) => CodeTree::Path(segments.clone()),
-        CodeTree::Literal(value) => CodeTree::Literal(*value),
+        CodeTree::Literal(value) => CodeTree::Literal(value.clone()),
         CodeTree::Call { function, args } => CodeTree::Call {
             function: Box::new(substitute_tree(function, reference, replacement)),
             args: args
@@ -1691,6 +1691,10 @@ pub fn verify_deps(
 /// Structured value evaluation uses the same scalar leaves and guards,
 /// preserving tuples and lazy branch selection.
 pub fn evaluate_node_tree(tree: &CodeTree, module: &ModuleTable) -> Result<NodeValue, String> {
+    super::execution::run(|| evaluate_node_body(tree, module))
+}
+
+fn evaluate_node_body(tree: &CodeTree, module: &ModuleTable) -> Result<NodeValue, String> {
     match tree {
         CodeTree::Tuple(items) => Ok(NodeValue::Tuple(
             items
@@ -1753,11 +1757,13 @@ impl std::fmt::Debug for EvaluatedValue {
 
 impl EvaluatedValue {
     pub fn apply(&self, arguments: &[NodeValue], module: &ModuleTable) -> Result<Self, String> {
-        let mut value = self.0.clone();
-        for argument in arguments {
-            value = value.apply(TreeValue::from_node(argument.clone()), module)?;
-        }
-        Ok(Self(value))
+        super::execution::run(|| {
+            let mut value = self.0.clone();
+            for argument in arguments {
+                value = value.apply(TreeValue::from_node(argument.clone()), module)?;
+            }
+            Ok(Self(value))
+        })
     }
 
     pub fn to_node(&self) -> Result<NodeValue, String> {
@@ -1819,7 +1825,9 @@ fn memoizable_recursive_tree(tree: &CodeTree, name: &str) -> bool {
 fn scalar_memo_key(value: &TreeValue) -> Option<(u8, i128, i128)> {
     match value {
         TreeValue::Scalar(CodeValue::Int(value)) => Some((0, i128::from(*value), 1)),
-        TreeValue::Scalar(CodeValue::Rat((num, den))) => Some((1, *num, *den)),
+        TreeValue::Scalar(CodeValue::Rat(super::ExactRatio(num, den))) => {
+            Some((1, num.to_i128()?, den.to_i128()?))
+        }
         TreeValue::Scalar(CodeValue::Bool(value)) => Some((2, i128::from(*value), 1)),
         TreeValue::Structured(_) | TreeValue::Callable(_) => None,
     }
@@ -1850,6 +1858,7 @@ impl TreeValue {
     }
 
     fn apply(self, argument: Self, module: &ModuleTable) -> Result<Self, String> {
+        let _native_frame = super::execution::Frame::enter()?;
         let Self::Callable(function) = self else {
             return Err(String::from("type: value is not callable"));
         };
@@ -1871,7 +1880,7 @@ impl TreeValue {
         let key = function.memo.as_ref().and_then(|_| scalar_memo_key(&argument));
         if let (Some(memo), Some(key)) = (&function.memo, key) {
             if let Some(value) = memo.borrow().get(&key) {
-                return Ok(Self::Scalar(*value));
+                return Ok(Self::Scalar(value.clone()));
             }
         }
         let mut bound = function.captured.clone();
@@ -1885,7 +1894,7 @@ impl TreeValue {
         if let (Some(memo), Some(key), Self::Scalar(result)) = (&function.memo, key, &value) {
             let mut memo = memo.borrow_mut();
             if memo.len() < 4096 {
-                memo.insert(key, *result);
+                memo.insert(key, result.clone());
             }
         }
         Ok(value)
@@ -1897,8 +1906,9 @@ fn evaluate_tree_value(
     inputs: &BTreeMap<String, TreeValue>,
     module: &ModuleTable,
 ) -> Result<TreeValue, String> {
+    let _native_frame = super::execution::Frame::enter()?;
     match tree {
-        CodeTree::Literal(value) => Ok(TreeValue::Scalar(*value)),
+        CodeTree::Literal(value) => Ok(TreeValue::Scalar(value.clone())),
         CodeTree::Path(segments) => {
             let name = segments.join(".");
             inputs.get(&name).cloned().ok_or_else(|| format!(
@@ -2020,7 +2030,7 @@ pub(super) fn evaluate_applied_tree(
 ) -> Result<CodeValue, String> {
     let mut value = evaluate_tree_value(tree, &BTreeMap::new(), module)?;
     for argument in arguments {
-        value = value.apply(TreeValue::Scalar(*argument), module)?;
+        value = value.apply(TreeValue::Scalar(argument.clone()), module)?;
     }
     value.scalar()
 }
@@ -2030,9 +2040,17 @@ pub fn evaluate_tree(
     inputs: &BTreeMap<String, CodeValue>,
     module: &ModuleTable,
 ) -> Result<CodeValue, String> {
+    super::execution::run(|| evaluate_scalar_body(tree, inputs, module))
+}
+
+fn evaluate_scalar_body(
+    tree: &CodeTree,
+    inputs: &BTreeMap<String, CodeValue>,
+    module: &ModuleTable,
+) -> Result<CodeValue, String> {
     use super::code::{code_add, code_as_bool, code_cmp, code_div, code_eq, code_mul, code_neg, code_not, code_sub};
     match tree {
-        CodeTree::Literal(value) => Ok(*value),
+        CodeTree::Literal(value) => Ok(value.clone()),
         CodeTree::Path(segments) => {
             let name = segments.join(".");
             inputs.get(&name).cloned().ok_or_else(|| {

@@ -107,3 +107,94 @@ emath function curried_total:
             given a = 3
             given b = 4
             expect result == 7
+
+emath function rebuilt_curried_total:
+    inputs:
+        n: Int
+    outputs:
+        result: Bool
+    definitions:
+        term = quote.substitute(quote(curried_total(x, 4)), "x", n)
+        value = quote.evaluate(quote.make(quote.view(term)))
+        result = value == 7
+    tests:
+        example <rebuilt_scalar_call_retains_its_widened_entry>:
+            given n = 3
+            expect result == true
+
+emath function wide_transform:
+    inputs:
+        exponent: Int
+    outputs:
+        result: Bool
+    definitions:
+        values = [int_pow(2, exponent)]
+        doubled = map(function x in Int: x + x, values)
+        squared = map(function x in Int: x * x, doubled)
+        result = squared[0] == int_pow(2, 2 * exponent + 2)
+    tests:
+        example <exact_elements_retain_width_through_local_binders>:
+            given exponent = 70
+            expect result == true
+
+emath function wide_capture:
+    inputs:
+        exponent: Int
+    outputs:
+        result: Bool
+    definitions:
+        twice = function xs in sequence(Int): map(function x in Int: x + x, xs)
+        apply = function xs in sequence(Int): twice(xs)
+        values = apply([int_pow(2, exponent)])
+        result = values[0] == int_pow(2, exponent + 1)
+    tests:
+        example <exact_elements_retain_width_through_captured_binders>:
+            given exponent = 70
+            expect result == true
+
+emath object Values:
+    representation:
+        terms: sequence(Int)
+
+emath object ScalarCounter:
+    representation:
+        current: Int
+
+emath function wide_scalar:
+    inputs:
+        count: Int
+    outputs:
+        result: Int
+    definitions:
+        state = fold(function s in ScalarCounter: function n in Int: ScalarCounter: {current: s.current * 2}, ScalarCounter: {current: 1}, range(0, count))
+        result = state.current
+    tests:
+        example <wide_scalar_state>:
+            given count = 70
+            expect result == 1180591620717411303424
+
+emath function wide_product:
+    inputs:
+        count: Int
+    outputs:
+        result: Int
+    definitions:
+        result = fold(function acc in Int: function n in Int: acc * 2, 1, range(0, count))
+    tests:
+        example <wide_scalar_accumulator>:
+            given count = 70
+            expect result == 1180591620717411303424
+
+emath function wide_stored:
+    inputs:
+        exponent: Int
+    outputs:
+        result: Bool
+    definitions:
+        stored = Values: {terms: [int_pow(2, exponent)]}
+        squared = map(function x in Int: x * x, stored.terms)
+        result = squared[0] == int_pow(2, 2 * exponent)
+    tests:
+        example <exact_sequence_elements_survive_record_storage>:
+            given exponent = 70
+            expect result == true

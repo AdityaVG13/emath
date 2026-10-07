@@ -1,7 +1,52 @@
 use super::super::{Engine, Checkpoint, CHECKPOINT_SCHEMA, IMAGE_IDENTITY, CHECKPOINT_ABI, ACCOUNTING_VERSION, Environment, ConstructorError, fault, CValue, ContinuationFrame, Kont, FnDecl, BTreeMap, Arc};
 use super::prelude::{apply_unary, binary, index_seq, join_values, type_admits};
+use emath_core::tree::{BinaryOp, Expr};
 
 impl Engine {
+    pub(in crate::constructor_layer) fn finish_index_seq(
+        &mut self,
+        seq: CValue,
+        indices: &[Expr],
+    ) -> Result<CValue, ConstructorError> {
+        if !matches!(seq, CValue::Sequence(_) | CValue::Buffer(_)) {
+            return Err(fault("type", "index requires a sequence or buffer"));
+        }
+        let Some(index) = indices.first() else {
+            return Err(fault("invalid_index", "missing index"));
+        };
+        let CValue::Int(i) = self.eval_with_kont(index, || Kont::IndexAfterSeq {
+            seq: seq.clone(),
+            index: Box::new(index.clone()),
+        })?
+        else {
+            return Err(fault("type", "index must be Int"));
+        };
+        index_seq(seq, i)
+    }
+
+    pub(in crate::constructor_layer) fn finish_binary_left(
+        &mut self,
+        op: BinaryOp,
+        left: CValue,
+        right: &Expr,
+    ) -> Result<CValue, ConstructorError> {
+        match (&op, &left) {
+            (BinaryOp::And, CValue::Bool(false)) => return Ok(CValue::Bool(false)),
+            (BinaryOp::Or, CValue::Bool(true)) => return Ok(CValue::Bool(true)),
+            (BinaryOp::And | BinaryOp::Or, CValue::Bool(_)) => {}
+            (BinaryOp::And | BinaryOp::Or, _) => {
+                return Err(fault("type", "boolean combinator expects Bool"));
+            }
+            _ => {}
+        }
+        let value = self.eval_with_kont(right, || Kont::BinRight {
+            op,
+            left: left.clone(),
+            right: Box::new(right.clone()),
+        })?;
+        binary(op, left, value)
+    }
+
     pub(in crate::constructor_layer) fn snapshot(&self) -> Checkpoint {
         Checkpoint {
             schema: CHECKPOINT_SCHEMA.into(),
@@ -27,6 +72,7 @@ impl Engine {
                 .iter()
                 .map(|world| world.name().to_string())
                 .collect(),
+            imports: super::super::CheckpointImports::default(),
         }
     }
 
@@ -110,7 +156,9 @@ impl Engine {
         if !frame.kont.is_empty() {
             return self.drain_kont_resume();
         }
-        if let Some(decl) = self.functions.get(&frame.function).cloned() {
+        if frame.kind == super::super::ContinuationKind::Function
+            && let Some(decl) = self.functions.get(&frame.function).cloned()
+        {
             let mut started = frame.next.is_empty();
             let mut last = CValue::Unit;
             for (name, expr) in &decl.defs {
@@ -156,25 +204,22 @@ impl Engine {
                 "remaining-work continuation is empty",
             ));
         };
+        // Popping transfers ownership of unfinished work to this dispatcher.
+        // Reinsert the operation below its child if that child suspends again.
         let value = match &top {
             Kont::BinLeft { op, left, right } => {
-                let left_value = self.eval(left)?;
-                let right_value = self.eval_with_kont(right, || Kont::BinRight {
-                    op: *op,
-                    left: left_value.clone(),
-                    right: right.clone(),
-                })?;
-                binary(*op, left_value, right_value)?
+                let left_value = self.eval_with_kont(left, || top.clone())?;
+                self.finish_binary_left(*op, left_value, right)?
             }
             Kont::BinRight { op, left, right } => {
-                let right_value = self.eval(right)?;
+                let right_value = self.eval_with_kont(right, || top.clone())?;
                 binary(*op, left.clone(), right_value)?
             }
             Kont::IfAfterCond {
                 condition,
                 then_value,
                 else_value,
-            } => match self.eval(condition)? {
+            } => match self.eval_with_kont(condition, || top.clone())? {
                 CValue::Bool(true) => self.eval_with_kont(then_value, || Kont::IfThen {
                     then_value: then_value.clone(),
                 })?,
@@ -183,13 +228,34 @@ impl Engine {
                 })?,
                 _ => return Err(fault("type", "if condition must be Bool")),
             },
-            Kont::IfThen { then_value } => self.eval(then_value)?,
-            Kont::IfElse { else_value } => self.eval(else_value)?,
+            Kont::IfThen { then_value } => self.eval_with_kont(then_value, || top.clone())?,
+            Kont::IfElse { else_value } => self.eval_with_kont(else_value, || top.clone())?,
             Kont::CallArgs { callee, done, rest } => {
                 self.finish_call_args(callee.clone(), done.clone(), rest.as_slice(), None)?
             }
+            Kont::CallCallee { function, args } => {
+                let callee = self.eval_with_kont(function, || top.clone())?;
+                self.finish_call_args(callee, Vec::new(), args.as_slice(), None)?
+            }
+            Kont::ProjectField { name, receiver } => {
+                let value = self.eval_with_kont(receiver, || top.clone())?;
+                self.finish_project_field(name, value)?
+            }
+            Kont::PackArgs { type_name, done, rest } => {
+                self.finish_pack_args(type_name, done.clone(), rest.as_slice(), None)?
+            }
+            Kont::BindAfterDomain { name, param, domain, body } => {
+                let value = self.eval_with_kont(domain, || top.clone())?;
+                self.finish_quote_binder(name, param, body, value)?
+            }
+            Kont::RestoreEnv { .. } => {
+                return Err(fault("incompatible_checkpoint", "scope restoration has no child value"));
+            }
             Kont::FnCall { name, done, rest } => {
                 self.finish_fn_call(name.clone(), done.clone(), rest.clone(), None)?
+            }
+            Kont::MachineCall { name, done, rest } => {
+                self.finish_machine_call(name, done.clone(), rest.as_slice(), None)?
             }
             Kont::SeqItems {
                 as_tuple,
@@ -203,7 +269,7 @@ impl Engine {
                 current_expr,
                 rest,
             } => {
-                let value = self.eval(current_expr)?;
+                let value = self.eval_with_kont(current_expr, || top.clone())?;
                 self.finish_record_fields(
                     type_path.clone(),
                     done.clone(),
@@ -211,19 +277,32 @@ impl Engine {
                     Some((current.clone(), value)),
                 )?
             }
+            Kont::RecordInvariant { type_name, fields, current, predicate, rest, env } => {
+                let value = self.eval_with_kont(predicate, || top.clone())?;
+                self.finish_record_invariants(
+                    type_name.clone(), fields.clone(), rest, env.clone().into(),
+                    Some((current.clone(), value)),
+                )?
+            }
+            Kont::IndexBeforeSeq { value, indices } => {
+                let seq = self.eval_with_kont(value, || top.clone())?;
+                self.finish_index_seq(seq, indices)?
+            }
             Kont::IndexAfterSeq { seq, index } => {
-                let CValue::Int(i) = self.eval(index)? else {
+                let CValue::Int(i) = self.eval_with_kont(index, || top.clone())? else {
                     return Err(fault("type", "index must be Int"));
                 };
                 index_seq(seq.clone(), i)?
             }
-            Kont::UnaryAfter { op, value } => apply_unary(*op, self.eval(value)?)?,
+            Kont::UnaryAfter { op, value } => {
+                apply_unary(*op, self.eval_with_kont(value, || top.clone())?)?
+            }
             Kont::ConsLeft {
                 head,
                 tail,
                 spread_head,
             } => {
-                let h = self.eval(head)?;
+                let h = self.eval_with_kont(head, || top.clone())?;
                 let t = self.eval_with_kont(tail, || Kont::ConsAfterHead {
                     head: h.clone(),
                     tail: tail.clone(),
@@ -235,14 +314,21 @@ impl Engine {
                 head,
                 tail,
                 spread_head,
-            } => join_values(head.clone(), self.eval(tail)?, *spread_head)?,
+            } => join_values(
+                head.clone(),
+                self.eval_with_kont(tail, || top.clone())?,
+                *spread_head,
+            )?,
             Kont::MatchWaiting {
                 subject,
                 arms,
                 else_arm,
             } => {
-                let scrutinee = self.eval(subject)?;
+                let scrutinee = self.eval_with_kont(subject, || top.clone())?;
                 self.choose_match(scrutinee, arms, else_arm)?
+            }
+            Kont::MatchArm { scrutinee, arms, else_arm } => {
+                self.finish_match_arms(scrutinee.clone(), arms, else_arm, None)?
             }
             Kont::CasesArm {
                 cond,
@@ -250,9 +336,11 @@ impl Engine {
                 rest,
                 else_arm,
             } => {
-                let cond_value = self.eval(cond)?;
+                let cond_value = self.eval_with_kont(cond, || top.clone())?;
                 if self.cases_cond_taken(&cond_value)? {
-                    self.eval(value)?
+                    self.eval_with_kont(value, || Kont::EvalExpr {
+                        expr: std::rc::Rc::new((**value).clone()),
+                    })?
                 } else {
                     self.eval_cases_arms(rest, else_arm)?
                 }
@@ -263,10 +351,10 @@ impl Engine {
                 packed,
                 body,
             } => {
-                let value = self.eval(packed)?;
+                let value = self.eval_with_kont(packed, || top.clone())?;
                 self.finish_open(type_name, param, body, value)?
             }
-            Kont::EvalExpr { expr } => self.eval(expr)?,
+            Kont::EvalExpr { expr } => self.eval_with_kont(expr, || top.clone())?,
         };
         self.return_into_kont(value)
     }
@@ -280,12 +368,7 @@ impl Engine {
         };
         let value = match &top {
             Kont::BinLeft { op, right, .. } => {
-                let right_value = self.eval_with_kont(right, || Kont::BinRight {
-                    op: *op,
-                    left: incoming.clone(),
-                    right: right.clone(),
-                })?;
-                binary(*op, incoming, right_value)?
+                self.finish_binary_left(*op, incoming, right)?
             }
             Kont::BinRight { op, left, .. } => binary(*op, left.clone(), incoming)?,
             Kont::IfAfterCond {
@@ -305,8 +388,25 @@ impl Engine {
             Kont::CallArgs { callee, done, rest } => {
                 self.finish_call_args(callee.clone(), done.clone(), rest.as_slice(), Some(incoming))?
             }
+            Kont::CallCallee { args, .. } => {
+                self.finish_call_args(incoming, Vec::new(), args.as_slice(), None)?
+            }
+            Kont::ProjectField { name, .. } => self.finish_project_field(name, incoming)?,
+            Kont::PackArgs { type_name, done, rest } => {
+                self.finish_pack_args(type_name, done.clone(), rest.as_slice(), Some(incoming))?
+            }
+            Kont::BindAfterDomain { name, param, body, .. } => {
+                self.finish_quote_binder(name, param, body, incoming)?
+            }
+            Kont::RestoreEnv { env } => {
+                self.env = env.clone().into();
+                incoming
+            }
             Kont::FnCall { name, done, rest } => {
                 self.finish_fn_call(name.clone(), done.clone(), rest.clone(), Some(incoming))?
+            }
+            Kont::MachineCall { name, done, rest } => {
+                self.finish_machine_call(name, done.clone(), rest.as_slice(), Some(incoming))?
             }
             Kont::SeqItems {
                 as_tuple,
@@ -325,6 +425,13 @@ impl Engine {
                 rest,
                 Some((current.clone(), incoming)),
             )?,
+            Kont::RecordInvariant { type_name, fields, current, rest, env, .. } => {
+                self.finish_record_invariants(
+                    type_name.clone(), fields.clone(), rest, env.clone().into(),
+                    Some((current.clone(), incoming)),
+                )?
+            }
+            Kont::IndexBeforeSeq { indices, .. } => self.finish_index_seq(incoming, indices)?,
             Kont::IndexAfterSeq { seq, .. } => match incoming {
                 CValue::Int(i) => index_seq(seq.clone(), i)?,
                 _ => return Err(fault("type", "index must be Int")),
@@ -346,6 +453,9 @@ impl Engine {
             Kont::MatchWaiting { arms, else_arm, .. } => {
                 self.choose_match(incoming, arms, else_arm)?
             }
+            Kont::MatchArm { scrutinee, arms, else_arm } => {
+                self.finish_match_arms(scrutinee.clone(), arms, else_arm, Some(incoming))?
+            }
             Kont::CasesArm {
                 value,
                 rest,
@@ -353,7 +463,9 @@ impl Engine {
                 ..
             } => {
                 if self.cases_cond_taken(&incoming)? {
-                    self.eval(value)?
+                    self.eval_with_kont(value, || Kont::EvalExpr {
+                        expr: std::rc::Rc::new((**value).clone()),
+                    })?
                 } else {
                     self.eval_cases_arms(rest, else_arm)?
                 }
@@ -375,6 +487,9 @@ impl Engine {
         let Some(frame) = self.frames.last().cloned() else {
             return Ok(incoming);
         };
+        if frame.kind == super::super::ContinuationKind::Expression {
+            return Ok(incoming);
+        }
         let Some(decl) = self.functions.get(&frame.function).cloned() else {
             return Ok(incoming);
         };

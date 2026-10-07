@@ -9,7 +9,18 @@ use super::{
 };
 use emath_core::Diagnostics;
 
-pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
+pub(crate) struct CheckedSource {
+    pub result: emath_sema::admit::CheckResult,
+    pub store: emath_core::SourceStore,
+}
+
+impl CheckedSource {
+    pub fn source(&self) -> &str {
+        self.store.files().first().map_or("", |file| file.text.as_str())
+    }
+}
+
+pub(crate) fn checked_file(path: &Path) -> CheckedSource {
     let mut session = CompilerSession::new(emath_core::limits::Limits::default());
     let Ok(package) = session.load_package(path) else {
         let mut diagnostics = Diagnostics::new();
@@ -18,65 +29,46 @@ pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
             format!("cannot read source file ({})", path.display()),
             emath_core::Span::default(),
         );
-        return (diagnostics, String::new(), Vec::new());
+        return CheckedSource {
+            result: emath_sema::admit::CheckResult {
+                syntax: None,
+                parse_diagnostics: Diagnostics::new(),
+                package: emath_ir::SemanticPackage::new(),
+                diagnostics,
+                trace: emath_sema::admit::SemanticTrace::default(),
+                units_profiles: Vec::new(),
+                prepared: None,
+            },
+            store: session.store,
+        };
     };
     let result = session.check(package.file);
-    let mut diagnostics = result.diagnostics;
-    if !diagnostics.has_errors()
-        && let Ok(source) = std::fs::read_to_string(path)
-    {
-        merge_constructor_admit(&source, Some(path), &mut diagnostics);
+    CheckedSource { result, store: session.store }
+}
+
+pub(crate) fn checked_text(name: &str, source: &str) -> CheckedSource {
+    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
+    let result = session.check_owned(name, source);
+    CheckedSource { result, store: session.store }
+}
+
+pub fn run_check(path: &Path) -> (Diagnostics, String, Vec<(String, String)>) {
+    let checked = checked_file(path);
+    if checked.store.files().is_empty() {
+        return (checked.result.diagnostics, String::new(), Vec::new());
     }
+    let result = checked.result;
     let package_id = result.package.content_id().0;
-    (diagnostics, package_id, result.units_profiles)
+    (result.diagnostics, package_id, result.units_profiles)
 }
 
 /// Stdin variant of [`run_check`] (`check -`): same shape, source read
 /// from a string. Deterministic; the package id derives from the source
 /// bytes alone, so piped and on-disk checks of identical text agree.
 pub fn run_check_source(name: &str, source: &str) -> (Diagnostics, String, Vec<(String, String)>) {
-    let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-    let result = session.check_owned(name, source);
-    let mut diagnostics = result.diagnostics;
-    if !diagnostics.has_errors() {
-        merge_constructor_admit(source, None, &mut diagnostics);
-    }
+    let result = checked_text(name, source).result;
     let package_id = result.package.content_id().0;
-    (diagnostics, package_id, result.units_profiles)
-}
-
-fn merge_constructor_admit(source: &str, path: Option<&Path>, diagnostics: &mut Diagnostics) {
-    let (tree, parse) = emath_syntax::parse_str(source);
-    if parse.has_errors() {
-        diagnostics.extend_from(&parse);
-        return;
-    }
-    let has_constructor = tree.items.iter().any(|item| {
-        matches!(
-            item,
-            emath_core::tree::Item::Declaration(decl)
-                if matches!(decl.as_kind.as_str(), "object" | "function" | "query")
-        )
-    });
-    if !has_constructor {
-        diagnostics.error(
-            "E-KIND-GONE",
-            "`emath check` admits `emath object`, `emath function`, and `emath query`. Other source is not a constructor program.",
-            emath_core::Span::default(),
-        );
-        return;
-    }
-    let admitted = match path {
-        Some(path) => emath_exec_ir::constructor_layer::admit_tree_at(&tree, Some(path)),
-        None => emath_exec_ir::constructor_layer::admit_tree(&tree),
-    };
-    if let Err(error) = admitted {
-        diagnostics.error(
-            emath_exec_ir::constructor_layer::constructor_admit_code(&error.code),
-            format!("{}: {}", error.code, error.message),
-            error.span.unwrap_or_default(),
-        );
-    }
+    (result.diagnostics, package_id, result.units_profiles)
 }
 
 /// `plan <file> [--json]`: check + goals + plans, no artifact.
@@ -487,36 +479,24 @@ pub fn planner_cmd(request: PlannerRequest) -> CliExit {
 }
 
 fn build_constructor_file(spec: &Path, out: &Path, json: bool) -> Option<CliExit> {
-    let source = match std::fs::read_to_string(spec) {
-        Ok(source) => source,
-        Err(error) => {
-            return Some(refuse_coded(
-                "build",
-                json,
-                EXIT_USAGE,
-                "E-PKG-080",
-                &error.to_string(),
-            ));
+    let checked = checked_file(spec);
+    if checked.result.diagnostics.has_errors() {
+        crate::cli_json::print_diagnostics_from(&checked.result.diagnostics, &checked.store);
+        if json {
+            crate::print_json_diagnostics(
+                "build", false,
+                &crate::cli_json::json_diagnostics_entries_in(&checked.result.diagnostics, Some(&checked.store)),
+            );
         }
-    };
-    let tree = match crate::cli_json::admitted_tree(spec, &source) {
-        Ok(tree) => tree,
-        Err(refusal) => {
-            eprintln!("{}", refusal.text);
-            if json {
-                crate::print_json_diagnostics(
-                    "build",
-                    false,
-                    &[crate::json_diagnostic_entry(&refusal.code, "error", &refusal.message)],
-                );
-            }
-            return Some(EXIT_ADMISSION);
-        }
+        return Some(if checked.store.files().is_empty() { EXIT_USAGE } else { EXIT_ADMISSION });
+    }
+    let Some(module) = checked.result.prepared.as_ref() else {
+        return Some(refuse_coded("build", json, EXIT_ADMISSION, "E-KIND-GONE", "checked source has no constructor module"));
     };
     // One emitter, two callers: `emath build` and the loop host's
     // `export-native` share constructor_crate so their artifact
     // crates are byte-identical by construction.
-    let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(&tree, spec)
+    let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(module, spec, checked.source())
     {
         Ok(emission) => emission,
         Err(emath_rust_backend::constructor_crate::ConstructorEmitRefusal::NotConstructor(

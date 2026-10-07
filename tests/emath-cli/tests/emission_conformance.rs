@@ -91,7 +91,7 @@ fn main() {
     refuses!("write_past_end", CheckedWrite(2), "invalid_index");
     pin!("heterogeneous_cell", TextCell(1), String::from("changed"));
     pin!("float_cell", FloatCell(1.25), 1.25);
-    pin!("ratio_cell", RatCell(3), (3, 1));
+    pin!("ratio_cell", RatCell(3), (3, 1).into());
     refuses!("wrong_cell_carrier", WrongCell(1), "type");
     pin!("sequence_snapshot", SequenceCell(1), 9);
     pin!("nested_alias", NestedCell(2), true);
@@ -208,8 +208,8 @@ fn run_lane_with_work(module_rel: &str, driver_src: &str, work: u64) -> Vec<Stri
 const ALLOCATE_DRIVER: &str = r#"
 //! Authored pins of optimization/allocate.emath against the emitted crate.
 
-fn q_eq(a: (i128, i128), b: (i128, i128)) -> bool {
-    a.0 * b.1 == b.0 * a.1
+fn q_eq(a: &allocate::emath_rt::ExactRatio, b: (i128, i128)) -> bool {
+    a.0.to_i128().unwrap() * b.1 == b.0 * a.1.to_i128().unwrap()
 }
 
 use allocate::{allocate_best, dominates, pareto_frontier};
@@ -222,14 +222,14 @@ fn main() {
     // example <alloc_two_groups_under_budget_takes_best_joint_plan>
     let got = allocate_best(
         vec![
-            vec![Opt { cost: 2, value: (5, 1) }, Opt { cost: 1, value: (3, 1) }],
-            vec![Opt { cost: 1, value: (2, 1) }, Opt { cost: 3, value: (9, 1) }],
+            vec![Opt { cost: 2.into(), value: (5, 1).into() }, Opt { cost: 1.into(), value: (3, 1).into() }],
+            vec![Opt { cost: 1.into(), value: (2, 1).into() }, Opt { cost: 3.into(), value: (9, 1).into() }],
         ],
         3,
     );
     // VM: ok == true, picks == [0, 0], value == 7/1
     match &got {
-        Ok(o) if o.ok && o.picks == vec![0, 0] && q_eq(o.value, (7, 1)) => {}
+        Ok(o) if o.ok && o.picks == vec![0.into(), 0.into()] && q_eq(&o.value, (7, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF alloc_two_groups_under_budget_takes_best_joint_plan EMITTED {:?}; VM = ok:true picks:[0,0] value:7/1", got);
@@ -237,9 +237,9 @@ fn main() {
     }
 
     // example <alloc_leftover_budget_prefers_cheaper_better_option>
-    let got = allocate_best(vec![vec![Opt { cost: 3, value: (1, 1) }, Opt { cost: 2, value: (5, 1) }]], 3);
+    let got = allocate_best(vec![vec![Opt { cost: 3.into(), value: (1, 1).into() }, Opt { cost: 2.into(), value: (5, 1).into() }]], 3);
     match &got {
-        Ok(o) if o.ok && o.picks == vec![1] && q_eq(o.value, (5, 1)) => {}
+        Ok(o) if o.ok && o.picks == vec![1.into()] && q_eq(&o.value, (5, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF alloc_leftover_budget_prefers_cheaper_better_option EMITTED {:?}; VM = ok:true picks:[1] value:5/1", got);
@@ -247,9 +247,9 @@ fn main() {
     }
 
     // example <alloc_first_option_wins_exact_value_ties>
-    let got = allocate_best(vec![vec![Opt { cost: 2, value: (5, 1) }, Opt { cost: 2, value: (5, 1) }]], 2);
+    let got = allocate_best(vec![vec![Opt { cost: 2.into(), value: (5, 1).into() }, Opt { cost: 2.into(), value: (5, 1).into() }]], 2);
     match &got {
-        Ok(o) if o.ok && o.picks == vec![0] => {}
+        Ok(o) if o.ok && o.picks == vec![0.into()] => {}
         _ => {
             failures += 1;
             println!("DIFF alloc_first_option_wins_exact_value_ties EMITTED {:?}; VM = ok:true picks:[0]", got);
@@ -257,7 +257,7 @@ fn main() {
     }
 
     // example <alloc_infeasible_budget_refuses>
-    let got = allocate_best(vec![vec![Opt { cost: 5, value: (10, 1) }]], 3);
+    let got = allocate_best(vec![vec![Opt { cost: 5.into(), value: (10, 1).into() }]], 3);
     match &got {
         Ok(o) if !o.ok && o.picks.is_empty() => {}
         _ => {
@@ -267,7 +267,7 @@ fn main() {
     }
 
     // example <alloc_negative_budget_refuses>
-    let got = allocate_best(vec![vec![Opt { cost: 1, value: (1, 1) }]], -1);
+    let got = allocate_best(vec![vec![Opt { cost: 1.into(), value: (1, 1).into() }]], -1);
     match &got {
         Ok(o) if !o.ok => {}
         _ => {
@@ -279,7 +279,7 @@ fn main() {
     // example <alloc_zero_groups_is_the_empty_ok_plan>
     let got = allocate_best(vec![], 4);
     match &got {
-        Ok(o) if o.ok && o.picks.is_empty() && q_eq(o.value, (0, 1)) => {}
+        Ok(o) if o.ok && o.picks.is_empty() && q_eq(&o.value, (0, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF alloc_zero_groups_is_the_empty_ok_plan EMITTED {:?}; VM = ok:true picks:[] value:0/1", got);
@@ -299,13 +299,13 @@ fn main() {
     // example <alloc_exact_rat_values_not_floats>: 1/3 + 1/3 == 2/3 exactly
     let got = allocate_best(
         vec![
-            vec![Opt { cost: 1, value: (1, 3) }],
-            vec![Opt { cost: 1, value: (1, 3) }],
+            vec![Opt { cost: 1.into(), value: (1, 3).into() }],
+            vec![Opt { cost: 1.into(), value: (1, 3).into() }],
         ],
         2,
     );
     match &got {
-        Ok(o) if o.ok && q_eq(o.value, (2, 3)) => {}
+        Ok(o) if o.ok && q_eq(&o.value, (2, 3)) => {}
         _ => {
             failures += 1;
             println!("DIFF alloc_exact_rat_values_not_floats EMITTED {:?}; VM = ok:true value:2/3", got);
@@ -314,13 +314,13 @@ fn main() {
 
     // example <frontier_drops_dominated_points>
     let got = pareto_frontier(vec![
-        Pt { cost: 1, value: (5, 1) },
-        Pt { cost: 2, value: (5, 1) },
-        Pt { cost: 3, value: (10, 1) },
-        Pt { cost: 2, value: (3, 1) },
+        Pt { cost: 1.into(), value: (5, 1).into() },
+        Pt { cost: 2.into(), value: (5, 1).into() },
+        Pt { cost: 3.into(), value: (10, 1).into() },
+        Pt { cost: 2.into(), value: (3, 1).into() },
     ]);
     match &got {
-        Ok(p) if p.len() == 2 && p[0].cost == 1 && q_eq(p[0].value, (5, 1)) && p[1].cost == 3 && q_eq(p[1].value, (10, 1)) => {}
+        Ok(p) if p.len() == 2 && p[0].cost == 1.into() && q_eq(&p[0].value, (5, 1)) && p[1].cost == 3.into() && q_eq(&p[1].value, (10, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF frontier_drops_dominated_points EMITTED {:?}; VM = [(1,5/1),(3,10/1)]", got);
@@ -328,7 +328,7 @@ fn main() {
     }
 
     // example <frontier_keeps_exact_duplicates>
-    let got = pareto_frontier(vec![Pt { cost: 1, value: (5, 1) }, Pt { cost: 1, value: (5, 1) }]);
+    let got = pareto_frontier(vec![Pt { cost: 1.into(), value: (5, 1).into() }, Pt { cost: 1.into(), value: (5, 1).into() }]);
     match &got {
         Ok(p) if p.len() == 2 => {}
         _ => {
@@ -348,7 +348,7 @@ fn main() {
     }
 
     // example <frontier_single_point_survives>
-    let got = pareto_frontier(vec![Pt { cost: 7, value: (1, 2) }]);
+    let got = pareto_frontier(vec![Pt { cost: 7.into(), value: (1, 2).into() }]);
     match &got {
         Ok(p) if p.len() == 1 => {}
         _ => {
@@ -358,21 +358,21 @@ fn main() {
     }
 
     // example <dominates_strictly_cheaper_same_value>
-    let got = dominates(Pt { cost: 1, value: (5, 1) }, Pt { cost: 2, value: (5, 1) });
+    let got = dominates(Pt { cost: 1.into(), value: (5, 1).into() }, Pt { cost: 2.into(), value: (5, 1).into() });
     if got != Ok(true) {
         failures += 1;
         println!("DIFF dominates_strictly_cheaper_same_value EMITTED {:?}; VM = true", got);
     }
 
     // example <dominates_rejects_duplicates>
-    let got = dominates(Pt { cost: 1, value: (5, 1) }, Pt { cost: 1, value: (5, 1) });
+    let got = dominates(Pt { cost: 1.into(), value: (5, 1).into() }, Pt { cost: 1.into(), value: (5, 1).into() });
     if got != Ok(false) {
         failures += 1;
         println!("DIFF dominates_rejects_duplicates EMITTED {:?}; VM = false", got);
     }
 
     // example <dominates_rejects_split_tradeoffs>
-    let got = dominates(Pt { cost: 1, value: (3, 1) }, Pt { cost: 2, value: (5, 1) });
+    let got = dominates(Pt { cost: 1.into(), value: (3, 1).into() }, Pt { cost: 2.into(), value: (5, 1).into() });
     if got != Ok(false) {
         failures += 1;
         println!("DIFF dominates_rejects_split_tradeoffs EMITTED {:?}; VM = false", got);
@@ -389,8 +389,8 @@ fn main() {
 const INFERENCE_DRIVER: &str = r#"
 //! Authored pins of probability/inference.emath against the emitted crate.
 
-fn q_eq(a: (i128, i128), b: (i128, i128)) -> bool {
-    a.0 * b.1 == b.0 * a.1
+fn q_eq(a: &inference::emath_rt::ExactRatio, b: (i128, i128)) -> bool {
+    a.0.to_i128().unwrap() * b.1 == b.0 * a.1.to_i128().unwrap()
 }
 
 use inference::EmathRecord_Stratum as Stratum;
@@ -400,9 +400,9 @@ fn main() {
     let mut failures = 0usize;
 
     // example <tail_two_of_two>: result == 1/4
-    let got = binom_upper_tail(2, 2, (1, 2));
+    let got = binom_upper_tail(2, 2, (1, 2).into());
     match &got {
-        Ok(q) if q_eq(*q, (1, 4)) => {}
+        Ok(q) if q_eq(q, (1, 4)) => {}
         _ => {
             failures += 1;
             println!("DIFF tail_two_of_two EMITTED {:?}; VM = 1/4", got);
@@ -410,9 +410,9 @@ fn main() {
     }
 
     // example <tail_at_least_one_of_two>: result == 3/4
-    let got = binom_upper_tail(1, 2, (1, 2));
+    let got = binom_upper_tail(1, 2, (1, 2).into());
     match &got {
-        Ok(q) if q_eq(*q, (3, 4)) => {}
+        Ok(q) if q_eq(q, (3, 4)) => {}
         _ => {
             failures += 1;
             println!("DIFF tail_at_least_one_of_two EMITTED {:?}; VM = 3/4", got);
@@ -420,9 +420,9 @@ fn main() {
     }
 
     // example <tail_impossible_k_is_zero>: result == 0/1
-    let got = binom_upper_tail(3, 2, (1, 2));
+    let got = binom_upper_tail(3, 2, (1, 2).into());
     match &got {
-        Ok(q) if q_eq(*q, (0, 1)) => {}
+        Ok(q) if q_eq(q, (0, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF tail_impossible_k_is_zero EMITTED {:?}; VM = 0/1", got);
@@ -430,7 +430,7 @@ fn main() {
     }
 
     // example <tail_refuses_bad_probability>: diagnostic.code == bad_probability
-    let got = binom_upper_tail(1, 2, (5, 4));
+    let got = binom_upper_tail(1, 2, (5, 4).into());
     match &got {
         Err(text) if text == "bad_probability" => {}
         _ => {
@@ -442,7 +442,7 @@ fn main() {
     // example <mcnemar_one_nine>: 2 * (1 + 10) / 1024 = 11/512
     let got = mcnemar_exact(1, 9);
     match &got {
-        Ok(q) if q_eq(*q, (11, 512)) => {}
+        Ok(q) if q_eq(q, (11, 512)) => {}
         _ => {
             failures += 1;
             println!("DIFF mcnemar_one_nine EMITTED {:?}; VM = 11/512", got);
@@ -452,7 +452,7 @@ fn main() {
     // example <mcnemar_nine_one_symmetric>: min(b, c) is the statistic
     let got = mcnemar_exact(9, 1);
     match &got {
-        Ok(q) if q_eq(*q, (11, 512)) => {}
+        Ok(q) if q_eq(q, (11, 512)) => {}
         _ => {
             failures += 1;
             println!("DIFF mcnemar_nine_one_symmetric EMITTED {:?}; VM = 11/512", got);
@@ -462,7 +462,7 @@ fn main() {
     // example <mcnemar_no_discordance_is_one>
     let got = mcnemar_exact(0, 0);
     match &got {
-        Ok(q) if q_eq(*q, (1, 1)) => {}
+        Ok(q) if q_eq(q, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF mcnemar_no_discordance_is_one EMITTED {:?}; VM = 1/1", got);
@@ -482,7 +482,7 @@ fn main() {
     // example <fisher_tea_table>: 16/70 + 1/70 = 17/70
     let got = fisher_exact(3, 1, 1, 3);
     match &got {
-        Ok(q) if q_eq(*q, (17, 70)) => {}
+        Ok(q) if q_eq(q, (17, 70)) => {}
         _ => {
             failures += 1;
             println!("DIFF fisher_tea_table EMITTED {:?}; VM = 17/70", got);
@@ -492,7 +492,7 @@ fn main() {
     // example <fisher_all_successes>
     let got = fisher_exact(4, 0, 0, 4);
     match &got {
-        Ok(q) if q_eq(*q, (1, 70)) => {}
+        Ok(q) if q_eq(q, (1, 70)) => {}
         _ => {
             failures += 1;
             println!("DIFF fisher_all_successes EMITTED {:?}; VM = 1/70", got);
@@ -510,9 +510,9 @@ fn main() {
     }
 
     // example <stratified_pools_exact>: result == 7/20
-    let got = stratified_rate(vec![Stratum { hits: 3, denom: 10 }, Stratum { hits: 4, denom: 10 }]);
+    let got = stratified_rate(vec![Stratum { hits: 3.into(), denom: 10.into() }, Stratum { hits: 4.into(), denom: 10.into() }]);
     match &got {
-        Ok(q) if q_eq(*q, (7, 20)) => {}
+        Ok(q) if q_eq(q, (7, 20)) => {}
         _ => {
             failures += 1;
             println!("DIFF stratified_pools_exact EMITTED {:?}; VM = 7/20", got);
@@ -530,7 +530,7 @@ fn main() {
     }
 
     // example <stratified_refuses_bad_stratum>: diagnostic.code == bad_stratum
-    let got = stratified_rate(vec![Stratum { hits: 5, denom: 3 }]);
+    let got = stratified_rate(vec![Stratum { hits: 5.into(), denom: 3.into() }]);
     match &got {
         Err(text) if text == "bad_stratum" => {}
         _ => {
@@ -540,9 +540,9 @@ fn main() {
     }
 
     // example <lower_k_zero_is_point_zero>: Itv {lo: 0/1, hi: 0/1}
-    let got = ci_lower(0, 10, (1, 20), 6);
+    let got = ci_lower(0, 10, (1, 20).into(), 6);
     match &got {
-        Ok(itv) if q_eq(itv.lo, (0, 1)) && q_eq(itv.hi, (0, 1)) => {}
+        Ok(itv) if q_eq(&itv.lo, (0, 1)) && q_eq(&itv.hi, (0, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF lower_k_zero_is_point_zero EMITTED {:?}; VM = Itv 0/1..0/1", got);
@@ -550,9 +550,9 @@ fn main() {
     }
 
     // example <upper_k_n_is_point_one>: Itv {lo: 1/1, hi: 1/1}
-    let got = ci_upper(10, 10, (1, 20), 6);
+    let got = ci_upper(10, 10, (1, 20).into(), 6);
     match &got {
-        Ok(itv) if q_eq(itv.lo, (1, 1)) && q_eq(itv.hi, (1, 1)) => {}
+        Ok(itv) if q_eq(&itv.lo, (1, 1)) && q_eq(&itv.hi, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF upper_k_n_is_point_one EMITTED {:?}; VM = Itv 1/1..1/1", got);
@@ -562,17 +562,17 @@ fn main() {
     // example <lower_brackets_the_quantile>: the crossing invariant, exact:
     // itv_width(result) <= 1/64, tail(8, 10, lo) <= 1/40 <= tail(8, 10, hi).
     // The width and both tails go through the EMITTED binom_upper_tail.
-    let got = ci_lower(8, 10, (1, 20), 6);
+    let got = ci_lower(8, 10, (1, 20).into(), 6);
     match &got {
         Ok(itv) => {
             // width = hi - lo <= 1/64 with positive canonical denominators
-            let w_num = itv.hi.0 * itv.lo.1 - itv.lo.0 * itv.hi.1;
-            let w_den = itv.lo.1 * itv.hi.1;
-            let t_lo = binom_upper_tail(8, 10, itv.lo);
-            let t_hi = binom_upper_tail(8, 10, itv.hi);
+            let w_num = itv.hi.0.to_i128().unwrap() * itv.lo.1.to_i128().unwrap() - itv.lo.0.to_i128().unwrap() * itv.hi.1.to_i128().unwrap();
+            let w_den = itv.lo.1.to_i128().unwrap() * itv.hi.1.to_i128().unwrap();
+            let t_lo = binom_upper_tail(8, 10, itv.lo.clone());
+            let t_hi = binom_upper_tail(8, 10, itv.hi.clone());
             let narrow = w_num * 64 <= w_den;
-            let t_lo_ok = matches!(&t_lo, Ok(q) if q.0 * 40 <= q.1);
-            let t_hi_ok = matches!(&t_hi, Ok(q) if q.0 * 40 >= q.1);
+            let t_lo_ok = matches!(&t_lo, Ok(q) if q.0.to_i128().unwrap() * 40 <= q.1.to_i128().unwrap());
+            let t_hi_ok = matches!(&t_hi, Ok(q) if q.0.to_i128().unwrap() * 40 >= q.1.to_i128().unwrap());
             if !(narrow && t_lo_ok && t_hi_ok) {
                 failures += 1;
                 println!("DIFF lower_brackets_the_quantile EMITTED itv={:?} tail(lo)={:?} tail(hi)={:?}; VM = width<=1/64, tail(lo)<=1/40<=tail(hi)", got, t_lo, t_hi);
@@ -587,16 +587,16 @@ fn main() {
     // example <upper_brackets_the_quantile>: cdf(2, 10, lo) >= 1/40 and
     // cdf(2, 10, hi) <= 1/40, with cdf(2, 10, p) = 1 - tail(3, 10, p):
     // tail(3, 10, lo) <= 39/40 and tail(3, 10, hi) >= 39/40, plus width.
-    let got = ci_upper(2, 10, (1, 20), 6);
+    let got = ci_upper(2, 10, (1, 20).into(), 6);
     match &got {
         Ok(itv) => {
-            let w_num = itv.hi.0 * itv.lo.1 - itv.lo.0 * itv.hi.1;
-            let w_den = itv.lo.1 * itv.hi.1;
-            let t_lo = binom_upper_tail(3, 10, itv.lo);
-            let t_hi = binom_upper_tail(3, 10, itv.hi);
+            let w_num = itv.hi.0.to_i128().unwrap() * itv.lo.1.to_i128().unwrap() - itv.lo.0.to_i128().unwrap() * itv.hi.1.to_i128().unwrap();
+            let w_den = itv.lo.1.to_i128().unwrap() * itv.hi.1.to_i128().unwrap();
+            let t_lo = binom_upper_tail(3, 10, itv.lo.clone());
+            let t_hi = binom_upper_tail(3, 10, itv.hi.clone());
             let narrow = w_num * 64 <= w_den;
-            let t_lo_ok = matches!(&t_lo, Ok(q) if q.0 * 40 <= q.1 * 39);
-            let t_hi_ok = matches!(&t_hi, Ok(q) if q.0 * 40 >= q.1 * 39);
+            let t_lo_ok = matches!(&t_lo, Ok(q) if q.0.to_i128().unwrap() * 40 <= q.1.to_i128().unwrap() * 39);
+            let t_hi_ok = matches!(&t_hi, Ok(q) if q.0.to_i128().unwrap() * 40 >= q.1.to_i128().unwrap() * 39);
             if !(narrow && t_lo_ok && t_hi_ok) {
                 failures += 1;
                 println!("DIFF upper_brackets_the_quantile EMITTED itv={:?} tail(lo)={:?} tail(hi)={:?}; VM = width<=1/64, cdf(lo)>=1/40>=cdf(hi)", got, t_lo, t_hi);
@@ -657,8 +657,8 @@ fn ei(n: i64) -> powers::emath_rt::ExactInt {
     powers::emath_rt::ExactInt::from(n)
 }
 
-fn q_eq(a: (i128, i128), b: (i128, i128)) -> bool {
-    a.0 * b.1 == b.0 * a.1
+fn q_eq(a: &powers::emath_rt::ExactRatio, b: (i128, i128)) -> bool {
+    a.0.to_i128().unwrap() * b.1 == b.0 * a.1.to_i128().unwrap()
 }
 
 use powers::{
@@ -703,84 +703,84 @@ fn main() {
 
     // example <sqrt_nine_unclamped>
     let got = floor_root_between(9, 2, 0, 100);
-    if got.as_ref() != Ok(&3) {
+    if got.as_ref() != Ok(&ei(3)) {
         failures += 1;
         println!("DIFF sqrt_nine_unclamped EMITTED {:?}; VM = 3", got);
     }
 
     // example <clamped_low>
     let got = floor_root_between(9, 2, 4, 100);
-    if got.as_ref() != Ok(&4) {
+    if got.as_ref() != Ok(&ei(4)) {
         failures += 1;
         println!("DIFF clamped_low EMITTED {:?}; VM = 4", got);
     }
 
     // example <sqrt_nine>
     let got = floor_root(9, 2);
-    if got.as_ref() != Ok(&3) {
+    if got.as_ref() != Ok(&ei(3)) {
         failures += 1;
         println!("DIFF sqrt_nine EMITTED {:?}; VM = 3", got);
     }
 
     // example <zeroth_root>: q <= 0 is not a root
     let got = floor_root(9, 0);
-    if got.as_ref() != Ok(&0) {
+    if got.as_ref() != Ok(&ei(0)) {
         failures += 1;
         println!("DIFF zeroth_root EMITTED {:?}; VM = 0", got);
     }
 
     // example <cbrt_eight>
     let got = floor_root(8, 3);
-    if got.as_ref() != Ok(&2) {
+    if got.as_ref() != Ok(&ei(2)) {
         failures += 1;
         println!("DIFF cbrt_eight EMITTED {:?}; VM = 2", got);
     }
 
     // example <sqrt_eight>
     let got = floor_root(8, 2);
-    if got.as_ref() != Ok(&2) {
+    if got.as_ref() != Ok(&ei(2)) {
         failures += 1;
         println!("DIFF sqrt_eight EMITTED {:?}; VM = 2", got);
     }
 
     // example <zero>
     let got = floor_root(0, 2);
-    if got.as_ref() != Ok(&0) {
+    if got.as_ref() != Ok(&ei(0)) {
         failures += 1;
         println!("DIFF zero EMITTED {:?}; VM = 0", got);
     }
 
     // example <first_root>
     let got = floor_root(11, 1);
-    if got.as_ref() != Ok(&11) {
+    if got.as_ref() != Ok(&ei(11)) {
         failures += 1;
         println!("DIFF first_root EMITTED {:?}; VM = 11", got);
     }
 
     // example <next_after_sqrt_nine>
     let got = upper_root_at(9, 2, 0);
-    if got.as_ref() != Ok(&4) {
+    if got.as_ref() != Ok(&ei(4)) {
         failures += 1;
         println!("DIFF next_after_sqrt_nine EMITTED {:?}; VM = 4", got);
     }
 
     // example <already_past>
     let got = upper_root_at(9, 2, 5);
-    if got.as_ref() != Ok(&5) {
+    if got.as_ref() != Ok(&ei(5)) {
         failures += 1;
         println!("DIFF already_past EMITTED {:?}; VM = 5", got);
     }
 
     // example <ceil_sqrt_ten>
     let got = ceil_root(10, 2);
-    if got.as_ref() != Ok(&4) {
+    if got.as_ref() != Ok(&ei(4)) {
         failures += 1;
         println!("DIFF ceil_sqrt_ten EMITTED {:?}; VM = 4", got);
     }
 
     // example <exact_cbrt>
     let got = ceil_root(8, 3);
-    if got.as_ref() != Ok(&2) {
+    if got.as_ref() != Ok(&ei(2)) {
         failures += 1;
         println!("DIFF exact_cbrt EMITTED {:?}; VM = 2", got);
     }
@@ -802,7 +802,7 @@ fn main() {
     // example <sqrt_sixteen> (power_lower): result == 4/1
     let got = power_lower(16, 1, 1, 2);
     match &got {
-        Ok(q) if q_eq(*q, (4, 1)) => {}
+        Ok(q) if q_eq(q, (4, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF power_lower_sqrt_sixteen EMITTED {:?}; VM = 4/1", got);
@@ -812,7 +812,7 @@ fn main() {
     // example <sqrt_sixteen> (power_upper): result == 4/1
     let got = power_upper(16, 1, 1, 2);
     match &got {
-        Ok(q) if q_eq(*q, (4, 1)) => {}
+        Ok(q) if q_eq(q, (4, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF power_upper_sqrt_sixteen EMITTED {:?}; VM = 4/1", got);
@@ -821,7 +821,7 @@ fn main() {
 
     // example <three_twos>: 2*2*2 == 8
     let got = weighted_prod(vec![2, 2, 2], vec![1, 1, 1], 0, 1);
-    if got.as_ref() != Ok(&8) {
+    if got.as_ref() != Ok(&ei(8)) {
         failures += 1;
         println!("DIFF three_twos EMITTED {:?}; VM = 8", got);
     }
@@ -829,7 +829,7 @@ fn main() {
     // example <sqrt_of_product> (composite_lower): result == 4/1
     let got = composite_lower(vec![4, 4], vec![1, 1], vec![1, 1], 2);
     match &got {
-        Ok(q) if q_eq(*q, (4, 1)) => {}
+        Ok(q) if q_eq(q, (4, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF composite_lower_sqrt_of_product EMITTED {:?}; VM = 4/1", got);
@@ -839,7 +839,7 @@ fn main() {
     // example <sqrt_of_product> (composite_upper): result == 4/1
     let got = composite_upper(vec![4, 4], vec![1, 1], vec![1, 1], 2);
     match &got {
-        Ok(q) if q_eq(*q, (4, 1)) => {}
+        Ok(q) if q_eq(q, (4, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF composite_upper_sqrt_of_product EMITTED {:?}; VM = 4/1", got);
@@ -847,9 +847,9 @@ fn main() {
     }
 
     // example <half_cubed>: (1/2)^3 == 1/8
-    let got = rat_pow((1, 2), 3);
+    let got = rat_pow((1, 2).into(), 3);
     match &got {
-        Ok(q) if q_eq(*q, (1, 8)) => {}
+        Ok(q) if q_eq(q, (1, 8)) => {}
         _ => {
             failures += 1;
             println!("DIFF half_cubed EMITTED {:?}; VM = 1/8", got);
@@ -857,9 +857,9 @@ fn main() {
     }
 
     // example <neg_exponent_inverts>: (2/3)^-2 == 9/4
-    let got = rat_pow((2, 3), -2);
+    let got = rat_pow((2, 3).into(), -2);
     match &got {
-        Ok(q) if q_eq(*q, (9, 4)) => {}
+        Ok(q) if q_eq(q, (9, 4)) => {}
         _ => {
             failures += 1;
             println!("DIFF neg_exponent_inverts EMITTED {:?}; VM = 9/4", got);
@@ -867,9 +867,9 @@ fn main() {
     }
 
     // example <zeroth_power>: (5/7)^0 == 1/1
-    let got = rat_pow((5, 7), 0);
+    let got = rat_pow((5, 7).into(), 0);
     match &got {
-        Ok(q) if q_eq(*q, (1, 1)) => {}
+        Ok(q) if q_eq(q, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF zeroth_power EMITTED {:?}; VM = 1/1", got);
@@ -877,9 +877,9 @@ fn main() {
     }
 
     // example <zero_base_negative_is_zero>: (0/1)^-1 == 0/1
-    let got = rat_pow((0, 1), -1);
+    let got = rat_pow((0, 1).into(), -1);
     match &got {
-        Ok(q) if q_eq(*q, (0, 1)) => {}
+        Ok(q) if q_eq(q, (0, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF zero_base_negative_is_zero EMITTED {:?}; VM = 0/1", got);
@@ -905,8 +905,8 @@ const DISTRIBUTIONS_DRIVER: &str = r#"
 //! (log 2 = 0.6931471805...). Row-level identity rows (sum == 1,
 //! dist_ok) go through the crate's own emitted dist_total / dist_ok.
 
-fn q_eq(a: (i128, i128), b: (i128, i128)) -> bool {
-    a.0 * b.1 == b.0 * a.1
+fn q_eq(a: &distributions::emath_rt::ExactRatio, b: (i128, i128)) -> bool {
+    a.0.mul(&b.1.into()).unwrap() == a.1.mul(&b.0.into()).unwrap()
 }
 
 use distributions::{
@@ -922,9 +922,9 @@ fn main() {
     let mut failures = 0usize;
 
     // example <two_halves>: total mass == 1/1
-    let got = dist_total(vec![(1, 2), (1, 2)]);
+    let got = dist_total(vec![(1, 2).into(), (1, 2).into()]);
     match &got {
-        Ok(q) if q_eq(*q, (1, 1)) => {}
+        Ok(q) if q_eq(q, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF two_halves EMITTED {:?}; VM = 1/1", got);
@@ -932,21 +932,21 @@ fn main() {
     }
 
     // example <fair_coin>: dist_ok == true
-    let got = dist_ok(vec![(1, 2), (1, 2)]);
+    let got = dist_ok(vec![(1, 2).into(), (1, 2).into()]);
     if got != Ok(true) {
         failures += 1;
         println!("DIFF fair_coin EMITTED {:?}; VM = true", got);
     }
 
     // example <missing_mass>: dist_ok == false
-    let got = dist_ok(vec![(1, 2), (1, 3)]);
+    let got = dist_ok(vec![(1, 2).into(), (1, 3).into()]);
     if got != Ok(false) {
         failures += 1;
         println!("DIFF missing_mass EMITTED {:?}; VM = false", got);
     }
 
     // example <negative_entry>: dist_ok == false
-    let got = dist_ok(vec![(3, 2), (-1, 2)]);
+    let got = dist_ok(vec![(3, 2).into(), (-1, 2).into()]);
     if got != Ok(false) {
         failures += 1;
         println!("DIFF negative_entry EMITTED {:?}; VM = false", got);
@@ -960,24 +960,24 @@ fn main() {
     }
 
     // example <all_positive>: dist_nonneg == true
-    let got = dist_nonneg(vec![(1, 2), (1, 2)], 0);
+    let got = dist_nonneg(vec![(1, 2).into(), (1, 2).into()], 0);
     if got != Ok(true) {
         failures += 1;
         println!("DIFF all_positive EMITTED {:?}; VM = true", got);
     }
 
     // example <one_negative>: dist_nonneg == false
-    let got = dist_nonneg(vec![(1, 2), (-1, 4)], 0);
+    let got = dist_nonneg(vec![(1, 2).into(), (-1, 4).into()], 0);
     if got != Ok(false) {
         failures += 1;
         println!("DIFF one_negative EMITTED {:?}; VM = false", got);
     }
 
     // example <uniform_six_indices_mean>: mean == 5/2
-    let six = vec![(1, 6); 6];
+    let six = vec![(1, 6).into(); 6];
     let got = dist_mean(six.clone());
     match &got {
-        Ok(q) if q_eq(*q, (5, 2)) => {}
+        Ok(q) if q_eq(q, (5, 2)) => {}
         _ => {
             failures += 1;
             println!("DIFF uniform_six_indices_mean EMITTED {:?}; VM = 5/2", got);
@@ -985,7 +985,7 @@ fn main() {
     }
 
     // example <refuses_bad_mass_mean>: diagnostic.code == not_a_distribution
-    let got = dist_mean(vec![(1, 2), (1, 3)]);
+    let got = dist_mean(vec![(1, 2).into(), (1, 3).into()]);
     match &got {
         Err(text) if text == "not_a_distribution" => {}
         _ => {
@@ -997,7 +997,7 @@ fn main() {
     // example <fair_die_variance>: variance == 35/12
     let got = dist_variance(six.clone());
     match &got {
-        Ok(q) if q_eq(*q, (35, 12)) => {}
+        Ok(q) if q_eq(q, (35, 12)) => {}
         _ => {
             failures += 1;
             println!("DIFF fair_die_variance EMITTED {:?}; VM = 35/12", got);
@@ -1005,7 +1005,7 @@ fn main() {
     }
 
     // example <refuses_bad_mass_variance>
-    let got = dist_variance(vec![(1, 2), (1, 3)]);
+    let got = dist_variance(vec![(1, 2).into(), (1, 3).into()]);
     match &got {
         Err(text) if text == "not_a_distribution" => {}
         _ => {
@@ -1015,10 +1015,10 @@ fn main() {
     }
 
     // example <coin_first_half>: cdf(0) == 1/2
-    let coin = vec![(1, 2), (1, 2)];
+    let coin = vec![(1, 2).into(), (1, 2).into()];
     let got = dist_cdf(coin.clone(), 0);
     match &got {
-        Ok(q) if q_eq(*q, (1, 2)) => {}
+        Ok(q) if q_eq(q, (1, 2)) => {}
         _ => {
             failures += 1;
             println!("DIFF coin_first_half EMITTED {:?}; VM = 1/2", got);
@@ -1028,7 +1028,7 @@ fn main() {
     // example <coin_full>: cdf(1) == 1/1
     let got = dist_cdf(coin.clone(), 1);
     match &got {
-        Ok(q) if q_eq(*q, (1, 1)) => {}
+        Ok(q) if q_eq(q, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF coin_full EMITTED {:?}; VM = 1/1", got);
@@ -1038,7 +1038,7 @@ fn main() {
     // example <past_end_is_one>: cdf(5) == 1/1
     let got = dist_cdf(coin.clone(), 5);
     match &got {
-        Ok(q) if q_eq(*q, (1, 1)) => {}
+        Ok(q) if q_eq(q, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF past_end_is_one EMITTED {:?}; VM = 1/1", got);
@@ -1048,7 +1048,7 @@ fn main() {
     // example <below_zero_is_zero>: cdf(-1) == 0/1
     let got = dist_cdf(coin.clone(), -1);
     match &got {
-        Ok(q) if q_eq(*q, (0, 1)) => {}
+        Ok(q) if q_eq(q, (0, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF below_zero_is_zero EMITTED {:?}; VM = 0/1", got);
@@ -1056,9 +1056,9 @@ fn main() {
     }
 
     // example <fair_coin_two_flips>: pmf(1; 2, 1/2) == 1/2
-    let got = binomial_pmf(1, 2, (1, 2));
+    let got = binomial_pmf(1, 2, (1, 2).into());
     match &got {
-        Ok(q) if q_eq(*q, (1, 2)) => {}
+        Ok(q) if q_eq(q, (1, 2)) => {}
         _ => {
             failures += 1;
             println!("DIFF fair_coin_two_flips EMITTED {:?}; VM = 1/2", got);
@@ -1066,9 +1066,9 @@ fn main() {
     }
 
     // example <all_successes>: pmf(3; 3, 1/3) == 1/27
-    let got = binomial_pmf(3, 3, (1, 3));
+    let got = binomial_pmf(3, 3, (1, 3).into());
     match &got {
-        Ok(q) if q_eq(*q, (1, 27)) => {}
+        Ok(q) if q_eq(q, (1, 27)) => {}
         _ => {
             failures += 1;
             println!("DIFF all_successes EMITTED {:?}; VM = 1/27", got);
@@ -1076,7 +1076,7 @@ fn main() {
     }
 
     // example <refuses_probability_above_one>
-    let got = binomial_pmf(1, 2, (3, 2));
+    let got = binomial_pmf(1, 2, (3, 2).into());
     match &got {
         Err(text) if text == "bad_probability" => {}
         _ => {
@@ -1086,7 +1086,7 @@ fn main() {
     }
 
     // example <refuses_index_past_n>
-    let got = binomial_pmf(3, 2, (1, 2));
+    let got = binomial_pmf(3, 2, (1, 2).into());
     match &got {
         Err(text) if text == "bad_trial_index" => {}
         _ => {
@@ -1097,13 +1097,13 @@ fn main() {
 
     // example <row_sums_to_one_exactly>: sum(binomial_row(4, 1/3)) == 1/1,
     // through the crate's own emitted dist_total.
-    let row = binomial_row(4, (1, 3));
+    let row = binomial_row(4, (1, 3).into());
     let total = match &row {
         Ok(r) => dist_total(r.clone()),
         Err(_) => Err("row refused".to_string()),
     };
     match &total {
-        Ok(q) if q_eq(*q, (1, 1)) => {}
+        Ok(q) if q_eq(q, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF row_sums_to_one_exactly EMITTED row={:?} total={:?}; VM = 1/1", row, total);
@@ -1121,9 +1121,9 @@ fn main() {
     }
 
     // example <at_most_one_of_two>: cdf(1; 2, 1/2) == 3/4
-    let got = binomial_cdf(1, 2, (1, 2));
+    let got = binomial_cdf(1, 2, (1, 2).into());
     match &got {
-        Ok(q) if q_eq(*q, (3, 4)) => {}
+        Ok(q) if q_eq(q, (3, 4)) => {}
         _ => {
             failures += 1;
             println!("DIFF at_most_one_of_two EMITTED {:?}; VM = 3/4", got);
@@ -1131,9 +1131,9 @@ fn main() {
     }
 
     // example <zero_is_zero>: cdf(-1; 2, 1/2) == 0/1
-    let got = binomial_cdf(-1, 2, (1, 2));
+    let got = binomial_cdf(-1, 2, (1, 2).into());
     match &got {
-        Ok(q) if q_eq(*q, (0, 1)) => {}
+        Ok(q) if q_eq(q, (0, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF zero_is_zero EMITTED {:?}; VM = 0/1", got);
@@ -1141,9 +1141,9 @@ fn main() {
     }
 
     // example <four_thirds>: np == 4/3
-    let got = binomial_mean(4, (1, 3));
+    let got = binomial_mean(4, (1, 3).into());
     match &got {
-        Ok(q) if q_eq(*q, (4, 3)) => {}
+        Ok(q) if q_eq(q, (4, 3)) => {}
         _ => {
             failures += 1;
             println!("DIFF four_thirds EMITTED {:?}; VM = 4/3", got);
@@ -1151,9 +1151,9 @@ fn main() {
     }
 
     // example <four_thirds_two_thirds>: np(1-p) == 8/9
-    let got = binomial_variance(4, (1, 3));
+    let got = binomial_variance(4, (1, 3).into());
     match &got {
-        Ok(q) if q_eq(*q, (8, 9)) => {}
+        Ok(q) if q_eq(q, (8, 9)) => {}
         _ => {
             failures += 1;
             println!("DIFF four_thirds_two_thirds EMITTED {:?}; VM = 8/9", got);
@@ -1161,21 +1161,21 @@ fn main() {
     }
 
     // example <n_four_p_third>: the moments certificate == true
-    let got = binomial_moments_match(4, (1, 3));
+    let got = binomial_moments_match(4, (1, 3).into());
     if got != Ok(true) {
         failures += 1;
         println!("DIFF n_four_p_third EMITTED {:?}; VM = true", got);
     }
 
     // example <n_five_p_two_fifths>
-    let got = binomial_moments_match(5, (2, 5));
+    let got = binomial_moments_match(5, (2, 5).into());
     if got != Ok(true) {
         failures += 1;
         println!("DIFF n_five_p_two_fifths EMITTED {:?}; VM = true", got);
     }
 
     // example <n_seven_p_one_seventh>
-    let got = binomial_moments_match(7, (1, 7));
+    let got = binomial_moments_match(7, (1, 7).into());
     if got != Ok(true) {
         failures += 1;
         println!("DIFF n_seven_p_one_seventh EMITTED {:?}; VM = true", got);
@@ -1184,7 +1184,7 @@ fn main() {
     // example <two_aces_of_two_draws>: 1/6
     let got = hypergeometric_pmf(2, 2, 4, 2);
     match &got {
-        Ok(q) if q_eq(*q, (1, 6)) => {}
+        Ok(q) if q_eq(q, (1, 6)) => {}
         _ => {
             failures += 1;
             println!("DIFF two_aces_of_two_draws EMITTED {:?}; VM = 1/6", got);
@@ -1194,7 +1194,7 @@ fn main() {
     // example <zero_successes>: 1/6
     let got = hypergeometric_pmf(0, 2, 4, 2);
     match &got {
-        Ok(q) if q_eq(*q, (1, 6)) => {}
+        Ok(q) if q_eq(q, (1, 6)) => {}
         _ => {
             failures += 1;
             println!("DIFF zero_successes EMITTED {:?}; VM = 1/6", got);
@@ -1218,7 +1218,7 @@ fn main() {
         Err(_) => Err("row refused".to_string()),
     };
     match &total {
-        Ok(q) if q_eq(*q, (1, 1)) => {}
+        Ok(q) if q_eq(q, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF hyper_row_sums_to_one_exactly EMITTED row={:?} total={:?}; VM = 1/1", row, total);
@@ -1238,7 +1238,7 @@ fn main() {
     // example <three_draws_two_of_six>: mean == 1/1
     let got = hypergeometric_mean(3, 6, 2);
     match &got {
-        Ok(q) if q_eq(*q, (1, 1)) => {}
+        Ok(q) if q_eq(q, (1, 1)) => {}
         _ => {
             failures += 1;
             println!("DIFF three_draws_two_of_six EMITTED {:?}; VM = 1/1", got);
@@ -1253,12 +1253,10 @@ fn main() {
     }
 
     // example <one_encloses_exp_minus_one>: pmf(1; lambda=1) encloses e^-1.
-    // q=20 stays inside the emitted i128 Rat carrier (the authored q=40
-    // makes 40! overflow it, pinned as the boundary row below; the
-    // 1e-6 fences are far coarser than the q=20 bracket width).
-    let got = poisson_pmf_bracket(1, (1, 1), 20);
+    // The fences are coarser than either authored series budget.
+    let got = poisson_pmf_bracket(1, (1, 1).into(), 20);
     match &got {
-        Ok(itv) if q_gt(itv.lo, (367879, 1000000)) && q_lt(itv.hi, (367880, 1000000)) => {}
+        Ok(itv) if q_gt(&itv.lo, (367879, 1000000)) && q_lt(&itv.hi, (367880, 1000000)) => {}
         _ => {
             failures += 1;
             println!("DIFF one_encloses_exp_minus_one EMITTED {:?}; VM = e^-1 fence (0.367879, 0.367880)", got);
@@ -1266,29 +1264,27 @@ fn main() {
     }
 
     // example <zero_is_exp_minus_lambda>: pmf(0; lambda=1) encloses e^-1
-    let got = poisson_pmf_bracket(0, (1, 1), 20);
+    let got = poisson_pmf_bracket(0, (1, 1).into(), 20);
     match &got {
-        Ok(itv) if q_gt(itv.lo, (3678794, 10000000)) && q_lt(itv.hi, (3678795, 10000000)) => {}
+        Ok(itv) if q_gt(&itv.lo, (3678794, 10000000)) && q_lt(&itv.hi, (3678795, 10000000)) => {}
         _ => {
             failures += 1;
             println!("DIFF zero_is_exp_minus_lambda EMITTED {:?}; VM = e^-1 fence (0.3678794, 0.3678795)", got);
         }
     }
 
-    // carrier boundary (labeled): the authored q=40 budget needs 40! in
-    // the exp series, past the emitted checked-i128 Rat carrier, which
-    // refuses by name (VM computes it in arbitrary precision).
-    let got = poisson_pmf_bracket(1, (1, 1), 40);
+    // The authored budget crosses the former i128 representation bound.
+    let got = poisson_pmf_bracket(1, (1, 1).into(), 40);
     match &got {
-        Err(text) if text == "E-RAT-002: exact rational part exceeds i128" => {}
+        Ok(itv) if q_gt(&itv.lo, (3678794, 10000000)) && q_lt(&itv.hi, (3678795, 10000000)) => {}
         _ => {
             failures += 1;
-            println!("DIFF poisson_q40_carrier_boundary EMITTED {:?}; VM = e^-1 enclosure (i128 Rat carrier refuses at 40!)", got);
+            println!("DIFF poisson_q40_carrier_boundary EMITTED {:?}; VM = e^-1 enclosure (0.3678794, 0.3678795)", got);
         }
     }
 
     // example <refuses_negative_rate>
-    let got = poisson_pmf_bracket(1, (-1, 2), 40);
+    let got = poisson_pmf_bracket(1, (-1, 2).into(), 40);
     match &got {
         Err(text) if text == "negative_rate" => {}
         _ => {
@@ -1298,7 +1294,7 @@ fn main() {
     }
 
     // example <refuses_negative_index>
-    let got = poisson_pmf_bracket(-1, (1, 1), 40);
+    let got = poisson_pmf_bracket(-1, (1, 1).into(), 40);
     match &got {
         Err(text) if text == "bad_trial_index" => {}
         _ => {
@@ -1308,9 +1304,9 @@ fn main() {
     }
 
     // example <at_most_one_lambda_one>: cdf(1; lambda=1) encloses 2e^-1
-    let got = poisson_cdf_bracket(1, (1, 1), 20);
+    let got = poisson_cdf_bracket(1, (1, 1).into(), 20);
     match &got {
-        Ok(itv) if q_gt(itv.lo, (735758, 1000000)) && q_lt(itv.hi, (735760, 1000000)) => {}
+        Ok(itv) if q_gt(&itv.lo, (735758, 1000000)) && q_lt(&itv.hi, (735760, 1000000)) => {}
         _ => {
             failures += 1;
             println!("DIFF at_most_one_lambda_one EMITTED {:?}; VM = 2e^-1 fence (0.735758, 0.735760)", got);
@@ -1318,9 +1314,9 @@ fn main() {
     }
 
     // example <at_most_zero_is_pmf_zero>
-    let got = poisson_cdf_bracket(0, (1, 1), 20);
+    let got = poisson_cdf_bracket(0, (1, 1).into(), 20);
     match &got {
-        Ok(itv) if q_gt(itv.lo, (3678794, 10000000)) && q_lt(itv.hi, (3678795, 10000000)) => {}
+        Ok(itv) if q_gt(&itv.lo, (3678794, 10000000)) && q_lt(&itv.hi, (3678795, 10000000)) => {}
         _ => {
             failures += 1;
             println!("DIFF at_most_zero_is_pmf_zero EMITTED {:?}; VM = e^-1 fence", got);
@@ -1328,7 +1324,7 @@ fn main() {
     }
 
     // example <refuses_negative_rate_cdf>
-    let got = poisson_cdf_bracket(1, (-2, 1), 40);
+    let got = poisson_cdf_bracket(1, (-2, 1).into(), 40);
     match &got {
         Err(text) if text == "negative_rate" => {}
         _ => {
@@ -1338,9 +1334,9 @@ fn main() {
     }
 
     // example <two_terms_lambda_one>: accumulator row == cdf(1)
-    let got = poisson_cdf_sum(1, (1, 1), 20, Itv { lo: (0, 1), hi: (0, 1) });
+    let got = poisson_cdf_sum(1, (1, 1).into(), 20, Itv { lo: (0, 1).into(), hi: (0, 1).into() });
     match &got {
-        Ok(itv) if q_gt(itv.lo, (735758, 1000000)) && q_lt(itv.hi, (735760, 1000000)) => {}
+        Ok(itv) if q_gt(&itv.lo, (735758, 1000000)) && q_lt(&itv.hi, (735760, 1000000)) => {}
         _ => {
             failures += 1;
             println!("DIFF two_terms_lambda_one EMITTED {:?}; VM = 2e^-1 fence (0.735758, 0.735760)", got);
@@ -1349,9 +1345,9 @@ fn main() {
 
     // example <fair_coin_is_log_two>: entropy([1/2,1/2]) overlaps log 2.
     // Fenced at log 2 within 1e-6 (see module doc note above).
-    let got = entropy_bracket(vec![(1, 2), (1, 2)], 40);
+    let got = entropy_bracket(vec![(1, 2).into(), (1, 2).into()], 40);
     match &got {
-        Ok(itv) if q_gt(itv.lo, (693147, 1000000)) && q_lt(itv.hi, (693148, 1000000)) => {}
+        Ok(itv) if q_gt(&itv.lo, (693147, 1000000)) && q_lt(&itv.hi, (693148, 1000000)) => {}
         _ => {
             failures += 1;
             println!("DIFF fair_coin_is_log_two EMITTED {:?}; VM = enclosure overlapping log 2 = 0.6931471805...", got);
@@ -1359,13 +1355,13 @@ fn main() {
     }
 
     // example <deterministic_is_zero_width>: contains 0, width < 1e-6
-    let got = entropy_bracket(vec![(1, 1)], 40);
+    let got = entropy_bracket(vec![(1, 1).into()], 40);
     match &got {
         Ok(itv) => {
-            let w_num = itv.hi.0 * itv.lo.1 - itv.lo.0 * itv.hi.1;
-            let w_den = itv.lo.1 * itv.hi.1;
-            let contains_zero = itv.lo.0 <= 0 && itv.hi.0 >= 0;
-            if !(contains_zero && w_num < w_den * 1000000) {
+            let w_num = itv.hi.0.mul(&itv.lo.1).unwrap().sub(&itv.lo.0.mul(&itv.hi.1).unwrap()).unwrap();
+            let w_den = itv.lo.1.mul(&itv.hi.1).unwrap();
+            let contains_zero = itv.lo.0.signum() <= 0 && itv.hi.0.signum() >= 0;
+            if !(contains_zero && w_num.mul(&1000000.into()).unwrap() < w_den) {
                 failures += 1;
                 println!("DIFF deterministic_is_zero_width EMITTED {:?}; VM = contains 0 with width < 1/1000000", got);
             }
@@ -1377,7 +1373,7 @@ fn main() {
     }
 
     // example <refuses_bad_mass_entropy>
-    let got = entropy_bracket(vec![(1, 2), (1, 3)], 40);
+    let got = entropy_bracket(vec![(1, 2).into(), (1, 3).into()], 40);
     match &got {
         Err(text) if text == "not_a_distribution" => {}
         _ => {
@@ -1387,9 +1383,9 @@ fn main() {
     }
 
     // example <single_half_outcome>: -1/2 log(1/2) encloses (1/2) log 2
-    let got = entropy_sum(vec![(1, 2), (1, 2)], 0, 40, Itv { lo: (0, 1), hi: (0, 1) });
+    let got = entropy_sum(vec![(1, 2).into(), (1, 2).into()], 0, 40, Itv { lo: (0, 1).into(), hi: (0, 1).into() });
     match &got {
-        Ok(itv) if q_gt(itv.lo, (346573, 1000000)) && q_lt(itv.hi, (346575, 1000000)) => {}
+        Ok(itv) if q_gt(&itv.lo, (346573, 1000000)) && q_lt(&itv.hi, (346575, 1000000)) => {}
         _ => {
             failures += 1;
             println!("DIFF single_half_outcome EMITTED {:?}; VM = 0.5*log2 fence (0.346573, 0.346575)", got);
@@ -1403,12 +1399,12 @@ fn main() {
     println!("SUMMARY all distributions pins conform");
 }
 
-fn q_gt(a: (i128, i128), b: (i128, i128)) -> bool {
-    a.0 * b.1 > b.0 * a.1
+fn q_gt(a: &distributions::emath_rt::ExactRatio, b: (i128, i128)) -> bool {
+    a.0.mul(&b.1.into()).unwrap() > a.1.mul(&b.0.into()).unwrap()
 }
 
-fn q_lt(a: (i128, i128), b: (i128, i128)) -> bool {
-    a.0 * b.1 < b.0 * a.1
+fn q_lt(a: &distributions::emath_rt::ExactRatio, b: (i128, i128)) -> bool {
+    a.0.mul(&b.1.into()).unwrap() < a.1.mul(&b.0.into()).unwrap()
 }
 "#;
 
@@ -1441,7 +1437,7 @@ fn main() {
 
     // example <degree_two_over_q_p>
     let got = inv_basis(vec![1, 1], 2, 3);
-    let ok = matches!(&got, Ok(b) if b.len() == 5 && b[0] == vec![0, 1] && b[4] == vec![2, 0]);
+    let ok = matches!(&got, Ok(b) if b.len() == 5 && b[0] == vec![0.into(), 1.into()] && b[4] == vec![2.into(), 0.into()]);
     if !ok {
         failures += 1;
         println!("DIFF degree_two_over_q_p EMITTED {:?}; VM = 5 monomials, [0,1] .. [2,0]", got);
@@ -1455,14 +1451,14 @@ fn main() {
     }
 
     // example <negative_lead_flips_sign>
-    let got = inv_coprime(vec![(0, 1), (-2, 3), (4, 3)]);
+    let got = inv_coprime(vec![(0, 1).into(), (-2, 3).into(), (4, 3).into()]);
     if got.as_ref() != Ok(&ints(&[0, 1, -2])) {
         failures += 1;
         println!("DIFF negative_lead_flips_sign EMITTED {:?}; VM = [0, 1, -2]", got);
     }
 
     // example <denominators_cleared>
-    let got = inv_coprime(vec![(1, 2), (1, 3)]);
+    let got = inv_coprime(vec![(1, 2).into(), (1, 3).into()]);
     if got.as_ref() != Ok(&ints(&[3, 2])) {
         failures += 1;
         println!("DIFF denominators_cleared EMITTED {:?}; VM = [3, 2]", got);
@@ -1530,7 +1526,7 @@ fn main() {
     let start = std::time::Instant::now();
     let got = fold_sum(n);
     let secs = start.elapsed().as_secs_f64();
-    if !matches!(&got, Ok(value) if *value == n * (n - 1) / 2) {
+    if !matches!(&got, Ok(value) if *value == (n * (n - 1) / 2).into()) {
         failures += 1;
         println!("DIFF fold_sum EMITTED {:?}; VM = {}", got, n * (n - 1) / 2);
     }
@@ -1582,37 +1578,37 @@ use named_fn_closure_arg::{
 fn main() {
     let mut failures = 0usize;
     let got = run_direct(0);
-    if got != Ok((6, 1)) {
+    if got != Ok((6, 1).into()) {
         failures += 1;
         println!("DIFF coerces_and_applies EMITTED {:?}; VM = 6/1", got);
     }
     let got = run_composed(0);
-    if got != Ok((12, 1)) {
+    if got != Ok((12, 1).into()) {
         failures += 1;
         println!("DIFF applies_through_two_calls EMITTED {:?}; VM = 12/1", got);
     }
     let got = run_field(0);
-    if got != Ok((10, 1)) {
+    if got != Ok((10, 1).into()) {
         failures += 1;
         println!("DIFF field_holds_named EMITTED {:?}; VM = 10/1", got);
     }
-    let got = run_map(vec![(1, 1), (1, 2)]);
-    if got != Ok(vec![(2, 1), (1, 1)]) {
+    let got = run_map(vec![(1, 1).into(), (1, 2).into()]);
+    if got != Ok(vec![(2, 1).into(), (1, 1).into()]) {
         failures += 1;
         println!("DIFF maps_named EMITTED {:?}; VM = [2/1, 1/1]", got);
     }
     let got = run_fold(vec![1, 3]);
-    if got != Ok((7, 1)) {
+    if got != Ok((7, 1).into()) {
         failures += 1;
         println!("DIFF folds_named_pair EMITTED {:?}; VM = 7/1", got);
     }
     let got = run_local(0);
-    if got != Ok((8, 3)) {
+    if got != Ok((8, 3).into()) {
         failures += 1;
         println!("DIFF local_holds_named_pair EMITTED {:?}; VM = 8/3", got);
     }
     let got = run_local_shadows(0);
-    if got != Ok((60, 1)) {
+    if got != Ok((60, 1).into()) {
         failures += 1;
         println!("DIFF local_wins_over_global EMITTED {:?}; VM = 60/1", got);
     }
@@ -1653,11 +1649,11 @@ fn main() {
         ("joined_twelve", joined_name(12), -8842153441291678809),
         ("joined_zero", joined_name(0), -3419832116818647827),
         ("template", template_identity(1), -1196788995459785803),
-        ("substituted_half", substituted_identity((1, 2)), -7428803188107537136),
+        ("substituted_half", substituted_identity((1, 2).into()), -7428803188107537136),
         ("sequence_binder_body", body_identity(1), -1844154563749970366),
         ("recur_three", recur_identity(3), 7879228432184954446),
         ("recur_minus_two", recur_identity(-2), 8209334220971875847),
-        ("recur_over_two", recur_over_sequence(vec![(1, 2), (3, 1)]), 1910726365657871909),
+        ("recur_over_two", recur_over_sequence(vec![(1, 2).into(), (3, 1).into()]), 1910726365657871909),
         ("recur_over_empty", recur_over_sequence(vec![]), 5210087937655289470),
     ];
     for (name, got, vm) in pins {
@@ -1719,7 +1715,7 @@ use closure_self_call::{
 };
 fn main() {
     let mut failures = 0usize;
-    let got = leaves(10);
+    let got = leaves(ExactInt::from(10));
     if got != Ok(ExactInt::from(89)) {
         failures += 1;
         println!("DIFF leaves_ten EMITTED {:?}; VM = 89", got);
@@ -1792,7 +1788,7 @@ fn main() {
     }
     for (k, vm) in [(4, 234), (-7, 223)] {
         let got = shelf_shape(k);
-        if got != Ok(vm) {
+        if got != Ok(ExactInt::from(vm)) {
             failures += 1;
             println!("DIFF shelf_shape({k}) EMITTED {:?}; VM = {vm}", got);
         }
@@ -1813,7 +1809,7 @@ fn main() {
     }
     for (k, vm) in [(2, 17), (-3, 2)] {
         let got = evaluated_field(k);
-        if got != Ok(vm) {
+        if got != Ok(ExactInt::from(vm)) {
             failures += 1;
             println!("DIFF evaluated_field({k}) EMITTED {:?}; VM = {vm}", got);
         }
@@ -1929,11 +1925,11 @@ fn emission_conformance_union_exact_compare() {
 const GENERIC_RECORD_DRIVER: &str = r#"
 //! One generic object at two carriers: each instantiation has its own
 //! native layout, and the generic fold reads it at the bound carrier.
-use generic_record::{adding, curried_total, mapped_powers, maxing, peak, total};
+use generic_record::{adding, curried_total, rebuilt_curried_total, mapped_powers, maxing, peak, total, wide_capture, wide_stored, wide_transform, wide_scalar, wide_product};
 fn main() {
     let mut failures = 0usize;
     let got = total(vec![3, 4, 5]);
-    if !matches!(&got, Ok(12)) {
+    if !matches!(&got, Ok(value) if *value == 12.into()) {
         failures += 1;
         println!("DIFF sums EMITTED {:?}; VM = 12", got);
     }
@@ -1947,8 +1943,8 @@ fn main() {
         failures += 1;
         println!("DIFF empty_is_floor EMITTED {:?}; VM = -1.0", got);
     }
-    let unit: Result<i64, String> = adding(7).map(|m| m.unit);
-    if !matches!(&unit, Ok(0)) {
+    let unit = adding(7).map(|m| m.unit);
+    if !matches!(&unit, Ok(value) if *value == 0.into()) {
         failures += 1;
         println!("DIFF adding.unit EMITTED {:?}; VM = 0", unit);
     }
@@ -1957,24 +1953,49 @@ fn main() {
         failures += 1;
         println!("DIFF maxing.unit EMITTED {:?}; VM = -3.0", unit);
     }
-    let got = mapped_powers(vec![3, 4, 5]);
-    if got != Ok(vec![8, 16, 32]) {
+    let got = mapped_powers(vec![3, 4, 5])
+        .map(|values| values.iter().map(ToString::to_string).collect::<Vec<_>>());
+    if got != Ok(vec!["8".into(), "16".into(), "32".into()]) {
         failures += 1;
         println!("DIFF mapped_powers EMITTED {:?}; VM = [8, 16, 32]", got);
     }
-    let overflow = mapped_powers(vec![63]);
-    if !matches!(&overflow, Err(error) if error.starts_with("E-INT-002")) {
+    let wide = mapped_powers(vec![63]).map(|values| values[0].to_string());
+    if wide != Ok(String::from("9223372036854775808")) {
         failures += 1;
-        println!("DIFF mapped_powers_width EMITTED {:?}; expected checked i64 refusal", overflow);
+        println!("DIFF mapped_powers_width EMITTED {:?}; VM = 9223372036854775808", wide);
     }
-    if curried_total(3, 4) != Ok(7) {
+    if curried_total(3, 4) != Ok(7.into()) {
         failures += 1;
         println!("DIFF curried_total EMITTED {:?}; VM = 7", curried_total(3, 4));
     }
-    let overflow = curried_total(i64::MAX, 1);
-    if !matches!(&overflow, Err(error) if error.starts_with("E-INT-002")) {
+    if rebuilt_curried_total(3) != Ok(true) {
         failures += 1;
-        println!("DIFF curried_total_width EMITTED {:?}; expected checked i64 refusal", overflow);
+        println!("DIFF rebuilt_curried_total EMITTED {:?}; VM = true", rebuilt_curried_total(3));
+    }
+    for (name, got) in [
+        ("wide_transform", wide_transform(70)),
+        ("wide_capture", wide_capture(70)),
+        ("wide_stored", wide_stored(70)),
+    ] {
+        if got != Ok(true) {
+            failures += 1;
+            println!("DIFF {name} EMITTED {:?}; VM = true", got);
+        }
+    }
+    let scalar = wide_scalar(70).map(|value| value.to_string());
+    if scalar.as_deref() != Ok("1180591620717411303424") {
+        failures += 1;
+        println!("DIFF wide_scalar EMITTED {scalar:?}; VM = 1180591620717411303424");
+    }
+    let product = wide_product(70).map(|value| value.to_string());
+    if product.as_deref() != Ok("1180591620717411303424") {
+        failures += 1;
+        println!("DIFF wide_product EMITTED {product:?}; VM = 1180591620717411303424");
+    }
+    let overflow = curried_total(i64::MAX, 1).map(|value| value.to_string());
+    if overflow.as_deref() != Ok("9223372036854775808") {
+        failures += 1;
+        println!("DIFF curried_total_width EMITTED {:?}; VM = 9223372036854775808", overflow);
     }
     if failures == 0 {
         println!("generic_record: all pins hold");
@@ -2151,9 +2172,9 @@ fn main() {
 
     // --- bezout: the certificate is the identity, not just g -------------
     // example <bezout_twelve_eight>: g == 4 and 12x + 8y == g
-    let got = bezout(12, 8);
+    let got = bezout(ei(12), ei(8));
     match &got {
-        Ok(r) if r.g == 4 && 12 * r.x + 8 * r.y == r.g => {}
+        Ok(r) if r.g == ei(4) && r.x.mul(&ei(12)).unwrap().add(&r.y.mul(&ei(8)).unwrap()).unwrap() == r.g => {}
         _ => {
             failures += 1;
             println!("DIFF bezout_twelve_eight EMITTED {:?}; VM = g 4 with 12x + 8y == g", got);
@@ -2161,9 +2182,9 @@ fn main() {
     }
 
     // example <bezout_seven_five>: g == 1 and 7x + 5y == g
-    let got = bezout(7, 5);
+    let got = bezout(ei(7), ei(5));
     match &got {
-        Ok(r) if r.g == 1 && 7 * r.x + 5 * r.y == r.g => {}
+        Ok(r) if r.g == ei(1) && r.x.mul(&ei(7)).unwrap().add(&r.y.mul(&ei(5)).unwrap()).unwrap() == r.g => {}
         _ => {
             failures += 1;
             println!("DIFF bezout_seven_five EMITTED {:?}; VM = g 1 with 7x + 5y == g", got);
@@ -2171,9 +2192,9 @@ fn main() {
     }
 
     // example <bezout_240_46>: g == 2 and 240x + 46y == g
-    let got = bezout(240, 46);
+    let got = bezout(ei(240), ei(46));
     match &got {
-        Ok(r) if r.g == 2 && 240 * r.x + 46 * r.y == r.g => {}
+        Ok(r) if r.g == ei(2) && r.x.mul(&ei(240)).unwrap().add(&r.y.mul(&ei(46)).unwrap()).unwrap() == r.g => {}
         _ => {
             failures += 1;
             println!("DIFF bezout_240_46 EMITTED {:?}; VM = g 2 with 240x + 46y == g", got);
@@ -2181,7 +2202,7 @@ fn main() {
     }
 
     // example <refuses_negative>
-    let got = bezout(-12, 8);
+    let got = bezout(ei(-12), ei(8));
     if !refused(&got, "negative_operand") {
         failures += 1;
         println!("DIFF refuses_negative EMITTED {:?}; VM = negative_operand", got);
@@ -2189,9 +2210,9 @@ fn main() {
 
     // example <one_lift>: bezout_lift({g 4, x 0, y 1}, 12, 8) has
     // x == 1, y == -1, and 12x + 8y == g == 4.
-    let got = bezout_lift(EmathRecord_Bezout { g: 4, x: 0, y: 1 }, 12, 8);
+    let got = bezout_lift(EmathRecord_Bezout { g: ei(4), x: ei(0), y: ei(1) }, 12, 8);
     match &got {
-        Ok(r) if r.x == 1 && r.y == -1 && 12 * r.x + 8 * r.y == r.g => {}
+        Ok(r) if r.x == ei(1) && r.y == ei(-1) && r.x.mul(&ei(12)).unwrap().add(&r.y.mul(&ei(8)).unwrap()).unwrap() == r.g => {}
         _ => {
             failures += 1;
             println!("DIFF one_lift EMITTED {:?}; VM = x 1, y -1, 12x + 8y == 4", got);
@@ -2223,28 +2244,28 @@ fn main() {
 
     // --- mod_pow ----------------------------------------------------------
     // example <two_to_ten_mod_seven>: 2^10 == 2 (mod 7)
-    let got = mod_pow(2, 10, 7);
+    let got = mod_pow(ei(2), ei(10), 7);
     if !exact_ok(&got, 2) {
         failures += 1;
         println!("DIFF two_to_ten_mod_seven EMITTED {:?}; VM = 2", got);
     }
 
     // example <three_to_hundred_mod_one_oh_one>: 3^100 == 1 (mod 101)
-    let got = mod_pow(3, 100, 101);
+    let got = mod_pow(ei(3), ei(100), 101);
     if !exact_ok(&got, 1) {
         failures += 1;
         println!("DIFF three_to_hundred_mod_one_oh_one EMITTED {:?}; VM = 1", got);
     }
 
     // example <zero_to_positive_is_zero>: 0^5 == 0 (mod 7)
-    let got = mod_pow(0, 5, 7);
+    let got = mod_pow(ei(0), ei(5), 7);
     if !exact_ok(&got, 0) {
         failures += 1;
         println!("DIFF zero_to_positive_is_zero EMITTED {:?}; VM = 0", got);
     }
 
     // example <refuses_negative_exponent>
-    let got = mod_pow(2, -1, 7);
+    let got = mod_pow(ei(2), ei(-1), 7);
     if !refused(&got, "negative_exponent") {
         failures += 1;
         println!("DIFF refuses_negative_exponent EMITTED {:?}; VM = negative_exponent", got);
@@ -2635,22 +2656,22 @@ fn main() {
     }
 
     // example <eight_is_three>: the 2-adic valuation of 8
-    let got = ts_two_adic(8);
+    let got = ts_two_adic(ei(8));
     if got != Ok(3) {
         failures += 1;
         println!("DIFF eight_is_three EMITTED {:?}; VM = 3", got);
     }
 
     // example <odd_is_zero>: 5 is odd
-    let got = ts_two_adic(5);
+    let got = ts_two_adic(ei(5));
     if got != Ok(0) {
         failures += 1;
         println!("DIFF odd_is_zero EMITTED {:?}; VM = 0", got);
     }
 
     // example <eight_thrice>: 8 halved 3 times is 1
-    let got = ts_halve(8, 3);
-    if got != Ok(1) {
+    let got = ts_halve(ei(8), 3);
+    if got != Ok(ei(1)) {
         failures += 1;
         println!("DIFF eight_thrice EMITTED {:?}; VM = 1", got);
     }
@@ -2691,15 +2712,15 @@ fn main() {
     }
 
     // example <two_mod_seventeen>: the doubling index of t=2
-    let got = ts_find_i(2, 17, 0);
+    let got = ts_find_i(ei(2), 17, 0);
     if got != Ok(3) {
         failures += 1;
         println!("DIFF two_mod_seventeen EMITTED {:?}; VM = 3", got);
     }
 
     // example <seventeen_two_full_cycle>: one full Tonelli cycle
-    let got = ts_loop(17, 4, 3, 2, 2);
-    if got != Ok(6) {
+    let got = ts_loop(17, 4, ei(3), ei(2), ei(2));
+    if got != Ok(ei(6)) {
         failures += 1;
         println!("DIFF seventeen_two_full_cycle EMITTED {:?}; VM = 6", got);
     }
@@ -2839,7 +2860,7 @@ const BOUNDS_DRIVER: &str = r#"
 
 use bounds::frontier_efficiency;
 
-fn rat_ok(got: &Result<(i128, i128), String>, want: (i128, i128)) -> bool {
+fn rat_ok(got: &Result<bounds::emath_rt::ExactRatio, String>, want: (i128, i128)) -> bool {
     matches!(got, Ok(v) if *v == want)
 }
 
@@ -2889,10 +2910,10 @@ use std::rc::Rc;
 
 use surfaces::{EmathRecord_Vec3, arc_len_float64};
 
-fn constant_path() -> Rc<dyn Fn(surfaces::emath_rt::ExactRatio) -> Result<EmathRecord_Vec3, String>> {
+fn constant_path() -> Rc<dyn Fn(&surfaces::emath_rt::ExactRatio) -> Result<EmathRecord_Vec3, String>> {
     // speed 5 at every sample: (3, 4, 0)/1
     Rc::new(move |_t| {
-        Ok(EmathRecord_Vec3 { x: (3, 1), y: (4, 1), z: (0, 1) })
+        Ok(EmathRecord_Vec3 { x: (3, 1).into(), y: (4, 1).into(), z: (0, 1).into() })
     })
 }
 
@@ -2901,21 +2922,21 @@ fn main() {
 
     // example <constant_speed_sums_exactly>: sqrt(25) = 5, the
     // trapezoid of a constant over [0, 2] with 4 panels = 10.0
-    let got = arc_len_float64(constant_path(), (0, 1), (2, 1), 4);
+    let got = arc_len_float64(constant_path(), (0, 1).into(), (2, 1).into(), 4);
     if !matches!(&got, Ok(v) if *v == 10.0) {
         failures += 1;
         println!("DIFF constant_speed_sums_exactly EMITTED {:?}; VM = 10.0", got);
     }
 
     // example <offset_range_sums_exactly>: a = 1 != 0: 5*(b-a) = 10.0
-    let got = arc_len_float64(constant_path(), (1, 1), (3, 1), 4);
+    let got = arc_len_float64(constant_path(), (1, 1).into(), (3, 1).into(), 4);
     if !matches!(&got, Ok(v) if *v == 10.0) {
         failures += 1;
         println!("DIFF offset_range_sums_exactly EMITTED {:?}; VM = 10.0", got);
     }
 
     // example <refuses_bad_resolution>: n = 0
-    let got = arc_len_float64(constant_path(), (0, 1), (2, 1), 0);
+    let got = arc_len_float64(constant_path(), (0, 1).into(), (2, 1).into(), 0);
     if !matches!(&got, Err(text) if text == "bad_resolution") {
         failures += 1;
         println!("DIFF refuses_bad_resolution EMITTED {:?}; VM = bad_resolution", got);
@@ -2942,14 +2963,32 @@ fn emission_conformance_surfaces() {
 /// A Rat widening to Float64 rounds its exact value once, as the VM
 /// does; widening numerator and denominator separately double-rounds.
 const RATIO_WIDEN_DRIVER: &str = r#"
-use ratio_widen::widen;
+use ratio_widen::{widen, wide_parts, wide_quoted, wide_cell, wide_engine, measure_ratio};
 
 fn main() {
     // VM: emath run ratio_widen.emath --set r=1/9007199254740995
-    let got = widen((1, 9007199254740995));
+    let got = widen((1, 9007199254740995_i128).into());
     if !matches!(&got, Ok(v) if *v == 1.1102230246251562e-16) {
         println!("DIFF widen EMITTED {:?}; VM = 1.1102230246251562e-16", got);
         println!("SUMMARY 1 conformance diffs");
+        std::process::exit(1);
+    }
+    let rows = [
+        ("record", wide_parts(200), "1606938044258990275541962092341162602522202993782792835301377", "1606938044258990275541962092341162602522202993782792835301376"),
+        ("quote", wide_quoted(200), "2582249878086908589655919172003011874329705792829223512830662570416736139997392278553830035605342875841890737558418096129", "2582249878086908589655919172003011874329705792829223512830659356540647622016841194629645353280137831435903171972747493376"),
+        ("cell", wide_cell(200), "1606938044258990275541962092341162602522202993782792835301377", "3213876088517980551083924184682325205044405987565585670602753"),
+        ("engine", wide_engine(200), "3213876088517980551083924184682325205044405987565585670602753", "1606938044258990275541962092341162602522202993782792835301376"),
+        ("engine_input", measure_ratio(wide_parts(200).unwrap()), "3213876088517980551083924184682325205044405987565585670602753", "1606938044258990275541962092341162602522202993782792835301376"),
+    ];
+    let mut failures = 0;
+    for (name, got, numer, denom) in rows {
+        if !matches!(&got, Ok(q) if q.0.to_string() == numer && q.1.to_string() == denom) {
+            println!("DIFF wide_{name} EMITTED {got:?}; VM = {numer}/{denom}");
+            failures += 1;
+        }
+    }
+    if failures != 0 {
+        println!("SUMMARY {failures} conformance diffs");
         std::process::exit(1);
     }
     println!("SUMMARY all ratio_widen pins conform");
@@ -3268,8 +3307,8 @@ fn main() {
         failures += 1;
         println!("DIFF code_collection; VM = [5, 9]");
     }
-    match code_roundtrip(EmathRecord_CodeProbe { term: add.clone(), limit: 1000 }) {
-        Ok(p) if p.term.identity() == add.identity() && p.limit == 1000 => {}
+    match code_roundtrip(EmathRecord_CodeProbe { term: add.clone(), limit: 1000.into() }) {
+        Ok(p) if p.term.identity() == add.identity() && p.limit == 1000.into() => {}
         other => {
             failures += 1;
             println!("DIFF code_roundtrip EMITTED {other:?}; VM = unchanged CodeProbe");
@@ -3338,13 +3377,13 @@ fn main() {
         failures += 1;
         println!("DIFF judge EMITTED {:?} {:?}; VM = true false", judge(10), judge(2));
     }
-    if narrowed((1, 3)) != Ok(0.3333333432674408) {
+    if narrowed((1, 3).into()) != Ok(0.3333333432674408) {
         failures += 1;
-        println!("DIFF narrowed EMITTED {:?}; VM = 0.3333333432674408", narrowed((1, 3)));
+        println!("DIFF narrowed EMITTED {:?}; VM = 0.3333333432674408", narrowed((1, 3).into()));
     }
-    if inner_fault((1, 3)).as_deref() != Ok("type") {
+    if inner_fault((1, 3).into()).as_deref() != Ok("type") {
         failures += 1;
-        println!("DIFF inner_fault EMITTED {:?}; VM = type", inner_fault((1, 3)));
+        println!("DIFF inner_fault EMITTED {:?}; VM = type", inner_fault((1, 3).into()));
     }
     // A compiled recursive caller of an engine-run function.
     if disagreements(10) != Ok(2) {
@@ -3352,13 +3391,13 @@ fn main() {
         println!("DIFF disagreements EMITTED {:?}; VM = 2", disagreements(10));
     }
     // Authored objects cross both ways, alone and inside a sequence.
-    let p = |limit| Probe { world: "float64".into(), at: (1, 3), limit };
-    let want_done = Verdict { world: "float64".into(), done: true, work: 9 };
+    let p = |limit: i64| Probe { world: "float64".into(), at: (1, 3).into(), limit: limit.into() };
+    let want_done = Verdict { world: "float64".into(), done: true, work: 9.into() };
     if probe(p(1000)) != Ok(want_done.clone()) {
         failures += 1;
         println!("DIFF probe EMITTED {:?}; VM = float64 true 9", probe(p(1000)));
     }
-    let stopped = Verdict { world: "float64".into(), done: false, work: 2 };
+    let stopped = Verdict { world: "float64".into(), done: false, work: 2.into() };
     if first_done(vec![p(2), p(1000)]) != Ok(stopped) {
         failures += 1;
         println!("DIFF first_done EMITTED {:?}; VM = float64 false 2", first_done(vec![p(2)]));
@@ -3367,7 +3406,7 @@ fn main() {
         failures += 1;
         println!("DIFF new_work EMITTED {:?} {:?}; VM = 0 2", new_work(p(1000)), new_work(p(2)));
     }
-    if probe_work(1000) != Ok(9) {
+    if probe_work(1000) != Ok(9.into()) {
         failures += 1;
         println!("DIFF probe_work EMITTED {:?}; VM = 9", probe_work(1000));
     }
@@ -3438,12 +3477,12 @@ const OSCILLATIONS_DRIVER: &str = r#"
 
 use oscillations::osc_mik_gated;
 
-type Rat = (i128, i128);
+type Rat = oscillations::emath_rt::ExactRatio;
 type Matrix = Vec<Vec<Rat>>;
 
 fn mat(rows: &[[[i128; 2]; 2]]) -> Matrix {
     rows.iter()
-        .map(|row| row.iter().map(|[n, d]| (*n, *d)).collect())
+        .map(|row| row.iter().map(|[n, d]| (*n, *d).into()).collect())
         .collect()
 }
 
@@ -3474,7 +3513,7 @@ fn main() {
     // example <refuses_bad_matrix>: ragged stiffness.
     let got = osc_mik_gated(
         mat(&[[[1, 1], [0, 1]], [[0, 1], [1, 1]]]),
-        vec![vec![(2, 1), (-1, 1)]],
+        vec![vec![(2, 1).into(), (-1, 1).into()]],
     );
     if !matches!(&got, Err(text) if text == "bad_matrix") {
         failures += 1;
@@ -3521,18 +3560,18 @@ const ORDER_DRIVER: &str = r#"
 
 use order::{EmathRecord_SortedPair, sort_loop, sort_step, sort_with_permutation, unsort};
 
-type Rat = (i128, i128);
+type Rat = order::emath_rt::ExactRatio;
 
 fn rats(rows: &[[i128; 2]]) -> Vec<Rat> {
-    rows.iter().map(|[n, d]| (*n, *d)).collect()
+    rows.iter().map(|[n, d]| (*n, *d).into()).collect()
 }
 
-fn ints(xs: &[i64]) -> Vec<i64> {
-    xs.to_vec()
+fn ints<T: From<i64>>(xs: &[i64]) -> Vec<T> {
+    xs.iter().copied().map(Into::into).collect()
 }
 
 fn pair(values: &[[i128; 2]], perm: &[i64]) -> EmathRecord_SortedPair {
-    EmathRecord_SortedPair { values: rats(values), perm: ints(perm) }
+    EmathRecord_SortedPair { values: rats(values), perm: perm.iter().copied().map(Into::into).collect() }
 }
 
 fn main() {
@@ -3823,7 +3862,7 @@ const MATCHING_DRIVER: &str = r#"
 //! recursion arguments narrow checked (E-INT-002 by name). The
 //! entries settle onto the declared Int carriers (the ratio spelling
 //! lives only inside the emitted arms), so every row compares the
-//! emitted i64 vectors against the VM's integer answers directly.
+//! emitted integer vectors against the VM's integer answers directly.
 
 use matching::{
     assign_max, asg_row, max_match_loop, max_matching, EmathRecord_Edge as Edge,
@@ -3832,21 +3871,24 @@ use matching::{
 
 fn g(vertices: i64, edges: &[(i64, i64, i64)]) -> Wg {
     Wg {
-        vertices,
+        vertices: vertices.into(),
         edges: edges
             .iter()
             .map(|(from, to, weight)| Edge {
-                from: *from,
-                to: *to,
-                weight: (*weight as i128, 1),
+                from: (*from).into(),
+                to: (*to).into(),
+                weight: (*weight as i128, 1).into(),
             })
             .collect(),
     }
 }
 
-fn i_eq(got: &Result<Vec<i64>, String>, want: &[i64]) -> Option<String> {
+fn i_eq<T: Clone + Into<matching::emath_rt::ExactInt> + std::fmt::Debug>(
+    got: &Result<Vec<T>, String>, want: &[i64],
+) -> Option<String> {
     match got {
-        Ok(v) if v == want => None,
+        Ok(v) if v.iter().cloned().map(Into::into)
+            .eq(want.iter().copied().map(matching::emath_rt::ExactInt::from)) => None,
         Ok(v) => Some(format!("{v:?}")),
         Err(e) => Some(format!("Err({e})")),
     }
@@ -3890,7 +3932,7 @@ fn main() {
     // join - an augment result folding with the input m - recurses)
     let got = max_match_loop(
         vec![vec![1], vec![0, 2], vec![1, 3], vec![2]],
-        vec![0 - 1, 0 - 1, 0 - 1, 0 - 1],
+        vec![(-1).into(), (-1).into(), (-1).into(), (-1).into()],
         vec![0, 1, 0, 1],
         4,
     );
@@ -3901,7 +3943,7 @@ fn main() {
     // example <exhausted_input_returns_the_partner_vector>
     let got = max_match_loop(
         vec![vec![1], vec![0, 2], vec![1, 3], vec![2]],
-        vec![1, 0, 3, 2],
+        vec![1.into(), 0.into(), 3.into(), 2.into()],
         vec![0, 1, 0, 1],
         4,
     );
@@ -3912,7 +3954,7 @@ fn main() {
     // example <star_matches_the_last_declared_leaf>
     let got = max_match_loop(
         vec![vec![1, 2, 3], vec![0], vec![0], vec![0]],
-        vec![0 - 1, 0 - 1, 0 - 1, 0 - 1],
+        vec![(-1).into(), (-1).into(), (-1).into(), (-1).into()],
         vec![0, 1, 1, 1],
         4,
     );
@@ -4002,31 +4044,30 @@ const SPIKE_DRIVER: &str = r#"
 //! evaluate yields the specialized Rat -> Rat closure the walks call.
 //! The driver never hand-builds a Code value: the template chains
 //! from the emitted quadratic_template entry, exactly as the authored
-//! rows do. Rat values are the (i128, i128) ratio carrier; rows
-//! compare by cross-multiplication and integers land as (n, 1).
+//! rows do. Rational expectations compare by exact cross-multiplication.
 
 use structural_spike::{cand_score, climb_step, quadratic_template, rollout_of, scan_best};
 
-type Q = (i128, i128);
+type Q = structural_spike::emath_rt::ExactRatio;
 
 fn q(n: i64, d: i64) -> Q {
-    (n as i128, d as i128)
+    (n, d).into()
 }
 
-fn q_eq(a: Q, b: Q) -> bool {
-    a.0 * b.1 == b.0 * a.1
+fn q_eq(a: &Q, b: &Q) -> bool {
+    a.0.mul(&b.1).unwrap() == b.0.mul(&a.1).unwrap()
 }
 
 fn dq(got: &Result<Q, String>, want: Q) -> Option<String> {
     match got {
-        Ok(v) if q_eq(*v, want) => None,
+        Ok(v) if q_eq(v, &want) => None,
         other => Some(format!("{other:?}")),
     }
 }
 
 fn lq(got: &Result<Vec<Q>, String>, want: &[Q]) -> Option<String> {
     match got {
-        Ok(v) if v.len() == want.len() && v.iter().zip(want).all(|(a, b)| q_eq(*a, *b)) => None,
+        Ok(v) if v.len() == want.len() && v.iter().zip(want).all(|(a, b)| q_eq(a, b)) => None,
         other => Some(format!("{other:?}")),
     }
 }
@@ -4036,8 +4077,8 @@ fn main() {
     let template = quadratic_template(0).expect("quadratic_template answers");
     // The authored target closure f = 2x, one fresh shared handle per
     // row (the parameters are owned `Rc<dyn Fn>` carriers).
-    fn f() -> std::rc::Rc<dyn Fn((i128, i128)) -> Result<(i128, i128), String>> {
-        std::rc::Rc::new(|x: (i128, i128)| Ok((x.0 * 2, x.1)))
+    fn f() -> std::rc::Rc<dyn Fn(&Q) -> Result<Q, String>> {
+        std::rc::Rc::new(|x: &Q| structural_spike::emath_rt::ratio_normalize(x.0.to_i128().unwrap() * 2, x.1.to_i128().unwrap()))
     }
 
     // example <exact_hypothesis_scores_zero> (cand_score: substitute,
@@ -4187,16 +4228,16 @@ use composition::{
     EmathRecord_SimState as S,
 };
 
-type R = (i128, i128);
+type R = composition::emath_rt::ExactRatio;
 type Accel = std::rc::Rc<
-    dyn Fn(R) -> Result<std::rc::Rc<dyn Fn(R) -> Result<R, String>>, String>,
+    dyn Fn(&R) -> Result<std::rc::Rc<dyn Fn(&R) -> Result<R, String>>, String>,
 >;
 type Flow = std::rc::Rc<
-    dyn Fn(R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<S, String>>, String>,
+    dyn Fn(&R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<S, String>>, String>,
 >;
 
 fn q(n: i128, d: i128) -> R {
-    (n, d)
+    (n, d).into()
 }
 
 fn s(t: R, y0: R, y1: R) -> S {
@@ -4204,7 +4245,7 @@ fn s(t: R, y0: R, y1: R) -> S {
 }
 
 fn eq(a: &R, b: &R) -> bool {
-    a.0 * b.1 == b.0 * a.1
+    a.0.mul(&b.1).unwrap() == b.0.mul(&a.1).unwrap()
 }
 
 fn sq(got: &Result<S, String>, t: R, y0: R, y1: R) -> Option<String> {
@@ -4237,35 +4278,44 @@ fn bq(got: &Result<bool, String>, want: bool) -> Option<String> {
 
 // accel = -q (the harmonic acceleration, separable in p)
 fn minus_q() -> Accel {
-    std::rc::Rc::new(|qq: R| {
-        Ok(std::rc::Rc::new(move |_pp: R| Ok((-qq.0, qq.1))))
+    std::rc::Rc::new(|qq: &R| {
+        let qq = qq.clone();
+        Ok(std::rc::Rc::new(move |_pp: &R| Ok(q(-qq.0.to_i128().unwrap(), qq.1.to_i128().unwrap()))))
     })
 }
 
 // accel = 0 (the free particle)
 fn zero_a() -> Accel {
-    std::rc::Rc::new(|_qq: R| Ok(std::rc::Rc::new(|_pp: R| Ok((0, 1)))))
+    std::rc::Rc::new(|_qq: &R| Ok(std::rc::Rc::new(|_pp: &R| Ok(q(0, 1)))))
 }
 
 // accel = q + p (momentum-coupled: the two-momenta probe must catch it)
 fn coupled_a() -> Accel {
-    std::rc::Rc::new(|qq: R| {
-        Ok(std::rc::Rc::new(move |pp: R| {
-            Ok((qq.0 * pp.1 + pp.0 * qq.1, qq.1 * pp.1))
+    std::rc::Rc::new(|qq: &R| {
+        let qq = qq.clone();
+        Ok(std::rc::Rc::new(move |pp: &R| {
+            composition::emath_rt::ratio_normalize(
+                qq.0.to_i128().unwrap() * pp.1.to_i128().unwrap() + pp.0.to_i128().unwrap() * qq.1.to_i128().unwrap(),
+                qq.1.to_i128().unwrap() * pp.1.to_i128().unwrap(),
+            )
         }))
     })
 }
 
 // the drift subflow as a binary closure (flow_compose's f/g/k)
 fn drift_flow() -> Flow {
-    std::rc::Rc::new(|c: R| {
-        Ok(std::rc::Rc::new(move |s2: &S| drift(c, s2.clone())))
+    std::rc::Rc::new(|c: &R| {
+        let c = c.clone();
+        Ok(std::rc::Rc::new(move |s2: &S| drift(c.clone(), s2.clone())))
     })
 }
 
 // the potential V(q) = q^2 / 2 (energy's unary closure input)
-fn quad_half() -> std::rc::Rc<dyn Fn(R) -> Result<R, String>> {
-    std::rc::Rc::new(|qq: R| Ok((qq.0 * qq.0, qq.1 * qq.1 * 2)))
+fn quad_half() -> std::rc::Rc<dyn Fn(&R) -> Result<R, String>> {
+    std::rc::Rc::new(|qq: &R| composition::emath_rt::ratio_normalize(
+        qq.0.to_i128().unwrap() * qq.0.to_i128().unwrap(),
+        qq.1.to_i128().unwrap() * qq.1.to_i128().unwrap() * 2,
+    ))
 }
 
 fn main() {
@@ -4448,8 +4498,8 @@ fn main() {
     match &got {
         Ok(b)
             if eq(&b.damped_delta, &q(0 - 959, 51200))
-                && b.damped_delta.0 * b.verlet_delta.1
-                    < b.verlet_delta.0 * b.damped_delta.1 => {}
+                && b.damped_delta.0.mul(&b.verlet_delta.1).unwrap()
+                    < b.verlet_delta.0.mul(&b.damped_delta.1).unwrap() => {}
         Ok(b) => {
             failures += 1;
             println!(
@@ -4504,14 +4554,14 @@ use stiff::{
     stiff_verlet_invariant,
 };
 
-type R = (i128, i128);
+type R = stiff::emath_rt::ExactRatio;
 
 fn q(n: i128, d: i128) -> R {
-    (n, d)
+    (n, d).into()
 }
 
 fn eq(a: &R, b: &R) -> bool {
-    a.0 * b.1 == b.0 * a.1
+    a.0.mul(&b.1).unwrap() == b.0.mul(&a.1).unwrap()
 }
 
 fn dq(got: &Result<R, String>, want: R) -> Option<String> {
@@ -4798,25 +4848,25 @@ use sparse::{
     EmathRecord_SpEnt as Ent, EmathRecord_SpMat as Sp,
 };
 
-type R = (i128, i128);
+type R = sparse::emath_rt::ExactRatio;
 
 fn q(n: i128, d: i128) -> R {
-    (n, d)
+    (n, d).into()
 }
 
 fn ent(col: i64, val: R) -> Ent {
-    Ent { col, val }
+    Ent { col: col.into(), val }
 }
 
 fn sp(n: i64, rows: &[Vec<Ent>]) -> Sp {
     Sp {
-        n,
+        n: n.into(),
         rows: rows.to_vec(),
     }
 }
 
 fn eq(a: &R, b: &R) -> bool {
-    a.0 * b.1 == b.0 * a.1
+    a.0.mul(&b.1).unwrap() == b.0.mul(&a.1).unwrap()
 }
 
 fn lq(got: &Result<Vec<R>, String>, want: &[R]) -> Option<String> {
@@ -5030,14 +5080,14 @@ use hessian::emath_rt::code::CodeValue;
 use hessian::emath_rt::code::ExprCode;
 use hessian::emath_rt::code_tree::{CodeTree, ModuleTable, TreeBinary};
 
-type R = (i128, i128);
+type R = hessian::emath_rt::ExactRatio;
 
 fn q(n: i128, d: i128) -> R {
-    (n, d)
+    (n, d).into()
 }
 
 fn eq(a: &R, b: &R) -> bool {
-    a.0 * b.1 == b.0 * a.1
+    a.0.mul(&b.1).unwrap() == b.0.mul(&a.1).unwrap()
 }
 
 fn lq(got: &Result<Vec<R>, String>, want: &[R]) -> Option<String> {
@@ -5267,14 +5317,14 @@ const LINALG_DRIVER: &str = r#"
 
 use linalg::{oscillator_modes, square_walk, vec_dot};
 
-type R = (i128, i128);
+type R = linalg::emath_rt::ExactRatio;
 
 fn q(n: i128, d: i128) -> R {
-    (n, d)
+    (n, d).into()
 }
 
 fn eq(a: &R, b: &R) -> bool {
-    a.0 * b.1 == b.0 * a.1
+    a.0.mul(&b.1).unwrap() == b.0.mul(&a.1).unwrap()
 }
 
 fn lq(got: &Result<Vec<R>, String>, want: &[R]) -> Option<String> {
@@ -5396,18 +5446,18 @@ use events::{
     EmathRecord_Event as E, EmathRecord_EventRun as Run, EmathRecord_SimState as S,
 };
 
-type R = (i128, i128);
+type R = events::emath_rt::ExactRatio;
 type Guard = std::rc::Rc<
-    dyn Fn(R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<R, String>>, String>,
+    dyn Fn(&R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<R, String>>, String>,
 >;
 type Reset = std::rc::Rc<dyn Fn(&S) -> Result<S, String>>;
 type Flow = std::rc::Rc<
-    dyn Fn(R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<S, String>>, String>,
+    dyn Fn(&R) -> Result<std::rc::Rc<dyn Fn(&S) -> Result<S, String>>, String>,
 >;
-type UnaryR = std::rc::Rc<dyn Fn(R) -> Result<R, String>>;
+type UnaryR = std::rc::Rc<dyn Fn(&R) -> Result<R, String>>;
 
 fn q(n: i128, d: i128) -> R {
-    (n, d)
+    (n, d).into()
 }
 
 // The Cash-Karp 5(4) tableau exactly as one_step's cash_karp_pair
@@ -5415,7 +5465,7 @@ fn q(n: i128, d: i128) -> R {
 // transcribes the record the authored fixture names).
 fn cash_karp_pair() -> P {
     P {
-        s: 6,
+        s: 6.into(),
         a: vec![
             q(0, 1), q(0, 1), q(0, 1), q(0, 1), q(0, 1), q(0, 1),
             q(1, 5), q(0, 1), q(0, 1), q(0, 1), q(0, 1), q(0, 1),
@@ -5442,11 +5492,11 @@ fn st(t: R, y0: R) -> S {
 }
 
 fn r_sub(a: R, b: R) -> R {
-    red((a.0 * b.1 - b.0 * a.1, a.1 * b.1))
+    red((a.0.to_i128().unwrap() * b.1.to_i128().unwrap() - b.0.to_i128().unwrap() * a.1.to_i128().unwrap(), a.1.to_i128().unwrap() * b.1.to_i128().unwrap()))
 }
 
 fn r_mul(a: R, b: R) -> R {
-    red((a.0 * b.0, a.1 * b.1))
+    red((a.0.to_i128().unwrap() * b.0.to_i128().unwrap(), a.1.to_i128().unwrap() * b.1.to_i128().unwrap()))
 }
 
 // The emitted lane's checked rational ops refuse noncanonical
@@ -5461,25 +5511,25 @@ fn gcd(a: i128, b: i128) -> i128 {
     }
 }
 
-fn red(r: R) -> R {
+fn red(r: (i128, i128)) -> R {
     let (mut n, mut d) = r;
     if d < 0 {
         n = -n;
         d = -d;
     }
     if n == 0 {
-        return (0, 1);
+        return q(0, 1);
     }
     let g = gcd(n.abs(), d);
-    (n / g, d / g)
+    q(n / g, d / g)
 }
 
 fn eq(a: &R, b: &R) -> bool {
-    a.0 * b.1 == b.0 * a.1
+    a.0.mul(&b.1).unwrap() == b.0.mul(&a.1).unwrap()
 }
 
 fn lt(a: &R, b: &R) -> bool {
-    a.0 * b.1 < b.0 * a.1
+    a.0.mul(&b.1).unwrap() < b.0.mul(&a.1).unwrap()
 }
 
 fn bq(got: &Result<bool, String>, want: bool) -> Option<String> {
@@ -5534,10 +5584,10 @@ fn runq(
                 && v.y.len() == y.len()
                 && v.y.iter().zip(y).all(|(a, b)| eq(a, b))
                 && v.complete == complete
-                && v.attempts_used == attempts_used
-                && v.rejections == rejections
-                && v.events_fired == events_fired
-                && v.outcome == outcome => None,
+                && v.attempts_used == attempts_used.into()
+                && v.rejections == rejections.into()
+                && v.events_fired == events_fired.into()
+                && v.outcome == outcome.into() => None,
         Ok(v) => Some(format!(
             "t={:?} y={:?} complete={} attempts={} rej={} fired={} outcome={} (want {want})",
             v.t, v.y, v.complete, v.attempts_used, v.rejections, v.events_fired, v.outcome
@@ -5548,44 +5598,44 @@ fn runq(
 
 // guard = y[0] (the identity guard)
 fn guard_y0() -> Guard {
-    std::rc::Rc::new(|_t: R| {
+    std::rc::Rc::new(|_t: &R| {
         Ok(std::rc::Rc::new(|s: &S| Ok(s.y[0].clone())))
     })
 }
 
 // guard = y[0] - n/d
 fn guard_y0_minus(n: i128, d: i128) -> Guard {
-    std::rc::Rc::new(move |_t: R| {
+    std::rc::Rc::new(move |_t: &R| {
         Ok(std::rc::Rc::new(move |s: &S| {
             let y = s.y[0].clone();
-            Ok(red((y.0 * d - n * y.1, y.1 * d)))
+            Ok(red((y.0.to_i128().unwrap() * d - n * y.1.to_i128().unwrap(), y.1.to_i128().unwrap() * d)))
         }))
     })
 }
 
 // guard = n/d - y[0]
 fn guard_const_minus(n: i128, d: i128) -> Guard {
-    std::rc::Rc::new(move |_t: R| {
+    std::rc::Rc::new(move |_t: &R| {
         Ok(std::rc::Rc::new(move |s: &S| {
             let y = s.y[0].clone();
-            Ok(red((n * y.1 - d * y.0, d * y.1)))
+            Ok(red((n * y.1.to_i128().unwrap() - d * y.0.to_i128().unwrap(), d * y.1.to_i128().unwrap())))
         }))
     })
 }
 
 // guard = (y[0] - 1/2)^2 (the tangency fixture)
 fn guard_tangent() -> Guard {
-    std::rc::Rc::new(|_t: R| {
+    std::rc::Rc::new(|_t: &R| {
         Ok(std::rc::Rc::new(|s: &S| {
             let half = r_sub(s.y[0].clone(), q(1, 2));
-            Ok(r_mul(half, half))
+            Ok(r_mul(half.clone(), half))
         }))
     })
 }
 
 // guard = -(y[0] - 1/4)(y[0] - 3/4) (the double-root fixture)
 fn guard_double_root() -> Guard {
-    std::rc::Rc::new(|_t: R| {
+    std::rc::Rc::new(|_t: &R| {
         Ok(std::rc::Rc::new(|s: &S| {
             let a = r_sub(s.y[0].clone(), q(1, 4));
             let b = r_sub(s.y[0].clone(), q(3, 4));
@@ -5602,36 +5652,37 @@ fn reset_id() -> Reset {
 fn reset_add1() -> Reset {
     std::rc::Rc::new(|s: &S| {
         Ok(S {
-            t: s.t,
-            y: vec![red((s.y[0].0 + s.y[0].1, s.y[0].1))],
+            t: s.t.clone(),
+            y: vec![red((s.y[0].0.to_i128().unwrap() + s.y[0].1.to_i128().unwrap(), s.y[0].1.to_i128().unwrap()))],
         })
     })
 }
 
 // reset: y[0] = 0 (the chatter fixture)
 fn reset_zero() -> Reset {
-    std::rc::Rc::new(|s: &S| Ok(S { t: s.t, y: vec![q(0, 1)] }))
+    std::rc::Rc::new(|s: &S| Ok(S { t: s.t.clone(), y: vec![q(0, 1)] }))
 }
 
 // f: y' = c (constant derivative, the authored fixture family)
 fn flow_const(c: i128) -> Flow {
-    std::rc::Rc::new(move |t: R| {
-        Ok(std::rc::Rc::new(move |_s: &S| Ok(S { t, y: vec![q(c, 1)] })))
+    std::rc::Rc::new(move |t: &R| {
+        let t = t.clone();
+        Ok(std::rc::Rc::new(move |_s: &S| Ok(S { t: t.clone(), y: vec![q(c, 1)] })))
     })
 }
 
 // g = th - 3/4 (the dyadic-root fixture)
 fn g_shift_three_quarters() -> UnaryR {
-    std::rc::Rc::new(|th: R| Ok(red((th.0 * 4 - 3 * th.1, th.1 * 4))))
+    std::rc::Rc::new(|th: &R| Ok(red((th.0.to_i128().unwrap() * 4 - 3 * th.1.to_i128().unwrap(), th.1.to_i128().unwrap() * 4))))
 }
 
 // g = 3*th - 1 (the nondyadic 1/3-root fixture)
 fn g_three_th_minus_one() -> UnaryR {
-    std::rc::Rc::new(|th: R| Ok(red((3 * th.0 - th.1, th.1))))
+    std::rc::Rc::new(|th: &R| Ok(red((3 * th.0.to_i128().unwrap() - th.1.to_i128().unwrap(), th.1.to_i128().unwrap()))))
 }
 
 fn ev(guard: Guard, direction: i64, terminal: bool, priority: i64, reset: Reset) -> E {
-    E { guard, direction, terminal, priority, reset }
+    E { guard, direction: direction.into(), terminal, priority: priority.into(), reset }
 }
 
 fn main() {
@@ -6075,15 +6126,15 @@ fn closed(tree: CodeTree) -> ExprCode {
 // fence): an Int result is a diff even when numerically equal.
 fn rat_value(got: &Result<CodeValue, String>, want: R) -> Option<String> {
     match got {
-        Ok(CodeValue::Rat((n, d))) if n * want.1 == want.0 * d => None,
+        Ok(CodeValue::Rat(q)) if q.0.mul(&want.1.into()).unwrap() == q.1.mul(&want.0.into()).unwrap() => None,
         Ok(v) => Some(format!("{v:?}")),
         Err(e) => Some(format!("Err({e})")),
     }
 }
 
-fn rq(got: &Result<R, String>, want: R) -> Option<String> {
+fn rq(got: &Result<rewriting::emath_rt::ExactRatio, String>, want: R) -> Option<String> {
     match got {
-        Ok(v) if v.0 * want.1 == want.0 * v.1 => None,
+        Ok(v) if v.0.mul(&want.1.into()).unwrap() == v.1.mul(&want.0.into()).unwrap() => None,
         Ok(v) => Some(format!("{v:?}")),
         Err(e) => Some(format!("Err({e})")),
     }
@@ -6137,8 +6188,8 @@ fn main() {
     check("fold_keeps_rational_fence", rat_value(&got, (5, 6)), "5/6");
 
     // examples <edit_six_gives_eleven>, <edit_seven_gives_twelve>
-    check("edit_six_gives_eleven", rq(&hypothesis_value((6, 1)), (11, 1)), "11/1");
-    check("edit_seven_gives_twelve", rq(&hypothesis_value((7, 1)), (12, 1)), "12/1");
+    check("edit_six_gives_eleven", rq(&hypothesis_value((6, 1).into()), (11, 1)), "11/1");
+    check("edit_seven_gives_twelve", rq(&hypothesis_value((7, 1).into()), (12, 1)), "12/1");
 
     // example <bound_shadow_not_substituted>: unused = 0
     check("bound_shadow_not_substituted", rq(&shadowing_preserved(0), (3, 1)), "3/1");
@@ -6213,7 +6264,7 @@ fn policy(max_iters: i64) -> Policy {
         down: 10.0,
         floor: 0.000000000001,
         break_lambda: 1000000000000.0,
-        max_iters,
+        max_iters: max_iters.into(),
         tolerance: 0.000000000001,
     }
 }
@@ -6297,9 +6348,9 @@ fn main() {
     pin!("affine_recovery_in_one_accepted_chain", lm_advance(affine(), ts(), ys(), ones(), ones(), 10.0, 0.001, 0.0, false, 0, marq()),
         |r| r.converged && line(&r.params, 0.000000001), "converged, params ~(2, 3)");
     pin!("stalled_progress_converges_without_counting", lm_iter(affine(), ts(), ys(), ones(), ones(), 0.001, 10.0, true, 7, marq()),
-        |r| r.converged && r.iters == 7 && r.sse == 10.0, "converged, iters 7, sse 10");
+        |r| r.converged && r.iters == 7.into() && r.sse == 10.0, "converged, iters 7, sse 10");
     pin!("zero_cap_refuses_to_advance", lm_iter(affine(), ts(), ys(), ones(), ones(), 0.001, 0.0, false, 0, policy(0)),
-        |r| !r.converged && r.iters == 0, "not converged, iters 0");
+        |r| !r.converged && r.iters == 0.into(), "not converged, iters 0");
     refuses!("empty_data_refuses", damped_fit(affine(), vec![], vec![], ones(), ones(), marq()), "empty_data");
     refuses!("length_mismatch_refuses", damped_fit(affine(), ts(), v(&[2.0]), ones(), ones(), marq()), "data_length_mismatch");
     refuses!("weight_arity_refuses", damped_fit(affine(), ts(), ys(), ones(), v(&[1.0]), marq()), "weight_arity_mismatch");
@@ -6325,9 +6376,9 @@ fn main() {
         |r| r.lambda0 == 0.1 && r.down == 100.0, "lambda0 0.1, down 100");
     pin!("recovers_planted_rational_decay", PlantedFit(0), |r| *r, "true");
     pin!("classic_card_constants", MarquardtCardIsClassic(0), |r| *r, "true");
-    pin!("cautious_takes_six", CardIters(0), |r| *r == 6, "6");
-    pin!("classic_takes_four", CardIters(1), |r| *r == 4, "4");
-    pin!("bold_takes_four", CardIters(2), |r| *r == 4, "4");
+    pin!("cautious_takes_six", CardIters(0), |r| *r == 6.into(), "6");
+    pin!("classic_takes_four", CardIters(1), |r| *r == 4.into(), "4");
+    pin!("bold_takes_four", CardIters(2), |r| *r == 4.into(), "4");
     pin!("cap_is_a_dial", CustomCardCap(0), |r| *r, "true");
     pin!("tuner_picks_bold", TunePicksWinner(0), |r| *r, "true");
 
@@ -6492,7 +6543,7 @@ use discovery::emath_rt::code::{open_expr, CodeValue, ExprCode};
 use discovery::emath_rt::code_tree::{CodeTree, TreeBinary, TreeDomain};
 use discovery::{challenge_conjecture, EmathRecord_Conjecture as Conjecture};
 
-type R = (i128, i128);
+type R = discovery::emath_rt::ExactRatio;
 
 fn int(value: i64) -> CodeTree {
     CodeTree::Literal(CodeValue::Int(value))
@@ -6550,7 +6601,7 @@ fn main() {
             println!("DIFF {name} EMITTED {got}; VM = {vm}");
         }
     };
-    let domain3: Vec<R> = vec![(1, 1), (0, 1), (-1, 1)];
+    let domain3: Vec<R> = vec![(1, 1).into(), (0, 1).into(), (-1, 1).into()];
 
     // example <falsifies_overbroad_claim>
     let got = challenge_conjecture(
@@ -6560,7 +6611,7 @@ fn main() {
     );
     check(
         "falsifies_overbroad_claim",
-        matches!(&got, Ok(r) if r.status == 2 && r.counterexample == 1 && r.visited == 2),
+        matches!(&got, Ok(r) if r.status == 2.into() && r.counterexample == 1.into() && r.visited == 2.into()),
         format!("{got:?}"),
         "status 2, counterexample 1, visited 2",
     );
@@ -6573,7 +6624,7 @@ fn main() {
     );
     check(
         "narrowed_assumption_excludes_counterexample",
-        matches!(&got, Ok(r) if r.status == 1 && r.counterexample == -1 && r.witnesses.len() == 2),
+        matches!(&got, Ok(r) if r.status == 1.into() && r.counterexample == (-1).into() && r.witnesses.len() == 2),
         format!("{got:?}"),
         "status 1, counterexample -1, 2 witnesses",
     );
@@ -6581,12 +6632,12 @@ fn main() {
     // example <budget_is_not_proof>
     let got = challenge_conjecture(
         Conjecture { claim: square_positive(), assumption: always() },
-        vec![(1, 1), (0, 1)],
+        vec![(1, 1).into(), (0, 1).into()],
         1,
     );
     check(
         "budget_is_not_proof",
-        matches!(&got, Ok(r) if r.status == 0 && r.visited == 1),
+        matches!(&got, Ok(r) if r.status == 0.into() && r.visited == 1.into()),
         format!("{got:?}"),
         "status 0, visited 1",
     );
@@ -6600,7 +6651,7 @@ fn main() {
     );
     let got = challenge_conjecture(
         Conjecture { claim: unbound, assumption: always() },
-        vec![(1, 1)],
+        vec![(1, 1).into()],
         1,
     );
     check(
@@ -6627,7 +6678,7 @@ fn main() {
     );
     check(
         "claim_calls_a_module_function",
-        matches!(&got, Ok(r) if r.status == 2 && r.counterexample == 1),
+        matches!(&got, Ok(r) if r.status == 2.into() && r.counterexample == 1.into()),
         format!("{got:?}"),
         "status 2, counterexample 1",
     );
@@ -6637,7 +6688,7 @@ fn main() {
     let int_claim = function_in("Int", bin(TreeBinary::Gt, bin(TreeBinary::Mul, x(), x()), int(0)));
     let got = challenge_conjecture(
         Conjecture { claim: int_claim, assumption: always() },
-        vec![(1, 2)],
+        vec![(1, 2).into()],
         1,
     );
     check(
@@ -6694,7 +6745,7 @@ use derivative::emath_rt::code_tree::{
 use derivative::EmathRecord_IterResult as IterResult;
 use derivative::*;
 
-type R = (i128, i128);
+type R = derivative::emath_rt::ExactRatio;
 
 fn code(tree: CodeTree) -> ExprCode {
     open_expr(free_names_tree(&tree), tree, None, BTreeMap::new())
@@ -6766,15 +6817,15 @@ fn is_tag(node: &NodeValue, tag: &str) -> bool {
     node_eq(node, node_tag(tag)) == Ok(true)
 }
 fn iter_eq(got: &Result<IterResult, String>, want: &IterResult) -> Option<String> {
-    let q = |a: R, b: R| a.0 * b.1 == b.0 * a.1;
+    let q = |a: &R, b: &R| a.0.mul(&b.1).unwrap() == b.0.mul(&a.1).unwrap();
     match got {
         Ok(r) if r.kind == want.kind
-            && q(r.root, want.root)
-            && q(r.residual, want.residual)
+            && q(&r.root, &want.root)
+            && q(&r.residual, &want.residual)
             && r.updates == want.updates
             && r.den_bits == want.den_bits
-            && q(r.bracket_lo, want.bracket_lo)
-            && q(r.bracket_hi, want.bracket_hi) => None,
+            && q(&r.bracket_lo, &want.bracket_lo)
+            && q(&r.bracket_hi, &want.bracket_hi) => None,
         other => Some(format!("{other:?}")),
     }
 }
@@ -6822,7 +6873,7 @@ fn main() {
     });
     check("d_product_structure", ok(matches!(shape, Ok(true)), &got), "Add(Mul(Literal, _), Mul(_, Call))");
     let quotient = bin(TreeBinary::Div, add(mul(var("z"), var("z")), int(1)), add(var("z"), int(3)));
-    check("d_quotient_value", value(at(&d(quotient), "z", 2), CodeValue::Rat((3, 5))), "3/5");
+    check("d_quotient_value", value(at(&d(quotient), "z", 2), CodeValue::Rat((3, 5).into())), "3/5");
     let neg = CodeTree::Unary { op: TreeUnary::Neg, value: Box::new(var("z")) };
     check("d_neg_value", value(at(&d(neg), "z", 5), int_v(-1)), "-1");
     check("d_pow_cube", value(at(&d(pow(var("z"), int(3))), "z", 2), int_v(12)), "12");
@@ -6882,17 +6933,17 @@ fn main() {
 
     let got = linearity_law(0);
     check("additivity_and_homogeneity_hold", ok(matches!(got, Ok(true)), &got), "true");
-    let got = square_fn((3, 1));
-    check("square_fn_values", ok(matches!(got, Ok((9, 1))), &got), "9/1");
+    let got = square_fn((3, 1).into());
+    check("square_fn_values", ok(matches!(&got, Ok(r) if *r == (9, 1)), &got), "9/1");
     let got = chain_rule_law(0);
     check("composition_identity_holds", ok(matches!(got, Ok(true)), &got), "true");
     let got = quotient_rule_law(0);
     check("quotient_identity_holds", ok(matches!(got, Ok(true)), &got), "true");
 
-    let want = IterResult { kind: 1, root: (17, 12), residual: (1, 144), updates: 2, den_bits: 4, bracket_lo: (0, 1), bracket_hi: (0, 1) };
+    let want = IterResult { kind: 1.into(), root: (17, 12).into(), residual: (1, 144).into(), updates: 2.into(), den_bits: 4.into(), bracket_lo: (0, 1).into(), bracket_hi: (0, 1).into() };
     check("sqrt_two_receipt_matches_the_hand_supplied_baseline", iter_eq(&sqrt2_newton_composed(0), &want), "kind 1, 17/12, 1/144, 2 updates");
     // The module-callee newton: f and the run-time df both call square_fn.
-    let want = IterResult { kind: 1, root: (91, 72), residual: (7075, 373248), updates: 2, den_bits: 7, bracket_lo: (0, 1), bracket_hi: (0, 1) };
+    let want = IterResult { kind: 1.into(), root: (91, 72).into(), residual: (7075, 373248).into(), updates: 2.into(), den_bits: 7.into(), bracket_lo: (0, 1).into(), bracket_hi: (0, 1).into() };
     check("cube_root_two_through_a_module_callee", iter_eq(&cube_root_newton_composed(0), &want), "kind 1, 91/72, 7075/373248, 2 updates");
     // A run-time formula calling an IMPORTED module function (abs_rat,
     // from analysis.equations.iteration): quote(abs_rat(z) + 1) at -2.
@@ -6904,8 +6955,8 @@ fn main() {
         None,
         BTreeMap::new(),
     );
-    let got = evaluate_at(form, (-2, 1));
-    check("imported_callee_in_a_runtime_formula", ok(matches!(got, Ok(r) if r.0 == 3 * r.1), &got), "3/1");
+    let got = evaluate_at(form, (-2, 1).into());
+    check("imported_callee_in_a_runtime_formula", ok(matches!(&got, Ok(r) if r.0 == r.1.mul(&3.into()).unwrap()), &got), "3/1");
     // int_bits is imported but unreachable from every function of the
     // module - only the run-time formula calls it: quote(int_bits(201) +
     // z) at 1/2 (bits(201) = 8).
@@ -6915,12 +6966,12 @@ fn main() {
         None,
         BTreeMap::new(),
     );
-    let got = evaluate_at(form, (1, 2));
-    check("unreachable_imported_callee_in_a_runtime_formula", ok(matches!(got, Ok(r) if 2 * r.0 == 17 * r.1), &got), "17/2");
+    let got = evaluate_at(form, (1, 2).into());
+    check("unreachable_imported_callee_in_a_runtime_formula", ok(matches!(&got, Ok(r) if r.0.mul(&2.into()).unwrap() == r.1.mul(&17.into()).unwrap()), &got), "17/2");
     let got = dyadic_exact_newton_composed(0);
     check(
         "dyadic_root_is_exact_kind_zero",
-        ok(matches!(&got, Ok(r) if r.kind == 0 && r.root.0 * 2 == r.root.1 && r.residual.0 == 0), &got),
+        ok(matches!(&got, Ok(r) if r.kind == 0.into() && r.root.0.mul(&2.into()).unwrap() == r.root.1 && r.residual.0.is_zero()), &got),
         "kind 0, root 1/2, residual 0",
     );
 
@@ -6948,12 +6999,14 @@ fn emission_conformance_learning_and_exploration_workflows() {
     let learning = r#"
 use learn::*;
 fn main() -> Result<(), String> {
+    emath_rt::execution::with_budget(100_000_000, 256, || {
     let learned = Learns(0)?;
-    assert_eq!(learned.count, 4);
-    assert_eq!(learned.rounds, vec![1, 1, 2, 2]);
-    assert_eq!(learned.next, vec![78, 144, 6084, 46368]);
+    assert_eq!(learned.count, 4.into());
+    assert_eq!(learned.rounds, vec![1.into(), 1.into(), 2.into(), 2.into()]);
+    assert_eq!(learned.next, vec![78.into(), 144.into(), 6084.into(), 46368.into()]);
     println!("learning: four rules, two rounds, held-out predictions match");
     Ok(())
+    })
 }
 "#;
     assert!(run_lane_with_work(
@@ -6962,16 +7015,188 @@ fn main() -> Result<(), String> {
     let exploration = r#"
 use explore::*;
 fn main() -> Result<(), String> {
+    emath_rt::execution::with_budget(100_000_000, 256, || {
     let explored = Explores(0)?;
-    assert_eq!(explored.round_two, vec![364, 13, 300, 6084, 376, 89, 46368, 20736]);
-    assert!(explored.round_three > 20);
+    assert_eq!(explored.round_two, vec![364.into(), 13.into(), 300.into(), 6084.into(), 376.into(), 89.into(), 46368.into(), 20736.into()]);
+    assert!(explored.round_three > 20.into());
     assert!(explored.commute && explored.law && explored.faster);
     assert!(explored.guarded && explored.refuted);
     println!("exploration: proposals, laws, guarded rewrites and refutation match");
     Ok(())
+    })
 }
 "#;
     assert!(run_lane_with_work(
         "tests/fixtures/keep/explore.emath", exploration, 32_000_000,
     ).is_empty());
+}
+
+#[test]
+fn emission_conformance_conjecture_workflow() {
+    // The complete Dreams/Combines driver failed on round-three
+    // integer overflow before exact sequence carriers were retained.
+    let driver = r#"
+use conjecture::*;
+fn main() -> Result<(), String> {
+    emath_rt::execution::with_budget(1_000_000_000, 512, || {
+    let judged = Judges(0)?;
+    assert!(judged.two_new);
+    assert_eq!(judged.steps, vec![
+        (-1).into(), 1.into(), 1.into(), 1.into(), 1.into(), (-1).into(),
+        2.into(), 1.into(), 1.into(), 1.into(), 1.into(), 2.into(),
+    ]);
+    assert_eq!(judged.shallow, 3.into());
+    assert_eq!(judged.either, vec![1.into(), 1.into()]);
+    let dreams = Dreams(0)?;
+    assert_eq!((dreams.kept, dreams.derived), (1.into(), 1.into()));
+    assert!(dreams.refuted && dreams.check && dreams.discerns);
+    let combines = Combines(0)?;
+    assert!(combines.commutes && combines.linear && combines.derived && combines.runs);
+    println!("conjecture: novelty, kept-law discrimination and curried checks match");
+    Ok(())
+    })
+}
+"#;
+    assert!(
+        run_lane_with_work("tests/fixtures/keep/conjecture.emath", driver, 400_000_000).is_empty()
+    );
+}
+
+#[test]
+fn emission_conformance_formula_workflow() {
+    // The complete workflow failed first at the i128 rational crossing,
+    // then at integer record state and a machine-word local accumulator.
+    let driver = r#"
+use formulas::*;
+
+fn main() -> Result<(), String> {
+    assert_eq!(factorial(34)?.to_string(), "295232799039604140847618609643520000000");
+    let _ = e_bracket(40)?;
+    let euler = rediscovers_euler_e(0)?;
+    assert!(has(euler.found.clone(), vec![1, 1], vec![1, 0], vec![0, 1, 1, -2])?);
+    assert!(sound(euler.found, e_bracket(60)?.lo)?);
+    let brouncker = rediscovers_brouncker_pi(0)?;
+    assert!(has(brouncker.found.clone(), vec![2, 1], vec![1, 0, 0], vec![0, 4, 1, 0])?);
+    assert!(sound(brouncker.found, pi_bracket(60)?.lo)?);
+    let apery = rediscovers_apery(0)?;
+    assert!(has(apery.zeta3.found.clone(), vec![34, 51, 27, 5], vec![-1, 0, 0, 0, 0, 0, 0], vec![0, 6, 1, 0])?);
+    assert!(sound(apery.zeta3.found, zeta3_bracket(60)?.lo)?);
+    assert!(has(apery.zeta2.found.clone(), vec![11, 11, 3], vec![1, 0, 0, 0, 0], vec![0, 5, 1, 0])?);
+    let pi = pi_bracket(60)?.lo;
+    let zeta2 = emath_rt::ratio_div(emath_rt::ratio_mul(&pi, &pi)?, (6, 1))?;
+    assert!(sound(apery.zeta2.found, zeta2)?);
+    let catalan = rediscovers_catalan(0)?;
+    assert!(has(catalan.found.clone(), vec![3, 3, 1], vec![-2, 0, 0, 0, 0], vec![0, 1, 2, 0])?);
+    assert!(sound(catalan.found, catalan_bracket(100)?.lo)?);
+    println!("formulas: classical fractions rediscovered and checked");
+    Ok(())
+}
+"#;
+    assert!(run_lane_with_work(
+        "tests/fixtures/keep/formulas.emath", driver, 400_000_000,
+    ).is_empty());
+}
+
+#[test]
+fn emission_conformance_native_budget() {
+    let driver = r#"
+use native_budget::*;
+use emath_rt::execution::with_budget;
+use emath_rt::code::{open_expr, CodeValue};
+use emath_rt::code_tree::{CodeTree, ModuleTable, TreeBinary, TreeDomain};
+
+fn exhausted<T>(result: Result<T, String>, code: &str) {
+    let error = result.err();
+    assert!(error.as_deref().is_some_and(|error| error.starts_with(code)),
+        "expected {code}, got {error:?}");
+}
+
+fn swallowed(_: &[CodeValue]) -> Result<CodeValue, String> {
+    let _ = deep(200);
+    Ok(CodeValue::Int(7))
+}
+
+fn main() {
+    assert_eq!(with_budget(1000, 64, || down(3)), Ok(7));
+    assert_eq!(with_budget(1000, 64, || deep(3)), Ok(3));
+    assert_eq!(with_budget(1000, 64, || odd(3)), Ok(true));
+    assert_eq!(with_budget(1000, 64, || sum_down(3)), Ok(21.into()));
+    exhausted(with_budget(0, 64, || down(0)), "E-NATIVE-WORK");
+    exhausted(with_budget(100, 64, || down(10000)), "E-NATIVE-WORK");
+    exhausted(with_budget(1000, 64, || sum_down(1000)), "E-NATIVE-WORK");
+    exhausted(with_budget(10000, 8, || deep(50)), "E-NATIVE-DEPTH");
+    exhausted(with_budget(10000, 8, || even(50)), "E-NATIVE-DEPTH");
+    exhausted(deep(200), "E-NATIVE-DEPTH");
+    assert_eq!(with_budget(10000, 256, || deep(200)).unwrap(), 200);
+    exhausted(down(i64::try_from(emath_rt::execution::DEFAULT_WORK).unwrap() + 1), "E-NATIVE-WORK");
+
+    // Host re-entry and returned language closures share the current scope.
+    exhausted(with_budget(200, 64, || {
+        for _ in 0..200 { down(0)?; }
+        Ok(())
+    }), "E-NATIVE-WORK");
+    exhausted(with_budget(10, 64, || with_budget(10000, 64, || down(100))), "E-NATIVE-WORK");
+    let f = maker(0).unwrap();
+    exhausted(with_budget(30, 64, || f(&1000.into())), "E-NATIVE-WORK");
+    let callback = std::rc::Rc::new(|n| down(n));
+    exhausted(with_budget(30, 64, || applied(callback, 1000)), "E-NATIVE-WORK");
+
+    let quoted = MakeCode(0).unwrap();
+    assert_eq!(quoted.evaluate(&ModuleTable::EMPTY), Ok(CodeValue::Int(3)));
+    let result = quoted.evaluate_callable(&ModuleTable::EMPTY).and_then(|callable| callable(&[]));
+    assert_eq!(result, Err("type: value is not callable: 3".into()));
+    exhausted(with_budget(1, 64, || quoted.evaluate_callable(&ModuleTable::EMPTY)), "E-NATIVE-WORK");
+
+    // Budget failures cannot be swallowed by a host callback to mint more work.
+    exhausted(with_budget(1, 64, || {
+        let _ = down(5);
+        Ok(7)
+    }), "E-NATIVE-WORK");
+    let table = ModuleTable { callables: &[("swallowed", swallowed)], ..ModuleTable::EMPTY };
+    let call = CodeTree::Call {
+        function: Box::new(CodeTree::Path(vec!["swallowed".into()])), args: vec![],
+    };
+    exhausted(emath_rt::code_tree::evaluate_tree(&call, &Default::default(), &table),
+        "E-NATIVE-DEPTH");
+
+    // A run-time quoted recursion uses the same budget, including partial apply.
+    let x = || CodeTree::Path(vec!["x".into()]);
+    let int = |n| CodeTree::Literal(CodeValue::Int(n));
+    let recursive = open_expr(vec![], CodeTree::Recur {
+        name: "f".into(),
+        ty: Box::new(CodeTree::Binary {
+            op: TreeBinary::Imply,
+            left: Box::new(CodeTree::Path(vec!["Int".into()])),
+            right: Box::new(CodeTree::Path(vec!["Int".into()])),
+        }),
+        body: Box::new(CodeTree::Closure {
+            param: "x".into(), domain: TreeDomain::Scalar("Int".into()),
+            body: Box::new(CodeTree::If {
+            condition: Box::new(CodeTree::Binary { op: TreeBinary::Le, left: Box::new(x()), right: Box::new(int(0)) }),
+            then_value: Box::new(int(7)),
+            else_value: Box::new(CodeTree::Call {
+                function: Box::new(CodeTree::Path(vec!["f".into()])),
+                args: vec![CodeTree::Binary { op: TreeBinary::Sub, left: Box::new(x()), right: Box::new(int(1)) }],
+            }),
+            }),
+        }),
+    }, None, Default::default());
+    let value = recursive.evaluate_value(&ModuleTable::EMPTY).unwrap();
+    exhausted(with_budget(30, 64, || value.apply(
+        &[emath_rt::code_tree::NodeValue::Scalar(CodeValue::Int(100))], &ModuleTable::EMPTY,
+    )), "E-NATIVE-WORK");
+    let result = with_budget(1000, 64, || value.apply(
+        &[emath_rt::code_tree::NodeValue::Scalar(CodeValue::Int(3))], &ModuleTable::EMPTY,
+    ).and_then(|value| value.to_scalar()));
+    assert_eq!(result, Ok(CodeValue::Int(7)));
+
+    // Exhaustion and unwinding release the scope for the next independent run.
+    assert_eq!(down(3), Ok(7));
+    let _ = std::panic::catch_unwind(|| with_budget(1, 64, || -> Result<(), String> { panic!("host"); }));
+    assert_eq!(down(3), Ok(7));
+    println!("native execution: shared work/depth limits and clean recovery");
+}
+"#;
+    let diffs = run_lane("tests/fixtures/constructor/native_budget.emath", driver);
+    assert!(diffs.is_empty(), "native budget disagreements: {diffs:?}");
 }

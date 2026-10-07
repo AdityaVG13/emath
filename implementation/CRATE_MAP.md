@@ -12,13 +12,46 @@ Pinned against HEAD by the `crate-map + API inventory` lane in
 Planned rows are never certifying: a planned name is a statement of
 intent, not an implemented surface.
 
+## Meaning and consumer boundaries
+
+The current source admission authority is `emath-sema::CompilerSession`.
+Its result retains syntax/parser diagnostics, the semantic package and an
+error-free prepared constructor module. Syntax alone is not admission.
+`emath-exec-ir` owns import scoping, immutable preparation, constructor type
+admission, fresh evaluation and lowering. Sema invokes that machinery rather
+than duplicating it. This is an explicit sema-to-execution dependency, not
+yet one unified semantic/execution type representation.
+
+CLI check/run/test/keep/compare/build, loop/dream/experiment hosts, Lean
+translation/example checks/certification and WASM operations consume checked
+results. Diagnostic/provenance/LSP consumers also use the semantic session.
+Rust ABI/layout inference and Lean type/coercion/termination checks remain
+target obligations; they may refuse an admitted definition, but cannot
+independently admit source. Rust generation is optional user work, not
+mathematical authority.
+
+Root `MeaningId` is distinct from source bytes, dependency snapshots, target
+artifacts and operational identities. Checked constructor identity includes
+the retained scoped declaration graph, including private helpers and direct
+and transitive imports. Legacy programmatic SIR includes dependency meanings
+only when explicitly supplied. Neither path promises an atomic filesystem
+snapshot. Native session export additionally compares retained dependency
+sources, conservatively rejecting byte drift.
+Serialized checkpoints and later ordinary library imports do not embed the
+in-memory checked module.
+
 ## Implemented workspace crates (`crates/`)
+
+The dependency column below records current normal first-party manifest
+edges, not an ideal layering policy. Optional upstream dependencies are
+described under shipping profiles. Inventory checked with offline Cargo
+metadata on 2026-10-05.
 
 ### Tier 0: identity, diagnostics, transport
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-core` | `crates/emath-core` | IDs, spans, diagnostics, canonical primitives, source store, limits | std only |
+| `emath-core` | `crates/emath-core` | IDs, syntax-tree records, spans, diagnostics, canonical primitives, source store, limits | no first-party dependency; unicode-normalization |
 
 ### Tier 1: language
 
@@ -34,43 +67,44 @@ intent, not an implemented surface.
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-ir` | `crates/emath-ir` | neutral SIR/GIR/plan/EMIR/evidence structures | core/schema/term |
-| `emath-sema` | `crates/emath-sema` | orchestration and constructor/invariant admission (`CompilerSession`) | core/ir/syntax/goal |
-| `emath-exec-ir` | `crates/emath-exec-ir` | executable target-independent regions | ir |
-| `emath-plan` | `crates/emath-plan` | compatibility, decomposition, ranking, fallback | ir |
+| `emath-sema` | `crates/emath-sema` | source-session authority, semantic package and constructor admission | core/exec-ir/ir/schema |
+| `emath-exec-ir` | `crates/emath-exec-ir` | import scoping, constructor preparation/evaluation/lowering, VM and executable regions | artifact/core/ir/rt/schema/syntax/term |
+| `emath-plan` | `crates/emath-plan` | compatibility, decomposition, ranking, fallback | core/ir/provider-api |
 
 ### Tier 3: goals and providers
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-provider-api` | `crates/emath-provider-api` | descriptors, provider/adapter/checker traits | core/ir |
-| `emath-adapter-dew` | `crates/emath-adapter-dew` | Dew scalar backends (std-only native lanes) | provider-api |
-| `emath-adapter-rumoca` | `crates/emath-adapter-rumoca` | Rumoca subset-import adapter | provider-api |
+| `emath-provider-api` | `crates/emath-provider-api` | descriptors, provider/adapter/checker traits | core/ir/term |
+| `emath-adapter-dew` | `crates/emath-adapter-dew` | in-tree Dew scalar mappings/backends, not linked upstream Dew | core/ir |
+| `emath-adapter-rumoca` | `crates/emath-adapter-rumoca` | in-tree Modelica subset adapter, not linked upstream Rumoca | core/ir/provider-api |
 
 ### Tier 4: evidence and artifacts
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-evidence` | `crates/emath-evidence` | claims, assumptions, bundles, freshness | ir |
-| `emath-rust-backend` | `crates/emath-rust-backend` | EMIR to Rust IR and rendering | rust-ir |
-| `emath-artifact` | `crates/emath-artifact` | Cargo package, manifests, source maps, SBOM | core/schema |
-| `emath-rt` | `crates/emath-rt` | pre-compiled math kernels, embedded verbatim into generated crates and used by the interpreter | std only |
+| `emath-evidence` | `crates/emath-evidence` | claims, assumptions, bundles, freshness | artifact/core/ir |
+| `emath-rust-backend` | `crates/emath-rust-backend` | Rust ABI/layout/rendering, constructor crate and engine-source packaging | core/exec-ir/ir/rt |
+| `emath-artifact` | `crates/emath-artifact` | JSON interchange, manifests, source maps, staging/publication/verification | core/ir |
+| `emath-rt` | `crates/emath-rt` | numeric/storage/execution carriers; includes authored-math migration debt | core |
 
 ### Tier 5: integration
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-build` | `crates/emath-build` | build-step backend and artifact emission (`GeneratedCrate` host) | sema/artifact |
-| `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity (corrected name; formerly `emath-lab`) | core |
-| `emath-registry` | `crates/emath-registry` | package/provider registry slice | provider-api |
-| `emath-cli` | `crates/emath-cli` | production compiler CLI (`emath`) | sema/build/lab-core |
-| `emath-cli-lab` | `crates/emath-cli-lab` | extracted lab/host CLI (`emath-lab`) | emath-cli/genesis/world-ir/store |
+| `emath-build` | `crates/emath-build` | checked-source crate emission; separate elaborated-package artifact path | artifact/core/exec-ir/ir/rust-backend/sema/syntax |
+| `emath-lab-core` | `crates/emath-lab-core` | experiments, metrics, promotion, drift, keep-gate identity | core/ir/term |
+| `emath-registry` | `crates/emath-registry` | package/provider records; registry services not implemented | artifact/core |
+| `emath-cli` | `crates/emath-cli` | production command routing, presentation, Lean translation, LSP | artifact/build/core/evidence/exec-ir/ir/lab-core/plan/provider-api/rt/rust-backend/sema/syntax/term/tui |
+| `emath-cli-lab` | `crates/emath-cli-lab` | forwards constructor commands; extracted tokens refuse before retained bodies | adapter-rumoca/artifact/build/cli/core/evidence/exec-ir/genesis/ir/lab-core/sema/store/syntax/term/world-ir |
+| `emath-tui` | `crates/emath-tui` | loop/dream/experiment orchestration, scratch/native mirror, REPL/dashboard | artifact/build/core/exec-ir/rust-backend/sema/syntax |
 
 ### Tier 6: semantic genesis substrate
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
 | `emath-genesis` | `crates/emath-genesis` | minimal Semantic Genesis evaluator and built-in example worlds | core/term/world-ir |
-| `emath-world-ir` | `crates/emath-world-ir` | provider-neutral World IR and meaning-hole structures; owns FittedTable and re-exports core's fnv1a64 (o7a6) | ir/core |
+| `emath-world-ir` | `crates/emath-world-ir` | world facade, fitting and emission; shared records including FittedTable belong to emath-ir | core/ir/term |
 
 ### Tier 7: governance and operations
 
@@ -81,16 +115,62 @@ intent, not an implemented surface.
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-store` | `crates/emath-store` | evidence/artifact state store (frankensqlite, `sqlite-store` feature) | core/ir |
+| `emath-store` | `crates/emath-store` | object/evidence/artifact state; optional SQLite carrier | artifact/core |
 
-Feature-gated: each crate's default build is std-only; the upstream engine
-(Dicklesworthstone franken*) arrives only behind the named feature.
+The SQLite engine and its async runtime are feature-gated. This does not
+make the default transitive dependency graph third-party-free.
 
 ### Tier 9: layout and playground frontends
 
 | Crate | Path | Responsibility | May depend on |
 |---|---|---|---|
-| `emath-wasm` | `crates/emath-wasm` | C-ABI wasm engine for the browser playground (`em_alloc`/`em_free`/`em_run`) | sema/syntax/exec-ir/rust-backend |
+| `emath-wasm` | `crates/emath-wasm` | checked in-memory constructor operations and confined C ABI | artifact/core/exec-ir/genesis/ir/rust-backend/sema/syntax |
+
+## Compiled roots and shipping profiles
+
+All 26 crates above have their production module root at `src/lib.rs`.
+CLI and lab binaries additionally start at `src/main.rs`. Module declarations,
+`cfg`, `include!` and build scripts, not physical source lines, determine
+compilation. Crate `CONTRACT.md` files record each component's API, error,
+determinism, resource and unsafe boundaries. This map is an ownership review,
+not a claim that every line or optional configuration passed a quality gate.
+
+| Profile | First-party normal dependency closure | Distribution boundary |
+|---|---|---|
+| Default `emath-cli` | 17 crates | Binary plus shipped `language/` tree; backend, lab core, provider API and TUI/dashboard are linked dependencies |
+| `emath-wasm` | 13 crates | `cargo xtask build-web` builds wasm32 release and stages `web/dist/emath.wasm`; not full mathematical-capability parity |
+| `emath-cli-lab` | 21 crates | Default CLI closure plus lab, Rumoca adapter, genesis, world-ir and store; extracted command bodies are not live admission |
+| Direct generated Rust | Runtime source included when needed | Shared constructor emitter, named entries and manifest; target support/refusal remains explicit |
+| Engine-backed generated Rust | 8 engine crates from exec-ir's manifest closure | `vendor/` first-party sources and a trimmed lockfile; third-party sources are not vendored, so an uncached machine is not guaranteed offline compilation |
+| Native epoch host | Artifact plus sibling host crate | Scratch mirror is target-specific; full integer state, bounded i128 ledger projections, cross-lane parity tested |
+| Lean export | Separate Lean project and toolchain | Translation is not proof; `--check` requires the Lean kernel, and laws also require emath certification |
+
+The default CLI closure is core, syntax, term, schema, ir, sema, exec-ir,
+plan, provider-api, rt, rust-backend, artifact, evidence, build, lab-core,
+cli and tui. WASM is core, syntax, term, schema, ir, sema, exec-ir, rt,
+rust-backend, artifact, world-ir, genesis and wasm.
+HIR, Dew adapter, registry and SQLite store are not default CLI/WASM
+dependencies. Workspace libraries are `publish = false`, not a published
+crate distribution. No universal release/archive assembly is established here.
+
+`emath-rust-backend/build.rs` embeds every file under the engine closure's
+`src/`, including unreferenced historical files. Uncompiled source can therefore
+ship as data. `emath-rt::SOURCE` similarly concatenates runtime parts, including
+core-owned numeric source. Removing a module declaration alone does not remove
+its source from generated artifacts.
+
+Optional profiles: CLI `async-runtime` adds asupersync; TUI `dashboard` adds
+ftui and is always selected by the default CLI; store `sqlite-store` adds
+fsqlite/asupersync. Default transitive graphs already include
+unicode-normalization and stacker. Release optimization settings in
+`Cargo.toml` are not release assembly or passing-release evidence.
+
+`xtask/generate` is a separate lightweight workspace behind the Cargo alias;
+demo commands forward to the full feature-selected xtask. Tests, harnesses and
+examples are build consumers, not shipped CLI modules. `bootstrap` is explicitly
+excluded historical source. `forks/` records upstream acquisition, not automatic
+linking. SBOM/notices follow `legal/LICENSE_POLICY.md`; the current dependency
+inventory must be checked before redistribution.
 
 
 ## Absorbed in the 2026-08 consolidation
@@ -122,6 +202,7 @@ Feature-gated: each crate's default build is std-only; the upstream engine
 | `tests/emath-term` | `tests/emath-term` | term-parse back test suite |
 | `tests/emath-trust-gates` | `tests/emath-trust-gates` | trust gate test suite |
 | `tests/emath-wasm` | `tests/emath-wasm` | wasm public-API test suite |
+| `tests/emath-tui` | `tests/emath-tui` | loop/dream/experiment/native-host test suite |
 | `tests/harness` | `tests/harness` | shared test harness library |
 | `tests/emath-world-ir` | `tests/emath-world-ir` | World IR public-API test suite |
 | `examples/demo-host-independent` | `examples/demo-host-independent` | fingerprint-free behavioral-assert host |

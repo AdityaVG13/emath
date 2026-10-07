@@ -129,10 +129,5 @@ pub(super) fn fingerprint(file: &Path) -> Result<emath_core::ContentId, ()> {
     if result.diagnostics.has_errors() {
         return Err(());
     }
-    let Ok(bytes) = std::fs::read(file) else {
-        eprintln!("error: cannot read {}", file.display());
-        return Err(());
-    };
-    // Bind the bytes, not a lossy decode: non-UTF-8 stays distinct.
-    Ok(emath_core::bootstrap_content_id(&bytes))
+    Ok(emath_core::bootstrap_content_id(package.text.as_bytes()))
 }

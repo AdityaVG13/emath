@@ -124,8 +124,7 @@ impl PartialEq for Value {
             (Self::I64(left), Self::ExactInt(right)) => emath_rt::ExactInt::from(*left) == *right,
             (Self::ExactInt(left), Self::Rat { num, den })
             | (Self::Rat { num, den }, Self::ExactInt(left)) => {
-                left.mul(&emath_rt::ExactInt::from(*den)).ok().as_ref()
-                    == Some(&emath_rt::ExactInt::from(*num))
+                *den == 1 && left == &emath_rt::ExactInt::from(*num)
             }
             (
                 Self::ExactInt(left),
@@ -140,7 +139,7 @@ impl PartialEq for Value {
                     den: right_den,
                 },
                 Self::ExactInt(left),
-            ) => left.mul(right_den).ok().as_ref() == Some(right_num),
+            ) => right_den.is_one() && left == right_num,
             (
                 Self::ExactRat {
                     num: left_num,
@@ -171,8 +170,14 @@ impl PartialEq for Value {
                     den: left_den,
                 },
             ) => {
-                left_num.mul(&emath_rt::ExactInt::from(*right_den)).ok()
-                    == emath_rt::ExactInt::from(*right_num).mul(left_den).ok()
+                left_num == &emath_rt::ExactInt::from(*right_num)
+                    && left_den == &emath_rt::ExactInt::from(*right_den)
+            }
+            (Self::I64(left), Self::Rat { num, den })
+            | (Self::Rat { num, den }, Self::I64(left)) => *den == 1 && i128::from(*left) == *num,
+            (Self::I64(left), Self::ExactRat { num, den })
+            | (Self::ExactRat { num, den }, Self::I64(left)) => {
+                den.is_one() && &emath_rt::ExactInt::from(*left) == num
             }
             (Self::I64(left), Self::F64(right)) => emath_rt::eq_i64_f64(*left, *right),
             (Self::F64(left), Self::I64(right)) => emath_rt::eq_i64_f64(*right, *left),

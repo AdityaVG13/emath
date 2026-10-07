@@ -32,6 +32,7 @@ pub enum MeaningError {
     /// enforces the package integrity gate that rejects dangling
     /// capability references.
     MissingCapability(crate::CapabilityId),
+    InvalidConstructor(String),
 }
 
 impl fmt::Display for MeaningError {
@@ -49,14 +50,19 @@ impl fmt::Display for MeaningError {
                 "capability cell id {} is not interned in the package",
                 id.index()
             ),
+            Self::InvalidConstructor(message) => {
+                write!(formatter, "invalid constructor meaning: {message}")
+            }
         }
     }
 }
 
 impl std::error::Error for MeaningError {}
 
+mod constructor;
 mod ctx;
 mod encode;
 
+pub use constructor::ConstructorSemantics;
 use ctx::{Encoder, LocalSlot, MeaningContext};
 pub use encode::*;

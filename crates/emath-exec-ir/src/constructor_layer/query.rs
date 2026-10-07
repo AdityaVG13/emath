@@ -16,8 +16,17 @@ pub fn evaluate_query_at(
     inputs: &BTreeMap<String, CValue>,
     source: Option<&Path>,
 ) -> Result<Receipt, ConstructorError> {
-    let mut engine = engine_from_tree_at(tree, source)?;
-    engine.run_query(name, inputs)
+    super::prepare_module(tree, source)?.evaluate_query(name, inputs)
+}
+
+impl super::PreparedModule {
+    pub fn evaluate_query(
+        &self,
+        name: &str,
+        inputs: &BTreeMap<String, CValue>,
+    ) -> Result<Receipt, ConstructorError> {
+        self.fresh_engine().run_query(name, inputs)
+    }
 }
 
 /// L1 closed-code evaluation as a compiler service: evaluate a quoted
@@ -63,59 +72,97 @@ pub fn evaluate_function_budgeted_reported(
     source_path: Option<&Path>,
     source_text: &str,
 ) -> Result<(CValue, u64), (ConstructorError, Checkpoint)> {
-    if let Some(checkpoint) = checkpoint.filter(|checkpoint| !checkpoint.worlds.is_empty()) {
-        let worlds = checkpoint
-            .worlds
-            .iter()
-            .map(|name| {
-                CarrierWorld::parse(name).ok_or_else(|| {
-                    (
-                        fault("incompatible_checkpoint", format!("checkpoint names unknown world `{name}`")),
-                        checkpoint.clone(),
-                    )
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let resumed = Checkpoint { worlds: Vec::new(), ..checkpoint.clone() };
-        return with_worlds(&worlds, || {
-            evaluate_function_budgeted_reported(
-                tree, name, inputs, work_limit, Some(&resumed), source_id, source_path, source_text,
-            )
-        });
-    }
-    let mut engine = engine_from_tree_at(tree, source_path).map_err(|err| {
-        (
-            err,
-            Checkpoint {
-                schema: CHECKPOINT_SCHEMA.into(),
-                source_id: source_id.into(),
-                image: IMAGE_IDENTITY.into(),
-                abi: CHECKPOINT_ABI.into(),
-                work: 0,
-                remaining: work_limit,
-                accounting: ACCOUNTING_VERSION.into(),
-                memo: BTreeMap::new(),
-                frames: Vec::new(),
-                scopes: BTreeSet::new(),
-                function: name.into(),
-                source: source_text.into(),
-                inputs: inputs.clone(),
-                next_ref: 0,
-                worlds: configured_worlds().iter().map(|world| world.name().to_string()).collect(),
-            },
-        )
+    let module = super::prepare_module(tree, source_path).map_err(|err| {
+        (err, initial_checkpoint(name, inputs, work_limit, source_id, source_text))
     })?;
-    engine.work_limit = work_limit;
-    engine.source_id = source_id.into();
-    engine.entry = name.into();
-    engine.source_text = source_text.into();
-    engine.inputs = inputs.clone();
-    if let Some(checkpoint) = checkpoint {
-        engine.restore(checkpoint).map_err(|err| (err, checkpoint.clone()))?;
+    module.evaluate_function_budgeted_reported(
+        name, inputs, work_limit, checkpoint, source_id, source_text,
+    )
+}
+
+fn initial_checkpoint(
+    name: &str,
+    inputs: &BTreeMap<String, CValue>,
+    work_limit: u64,
+    source_id: &str,
+    source_text: &str,
+) -> Checkpoint {
+    Checkpoint {
+        schema: CHECKPOINT_SCHEMA.into(),
+        source_id: source_id.into(),
+        image: IMAGE_IDENTITY.into(),
+        abi: CHECKPOINT_ABI.into(),
+        work: 0,
+        remaining: work_limit,
+        accounting: ACCOUNTING_VERSION.into(),
+        memo: BTreeMap::new(),
+        frames: Vec::new(),
+        scopes: BTreeSet::new(),
+        function: name.into(),
+        source: source_text.into(),
+        inputs: inputs.clone(),
+        next_ref: 0,
+        worlds: configured_worlds().iter().map(|world| world.name().to_string()).collect(),
+        imports: super::CheckpointImports::default(),
     }
-    match evaluate_function_on(&mut engine, name, inputs) {
-        Ok(value) => Ok((value, engine.work)),
-        Err(err) => Err((err, engine.snapshot())),
+}
+
+impl super::PreparedModule {
+    /// Resumable evaluation against this snapshot. Checkpoint restore and world
+    /// selection follow the same policy as the tree-based entry.
+    pub fn evaluate_function_budgeted_reported(
+        &self,
+        name: &str,
+        inputs: &BTreeMap<String, CValue>,
+        work_limit: u64,
+        checkpoint: Option<&Checkpoint>,
+        source_id: &str,
+        source_text: &str,
+    ) -> Result<(CValue, u64), (ConstructorError, Checkpoint)> {
+        if let Some(checkpoint) = checkpoint.filter(|checkpoint| !checkpoint.worlds.is_empty()) {
+            let worlds = checkpoint
+                .worlds
+                .iter()
+                .map(|name| {
+                    CarrierWorld::parse(name).ok_or_else(|| {
+                        (
+                            fault("incompatible_checkpoint", format!("checkpoint names unknown world `{name}`")),
+                            checkpoint.clone(),
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let resumed = Checkpoint { worlds: Vec::new(), ..checkpoint.clone() };
+            return with_worlds(&worlds, || {
+                self.evaluate_function_budgeted_reported(
+                    name, inputs, work_limit, Some(&resumed), source_id, source_text,
+                )
+            });
+        }
+        let mut engine = self.fresh_engine();
+        engine.work_limit = work_limit;
+        engine.source_id = source_id.into();
+        engine.entry = name.into();
+        engine.source_text = source_text.into();
+        engine.inputs = inputs.clone();
+        if let Some(checkpoint) = checkpoint {
+            let imports = self.checkpoint_imports().map_err(|err| (err, checkpoint.clone()))?;
+            if checkpoint.imports != imports {
+                return Err((
+                    fault("incompatible_checkpoint", "checkpoint import snapshot does not match this module"),
+                    checkpoint.clone(),
+                ));
+            }
+            engine.restore(checkpoint).map_err(|err| (err, checkpoint.clone()))?;
+        }
+        match evaluate_function_on(&mut engine, name, inputs) {
+            Ok(value) => Ok((value, engine.work)),
+            Err(err) => {
+                let mut saved = engine.snapshot();
+                saved.imports = self.checkpoint_imports().map_err(|err| (err, saved.clone()))?;
+                Err((err, saved))
+            }
+        }
     }
 }
 

@@ -72,6 +72,38 @@ fn native_lane_run(
 }
 
 #[test]
+fn engine_backed_export_preserves_epoch_scratch() {
+    let path = temp_path("engine_valley.emath");
+    let source = std::fs::read_to_string(fixture_path("research_step_valley.emath")).unwrap();
+    std::fs::write(
+        &path,
+        source + "
+emath function WorkProbe:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = quote.cost(function x in Int: x + 1, unused, 1000).work
+",
+    )
+    .unwrap();
+    let host = LoopHost::open(&path, Some("StepValley")).unwrap();
+    let report = export_native(&host, &temp_path("engine_valley"))
+        .expect("engine-backed epoch host must compile");
+    let native_path = temp_path("engine_native.json");
+    let (code, stdout, stderr, native) = native_lane_run(&report, 3, 60, &native_path);
+    assert_eq!(code, Some(0), "{stdout}\n{stderr}");
+    let vm_path = temp_path("engine_vm.json");
+    vm_lane_scratch(&host, 3, 60, &vm_path);
+    assert_eq!(
+        native,
+        std::fs::read_to_string(vm_path).unwrap(),
+        "engine-backed host must preserve VM scratch"
+    );
+}
+
+#[test]
 fn export_native_sessions() {
     let mut probe = Probe::new("native epoch export: artifact ABI host bin with cross-lane parity");
 

@@ -22,8 +22,10 @@ use std::path::Path;
 
 use super::identity::{canonical_expr_bytes, free_path_names};
 use super::prelude::*;
-use super::setup::engine_from_tree_at;
-use super::{CValue, ConstructorError, Engine, Expr, ExprKind, SyntaxTree, CHECKPOINT_ABI};
+use super::{
+    CHECKPOINT_ABI, CValue, ConstructorError, Engine, Expr, ExprKind, FnDecl, Item, ObjectSchema,
+    PathBuf, QueryDecl, Rc, SyntaxTree,
+};
 
 /// Name prefix of fact functions.
 pub const FACT_PREFIX: &str = "fact_";
@@ -42,23 +44,285 @@ pub struct CarriedEvaluation {
 /// A module with its imports resolved and loaded, ready to evaluate
 /// many times: loading reads and parses every imported file, which a
 /// host running one module per batch would otherwise repeat each batch.
-/// It is a snapshot of the files at `prepare_module` time.
+/// It retains the declarations read at `prepare_module` time, not execution
+/// state. Loading alone does not perform the full semantic session checks.
 #[derive(Clone)]
 pub struct PreparedModule {
-    engine: Engine,
+    functions: BTreeMap<String, Rc<FnDecl>>,
+    queries: BTreeMap<String, QueryDecl>,
+    objects: BTreeMap<String, ObjectSchema>,
+    name_sources: BTreeMap<String, PathBuf>,
+    pub(super) tree: Rc<SyntaxTree>,
+    pub(super) imports: Rc<super::scope::ImportGraph>,
+    pub(super) roots: Rc<Vec<PathBuf>>,
+    source_path: Option<PathBuf>,
+    source_directory: Option<PathBuf>,
+    pub(super) admitted: bool,
 }
 
 impl std::fmt::Debug for PreparedModule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PreparedModule")
-            .field("functions", &self.engine.functions.len())
+            .field("functions", &self.functions.len())
             .finish_non_exhaustive()
     }
 }
 
 /// Resolve and load `tree`'s imports (relative to `source`).
-pub fn prepare_module(tree: &SyntaxTree, source: Option<&Path>) -> Result<PreparedModule, ConstructorError> {
-    Ok(PreparedModule { engine: engine_from_tree_at(tree, source)? })
+pub fn prepare_module(
+    tree: &SyntaxTree,
+    source: Option<&Path>,
+) -> Result<PreparedModule, ConstructorError> {
+    let mut engine = super::setup::empty_engine();
+    super::setup::install_local_items(&mut engine, tree)?;
+    let roots = super::setup::module_roots_for(source);
+    let imports = super::scope::load_graph(tree, &roots, source)?;
+    super::setup::install_import_graph(&mut engine, tree, &imports)?;
+    Ok(PreparedModule {
+        functions: engine.functions,
+        queries: engine.queries,
+        objects: engine.objects,
+        name_sources: engine.name_sources,
+        tree: Rc::new(tree.clone()),
+        imports: Rc::new(imports),
+        roots: Rc::new(roots),
+        source_path: source.map(Path::to_path_buf),
+        source_directory: std::env::current_dir().ok(),
+        admitted: false,
+    })
+}
+
+impl PreparedModule {
+    pub(super) fn checkpoint_imports(&self) -> Result<super::CheckpointImports, ConstructorError> {
+        let absolute = |path: &Path| {
+            let path = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                self.source_directory.as_ref()
+                    .ok_or_else(|| fault("incompatible_checkpoint", "cannot freeze relative import path without an original directory"))?
+                    .join(path)
+            };
+            if path.to_str().is_none() {
+                return Err(fault(
+                    "incompatible_checkpoint",
+                    "checkpoint import paths must be UTF-8",
+                ));
+            }
+            Ok(path)
+        };
+        Ok(super::CheckpointImports {
+            source_path: self.source_path.as_deref().map(absolute).transpose()?,
+            roots: self.roots.iter()
+                .map(|path| absolute(path))
+                .collect::<Result<_, _>>()?,
+            files: self.imports.modules.iter()
+                .map(|module| Ok((absolute(&module.file)?, module.text.clone())))
+                .collect::<Result<_, ConstructorError>>()?,
+        })
+    }
+
+    /// The root syntax used to prepare this module.
+    pub fn tree(&self) -> &SyntaxTree {
+        &self.tree
+    }
+
+    /// Lowering context from the retained import graph, without source reads.
+    pub fn merged_tree(&self) -> Result<SyntaxTree, ConstructorError> {
+        super::setup::merged_tree_from_graph(&self.tree, &self.imports)
+    }
+
+    /// Complete scoped declaration graph executed by this snapshot.
+    /// Unlike the lowering projection, this includes private and unselected
+    /// helpers. Alias edges use the same install keys as the fresh engine;
+    /// neither paths nor source files are reread.
+    pub fn meaning_tree(&self) -> Result<(SyntaxTree, BTreeMap<String, String>), ConstructorError> {
+        self.imports.refuse_local_clobber(&self.tree)?;
+        let scoped = self.imports.scoped_modules()?;
+        let mut items = self.imports.scoped_root(&self.tree)?;
+        let mut aliases = BTreeMap::new();
+        for (module, decls) in self.imports.modules.iter().zip(&scoped) {
+            items.extend(
+                decls
+                    .iter()
+                    .map(|(_, decl)| Item::Declaration(decl.clone())),
+            );
+            items.push(Item::Exports {
+                names: decls
+                    .iter()
+                    .filter(|(name, _)| !module.is_private(name))
+                    .map(|(_, decl)| decl.name.clone())
+                    .collect(),
+                source: module.tree.source,
+            });
+        }
+        for use_item in self.imports.root_uses.iter().chain(
+            self.imports
+                .modules
+                .iter()
+                .flat_map(|module| module.uses.iter()),
+        ) {
+            let index = self
+                .imports
+                .modules
+                .iter()
+                .position(|module| module.file == use_item.file)
+                .ok_or_else(|| fault("E-USE-ADMISSION", "missing retained import module"))?;
+            let module = &self.imports.modules[index];
+            for (name, decl) in &scoped[index] {
+                if module.is_private(name) {
+                    continue;
+                }
+                let selected = match &use_item.tree {
+                    super::UseTree::All => true,
+                    super::UseTree::Named(names) if names.is_empty() => true,
+                    super::UseTree::Named(names) => {
+                        names.iter().any(|(original, _)| original == name)
+                    }
+                };
+                if !selected {
+                    continue;
+                }
+                aliases.insert(
+                    format!("{}.{}", use_item.path.join("."), name),
+                    decl.name.clone(),
+                );
+                if let super::UseTree::Named(names) = &use_item.tree {
+                    if let Some((_, Some(alias))) =
+                        names.iter().find(|(original, _)| original == name)
+                    {
+                        aliases.insert(alias.clone(), decl.name.clone());
+                    }
+                }
+            }
+        }
+        aliases.extend(self.imports.root_bindings(&self.tree)?);
+        Ok((
+            SyntaxTree {
+                source: self.tree.source,
+                items,
+            },
+            aliases,
+        ))
+    }
+
+    /// Source bytes and trees read for this module's dependencies.
+    pub fn imported_modules(&self) -> impl Iterator<Item = (&Path, &str, &SyntaxTree)> {
+        self.imports
+            .modules
+            .iter()
+            .map(|module| (module.file.as_path(), module.text.as_str(), &module.tree))
+    }
+
+    /// Resolve a root `use` from the checked graph, not the current filesystem.
+    pub fn resolved_use(&self, path: &[String]) -> Option<(PathBuf, bool)> {
+        let imported = self
+            .imports
+            .root_uses
+            .iter()
+            .find(|item| item.path == path)?;
+        Some((
+            imported.file.clone(),
+            self.roots
+                .iter()
+                .any(|root| imported.file.starts_with(root)),
+        ))
+    }
+
+    /// Check a derived tree or an imported file against these retained sources.
+    /// This does not admit the derived tree; the callback must use sema.
+    pub fn with_imports<T>(&self, body: impl FnOnce() -> T) -> T {
+        let files = self
+            .imports
+            .modules
+            .iter()
+            .map(|module| (module.file.clone(), module.text.clone()))
+            .collect();
+        super::setup::with_module_files(self.roots.as_ref().clone(), files, body)
+    }
+
+    /// Files carried by an engine-backed artifact, from the same import snapshot.
+    pub fn import_files(&self) -> (Vec<PathBuf>, Vec<(PathBuf, String)>) {
+        (
+            self.roots.as_ref().clone(),
+            self.imports
+                .modules
+                .iter()
+                .map(|module| (module.file.clone(), module.text.clone()))
+                .collect(),
+        )
+    }
+
+    /// Conservative snapshot equality for a host pairing a session with a
+    /// freshly checked export. Dependency comments also count as a change.
+    pub fn same_imports(&self, other: &Self) -> bool {
+        self.roots == other.roots
+            && self.imports.modules.len() == other.imports.modules.len()
+            && self
+                .imports
+                .modules
+                .iter()
+                .zip(&other.imports.modules)
+                .all(|(left, right)| left.file == right.file && left.text == right.text)
+    }
+
+    /// Completed facts are keyed by the declarations this module executes.
+    pub fn fact_identity(&self) -> Option<String> {
+        fact_identity_loaded(&self.fresh_engine())
+    }
+
+    /// Constructor admission against these already-resolved declarations.
+    /// Full semantic session checks remain the responsibility of `emath-sema`.
+    pub fn admit(&mut self) -> Result<(), ConstructorError> {
+        if !self.admitted {
+            super::admit::admit_loaded(&self.fresh_engine(), &self.tree)?;
+            self.admitted = true;
+        }
+        Ok(())
+    }
+
+    pub fn object_names(&self) -> BTreeSet<String> {
+        self.objects.keys().cloned().collect()
+    }
+
+    pub fn has_query(&self, name: &str) -> bool {
+        self.queries.contains_key(name)
+    }
+
+    /// Input declarations from the resolved callable, including import aliases.
+    pub fn input_types(&self, name: &str) -> Option<BTreeMap<String, emath_core::tree::TypeExpr>> {
+        let function = self.functions.get(name)?;
+        Some(
+            function
+                .inputs
+                .iter()
+                .cloned()
+                .zip(function.input_types.iter().cloned())
+                .collect(),
+        )
+    }
+
+    /// Only immutable declarations are shared. Environments, buffers allocated
+    /// by evaluation, memo tables, counters and continuations start afresh.
+    pub(super) fn fresh_engine(&self) -> Engine {
+        let mut engine = super::setup::empty_engine();
+        engine.functions = self.functions.clone();
+        engine.queries = self.queries.clone();
+        engine.objects = self.objects.clone();
+        engine.name_sources = self.name_sources.clone();
+        engine
+    }
+
+    pub fn evaluate_function(
+        &self,
+        name: &str,
+        inputs: &BTreeMap<String, CValue>,
+        work_limit: u64,
+    ) -> Result<CValue, ConstructorError> {
+        let mut engine = self.fresh_engine();
+        engine.work_limit = work_limit;
+        engine.facts_only_memo = true;
+        engine.eval_entry(name, inputs)
+    }
 }
 
 pub(super) fn is_fact_key(key: &str) -> bool {
@@ -86,7 +350,7 @@ pub fn evaluate_function_carrying(
     carried: &mut BTreeMap<String, CValue>,
     work_limit: u64,
 ) -> Result<CarriedEvaluation, ConstructorError> {
-    let mut engine = module.engine.clone();
+    let mut engine = module.fresh_engine();
     engine.work_limit = work_limit;
     engine.facts_only_memo = true;
     engine.memo = std::mem::take(carried);
@@ -115,7 +379,10 @@ pub fn fact_identity(
     tree: &SyntaxTree,
     source: Option<&Path>,
 ) -> Result<Option<String>, ConstructorError> {
-    let engine = engine_from_tree_at(tree, source)?;
+    Ok(prepare_module(tree, source)?.fact_identity())
+}
+
+fn fact_identity_loaded(engine: &Engine) -> Option<String> {
     let mut pending: Vec<String> = engine
         .functions
         .keys()
@@ -123,7 +390,7 @@ pub fn fact_identity(
         .cloned()
         .collect();
     if pending.is_empty() {
-        return Ok(None);
+        return None;
     }
     let mut reached = BTreeSet::new();
     while let Some(name) = pending.pop() {
@@ -172,7 +439,7 @@ pub fn fact_identity(
     }
     let digest = emath_core::hash::sha256_digest(&bytes);
     let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
-    Ok(Some(format!("emath:facts:v1:{hex}")))
+    Some(format!("emath:facts:v1:{hex}"))
 }
 
 /// Debug text with every `source: Span { .. }` field removed, so a type

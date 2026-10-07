@@ -16,8 +16,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use emath_exec_ir::constructor_layer::{
-    evaluate_function_carrying, named_programs, needed_uses, parse_constructor_scalar, place_definition,
-    prepare_module, NamedProgram, Placed, DEFAULT_WORK,
+    named_programs, parse_constructor_scalar, place_definition, NamedProgram, Placed, DEFAULT_WORK,
 };
 
 use crate::{CliExit, EXIT_ADMISSION, EXIT_FAULT, EXIT_IO, EXIT_OK, EXIT_REFUSED};
@@ -86,16 +85,16 @@ fn refuse(code: &str, message: impl std::fmt::Display, exit: CliExit) -> CliExit
 }
 
 pub(crate) fn run(request: KeepRequest) -> CliExit {
-    let source = match fs::read_to_string(&request.path) {
-        Ok(text) => text,
-        Err(err) => return refuse("E-CLI-IO", format!("cannot read {}: {err}", request.path.display()), EXIT_IO),
-    };
-    let tree = match crate::cli_json::admitted_tree(&request.path, &source) {
-        Ok(tree) => tree,
-        Err(refusal) => {
-            eprintln!("{}", refusal.text);
-            return EXIT_ADMISSION;
+    let checked = crate::cli_build::checked_file(&request.path);
+    if let Some(first) = checked.result.diagnostics.errors().next() {
+        if checked.store.files().is_empty() {
+            return refuse("E-CLI-IO", &first.message, EXIT_IO);
         }
+        eprintln!("{}", crate::cli_json::diagnostics_text(&checked.result.diagnostics, &checked.store));
+        return EXIT_ADMISSION;
+    }
+    let Some(module) = &checked.result.prepared else {
+        return refuse("E-KEEP-SHAPE", "checking produced no executable module", EXIT_ADMISSION);
     };
     let inputs: BTreeMap<_, _> = request
         .given
@@ -104,10 +103,7 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
         .collect();
     // Keep never resumes a suspended run, so it evaluates the way the
     // dream host does: no continuation snapshots, no all-calls memo.
-    let evaluated = prepare_module(&tree, Some(&request.path)).and_then(|module| {
-        evaluate_function_carrying(&module, &request.function, &inputs, &mut BTreeMap::new(), request.work)
-    });
-    let value = match evaluated.and_then(|run| run.value) {
+    let value = match module.evaluate_function(&request.function, &inputs, request.work) {
         Ok(value) => value,
         Err(err) => return refuse(&err.code, err.message, EXIT_FAULT),
     };
@@ -135,7 +131,7 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
             Some(note) => format!("{origin}; {note}"),
             None => origin.clone(),
         };
-        let uses = match needed_uses(program, &request.path, &request.to) {
+        let uses = match module.needed_uses(program, &request.to) {
             Ok(uses) => uses,
             Err(err) => return refuse(&err.code, err.message, EXIT_REFUSED),
         };
@@ -161,15 +157,12 @@ pub(crate) fn run(request: KeepRequest) -> CliExit {
             return EXIT_OK;
         }
     };
-    let (library_tree, library_diagnostics) = emath_syntax::parse_str(&library);
-    if library_diagnostics.has_errors() {
-        crate::print_diagnostics(&library_diagnostics);
-        return refuse("E-KEEP-SHAPE", "the kept library would not parse; nothing was written", EXIT_REFUSED);
-    }
-    if let Err(err) = prepare_module(&library_tree, Some(&request.to)) {
+    let proposed = crate::cli_build::checked_text(&request.to.display().to_string(), &library);
+    if let Some(first) = proposed.result.diagnostics.errors().next() {
+        eprintln!("{}", crate::cli_json::diagnostics_text(&proposed.result.diagnostics, &proposed.store));
         return refuse(
-            &err.code,
-            format!("{}: the kept library would not load: {}; nothing was written", request.to.display(), err.message),
+            first.code,
+            format!("{}: the kept library would not admit: {}; nothing was written", request.to.display(), first.message),
             EXIT_REFUSED,
         );
     }

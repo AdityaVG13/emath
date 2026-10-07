@@ -18,10 +18,7 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
         Ok(id) => id,
         Err(exit) => return exit,
     };
-    let source = match std::fs::read_to_string(&path) {
-        Ok(source) => source,
-        Err(error) => return diagnostic(request.json, EXIT_USAGE, "E-PKG-080", &error.to_string()),
-    };
+    let checked = crate::cli_build::checked_file(&path);
     let mut worlds = Vec::new();
     for name in &request.worlds {
         match emath_exec_ir::constructor_layer::CarrierWorld::parse(name) {
@@ -39,9 +36,9 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
         }
     }
     let ran = if worlds.is_empty() {
-        run_constructor_layer(&request, &source)
+        run_constructor_layer(&request, &checked)
     } else {
-        emath_exec_ir::constructor_layer::with_worlds(&worlds, || run_constructor_layer(&request, &source))
+        emath_exec_ir::constructor_layer::with_worlds(&worlds, || run_constructor_layer(&request, &checked))
     };
     if let Some(exit) = ran {
         return exit;
@@ -69,7 +66,7 @@ pub(crate) fn run(request: RunRequest) -> CliExit {
     };
     let mut state = SavedRun {
         source_path: path,
-        source,
+        source: checked.source().to_string(),
         meaning_id,
         language_id,
         function: request.function.clone(),

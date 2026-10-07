@@ -37,6 +37,35 @@ pub fn eq_i64_f64(n: i64, x: f64) -> bool {
     matches!(cmp_i64_f64(n, x), Some(core::cmp::Ordering::Equal))
 }
 
+/// Compare without rounding the integer. Decode finite binary64 as
+/// signed mantissa * 2^exponent, matching the constructor's exact join.
+/// Non-finite operands and exact-integer memory exhaustion refuse.
+pub fn cmp_exact_int_f64(n: &ExactInt, x: f64) -> Result<core::cmp::Ordering, String> {
+    if !x.is_finite() {
+        return Err("non_finite_scalar: non-finite Float64 operand".into());
+    }
+    let bits = x.to_bits();
+    let biased = ((bits >> 52) & 0x7ff) as i32;
+    let mantissa = bits & 0x000f_ffff_ffff_ffff;
+    let (mantissa, exponent) = if biased == 0 {
+        (mantissa, -1074)
+    } else {
+        (mantissa | (1_u64 << 52), biased - 1075)
+    };
+    let mut signed = ExactInt::from(mantissa);
+    if bits >> 63 != 0 {
+        signed = signed.checked_neg().map_err(|error| error.to_string())?;
+    }
+    let scale = ExactInt::from(2_u64)
+        .pow(&ExactInt::from(u64::from(exponent.unsigned_abs())))
+        .map_err(|error| error.to_string())?;
+    if exponent >= 0 {
+        Ok(n.cmp(&signed.mul(&scale).map_err(|error| error.to_string())?))
+    } else {
+        Ok(n.mul(&scale).map_err(|error| error.to_string())?.cmp(&signed))
+    }
+}
+
 /// Row-major storage with explicit extents, including zero-row matrices.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Matrix<T = f64> {

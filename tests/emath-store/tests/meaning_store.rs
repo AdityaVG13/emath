@@ -7,7 +7,7 @@ use emath_store::object_graph::{ObjectDraft, ObjectGraph, ObjectKind};
 use emath_store::semantic_diff::{ChangeClass, SemanticSnapshot, classify, decide};
 use emath_test_harness::{Probe, Source, boot};
 
-const BASE: &str = "emath function square:\n    inputs:\n        x: Float64\n    definitions:\n        y = x * x\n";
+const BASE: &str = "emath function square:\n    inputs:\n        x: Float64\n    outputs:\n        result: Float64\n    definitions:\n        result = x * x\n";
 
 fn meaning_of(p: &mut Probe, name: &str, source: &str) -> MeaningId {
     Source::from_str(name, source)
@@ -39,7 +39,7 @@ fn meaning_store() {
         }
     });
     p.case("breaking", |p| {
-        let breaking = BASE.replace("y = x * x", "y = x * x + x");
+        let breaking = BASE.replace("result = x * x", "result = x * x + x");
         let breaking_meaning = meaning_of(&mut *p, "breaking", &breaking);
         p.ne("mutates", base_meaning.clone(), breaking_meaning.clone());
         let before = SemanticSnapshot::new(SourceId::from_bytes(BASE.as_bytes()), base_meaning.clone(), "specializer-12", &[]);
@@ -69,11 +69,10 @@ fn meaning_store() {
             other => { p.fail("cutoff", format!("evidence-only must cut off, got {other:?}")); },
         }
     });
-    p.case("gate", |p| {
-        let fixture = Source::from_workspace("tests/invalid/meaning_store_presentation_mutates_id.emath");
-        p.contains("invariant", fixture.text(), "invariant: whitespace/comment edits preserve MeaningID");
-        let fixture_meaning = fixture.must_admit(&mut *p).package.meaning_id(&[]).expect("fixture admits");
-        p.eq("fixture-stable", fixture_meaning, base_meaning.clone());
+    p.case("alpha-renaming", |p| {
+        let renamed = BASE.replace("square", "renamed").replace("x: Float64", "z: Float64").replace("x * x", "z * z");
+        let renamed_meaning = meaning_of(p, "renamed", &renamed);
+        p.eq("alpha-stable", renamed_meaning, base_meaning.clone());
     });
     p.finish();
 }

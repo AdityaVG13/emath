@@ -235,7 +235,8 @@ impl ServerState {
             // Fresh session per check: the source store deduplicates by
             // name, so a shared session would re-check stale text.
             let mut session = CompilerSession::new(emath_core::limits::Limits::default());
-            let result = session.check_owned(uri, &document.text);
+            let source_name = document_source_name(uri).unwrap_or_else(|| uri.clone());
+            let result = session.check_owned(&source_name, &document.text);
             let mut diagnostics = Vec::new();
             for item in result.diagnostics.items() {
                 let severity = if matches!(item.severity, Severity::Error) {
@@ -318,6 +319,30 @@ impl ServerState {
         }
         JsonValue::Null
     }
+}
+
+/// A local file URI supplies import provenance, never replacement root text.
+/// Non-file/remote/malformed URIs keep their original diagnostic identity.
+fn document_source_name(uri: &str) -> Option<String> {
+    let path = uri.strip_prefix("file://")?;
+    let path = path.strip_prefix("localhost").unwrap_or(path);
+    if !path.starts_with('/') {
+        return None;
+    }
+    let bytes = path.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == b'%' {
+            let digits = std::str::from_utf8(bytes.get(at + 1..at + 3)?).ok()?;
+            decoded.push(u8::from_str_radix(digits, 16).ok()?);
+            at += 3;
+        } else {
+            decoded.push(bytes[at]);
+            at += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
 }
 
 impl Default for ServerState {

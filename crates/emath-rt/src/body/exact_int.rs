@@ -488,19 +488,33 @@ pub fn exact_ratio_f64(num: &ExactInt, den: &ExactInt) -> f64 {
         }
     }
     let negative = num.is_negative() != den.is_negative();
-    let a = num.abs();
-    let b = den.abs();
-    let shift = |x: &ExactInt, k: i64| {
-        x.mul(&ExactInt::Small(2).pow(&ExactInt::from(k)).expect("shift fits"))
-            .expect("shift fits")
-    };
+    let (_, a) = num.neg_limbs();
+    let (_, b) = den.neg_limbs();
     // Scale so the integer quotient carries 55 or 56 significant bits:
     // q = floor(a * 2^s / b), the value is (q + rest) * 2^-s.
-    let s = 55 - (a.bit_len() as i64 - b.bit_len() as i64);
+    // Scratch can exceed the carrier cap by at most 55 bits. Do not
+    // construct capped ExactInts (or a separate 2^s) for these shifts.
+    let shift = |limbs: &[u32], k: i64| {
+        let words = k as usize / 32;
+        let bits = k as u32 % 32;
+        let mut out = vec![0; words + limbs.len() + 1];
+        let mut carry = 0_u64;
+        for (i, &limb) in limbs.iter().enumerate() {
+            let value = (u64::from(limb) << bits) | carry;
+            out[words + i] = value as u32;
+            carry = value >> 32;
+        }
+        out[words + limbs.len()] = carry as u32;
+        while out.last() == Some(&0) {
+            out.pop();
+        }
+        out
+    };
+    let s = 55 - (limb_bits(&a) as i64 - limb_bits(&b) as i64);
     let (scaled_a, scaled_b) = if s >= 0 { (shift(&a, s), b) } else { (a, shift(&b, -s)) };
-    let (q, r) = scaled_a.div_rem(&scaled_b).expect("nonzero divisor");
-    let q = q.to_i128().expect("quotient has at most 56 bits") as u128;
-    let sticky = !r.is_zero();
+    let (q, r) = div_rem_limbs(&scaled_a, &scaled_b);
+    let q = limbs_to_i128(false, &q).expect("quotient has at most 56 bits") as u128;
+    let sticky = !r.is_empty();
     let q_bits = 128 - i64::from(q.leading_zeros());
     // The value lies in [2^k, 2^(k+1)); binary64 keeps 53 bits from
     // 2^-1022 up and a fixed 2^-1074 quantum below it.

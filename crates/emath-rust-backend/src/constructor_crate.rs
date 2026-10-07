@@ -130,16 +130,18 @@ const NO_FUNCTIONS: &str =
 /// in signatures - all style-only in machine-generated code.
 const EMITTED_HEADER: &str = "#![forbid(unsafe_code)]\n#![allow(nonstandard_style, unused_parens, unused_braces, unused_mut, unused_variables)]\n\n";
 
-/// Emit the constructor crate for a parsed constructor file (the
-/// MAIN tree; parse diagnostics are the caller's to report), merging
-/// `use` imports relative to `spec_path`.
+/// Emit a prepared module without rereading its root or imports. Hosts supply
+/// the root source bytes from the same semantic check that returned `module`.
+/// Preparation alone is not full semantic admission; that belongs to sema.
 ///
 /// # Errors
 /// A typed [`ConstructorEmitRefusal`]; never a partial crate.
 pub fn emit_constructor_crate(
-    main: &SyntaxTree,
+    module: &emath_exec_ir::constructor_layer::PreparedModule,
     spec_path: &Path,
+    source: &str,
 ) -> Result<ConstructorCrateEmission, ConstructorEmitRefusal> {
+    let main = module.tree();
     let constructor_only = main.items.iter().all(|item| match item {
         emath_core::tree::Item::Use { .. } => true,
         emath_core::tree::Item::Declaration(decl) => {
@@ -155,10 +157,7 @@ pub fn emit_constructor_crate(
     // The MAIN file's functions are the crate's entries; imported
     // declarations join as lowering context (siblings, record
     // layouts), never as re-emitted entries.
-    let tree = match emath_exec_ir::constructor_layer::merged_tree_with_imports(
-        main,
-        Some(spec_path),
-    ) {
+    let tree = match module.merged_tree() {
         Ok(tree) => tree,
         Err(error) => {
             return Err(ConstructorEmitRefusal::ImportsRefused {
@@ -260,6 +259,11 @@ pub fn emit_constructor_crate(
                     });
                 }
             }
+        }
+    }
+    for record in &mut records {
+        for (_, signature) in &mut record.fields {
+            *signature = crate::codegen_render::stored_field_signature(signature);
         }
     }
     let _templates = crate::codegen_render::RecordTemplateScope::enter(templates);
@@ -367,6 +371,19 @@ pub fn emit_constructor_crate(
     // tail emits the ratio carrier at the entry). The input kinds
     // mirror the entry ABI's declared carriers exactly.
     let mut sibling_kinds: BTreeMap<String, EntryAbi> = BTreeMap::new();
+    let emitted_result = |name: &str, body_kind: ValueKind| {
+        if matches!(
+            body_kind,
+            ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Cell
+        ) || crate::codegen_render::kind_is_degenerate(&body_kind)
+        {
+            declared_output(&tree, name, &objects)
+                .map(|(_, signature)| ValueKind::from_signature(signature.as_str()))
+                .unwrap_or(body_kind)
+        } else {
+            body_kind
+        }
+    };
     for (name, lowered) in &lowered {
         if tree.items.iter().any(|item| matches!(item,
             emath_core::tree::Item::Declaration(decl)
@@ -398,25 +415,18 @@ pub fn emit_constructor_crate(
         // table carries the EMITTED entry carrier, so a caller's
         // `CallSibling` register kind must match what the emitted
         // entry actually returns.
-        let sibling_kind = if matches!(body_kind, ValueKind::CodeValue | ValueKind::Evaluated | ValueKind::Cell)
-            || crate::codegen_render::kind_is_degenerate(&body_kind)
-        {
-            declared_output(&tree, name, &objects)
-                .map(|(_, signature)| ValueKind::from_signature(signature.as_str()))
-                .unwrap_or(body_kind)
-        } else {
-            body_kind
-        };
+        let sibling_kind = emitted_result(name, body_kind);
         sibling_kinds.insert(name.clone(), EntryAbi {
             inputs: input_names.iter().map(|name| kinds[name].clone()).collect(),
             result: sibling_kind,
         });
     }
-    // A mutual cycle can append a viewed name in another member.
-    // Propagate actual cycle arguments before fixing any entry ABI.
+    // A cycle's widened inputs can widen its result and then a caller's
+    // inputs. Settle both sides before rendering any member.
     for _ in 0..sibling_kinds.len() {
         let scope = SiblingEntryScope::enter(sibling_kinds.clone());
-        let (_, passed) = crate::codegen_render::with_sibling_call_scope(|| {
+        let (results, passed) = crate::codegen_render::with_sibling_call_scope(|| {
+            let mut results = Vec::new();
             for (name, lowered) in &lowered {
                 let (Ok(lowered), Some(abi)) = (lowered, sibling_kinds.get(name)) else {
                     continue;
@@ -427,11 +437,19 @@ pub fn emit_constructor_crate(
                     .cloned()
                     .zip(abi.inputs.iter().cloned())
                     .collect();
-                let _ = program_kind(&lowered.program, &names, &[], &frame);
+                let body_kind = program_kind(&lowered.program, &names, &[], &frame);
+                results.push((name.clone(), emitted_result(name, body_kind)));
             }
+            results
         });
         drop(scope);
         let mut changed = false;
+        for (name, result) in results {
+            if let Some(abi) = sibling_kinds.get_mut(&name) {
+                changed |= result != abi.result;
+                abi.result = result;
+            }
+        }
         for (name, passed) in passed {
             if let Some(abi) = sibling_kinds.get_mut(&name) {
                 for (kind, passed) in abi.inputs.iter_mut().zip(passed) {
@@ -707,25 +725,32 @@ pub fn emit_constructor_crate(
     // artifact never reads them from disk), and the world list
     // `quote.worlds()` returns (the host's at build time).
     let mut engine_dependency = if rust.contains("artifact_bridge::run_entry") {
-        let path = std::fs::canonicalize(spec_path).unwrap_or_else(|_| spec_path.to_path_buf());
-        let embedded = std::fs::read_to_string(&path)
-            .map_err(|error| format!("the reference engine needs the module source, which could not be read: {error}"))
-            .and_then(|source| {
-                emath_exec_ir::constructor_layer::import_files(main, Some(&path))
-                    .map(|modules| (source, modules))
-                    .map_err(|error| format!("the reference engine needs the imported modules, which could not be resolved: {}: {}", error.code, error.message))
-            });
-        match embedded {
-            Ok((source, (roots, modules))) => {
+        // Resolve relative keys without following symlinks or rereading sources:
+        // the root, search roots and retained files must keep one path policy.
+        let absolute = |path: &Path| {
+            std::path::absolute(path).map_err(|error| ConstructorEmitRefusal::ImportsRefused {
+                e_code: "E-USE-ADMISSION".into(),
+                detail: format!(
+                    "cannot retain absolute import path {}: {error}",
+                    path.display()
+                ),
+            })
+        };
+        let path = absolute(spec_path)?;
+        let (roots, modules) = module.import_files();
                 let roots = roots
                     .iter()
-                    .map(|root| format!("{:?}", root.display().to_string()))
-                    .collect::<Vec<_>>()
+                    .map(|root| {
+                        absolute(root).map(|path| format!("{:?}", path.display().to_string()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
                     .join(", ");
                 let modules = modules
                     .iter()
-                    .map(|(file, text)| format!("({:?}, {text:?})", file.display().to_string()))
-                    .collect::<Vec<_>>()
+                    .map(|(file, text)| {
+                        absolute(file).map(|path| format!("({:?}, {text:?})", path.display().to_string()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
                     .join(", ");
                 rust.push_str(&format!(
                     "static __EMATH_MODULE_ROOTS: &[&str] = &[{roots}];\nstatic __EMATH_MODULES: &[(&str, &str)] = &[{modules}];\n"
@@ -782,14 +807,7 @@ pub fn emit_constructor_crate(
                         record.name
                     ));
                 }
-                "emath-exec-ir = { path = \"vendor/emath-exec-ir\" }\n".to_string()
-            }
-            Err(error) => {
-                runnable = false;
-                unresolved.push(error);
-                String::new()
-            }
-        }
+        "emath-exec-ir = { path = \"vendor/emath-exec-ir\" }\n".to_string()
     } else {
         String::new()
     };
@@ -799,6 +817,7 @@ pub fn emit_constructor_crate(
         // with the same API; embedding a second copy would compile it
         // twice and make its types distinct from the engine's.
         engine_dependency.push_str("emath-rt = { path = \"vendor/emath-rt\" }\n");
+        rust.insert_str(EMITTED_HEADER.len(), "pub use emath_rt;\n\n");
     } else if rust.contains("emath_rt::") {
         // Self-containment law (emath-rt's `SOURCE` embed, the same
         // law the SIR lane followed): the runtime ships inside the
@@ -901,17 +920,17 @@ fn scalar_entry_adapter(
     abi: &EntryAbi,
 ) -> Option<String> {
     let project = |kind: &ValueKind| match kind {
-        ValueKind::I64 => Some("project_i64"),
+        ValueKind::I64 | ValueKind::ExactInt => Some("project_i64"),
         ValueKind::Rational => Some("project_ratio"),
         ValueKind::Bool => Some("project_bool"),
         _ => None,
     };
-    let wrap = match abi.result {
-        ValueKind::I64 => "Int",
-        ValueKind::Rational => "Rat",
-        ValueKind::Bool => "Bool",
-        _ => return None,
-    };
+    if !matches!(
+        abi.result,
+        ValueKind::I64 | ValueKind::ExactInt | ValueKind::Rational | ValueKind::Bool
+    ) {
+        return None;
+    }
     if abi.inputs.len() != inputs.len() {
         return None;
     }
@@ -921,17 +940,27 @@ fn scalar_entry_adapter(
         .zip(inputs)
         .enumerate()
         .map(|(index, (kind, (param, _)))| {
-            Some(format!(
+            let argument = format!(
                 "emath_rt::code::{}(&__args[{index}], {param:?})?",
                 project(kind)?
-            ))
+            );
+            Some(if *kind == ValueKind::ExactInt {
+                format!("emath_rt::ExactInt::from({argument})")
+            } else {
+                argument
+            })
         })
         .collect::<Option<Vec<_>>>()?;
     let arity = abi.inputs.len();
     let target = internal_entry_name(name);
+    let value = crate::codegen_render::to_code_value(
+        crate::Expr::Raw(format!("crate::{target}({})?", args.join(", "))),
+        &abi.result,
+    )
+    .ok()?;
+    let value = crate::rust_ir::render::render_expr(&value);
     Some(format!(
-        "#[allow(dead_code)]\nfn emath_callable_{name}(__args: &[emath_rt::code::CodeValue]) -> Result<emath_rt::code::CodeValue, String> {{\n    if __args.len() != {arity} {{\n        return Err(format!(\"type: `{name}` expects {arity} argument(s), got {{}}\", __args.len()));\n    }}\n    Ok(emath_rt::code::CodeValue::{wrap}(crate::{target}({})?))\n}}\n\n",
-        args.join(", ")
+        "#[allow(dead_code)]\nfn emath_callable_{name}(__args: &[emath_rt::code::CodeValue]) -> Result<emath_rt::code::CodeValue, String> {{\n    if __args.len() != {arity} {{\n        return Err(format!(\"type: `{name}` expects {arity} argument(s), got {{}}\", __args.len()));\n    }}\n    Ok({value})\n}}\n\n"
     ))
 }
 

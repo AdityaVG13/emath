@@ -1,18 +1,22 @@
 //! Run-report serialization and JSON value helpers.
 
-use super::{prepare_source, JsonWriter, put_pipeline_status, diagnostic_objects, refuse_kind_gone, parse_lossless, FileId, Limits, format_lossless};
+use super::{prepare_source, session_from_source, JsonWriter, put_pipeline_status, diagnostic_objects, refuse_kind_gone, parse_lossless, FileId, Limits, format_lossless};
 
 pub(super) fn op_inputs(source: &str) -> String {
     let prepared = prepare_source(source);
-    let (tree, diagnostics) = emath_syntax::parse_str(&prepared.source);
-    if diagnostics.has_errors() {
+    let (mut session, file) = session_from_source(&prepared.source);
+    let checked = session.check(file);
+    if checked.diagnostics.has_errors() {
         let mut object = JsonWriter::object();
-        put_pipeline_status(&mut object, &diagnostics);
-        object.objects("diagnostics", &diagnostic_objects(&diagnostics));
+        put_pipeline_status(&mut object, &checked.diagnostics);
+        object.objects("diagnostics", &diagnostic_objects(&checked.diagnostics));
         return object.finish();
     }
+    let Some(module) = checked.prepared else {
+        return refuse_kind_gone("inputs");
+    };
     let mut declarations = Vec::new();
-    for item in &tree.items {
+    for item in &module.tree().items {
         let emath_core::tree::Item::Declaration(decl) = item else {
             continue;
         };
@@ -81,8 +85,11 @@ pub(super) fn op_format(source: &str) -> String {
         object.objects("diagnostics", &diagnostic_objects(&parsed.diagnostics));
         return object.finish();
     }
+    let (mut session, file) = session_from_source(source);
+    let checked = session.check(file);
     let mut object = JsonWriter::object();
-    put_pipeline_status(&mut object, &parsed.diagnostics);
+    put_pipeline_status(&mut object, &checked.diagnostics);
+    object.objects("diagnostics", &diagnostic_objects(&checked.diagnostics));
     object.string("formatted", &format_lossless(&parsed));
     object.finish()
 }

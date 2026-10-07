@@ -9,13 +9,11 @@ use emath_ir::{ExprNode, SliceAxis};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use super::{
-    CheckResult, SemanticTrace, admit_constructor_declaration, confusable_fold,
-};
+use super::{CheckResult, SemanticTrace, admit_constructor_declaration, confusable_fold};
 
 mod remap;
 
-use remap::{remap_ids, remap_expr_node};
+use remap::{remap_expr_node, remap_ids};
 
 /// Parse the whole file and admit every declaration (used by the session).
 pub fn check_tree(tree: &SyntaxTree) -> CheckResult {
@@ -46,10 +44,13 @@ pub fn check_tree_at(tree: &SyntaxTree, source: Option<&Path>) -> CheckResult {
     if !has_declaration {
         diagnostics.error("E-PKG-081", "source has no declarations", tree.source);
         return CheckResult {
+            syntax: Some(tree.clone()),
+            parse_diagnostics: Diagnostics::new(),
             package,
             diagnostics,
             trace,
             units_profiles,
+            prepared: None,
         };
     }
     for item in &tree.items {
@@ -72,7 +73,15 @@ fn check_constructor_user_file(
     mut trace: SemanticTrace,
     units_profiles: Vec<(String, String)>,
 ) -> CheckResult {
-    let (admitted, mut objects) = emath_exec_ir::constructor_layer::admit_tree_objects(tree, source);
+    let (prepared, admitted, mut objects) =
+        match emath_exec_ir::constructor_layer::prepare_module(tree, source) {
+            Ok(mut module) => {
+                let admitted = module.admit();
+                let objects = module.object_names();
+                (Some(module), admitted, objects)
+            }
+            Err(err) => (None, Err(err), BTreeSet::new()),
+        };
     for item in &tree.items {
         if let emath_core::tree::Item::Declaration(decl) = item
             && decl.as_kind == "object"
@@ -190,9 +199,6 @@ fn check_constructor_user_file(
         }
         package.declarations.push(declaration);
     }
-    if !package.declarations.is_empty() {
-        package.seal();
-    }
     if let Err(err) = admitted {
         let code = emath_exec_ir::constructor_layer::constructor_admit_code(&err.code);
         // The per-declaration loop above already reported kind, section, and
@@ -205,10 +211,64 @@ fn check_constructor_user_file(
             diagnostics.error(code, err.message, err.span.unwrap_or(tree.source));
         }
     }
+    let prepared = if diagnostics.has_errors() {
+        None
+    } else {
+        prepared
+    };
+    if let Some(module) = &prepared {
+        match module.meaning_tree() {
+            Ok((resolved, aliases)) => {
+                let exports = resolved
+                    .items
+                    .iter()
+                    .flat_map(|item| match item {
+                        emath_core::tree::Item::Exports { names, .. } => names.clone(),
+                        emath_core::tree::Item::Declaration(decl) if decl.as_kind == "object" => {
+                            vec![decl.name.clone()]
+                        }
+                        _ => Vec::new(),
+                    })
+                    .collect();
+                package.constructor_semantics = Some(emath_ir::meaning::ConstructorSemantics {
+                    declarations: resolved
+                        .items
+                        .into_iter()
+                        .filter_map(|item| {
+                            if let emath_core::tree::Item::Declaration(decl) = item {
+                                Some(decl)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                    aliases,
+                    roots: package
+                        .declarations
+                        .iter()
+                        .map(|decl| decl.name.0.clone())
+                        .collect(),
+                    exports,
+                });
+            }
+            Err(error) => diagnostics.error("E-MEANING-001", error.message, tree.source),
+        }
+    }
+    if !package.declarations.is_empty() {
+        package.seal();
+    }
+    let prepared = if diagnostics.has_errors() {
+        None
+    } else {
+        prepared
+    };
     CheckResult {
+        syntax: Some(tree.clone()),
+        parse_diagnostics: Diagnostics::new(),
         package,
         diagnostics,
         trace,
         units_profiles,
+        prepared,
     }
 }

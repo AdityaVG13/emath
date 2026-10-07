@@ -473,7 +473,25 @@ pub enum Kont {
         done: Vec<CValue>,
         rest: Vec<Rc<Expr>>,
     },
+    CallCallee {
+        function: Box<Expr>,
+        args: Vec<Expr>,
+    },
+    ProjectField {
+        name: String,
+        receiver: Box<Expr>,
+    },
+    PackArgs {
+        type_name: String,
+        done: Vec<CValue>,
+        rest: Vec<Rc<Expr>>,
+    },
     FnCall {
+        name: String,
+        done: Vec<CValue>,
+        rest: Vec<Rc<Expr>>,
+    },
+    MachineCall {
         name: String,
         done: Vec<CValue>,
         rest: Vec<Rc<Expr>>,
@@ -489,6 +507,27 @@ pub enum Kont {
         current: String,
         current_expr: Box<Expr>,
         rest: Vec<(String, Expr)>,
+    },
+    RecordInvariant {
+        type_name: String,
+        fields: BTreeMap<String, CValue>,
+        current: String,
+        predicate: Box<Expr>,
+        rest: Vec<(String, Expr)>,
+        env: BTreeMap<String, CValue>,
+    },
+    RestoreEnv {
+        env: BTreeMap<String, CValue>,
+    },
+    BindAfterDomain {
+        name: String,
+        param: String,
+        domain: Box<Expr>,
+        body: Box<Expr>,
+    },
+    IndexBeforeSeq {
+        value: Box<Expr>,
+        indices: Vec<Expr>,
     },
     IndexAfterSeq {
         seq: CValue,
@@ -513,6 +552,11 @@ pub enum Kont {
         arms: Vec<(Expr, Expr)>,
         else_arm: Box<Expr>,
     },
+    MatchArm {
+        scrutinee: CValue,
+        arms: Vec<(Expr, Expr)>,
+        else_arm: Box<Expr>,
+    },
     CasesArm {
         cond: Box<Expr>,
         value: Box<Expr>,
@@ -530,9 +574,16 @@ pub enum Kont {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContinuationKind {
+    Function,
+    Expression,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContinuationFrame<E = BTreeMap<String, CValue>> {
     pub function: String,
+    pub kind: ContinuationKind,
     pub pc: u64,
     /// Next unfinished definition or instruction label in this frame.
     pub next: String,
@@ -543,6 +594,7 @@ impl<E> ContinuationFrame<E> {
     fn map_environment<T>(self, map: impl FnOnce(E) -> T) -> ContinuationFrame<T> {
         ContinuationFrame {
             function: self.function,
+            kind: self.kind,
             pc: self.pc,
             next: self.next,
             env: map(self.env),
@@ -665,6 +717,14 @@ impl From<BTreeMap<String, CValue>> for Environment {
     }
 }
 
+/// The exact namespace a suspended evaluation resolved, independent of disk.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CheckpointImports {
+    pub source_path: Option<PathBuf>,
+    pub roots: Vec<PathBuf>,
+    pub files: BTreeMap<PathBuf, String>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checkpoint {
     pub schema: String,
@@ -685,10 +745,11 @@ pub struct Checkpoint {
     /// a resume runs under it so it answers as the uninterrupted run.
     /// Empty in a checkpoint that predates the field: every world.
     pub worlds: Vec<String>,
+    pub imports: CheckpointImports,
 }
 
 pub const CHECKPOINT_SCHEMA: &str = "emath.constructor-checkpoint.v2";
-pub const CHECKPOINT_ABI: &str = "constructor-layer/continuation-abi";
+pub const CHECKPOINT_ABI: &str = "constructor-layer/scoped-continuation-abi";
 pub const ACCOUNTING_VERSION: &str = "constructor-layer/accounting.v1";
 pub const IMAGE_IDENTITY: &str = "constructor-layer";
 /// Nested calls that still have work pending. Each costs native stack
@@ -715,6 +776,7 @@ impl Default for Checkpoint {
             inputs: BTreeMap::new(),
             next_ref: 0,
             worlds: Vec::new(),
+            imports: CheckpointImports::default(),
         }
     }
 }

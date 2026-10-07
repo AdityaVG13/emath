@@ -39,6 +39,8 @@ admit without depending on this crate. The syntax tree is owned by
 - Bounded source/token/nesting limits.
 - Recovery at statement boundaries.
 - Formatting is idempotent, comment-preserving and parse-stable.
+  Colon-bodied binders retain parentheses when used as callees or operands,
+  so printed and kept programs do not absorb a surrounding operation.
 - `genesis` parses `emath custom` world declarations (the grammar stage only).
 
 ## Error model

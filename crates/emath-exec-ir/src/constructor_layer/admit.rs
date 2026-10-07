@@ -116,17 +116,16 @@ pub fn admit_tree_objects(
     tree: &SyntaxTree,
     source: Option<&Path>,
 ) -> (Result<(), ConstructorError>, std::collections::BTreeSet<String>) {
-    let mut engine = empty_engine();
-    let loaded = install_local_items(&mut engine, tree)
-        .and_then(|()| load_imports(&mut engine, tree, &module_roots_for(source), source));
-    if let Err(err) = loaded {
-        return (Err(err), Default::default());
+    match super::prepare_module(tree, source) {
+        Ok(mut module) => {
+            let objects = module.object_names();
+            (module.admit(), objects)
+        }
+        Err(err) => (Err(err), Default::default()),
     }
-    let objects = engine.objects.keys().cloned().collect();
-    (admit_loaded(&engine, tree), objects)
 }
 
-fn admit_loaded(engine: &Engine, tree: &SyntaxTree) -> Result<(), ConstructorError> {
+pub(super) fn admit_loaded(engine: &Engine, tree: &SyntaxTree) -> Result<(), ConstructorError> {
     for item in &tree.items {
         let Item::Declaration(decl) = item else {
             continue;
@@ -134,7 +133,7 @@ fn admit_loaded(engine: &Engine, tree: &SyntaxTree) -> Result<(), ConstructorErr
         match decl.as_kind.as_str() {
             "function" => admit_function(engine, decl)?,
             "query" => admit_query(engine, decl)?,
-            "object" => {}
+            "object" => refuse_unknown_test_rows(decl)?,
             other => {
                 return Err(fault(
                     "E-KIND-GONE",

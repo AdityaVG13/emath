@@ -5,8 +5,7 @@
 //! any dependency source that would need network access while locked is a
 //! typed refusal (`E-CODEGEN-008`). Diagnostics are deterministic.
 
-use crate::deps::{plan_dependencies, DepPolicy, DepSource};
-use crate::{build_file, BuildOptions};
+use crate::{prepare_constructor_file, write_constructor_crate};
 use std::path::{Path, PathBuf};
 
 /// Lock configuration for a build script invocation.
@@ -50,18 +49,25 @@ pub fn locked_build_script(
     lock: &ScriptLock,
 ) -> Result<ScriptReport, ScriptError> {
     let out_dir = out_dir.as_ref();
-    let report = build_file(
-        spec_path,
-        out_dir,
-        BuildOptions {
-            verify_generated_crate: false,
-            ..BuildOptions::default()
-        },
-    )
-    .map_err(|error| ScriptError {
-        code: "E-CODEGEN-010",
-        message: error.to_string(),
-    })?;
+    let (source, emission) =
+        prepare_constructor_file(spec_path.as_ref()).map_err(|error| ScriptError {
+            code: "E-CODEGEN-010",
+            message: error.to_string(),
+        })?;
+    // Engine sources are carried locally, but their registry dependencies
+    // are pinned, not vendored. Refuse before publishing any output.
+    if !lock.allow_network && emission.links_engine {
+        return Err(ScriptError {
+            code: "E-CODEGEN-008",
+            message: "locked build script cannot satisfy unvendored reference-engine dependencies"
+                .into(),
+        });
+    }
+    let report =
+        write_constructor_crate(&source.text, out_dir, emission).map_err(|error| ScriptError {
+            code: "E-CODEGEN-010",
+            message: error.to_string(),
+        })?;
     // OUT_DIR isolation: the artifact must live under the caller's OUT_DIR.
     let out_dir_isolated = report.artifact_dir.starts_with(out_dir);
     if !out_dir_isolated {
@@ -71,29 +77,6 @@ pub fn locked_build_script(
                 "build script wrote outside $OUT_DIR: {}",
                 report.artifact_dir.display()
             ),
-        });
-    }
-    // Locked mode: refuse dependency plans that require network access.
-    // The generated crate is std-only in the native runtime, so
-    // this is a guard for future profiles rather than a silent pass.
-    if !lock.allow_network
-        && plan_dependencies(&[], &DepPolicy::strict_local())
-            .map_err(|error| ScriptError {
-                code: "E-CODEGEN-008",
-                message: format!("locked build script cannot satisfy: {error}"),
-            })?
-            .dependencies
-            .iter()
-            .any(|dependency| {
-                matches!(
-                    dependency.source,
-                    DepSource::Git { .. } | DepSource::Registry
-                )
-            })
-    {
-        return Err(ScriptError {
-            code: "E-CODEGEN-008",
-            message: "locked build script requires network access".into(),
         });
     }
     for path in &lock.rerun_paths {

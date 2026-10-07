@@ -63,7 +63,9 @@ Always available (std-only, zero third-party deps):
   recorded under the OLD toolchain (others survive). Cutoff receipts
   are deterministic values explaining the skipped work. No math
   equivalence is ever guessed: MeaningID equality is the only semantic
-  oracle consulted.
+  oracle consulted. Callers supply identities from admitted semantics;
+  the store does not reconstruct mathematics from source or repair incomplete
+  compiler identities.
 - `pack` (DRAFT); `.emlib` portable-pack draft: magic
   `EMATHLIB\0` + version byte + framed parent reference + length-framed
   entries (house `frame` convention). `PackWriter` budget-checks and
@@ -211,6 +213,10 @@ suite validates driving fsqlite engine futures from the git-pinned runtime.
   invalidates only old-provider recipes, evidence change is additive-only,
   unchanged inputs cut off, receipts deterministic, closed class set
   exhaustive.
+- `tests/emath-store/tests/meaning_store.rs`: real admitted constructor
+  formulas, not synthetic identity tokens. Changing an executable body
+  rebuilds dependents; presentation and alpha-renaming preserve meaning;
+  evidence attachment cannot change the stored mathematical identity.
 - `tests/emath-store/tests/epic_emlib_nz1n_3_unit.rs`: pack round-trip,
   canonical export (insertion-order independence + sorted read), corruption
   matrix (bad magic incl. late-byte, truncation), write-side budgets

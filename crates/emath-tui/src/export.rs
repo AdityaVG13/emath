@@ -2,8 +2,8 @@
 //!
 //! `export_native` emits two crates and builds one binary:
 //!
-//! - the **artifact crate**: `emath_build::build_file` over the host's
-//!   module - the self-contained, std-only, typed-closure-ABI crate
+//! - the **artifact crate**: shared constructor emission over a freshly
+//!   checked snapshot - the typed-closure-ABI crate
 //!   `emath build` produces, verified (it must compile and pass its
 //!   emitted tests before anything drives it);
 //! - the **epoch host crate**: a sibling bin crate over the artifact
@@ -13,7 +13,7 @@
 //!   `Step<Name>(state, budget)`, projects the ledger, and writes an
 //!   `emath.scratch.v1` checkpoint.
 //!
-//! The sibling is standalone std-only, so it MIRRORS the scratch
+//! The sibling depends only on the artifact, so it MIRRORS the scratch
 //! interchange (envelope, value rendering, ledger entries) instead of
 //! linking emath-exec-ir - the compiled-probe doctrine: parity is
 //! enforced by tests, not by sharing code. Cross-lane parity is the
@@ -39,7 +39,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use super::host::{HostFault, LoopHost, admitted_meaning_id};
+use super::host::{HostFault, LoopHost, checked_source};
 use emath_build::{generated_crate_target_dir, run_cargo_timed};
 use emath_rust_backend::AuthoredRecord;
 use emath_rust_backend::constructor_crate::{ConstructorEmitRefusal, emit_constructor_crate};
@@ -61,6 +61,7 @@ pub struct ExportReport {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum MirrorType {
     I64,
+    ExactInt,
     Bool,
     Ratio,
     Seq(Box<MirrorType>),
@@ -97,6 +98,9 @@ fn parse_rust_type(text: &str) -> Option<MirrorType> {
     let text = text.trim();
     if text == "i64" {
         return Some(MirrorType::I64);
+    }
+    if text == "emath_rt::ExactInt" {
+        return Some(MirrorType::ExactInt);
     }
     if text == "bool" {
         return Some(MirrorType::Bool);
@@ -180,7 +184,7 @@ fn parse_struct(lib: &str, rust_name: &str, maps: &NameMaps) -> Result<StructSha
         };
         let ty = parse_rust_type(ty.trim_end_matches(',')).ok_or_else(|| {
             format!(
-                "`EmathRecord_{rust_name}` field `{rust_field}` has type `{ty}`, which is not scratch cargo (i64, bool, ExactRatio, Vec<T>, nested EmathRecord_* only)"
+                "`EmathRecord_{rust_name}` field `{rust_field}` has type `{ty}`, which is not scratch cargo (Int, bool, ExactRatio, Vec<T>, nested EmathRecord_* only)"
             )
         })?;
         let emath_field = field_map.get(rust_field).ok_or_else(|| {
@@ -256,9 +260,9 @@ fn check_state_contract(state_type: &str, shapes: &[StructShape]) -> Result<Stri
             "the archive element record `{element_name}` has no `accepted` field of type bool"
         ));
     }
-    if element_shape.field("key") != Some(&MirrorType::I64) {
+    if !matches!(element_shape.field("key"), Some(MirrorType::I64 | MirrorType::ExactInt)) {
         return Err(format!(
-            "the archive element record `{element_name}` has no `key` field of type i64"
+            "the archive element record `{element_name}` has no Int `key` field"
         ));
     }
     if element_shape.field("score") != Some(&MirrorType::Ratio) {
@@ -267,8 +271,8 @@ fn check_state_contract(state_type: &str, shapes: &[StructShape]) -> Result<Stri
         ));
     }
     for field in ["incumbent", "batch", "used", "verdict", "mode"] {
-        if shape.field(field) != Some(&MirrorType::I64) {
-            return Err(refuse(&format!("has no `{field}` field of type i64")));
+        if !matches!(shape.field(field), Some(MirrorType::I64 | MirrorType::ExactInt)) {
+            return Err(refuse(&format!("has no Int `{field}` field")));
         }
     }
     let MirrorType::Record(case_set) = shape
@@ -281,8 +285,8 @@ fn check_state_contract(state_type: &str, shapes: &[StructShape]) -> Result<Stri
         .iter()
         .find(|s| &s.name == case_set)
         .ok_or_else(|| refuse("`case_set` record is missing from the shape"))?;
-    if case_shape.field("ids") != Some(&MirrorType::Seq(Box::new(MirrorType::I64))) {
-        return Err(refuse("`case_set.ids` is not a sequence of i64"));
+    if !matches!(case_shape.field("ids"), Some(MirrorType::Seq(inner)) if matches!(inner.as_ref(), MirrorType::I64 | MirrorType::ExactInt)) {
+        return Err(refuse("`case_set.ids` is not a sequence of Int"));
     }
     Ok(element_name.clone())
 }
@@ -298,45 +302,24 @@ pub fn export_native(host: &LoopHost, out_dir: &Path) -> Result<ExportReport, Ho
     // One emitter, two callers: `emath build` and this export share
     // constructor_crate, so the exported artifact is byte-identical to
     // the CLI's emission by construction.
-    let source = std::fs::read_to_string(host.module_path()).map_err(|error| {
-        HostFault::fault(
-            "loop_export_emit",
-            format!(
-                "cannot read the module {}: {error}",
-                host.module_path().display()
-            ),
-        )
-    })?;
-    let (tree, parse) = emath_syntax::parse_str(&source);
-    if parse.has_errors() {
-        let first = parse
-            .errors()
-            .map(|error| error.message.clone())
-            .next()
-            .unwrap_or_else(|| "parse refused".to_string());
-        return Err(HostFault::fault(
-            "loop_export_emit",
-            format!("the module does not parse: {first}"),
-        ));
-    }
+    let (source, meaning_now, module) = checked_source(host.module_path())?;
     // The export pairs with THIS session: the VM lane steps the
     // open-time admission, so the emitted artifact must come from the
     // same bytes that minted the host's meaning id. A module edited
     // after the session opened refuses by name - never a stale
     // meaning id over new math.
-    let meaning_now = admitted_meaning_id(host.module_path(), &source)?;
-    if meaning_now != host.identity().meaning_id {
+    if meaning_now != host.identity().meaning_id || !module.same_imports(host.prepared()) {
         return Err(HostFault::fault(
             "loop_export_emit",
             format!(
-                "the module {} changed since the session opened (meaning id {} is not the session's {}): re-open the session before exporting",
+                "the module {} or its imports changed since the session opened (current meaning id {}, session meaning id {}): re-open the session before exporting",
                 host.module_path().display(),
                 meaning_now,
                 host.identity().meaning_id
             ),
         ));
     }
-    let emission = emit_constructor_crate(&tree, host.module_path()).map_err(
+    let emission = emit_constructor_crate(&module, host.module_path(), &source).map_err(
         |refusal: ConstructorEmitRefusal| match refusal {
             ConstructorEmitRefusal::NotConstructor(message) => HostFault::fault(
                 "loop_export_emit",
@@ -526,7 +509,7 @@ fn fail(message: &str) -> ! {
     std::process::exit(1);
 }
 
-fn verdict_name(verdict: i64) -> &'static str {
+fn verdict_name(verdict: i128) -> &'static str {
     match verdict {
         0 => "running",
         1 => "goal_attained",
@@ -555,19 +538,35 @@ fn json_quote(source: &str) -> String {
     out
 }
 
-fn render_i64(out: &mut String, value: i64) {
+fn render_int(out: &mut String, value: &impl std::fmt::Display) {
     out.push_str(&value.to_string());
 }
+
+trait HostInt {
+    fn host_int(&self) -> i128;
+}
+
+impl HostInt for i64 {
+    fn host_int(&self) -> i128 { i128::from(*self) }
+}
+
+impl HostInt for <Crate>::emath_rt::ExactInt {
+    fn host_int(&self) -> i128 {
+        self.to_i128().unwrap_or_else(|| fail("loop_state_contract: Int exceeds the i128 host projection"))
+    }
+}
+
+fn host_int(value: &impl HostInt) -> i128 { value.host_int() }
 
 fn render_bool(out: &mut String, value: bool) {
     out.push_str(if value { "true" } else { "false" });
 }
 
-fn render_ratio(out: &mut String, value: <Crate>::emath_rt::ExactRatio) {
+fn render_ratio(out: &mut String, value: &<Crate>::emath_rt::ExactRatio) {
     out.push_str(&format!("{{\"rat\": [{}, {}]}}", value.0, value.1));
 }
 
-fn i64_list(items: &[i64]) -> String {
+fn int_list(items: &[i128]) -> String {
     let parts: Vec<String> = items.iter().map(|n| n.to_string()).collect();
     format!("[{}]", parts.join(", "))
 }
@@ -617,15 +616,15 @@ fn i64_list(items: &[i64]) -> String {
     text.push_str(&fill(
         r#"struct Entry {
     batch: u64,
-    verdict: i64,
-    used: i64,
-    incumbent_key: i64,
+    verdict: i128,
+    used: i128,
+    incumbent_key: i128,
     score_num: i128,
     score_den: i128,
     archive_len: u64,
-    promoted: Vec<i64>,
-    quarantined: Vec<i64>,
-    case_ids: Vec<i64>,
+    promoted: Vec<i128>,
+    quarantined: Vec<i128>,
+    case_ids: Vec<i128>,
     halted: bool,
 }
 
@@ -636,21 +635,21 @@ fn project(
     if next.archive.len() < previous.archive.len() {
         fail("loop_state_contract: the archive shrank across a batch: archive ordinals are append-only");
     }
-    let mut promoted: Vec<i64> = Vec::new();
-    let mut quarantined: Vec<i64> = Vec::new();
+    let mut promoted: Vec<i128> = Vec::new();
+    let mut quarantined: Vec<i128> = Vec::new();
     for (ordinal, record) in next.archive.iter().enumerate() {
         let was_accepted = match previous.archive.get(ordinal) {
             Some(prev) => prev.accepted,
             None => false,
         };
         if record.accepted && !was_accepted {
-            promoted.push(record.key);
+            promoted.push(host_int(&record.key));
         }
         if !record.accepted && was_accepted {
-            quarantined.push(record.key);
+            quarantined.push(host_int(&record.key));
         }
     }
-    let incumbent = usize::try_from(next.incumbent).unwrap_or_else(|_| {
+    let incumbent = usize::try_from(host_int(&next.incumbent)).unwrap_or_else(|_| {
         fail(&format!(
             "loop_state_contract: incumbent ordinal {} is not a valid archive index",
             next.incumbent
@@ -662,17 +661,17 @@ fn project(
         ))
     });
     Entry {
-        batch: next.batch as u64,
-        verdict: next.verdict,
-        used: next.used,
-        incumbent_key: incumbent_record.key,
-        score_num: i128::from(incumbent_record.score.0),
-        score_den: i128::from(incumbent_record.score.1),
+        batch: u64::try_from(host_int(&next.batch)).unwrap_or_else(|_| fail("loop_state_contract: batch is outside u64")),
+        verdict: host_int(&next.verdict),
+        used: host_int(&next.used),
+        incumbent_key: host_int(&incumbent_record.key),
+        score_num: host_int(&incumbent_record.score.0),
+        score_den: host_int(&incumbent_record.score.1),
         archive_len: next.archive.len() as u64,
         promoted,
         quarantined,
-        case_ids: next.case_set.ids.clone(),
-        halted: next.verdict == 4,
+        case_ids: next.case_set.ids.iter().map(host_int).collect(),
+        halted: host_int(&next.verdict) == 4,
     }
 }
 
@@ -687,9 +686,9 @@ fn render_entry(entry: &Entry) -> String {
         entry.score_num, entry.score_den
     ));
     out.push_str(&format!("  \"archive_len\": {},\n", entry.archive_len));
-    out.push_str(&format!("  \"promoted\": {},\n", i64_list(&entry.promoted)));
-    out.push_str(&format!("  \"quarantined\": {},\n", i64_list(&entry.quarantined)));
-    out.push_str(&format!("  \"case_ids\": {},\n", i64_list(&entry.case_ids)));
+    out.push_str(&format!("  \"promoted\": {},\n", int_list(&entry.promoted)));
+    out.push_str(&format!("  \"quarantined\": {},\n", int_list(&entry.quarantined)));
+    out.push_str(&format!("  \"case_ids\": {},\n", int_list(&entry.case_ids)));
     out.push_str(&format!(
         "  \"halted\": {}",
         if entry.halted { "true" } else { "false" }
@@ -739,27 +738,27 @@ fn write_scratch(
     }
 }
 
-fn incumbent_key(state: &<Crate>::EmathRecord_<StateRust>) -> i64 {
-    let ordinal = usize::try_from(state.incumbent).unwrap_or_else(|_| {
+fn incumbent_key(state: &<Crate>::EmathRecord_<StateRust>) -> i128 {
+    let ordinal = usize::try_from(host_int(&state.incumbent)).unwrap_or_else(|_| {
         fail(&format!(
             "loop_state_contract: incumbent ordinal {} is not a valid archive index",
             state.incumbent
         ))
     });
-    state
+    let record = state
         .archive
         .get(ordinal)
         .unwrap_or_else(|| {
             fail(&format!(
                 "loop_state_contract: incumbent ordinal {ordinal} is outside the archive"
             ))
-        })
-        .key
+        });
+    host_int(&record.key)
 }
 
 fn seed_line(state: &<Crate>::EmathRecord_<StateRust>) -> String {
     let key = incumbent_key(state);
-    let ordinal = usize::try_from(state.incumbent).unwrap_or_else(|_| {
+    let ordinal = usize::try_from(host_int(&state.incumbent)).unwrap_or_else(|_| {
         fail("loop_state_contract: incumbent ordinal is not a valid archive index")
     });
     let record = state.archive.get(ordinal).unwrap_or_else(|| {
@@ -770,7 +769,7 @@ fn seed_line(state: &<Crate>::EmathRecord_<StateRust>) -> String {
     format!(
         "seed batch {} verdict {} used {} incumbent key {} score {}/{} mode {}",
         state.batch,
-        verdict_name(state.verdict),
+        verdict_name(host_int(&state.verdict)),
         state.used,
         key,
         record.score.0,
@@ -788,9 +787,9 @@ fn batch_line(entry: &Entry) -> String {
         entry.incumbent_key,
         entry.score_num,
         entry.score_den,
-        i64_list(&entry.promoted),
-        i64_list(&entry.quarantined),
-        i64_list(&entry.case_ids),
+        int_list(&entry.promoted),
+        int_list(&entry.quarantined),
+        int_list(&entry.case_ids),
         entry.archive_len,
     )
 }
@@ -840,13 +839,13 @@ fn main() {
     println!("target {} state {}", TARGET, STATE_TYPE);
     println!("meaning {}", MEANING_ID);
     let started = std::time::Instant::now();
-    let mut state = <Crate>::<Seed>(0).unwrap_or_else(|error| fail(&error));
+    let mut state = <Crate>::<Seed>(0.into()).unwrap_or_else(|error| fail(&error));
     println!("{}", seed_line(&state));
     let mut entries: Vec<Entry> = Vec::new();
     for batch in 1..=batches {
         let previous = state.clone();
-        state = <Crate>::<Step>(state, budget).unwrap_or_else(|error| fail(&error));
-        if state.batch != i64::from(batch) {
+        state = <Crate>::<Step>(state, budget.into()).unwrap_or_else(|error| fail(&error));
+        if host_int(&state.batch) != i128::from(batch) {
             fail(&format!(
                 "loop_ledger_law: the state's batch counter {} does not match the committed revision {batch}",
                 state.batch
@@ -860,7 +859,7 @@ fn main() {
     println!(
         "end batches {} verdict {}",
         batches,
-        verdict_name(state.verdict)
+        verdict_name(host_int(&state.verdict))
     );
     println!("timing native_step_total_ns {elapsed_ns} batches {batches}");
     write_scratch(&scratch, u64::from(batches), &state, &entries);
@@ -881,14 +880,14 @@ fn main() {
 fn push_render_call(text: &mut String, ty: &MirrorType, expr: &str, depth: usize) {
     let pad = "    ".repeat(depth);
     match ty {
-        MirrorType::I64 => {
-            text.push_str(&format!("{pad}render_i64(out, {expr});\n"));
+        MirrorType::I64 | MirrorType::ExactInt => {
+            text.push_str(&format!("{pad}render_int(out, &{expr});\n"));
         }
         MirrorType::Bool => {
             text.push_str(&format!("{pad}render_bool(out, {expr});\n"));
         }
         MirrorType::Ratio => {
-            text.push_str(&format!("{pad}render_ratio(out, {expr});\n"));
+            text.push_str(&format!("{pad}render_ratio(out, &{expr});\n"));
         }
         MirrorType::Seq(inner) => {
             text.push_str(&format!("{pad}out.push('[');\n"));
@@ -902,7 +901,7 @@ fn push_render_call(text: &mut String, ty: &MirrorType, expr: &str, depth: usize
             // deref (`*item`), records coerce (`&&T` -> `&T`), and
             // nested sequences take the reference as-is.
             let inner_expr = match inner.as_ref() {
-                MirrorType::I64 | MirrorType::Bool | MirrorType::Ratio => "*item",
+                MirrorType::I64 | MirrorType::Bool => "*item",
                 _ => "item",
             };
             push_render_call(text, inner, inner_expr, depth + 1);

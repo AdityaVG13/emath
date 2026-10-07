@@ -112,7 +112,7 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         let written = target
             .parent()
             .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&target, contents));
+            .and_then(|()| emath_build::write_generated_file(&target, contents));
         if let Err(error) = written {
             eprintln!("error: E-PKG-080: {}: {error}", target.display());
             return EXIT_IO;
@@ -155,7 +155,7 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
     };
     // emath certifies every law while Lean builds; only the verdicts on
     // laws Lean proves are read.
-    let certified = certified(&export.law_sites);
+    let certified = certified(&export);
     let output = match lake.wait_with_output() {
         Ok(output) => output,
         Err(error) => {
@@ -279,7 +279,8 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
 /// faults, so Lean can prove a statement emath refuses; a law Lean
 /// proves counts only with emath's verdict, so Lean never claims more
 /// than emath.
-fn certified(sites: &[lean::LawSite]) -> Vec<bool> {
+fn certified(export: &lean::Export) -> Vec<bool> {
+    let sites = &export.law_sites;
     let mut verdicts = vec![false; sites.len()];
     let mut by_source: Vec<(&Path, Vec<usize>)> = Vec::new();
     for (index, site) in sites.iter().enumerate() {
@@ -289,8 +290,11 @@ fn certified(sites: &[lean::LawSite]) -> Vec<bool> {
         }
     }
     for (source, indices) in by_source {
+        let Some(module) = export.snapshots.get(source) else {
+            continue;
+        };
         let calls: Vec<&str> = indices.iter().map(|&index| sites[index].emath_call.as_str()).collect();
-        for (&index, certified) in indices.iter().zip(lean::emath_certifies(source, &calls)) {
+        for (&index, certified) in indices.iter().zip(lean::emath_certifies(source, module, &calls)) {
             verdicts[index] = certified;
         }
     }
@@ -317,6 +321,13 @@ fn mathlib_packages() -> PathBuf {
 /// Mathlib from source takes hours of every core, so this refuses
 /// rather than let `lake build` start it.
 fn prebuilt_mathlib(out: &Path, packages: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(packages)
+        .map_err(|error| format!("cannot create shared Mathlib packages ({error})"))?;
+    let lock = std::fs::File::options().read(true).write(true).create(true).truncate(false)
+        .open(packages.join(".emath-setup.lock"))
+        .map_err(|error| format!("cannot open shared Mathlib setup lock ({error})"))?;
+    lock.lock().map_err(|error| format!("cannot lock shared Mathlib setup ({error})"))?;
+    compatible_mathlib(packages)?;
     let built = || {
         Command::new("lake")
             .args(["build", "--no-build"])
@@ -335,22 +346,98 @@ fn prebuilt_mathlib(out: &Path, packages: &Path) -> Result<(), String> {
         return Ok(());
     }
     if present {
-        println!("lean: fetching Mathlib's prebuilt cache into {}", packages.display());
+        println!("lean: preparing Mathlib's prebuilt cache in {} (reusing downloaded files)", packages.display());
     }
+    let setup = mathlib_setup(packages)?;
     let fetched = Command::new("lake")
         .args(["exe", "cache", "get"])
+        .args(lean::law_imports())
         .env(lean::FETCH_ENV, "1")
-        .current_dir(out)
+        .env("GIT_HTTP_USER_AGENT", "OpenAI File Downloader, XaiImageApiFetch/1.0")
+        .env("CURL_HOME", &setup)
+        .current_dir(&setup)
         .status()
         .map_err(|error| format!("cannot run `lake` ({error}); install Lean with elan"))?;
+    if fetched.success() {
+        compatible_mathlib(packages)?;
+    }
     if fetched.success() && built()? {
         return Ok(());
     }
     Err(format!(
         "Mathlib in {} is not prebuilt and its cache could not be fetched; run `lake exe cache get` in {}",
         packages.display(),
-        out.display()
+        setup.display()
     ))
+}
+
+/// Never let Lake update a user-supplied checkout to our pinned revision.
+fn compatible_mathlib(packages: &Path) -> Result<(), String> {
+    let manifest = emath_artifact::parse_json_document(lean::MANIFEST).map_err(|error| error.to_string())?;
+    let emath_artifact::JsonValue::Arr(entries) = manifest.field("packages").map_err(|error| error.to_string())? else {
+        return Err("invalid embedded Mathlib package manifest".into());
+    };
+    for entry in entries {
+        let name = entry.string_field("name").map_err(|error| error.to_string())?;
+        let dir = packages.join(&name);
+        if !dir.exists() {
+            continue;
+        }
+        let expected = entry.string_field("rev").map_err(|error| error.to_string())?;
+        let git = Command::new("git").arg("-C").arg(&dir).args(["rev-parse", "HEAD"]).output()
+            .map_err(|error| format!("cannot inspect Mathlib package `{name}` ({error})"))?;
+        if !git.status.success() || String::from_utf8_lossy(&git.stdout).trim() != expected {
+            return Err(format!(
+                "Mathlib package {} is not at the required revision {expected}; leave this checkout unchanged and set EMATH_LEAN_MATHLIB to compatible packages",
+                dir.display()
+            ));
+        }
+    }
+    let root = packages.join("mathlib");
+    if root.exists() {
+        let toolchain = std::fs::read_to_string(root.join("lean-toolchain"))
+            .map_err(|error| format!("cannot read Mathlib's lean-toolchain ({error})"))?;
+        if toolchain.trim() != lean::TOOLCHAIN.trim() {
+            return Err(format!(
+                "Mathlib in {} needs {}, but this export needs {}; set EMATH_LEAN_MATHLIB to compatible packages",
+                root.display(), toolchain.trim(), lean::TOOLCHAIN.trim()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn mathlib_setup(packages: &Path) -> Result<PathBuf, String> {
+    // A stable workspace aligns Mathlib's extraction path with Lake's
+    // resolver. No dependency artifacts belong to an individual export.
+    let setup = packages.join(".emath-setup-v4.34.1");
+    let linked = setup.join(".lake/packages");
+    std::fs::create_dir_all(linked.parent().unwrap())
+        .map_err(|error| format!("cannot create shared Mathlib setup ({error})"))?;
+    if std::fs::symlink_metadata(&linked).is_ok() {
+        if linked.canonicalize().ok() != packages.canonicalize().ok() {
+            return Err(format!("{} does not point at {}; leave it unchanged", linked.display(), packages.display()));
+        }
+    } else {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(packages, &linked)
+            .map_err(|error| format!("cannot link shared Mathlib packages ({error})"))?;
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(packages, &linked)
+            .map_err(|error| format!("cannot link shared Mathlib packages ({error})"))?;
+        #[cfg(not(any(unix, windows)))]
+        return Err("shared Mathlib setup requires directory link support".into());
+    }
+    for (file, text) in [
+        ("lakefile.lean", lean::cache_lakefile(packages)),
+        ("lean-toolchain", lean::TOOLCHAIN.to_string()),
+        ("lake-manifest.json", lean::manifest(packages)),
+        (".curlrc", "user-agent = \"OpenAI File Downloader, XaiImageApiFetch/1.0\"\n".to_string()),
+    ] {
+        emath_build::write_generated_file(setup.join(file), text)
+            .map_err(|error| format!("cannot write shared Mathlib setup ({error})"))?;
+    }
+    Ok(setup)
 }
 
 /// Every `.emath` file under `dir`, skipping hidden directories (run

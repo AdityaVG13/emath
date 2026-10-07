@@ -23,13 +23,10 @@ fn typed_operand_or_complex(program: &EmirProgram, value: EmirValue, kinds: &[Va
     }
 }
 
-/// Widen an exact-integer operand to the `(i128, i128)` rational carrier
-/// (`n` becomes `n/1`, the VM's `as_rat` law). A part beyond `i128`
-/// refuses by name - the emitter's declared rational scale boundary -
-/// instead of truncating or silently switching representations.
+/// Widen an exact integer without narrowing either rational part.
 pub(super) fn exact_int_ratio_parts(operand_expr: &str) -> String {
     format!(
-        "((({operand_expr}).to_i128().ok_or_else(|| String::from(\"E-RAT-002: exact rational part exceeds i128\"))?), 1)"
+        "emath_rt::ExactRatio(({operand_expr}).clone(), emath_rt::ExactInt::one())"
     )
 }
 
@@ -125,7 +122,7 @@ pub(super) fn op_arith_exprs(
             && matches!(right_kind, ValueKind::Rational | ValueKind::Never);
         if rat_pair {
             let value = map_runtime_result(format!(
-                "emath_rt::{function}({}, {})",
+                "emath_rt::{function}(({}).clone(), ({}).clone())",
                 render_expr(&operand(program, left)),
                 render_expr(&operand(program, right))
             ));
@@ -154,7 +151,7 @@ pub(super) fn op_arith_exprs(
                 ValueKind::Rational => {
                     let ratio = render_expr(&operand(program, value));
                     Some(Expr::Raw(format!(
-                        "emath_rt::exact_ratio_f64(&emath_rt::ExactInt::from(({ratio}).0), &emath_rt::ExactInt::from(({ratio}).1))"
+                        "emath_rt::exact_ratio_f64(&({ratio}).0, &({ratio}).1)"
                     )))
                 }
                 _ => None,
@@ -209,14 +206,12 @@ pub(super) fn op_arith_exprs(
         // exactly (`n` becomes `n/1`), the result stays Rational (a
         // Rational operand locks the carrier, never a float join).
         // ExactInt-backed operands (e.g. `int_pow` results) widen
-        // through the same checked i128 bridge so every mixed pair
-        // meets on ONE representation - the ratio tuple carrier -
-        // never raw tuple ops against ExactInt values.
+        // through the same exact carrier as the rational operand.
         let ratio_of = |value: EmirValue| -> Option<Expr> {
             match kind_at(kinds, value) {
                 ValueKind::Rational => Some(operand(program, value)),
                 ValueKind::I64 => Some(Expr::Raw(format!(
-                    "(i128::from({}), 1)",
+                    "emath_rt::ExactRatio::from(({}, 1))",
                     render_expr(&operand(program, value))
                 ))),
                 ValueKind::ExactInt => Some(Expr::Raw(exact_int_ratio_parts(&render_expr(
@@ -230,7 +225,7 @@ pub(super) fn op_arith_exprs(
                 || matches!(kind_at(kinds, right), ValueKind::Rational)
             {
                 let value = map_runtime_result(format!(
-                    "emath_rt::{function}({}, {})",
+                    "emath_rt::{function}(({}).clone(), ({}).clone())",
                     render_expr(&left_ratio),
                     render_expr(&right_ratio)
                 ));
@@ -262,10 +257,7 @@ pub(super) fn op_arith_exprs(
                 "ratio_mul" => map_runtime_result(format!(
                     "{left_e}.mul({right_ref}).map_err(|err| err.to_string())"
                 )),
-                // One representation: both operands widen to the ratio
-                // tuple carrier. `exact_ratio` returns
-                // `(ExactInt, ExactInt)`, which is not the Rational
-                // carrier and miscompiles into raw tuple arithmetic.
+                // Both operands widen to the common rational carrier.
                 "ratio_div" => map_runtime_result(format!(
                     "emath_rt::ratio_div({}, {})",
                     exact_int_ratio_parts(&left_e),
@@ -293,7 +285,7 @@ pub(super) fn op_arith_exprs(
     if let EmirOp::Neg(value) = op {
         if kind_at(kinds, *value) == ValueKind::Rational {
             return Ok(map_runtime_result(format!(
-                "emath_rt::ratio_sub((0, 1), {})",
+                "emath_rt::ratio_sub((0, 1), ({}).clone())",
                 render_expr(&operand(program, *value))
             )));
         }

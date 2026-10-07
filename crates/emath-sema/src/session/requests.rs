@@ -1,6 +1,10 @@
 //! Goal-section extraction: `elaborate_requests` and its parsing helpers.
 
-use super::{SemanticPackage, Section, Diagnostics, RequestSpec, GoalPayload, StmtKind, CommandArgument, ExprKind, Limits, source_parser, Span, FileId, Path};
+use emath_core::parse::source_parser;
+use emath_core::tree::{CommandArgument, ExprKind, Section, StmtKind};
+use emath_core::{Diagnostics, FileId, Span, limits::Limits};
+use emath_ir::{GoalPayload, RequestSpec, SemanticPackage};
+use std::path::Path;
 
 /// Extract the `goals:` section into request specs and validate targets
 /// against the admitted declaration (`E-GOAL-041`/`E-GOAL-042`/`E-GOAL-043`).
@@ -336,6 +340,7 @@ pub(super) fn command_u32(head: &[String], argument: Option<&CommandArgument>) -
 /// is installed (wire `emath_syntax::install_source_parser` at startup).
 pub(super) fn parse_through(
     text: &str,
+    file: FileId,
     limits: &Limits,
     edition: emath_core::Edition,
 ) -> Result<(emath_core::tree::SyntaxTree, Diagnostics), Diagnostics> {
@@ -344,11 +349,11 @@ pub(super) fn parse_through(
         diagnostics.error(
             "E-SYN-120",
             "source parser backend not installed: call emath_syntax::install_source_parser once per process before parsing",
-            Span::default(),
+            Span::cursor(file, 0),
         );
         return Err(diagnostics);
     };
-    Ok(parser.parse(text, FileId(0), limits, edition))
+    Ok(parser.parse(text, file, limits, edition))
 }
 
 pub(super) fn nearest_manifest(source: &Path) -> Option<std::path::PathBuf> {

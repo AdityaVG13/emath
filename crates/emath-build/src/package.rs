@@ -1,14 +1,13 @@
 //! Package build orchestration: compose, stage, cargo, verify.
 
 use super::{
-    content_id_of_str, generated_crate_target_dir, manifest_identity, plan_to_record, publish,
-    required_artifact_paths, stage, verify_artifact, write_artifact_manifest,
-    write_evidence_bundle, write_resolution_plan, write_source_map, ArtifactClass,
-    ArtifactManifest, BTreeMap, BackendInput, BackendOutput, BuildError, BuildOptions, BuildReport,
-    ClaimVerdict, Component, CrateProfile, Diagnostics, EvidenceBundleRecord, EvidenceClaim,
-    EvidenceLevel, Path, PathBuf, PlanRecord, ResolutionPlan, SchemaId, SourceMap, SourceMapEntry,
-    StagedFile, ARTIFACT_MANIFEST_SCHEMA, COMPILER_DESCRIPTOR, EVIDENCE_BUNDLE_SCHEMA,
-    SOURCE_MAP_SCHEMA,
+    ARTIFACT_MANIFEST_SCHEMA, ArtifactClass, ArtifactManifest, BTreeMap, BackendInput,
+    BackendOutput, BuildError, BuildOptions, BuildReport, COMPILER_DESCRIPTOR, ClaimVerdict,
+    Component, CrateProfile, Diagnostics, EVIDENCE_BUNDLE_SCHEMA, EvidenceBundleRecord,
+    EvidenceClaim, EvidenceLevel, Path, PathBuf, PlanRecord, ResolutionPlan, SOURCE_MAP_SCHEMA,
+    SchemaId, SourceMap, SourceMapEntry, StagedFile, content_id_of_str, generated_crate_target_dir,
+    manifest_identity, plan_to_record, publish, required_artifact_paths, stage, verify_artifact,
+    write_artifact_manifest, write_evidence_bundle, write_resolution_plan, write_source_map,
 };
 
 /// Artifact pipeline over an already-elaborated package
@@ -407,14 +406,32 @@ pub(super) fn serialize_plans(plans: &[PlanRecord]) -> String {
     out
 }
 
-/// Write the generated crate into `dir` and run `cargo test --quiet`
-/// (`--lib --bins --tests`, no rustdoc/doctest) under a wall-clock budget:
-/// a child still running past `timeout` is killed and reported as `E-RES-120`.
+/// Run a Cargo command under a wall-clock budget, including stdio drain.
+/// Inherited output handles cannot extend the budget after Cargo exits.
+#[cfg(unix)]
 pub fn run_cargo_timed(
     mut command: std::process::Command,
     timeout: std::time::Duration,
 ) -> Result<std::process::Output, String> {
-    use std::io::Read;
+    use std::io::{ErrorKind, Read};
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    let started = Instant::now();
+    // Only the host endpoints are nonblocking. Socket pairs provide safe,
+    // cancellable byte streams without unsafe fcntl or reader threads that
+    // can outlive the run when descendants retain inherited descriptors.
+    let output_pair = || -> std::io::Result<(UnixStream, Stdio)> {
+        let (host, child) = UnixStream::pair()?;
+        host.set_nonblocking(true)?;
+        Ok((host, Stdio::from(OwnedFd::from(child))))
+    };
+    let (mut stdout_pipe, stdout_stdio) =
+        output_pair().map_err(|error| format!("cannot create stdout: {error}"))?;
+    let (mut stderr_pipe, stderr_stdio) =
+        output_pair().map_err(|error| format!("cannot create stderr: {error}"))?;
     // Generated crates can live outside the workspace's Cargo configuration.
     // Bound their default fan-out without overriding an explicit caller choice.
     for key in ["CARGO_BUILD_JOBS", "RUST_TEST_THREADS"] {
@@ -427,77 +444,82 @@ pub fn run_cargo_timed(
     // then cargo: Child::kill alone leaves the compiler holding
     // CARGO_TARGET_DIR.
     let mut child = command
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .stdin(std::process::Stdio::null())
+        .stdout(stdout_stdio)
+        .stderr(stderr_stdio)
+        .stdin(Stdio::null())
         .spawn()
         .map_err(|error| format!("cannot spawn cargo: {error}"))?;
-    // Take both pipes before returning Err so a missing pipe cannot orphan
-    // a live cargo child (kill + wait before propagating).
-    let mut stdout = if let Some(stdout) = child.stdout.take() {
-        stdout
-    } else {
-        kill_timed_child(&mut child);
-        let _ = child.wait();
-        return Err("stdout pipe missing after spawn".to_string());
-    };
-    let mut stderr = if let Some(stderr) = child.stderr.take() {
-        stderr
-    } else {
-        kill_timed_child(&mut child);
-        let _ = child.wait();
-        return Err("stderr pipe missing after spawn".to_string());
-    };
-    let stdout_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let _ = stdout.read_to_end(&mut buf);
-        buf
-    });
-    let stderr_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let _ = stderr.read_to_end(&mut buf);
-        buf
-    });
-    // Own the child through try_wait so a timeout kill cannot race a reap
-    // (no pid reuse). Only report E-RES-120 when the child was still live.
-    // Sleep is capped at 5 ms so a finished cargo is reaped without the old
-    // 25 ms poll tax.
-    let deadline = std::time::Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if std::time::Instant::now() >= deadline => {
-                kill_timed_child(&mut child);
-                let _ = child.wait();
-                let _ = stdout_thread.join();
-                let _ = stderr_thread.join();
-                return Err(format!(
-                    "E-RES-120: cargo exceeded the {timeout:?} wall-clock budget"
-                ));
-            }
-            Ok(None) => {
-                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                std::thread::sleep(remaining.min(std::time::Duration::from_millis(5)));
-            }
-            Err(error) => {
-                // try_wait failed: still own the child and pipe readers: kill,
-                // reap, and join so we never detach live threads or leave cargo
-                // holding CARGO_TARGET_DIR.
-                kill_timed_child(&mut child);
-                let _ = child.wait();
-                let _ = stdout_thread.join();
-                let _ = stderr_thread.join();
-                return Err(format!("cannot wait on cargo: {error}"));
+    // Command retains caller-supplied descriptors for reuse. Closing those
+    // copies here is necessary for EOF when the child closes its own copies.
+    drop(command);
+    let mut status = None;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let (mut stdout_done, mut stderr_done) = (false, false);
+    let mut chunk = [0u8; 8192];
+    loop {
+        if status.is_none() {
+            match child.try_wait() {
+                Ok(exit) => status = exit,
+                Err(error) => {
+                    kill_timed_child(&mut child);
+                    let _ = child.wait();
+                    return Err(format!("cannot wait on cargo: {error}"));
+                }
             }
         }
-    };
-    let stdout = stdout_thread.join().unwrap_or_default();
-    let stderr = stderr_thread.join().unwrap_or_default();
-    Ok(std::process::Output {
-        status,
-        stdout,
-        stderr,
-    })
+        let mut progress = false;
+        for (pipe, buffer, done) in [
+            (&mut stdout_pipe, &mut stdout, &mut stdout_done),
+            (&mut stderr_pipe, &mut stderr, &mut stderr_done),
+        ] {
+            if *done {
+                continue;
+            }
+            match pipe.read(&mut chunk) {
+                Ok(0) => *done = true,
+                Ok(n) => {
+                    buffer.extend_from_slice(&chunk[..n]);
+                    progress = true;
+                }
+                Err(error)
+                    if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted) => {}
+                Err(_) => *done = true,
+            }
+        }
+        if let Some(status) = status.filter(|_| stdout_done && stderr_done) {
+            return Ok(std::process::Output {
+                status,
+                stdout,
+                stderr,
+            });
+        }
+        if started.elapsed() >= timeout {
+            // Never sweep a reaped pid: it may already belong to an unrelated
+            // process. Open descendants' descriptors are simply closed here.
+            if status.is_none() {
+                kill_timed_child(&mut child);
+                let _ = child.wait();
+            }
+            return Err(format!(
+                "E-RES-120: cargo exceeded the {timeout:?} wall-clock budget"
+            ));
+        }
+        if !progress {
+            std::thread::sleep(
+                (timeout - started.elapsed().min(timeout)).min(Duration::from_millis(5)),
+            );
+        }
+    }
+}
+
+/// Refuse rather than spawn when safe interruptible stdio is unavailable.
+#[cfg(not(unix))]
+pub fn run_cargo_timed(
+    _command: std::process::Command,
+    _timeout: std::time::Duration,
+) -> Result<std::process::Output, String> {
+    Err("bounded process stdio requires Unix socket pairs on this host".into())
 }
 
 /// Join `relative` under `root`, rejecting absolute paths and `..` / prefix

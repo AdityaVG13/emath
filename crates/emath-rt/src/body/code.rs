@@ -110,7 +110,7 @@ impl TreeScalar for i64 {
 
 impl TreeScalar for ExactRatio {
     fn tree_literal(&self) -> Option<CodeValue> {
-        Some(CodeValue::Rat(*self))
+        Some(CodeValue::Rat(self.clone()))
     }
 }
 
@@ -182,13 +182,16 @@ pub fn substitute<V: Clone + TreeScalar + 'static>(
 /// The guarded executor: closed code yields the specialized unary
 /// program; open code refuses, naming every remaining constant.
 pub fn evaluate<V: Clone + 'static>(code: &Code<V>) -> Result<Unary<V>, String> {
-    if !code.free.is_empty() {
-        return Err(format!(
-            "unbound_code: quoted code is open; unbound name(s): {}",
-            code.free.join(", ")
-        ));
-    }
-    (code.make)(&[])
+    super::execution::run(|| {
+        if !code.free.is_empty() {
+            return Err(format!(
+                "unbound_code: quoted code is open; unbound name(s): {}",
+                code.free.join(", ")
+            ));
+        }
+        let unary = (code.make)(&[])?;
+        Ok(std::rc::Rc::new(move |argument| super::execution::run(|| unary(argument))) as Unary<V>)
+    })
 }
 
 /// The open constant names in binding order.
@@ -240,7 +243,7 @@ pub fn free_names<V: Clone + 'static>(code: &Code<V>) -> &[String] {
 
 /// The dynamic scalar union: the carrier of a free name in an
 /// expression template, and of its computed result.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CodeValue {
     Int(i64),
     Rat(ExactRatio),
@@ -253,7 +256,7 @@ impl core::fmt::Display for CodeValue {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             CodeValue::Int(n) => write!(f, "{n}"),
-            CodeValue::Rat((num, den)) => write!(f, "{num}/{den}"),
+            CodeValue::Rat(ExactRatio(num, den)) => write!(f, "{num}/{den}"),
             CodeValue::Bool(b) => write!(f, "{b}"),
         }
     }
@@ -261,8 +264,8 @@ impl core::fmt::Display for CodeValue {
 
 fn as_ratio(value: &CodeValue) -> Result<ExactRatio, String> {
     match value {
-        CodeValue::Int(n) => Ok((i128::from(*n), 1)),
-        CodeValue::Rat(ratio) => Ok(*ratio),
+        CodeValue::Int(n) => Ok((*n, 1).into()),
+        CodeValue::Rat(ratio) => Ok(ratio.clone()),
         CodeValue::Bool(_) => Err(format!("type: cannot treat {value} as a number")),
     }
 }
@@ -279,9 +282,7 @@ pub fn code_add(left: &CodeValue, right: &CodeValue) -> Result<CodeValue, String
             .ok_or_else(|| format!("overflow: {a} + {b} exceeds the Int carrier"))?;
         return Ok(CodeValue::Int(sum));
     }
-    let (ln, ld) = as_ratio(left)?;
-    let (rn, rd) = as_ratio(right)?;
-    Ok(CodeValue::Rat(ratio_add((ln, ld), (rn, rd))?))
+    Ok(CodeValue::Rat(ratio_add(as_ratio(left)?, as_ratio(right)?)?))
 }
 
 /// Union subtraction under the VM's carrier rules (see `code_add` for
@@ -293,9 +294,7 @@ pub fn code_sub(left: &CodeValue, right: &CodeValue) -> Result<CodeValue, String
             .ok_or_else(|| format!("overflow: {a} - {b} exceeds the Int carrier"))?;
         return Ok(CodeValue::Int(difference));
     }
-    let (ln, ld) = as_ratio(left)?;
-    let (rn, rd) = as_ratio(right)?;
-    Ok(CodeValue::Rat(ratio_sub((ln, ld), (rn, rd))?))
+    Ok(CodeValue::Rat(ratio_sub(as_ratio(left)?, as_ratio(right)?)?))
 }
 
 /// Union multiplication under the VM's carrier rules (see `code_add`
@@ -307,20 +306,18 @@ pub fn code_mul(left: &CodeValue, right: &CodeValue) -> Result<CodeValue, String
             .ok_or_else(|| format!("overflow: {a} * {b} exceeds the Int carrier"))?;
         return Ok(CodeValue::Int(product));
     }
-    let (ln, ld) = as_ratio(left)?;
-    let (rn, rd) = as_ratio(right)?;
-    Ok(CodeValue::Rat(ratio_mul((ln, ld), (rn, rd))?))
+    Ok(CodeValue::Rat(ratio_mul(as_ratio(left)?, as_ratio(right)?)?))
 }
 
 /// Union division: ALWAYS Rational (`4 / 2` is Rat 2/1), refusing a
 /// zero denominator by name.
 pub fn code_div(left: &CodeValue, right: &CodeValue) -> Result<CodeValue, String> {
-    let (ln, ld) = as_ratio(left)?;
-    let (rn, rd) = as_ratio(right)?;
-    if rn == 0 {
+    let a = as_ratio(left)?;
+    let b = as_ratio(right)?;
+    if b.0.is_zero() {
         return Err(String::from("division_by_zero: exact division by zero"));
     }
-    Ok(CodeValue::Rat(ratio_div((ln, ld), (rn, rd))?))
+    Ok(CodeValue::Rat(ratio_div(a, b)?))
 }
 
 /// Union negation: checked on both numeric carriers.
@@ -330,21 +327,18 @@ pub fn code_neg(value: &CodeValue) -> Result<CodeValue, String> {
             .checked_neg()
             .map(CodeValue::Int)
             .ok_or_else(|| format!("overflow: -{n} exceeds the Int carrier")),
-        CodeValue::Rat((num, den)) => num
+        CodeValue::Rat(ExactRatio(num, den)) => num
             .checked_neg()
-            .map(|num| CodeValue::Rat((num, *den)))
-            .ok_or_else(|| format!("overflow: -{num}/{den} exceeds the rational carrier")),
+            .map(|num| CodeValue::Rat(ExactRatio(num, den.clone())))
+            .map_err(|error| error.to_string()),
         CodeValue::Bool(_) => Err(format!("type: cannot negate {value}")),
     }
 }
 
-/// Union numeric ordering: exact cross-multiplication (a finite
-/// binary64 is an exact rational; this union has no float lane).
+/// Union numeric ordering shares the exact rational comparison kernel;
+/// this union has no float lane.
 pub fn code_cmp(left: &CodeValue, right: &CodeValue) -> Result<core::cmp::Ordering, String> {
-    let (ln, ld) = as_ratio(left)?;
-    let (rn, rd) = as_ratio(right)?;
-    ln.checked_mul(rd).and_then(|cross| rn.checked_mul(ld).map(|other| cross.cmp(&other)))
-        .ok_or_else(|| String::from("overflow: exact comparison cross-product"))
+    super::ratio_cmp(as_ratio(left)?, as_ratio(right)?)
 }
 
 /// Union equality: numeric pairs compare VALUES (`2 == 2/1` is
@@ -391,8 +385,8 @@ pub fn project_i64(value: &CodeValue, output: &str) -> Result<i64, String> {
 /// Int-widening law: `n` becomes `n/1` exactly; Bool refuses.
 pub fn project_ratio(value: &CodeValue, output: &str) -> Result<ExactRatio, String> {
     match value {
-        CodeValue::Int(n) => Ok((i128::from(*n), 1)),
-        CodeValue::Rat(ratio) => Ok(*ratio),
+        CodeValue::Int(n) => Ok((*n, 1).into()),
+        CodeValue::Rat(ratio) => Ok(ratio.clone()),
         other => Err(format!(
             "type: output `{output}` does not have the declared type, found {other}"
         )),
@@ -473,8 +467,10 @@ impl ExprCode {
         &self,
         module: &super::code_tree::ModuleTable,
     ) -> Result<super::code_tree::EvaluatedValue, String> {
-        guard_closed(self, module)?;
-        super::code_tree::evaluate_value_tree(&self.tree, module)
+        super::execution::run(|| {
+            guard_closed(self, module)?;
+            super::code_tree::evaluate_value_tree(&self.tree, module)
+        })
     }
 }
 
@@ -542,12 +538,12 @@ pub fn substitute_expr(
     let tree = super::code_tree::substitute_tree(
         &code.tree,
         reference,
-        &super::code_tree::CodeTree::Literal(value),
+        &super::code_tree::CodeTree::Literal(value.clone()),
     );
     let make: Option<ExprFactory> = code.make.clone().map(|inner| {
         let spliced: ExprFactory = Rc::new(move |rest: &[CodeValue]| {
             let mut all = rest[..position].to_vec();
-            all.push(value);
+            all.push(value.clone());
             all.extend_from_slice(&rest[position..]);
             inner(&all)
         });
@@ -642,12 +638,14 @@ pub fn evaluate_expr(
     code: impl std::borrow::Borrow<ExprCode>,
     module: &super::code_tree::ModuleTable,
 ) -> Result<CodeValue, String> {
-    let code = code.borrow();
-    guard_closed(code, module)?;
-    if let Some(make) = &code.make {
-        return make(&[]);
-    }
-    super::code_tree::evaluate_tree(&code.tree, &std::collections::BTreeMap::new(), module)
+    super::execution::run(|| {
+        let code = code.borrow();
+        guard_closed(code, module)?;
+        if let Some(make) = &code.make {
+            return make(&[]);
+        }
+        super::code_tree::evaluate_tree(&code.tree, &std::collections::BTreeMap::new(), module)
+    })
 }
 
 /// A closed quoted value may be structured rather than scalar.
@@ -655,11 +653,13 @@ pub fn evaluate_node_expr(
     code: &ExprCode,
     module: &super::code_tree::ModuleTable,
 ) -> Result<super::code_tree::NodeValue, String> {
-    guard_closed(code, module)?;
-    match &code.make {
-        Some(make) => Ok(super::code_tree::NodeValue::Scalar(make(&[])?)),
-        None => super::code_tree::evaluate_node_tree(&code.tree, module),
-    }
+    super::execution::run(|| {
+        guard_closed(code, module)?;
+        match &code.make {
+            Some(make) => Ok(super::code_tree::NodeValue::Scalar(make(&[])?)),
+            None => super::code_tree::evaluate_node_tree(&code.tree, module),
+        }
+    })
 }
 
 /// The executor's guards, in the VM's order: stamped dependencies
@@ -697,23 +697,27 @@ pub fn evaluate_callable_expr(
     code: impl std::borrow::Borrow<ExprCode>,
     module: &super::code_tree::ModuleTable,
 ) -> Result<AppliedCode, String> {
-    use super::code_tree::{evaluate_tree, CodeTree};
-    let code = code.borrow();
-    guard_closed(code, module)?;
-    let tree = code.tree.clone();
-    let module = *module;
-    if !matches!(tree, CodeTree::Closure { .. } | CodeTree::Recur { .. }) {
-        let value = match &code.make {
-            Some(make) => make(&[])?,
-            None => evaluate_tree(&tree, &std::collections::BTreeMap::new(), &module)?,
-        };
-        return Ok(std::rc::Rc::new(move |_: &[CodeValue]| {
-            Err(format!("type: value is not callable: {value}"))
-        }));
-    }
-    Ok(std::rc::Rc::new(move |args: &[CodeValue]| {
-        super::code_tree::evaluate_applied_tree(&tree, args, &module)
-    }))
+    super::execution::run::<AppliedCode>(|| {
+        use super::code_tree::{evaluate_tree, CodeTree};
+        let code = code.borrow();
+        guard_closed(code, module)?;
+        let tree = code.tree.clone();
+        let module = *module;
+        if !matches!(tree, CodeTree::Closure { .. } | CodeTree::Recur { .. }) {
+            let value = match &code.make {
+                Some(make) => make(&[])?,
+                None => evaluate_tree(&tree, &std::collections::BTreeMap::new(), &module)?,
+            };
+            return Ok(std::rc::Rc::new(move |_: &[CodeValue]| {
+                Err(format!("type: value is not callable: {value}"))
+            }));
+        }
+        Ok(std::rc::Rc::new(move |args: &[CodeValue]| {
+            super::execution::run(|| {
+                super::code_tree::evaluate_applied_tree(&tree, args, &module)
+            })
+        }))
+    })
 }
 
 /// The free names in binding order.

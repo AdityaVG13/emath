@@ -45,6 +45,16 @@ unsigned_abs. Sign order and negative-magnitude reversal are unchanged. No
 heap allocation is needed for comparison itself. Native generated code and
 constructor VM share this implementation. The numeric_typed regression checks
 all pairs around signed and storage boundaries and equivalent Big/Small forms.
+`cmp_exact_int_f64` decodes finite binary64 mantissa/exponent bits and compares
+with exact integer scaling, without rounding the integer. Non-finite floats
+and integer memory-bound failures refuse. Native `numeric_boundaries` pins
+mixed equality and ordering on both sides of 2^53 and beyond i128.
+
+`exact_ratio_f64` rounds a ratio once, ties to even, including operands at
+the integer limb cap. Scaling uses bounded limb scratch rather than capped
+integer products; this does not widen admitted integer storage. The shared
+VM/native helper preserves signed underflow and gradual subnormals. Its
+`ratio_float` test covers near-cap operand pairs and rounding boundaries.
 
 ## Wide integer division
 
@@ -153,8 +163,28 @@ fixed order).
 
 ## Cancellation behavior
 
-None: kernels and storage operations are synchronous. Higher-order drivers run
-to completion; budgets are enforced by callers.
+Kernels and storage operations remain synchronous. Constructor artifacts and
+dynamic Code evaluators share a cooperative `execution` budget on the current
+thread. Callable evaluation enters that scope before executing an expression
+factory, as well as on later application. Non-callable expressions therefore
+retain their ordinary type refusal without an explicit host budget.
+Default entry limits are 50,000,000 native work units and 128 active
+execution frames. `with_budget(work, depth, body)` establishes explicit limits
+before entry; depth is capped at 512. Nested scopes cannot increase a parent's
+remaining allowance, and consumed work remains charged to that parent.
+
+Work covers generated bodies, calls, control iterations and evaluated tree
+nodes, not VM instructions or wall-clock time. Exhaustion returns
+`E-NATIVE-WORK` or `E-NATIVE-DEPTH` and stays sticky until the run ends, even
+if a host callback catches the nested error. Guards release context on return,
+refusal and unwinding. Returned callables acquire or inherit a budget when
+invoked. Different threads have independent budgets.
+
+Opaque host callbacks and individual synchronous arithmetic/storage kernels
+cannot be preempted. This is not a CPU-time, stack-byte or process sandbox.
+Conformance: `emission_conformance_native_budget` covers tail/non-tail/mutual
+recursion, folds, returned closures, dynamic Code, inherited scopes, swallowed
+exhaustion and unwind recovery, with work/depth guard-removal mutations.
 
 ## Unsafe boundary
 
@@ -183,8 +213,14 @@ contains no crate-level attribute).
 
 ## Authored exact methods
 
-`body/exact.rs` supplies only the bounded rational carrier and checked
-scalar arithmetic. Polynomial brackets, exact linear families, scalar
+`body/exact.rs` supplies `ExactRatio(ExactInt, ExactInt)` and checked
+scalar arithmetic. Kernel results have a positive, gcd-reduced denominator;
+raw host parts must be canonical before arithmetic. Both parts share the
+integer memory bound. Arithmetic cancels before multiplying, and ordering
+uses continued fractions rather than overflowing cross-products. A zero
+denominator or noncanonical operand refuses `E-RAT-001`; exceeding the limb
+bound refuses `overflow`. The carrier is `Clone`, not `Copy`.
+Polynomial brackets, exact linear families, scalar
 parameter cases, series enclosures, and quantization execute from authored
 Language Image programs. The runtime no longer exports their former
 record types or algorithms. Generated Rust emits authored record layouts
@@ -233,7 +269,7 @@ constructor VM's EXACT carrier rules (normative source:
   result is integer-valued (`1/4 - 1/4` is Rat 0/1).
 - Division NEVER collapses (`4 / 2` is Rat 2/1); a zero denominator
   refuses `division_by_zero`.
-- Equality compares VALUES by cross-multiplication (`2 == 2/1` is
+- Equality compares VALUES through exact rational ordering (`2 == 2/1` is
   true); Bool equality is structural; mixed kinds are never equal.
 - Checked projections (`project_i64`/`project_ratio`/`project_bool`/
   `project_exact_int`) mirror the engine's `type_admits` at typed

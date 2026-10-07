@@ -1,5 +1,4 @@
-//! The shared tree substrate (bead emath-shared-tree-view-make-bp8nu,
-//! definition table emath-quote-body-defs-trto7): the distilled
+//! The shared tree substrate and definition table: the distilled
 //! tree, the node-record family `quote.view` produces, the minted
 //! Scope witnesses, the reconstruction `quote.make` consumes, the
 //! scalar tree evaluator over the same kernels as the compiled
@@ -353,13 +352,13 @@ fn probe() {
         );
         let rat_zero = CodeTree::Binary {
             op: TreeBinary::Sub,
-            left: Box::new(CodeTree::Literal(CodeValue::Rat((1, 4)))),
-            right: Box::new(CodeTree::Literal(CodeValue::Rat((1, 4)))),
+            left: Box::new(CodeTree::Literal(CodeValue::Rat((1, 4).into()))),
+            right: Box::new(CodeTree::Literal(CodeValue::Rat((1, 4).into()))),
         };
         p.eq(
             "rational-zero-never-collapses",
             evaluate_tree(&rat_zero, &inputs(&[]), &ModuleTable::EMPTY),
-            Ok(CodeValue::Rat((0, 1))),
+            Ok(CodeValue::Rat((0, 1).into())),
         );
         let division = CodeTree::Binary {
             op: TreeBinary::Div,
@@ -369,7 +368,7 @@ fn probe() {
         p.eq(
             "division-stays-rational",
             evaluate_tree(&division, &inputs(&[]), &ModuleTable::EMPTY),
-            Ok(CodeValue::Rat((2, 1))),
+            Ok(CodeValue::Rat((2, 1).into())),
         );
         let short_circuit = CodeTree::Binary {
             op: TreeBinary::And,
@@ -483,7 +482,7 @@ fn probe() {
             "scalar-value-equality",
             node_eq(
                 &NodeValue::Scalar(CodeValue::Int(2)),
-                &NodeValue::Scalar(CodeValue::Rat((2, 1))),
+                &NodeValue::Scalar(CodeValue::Rat((2, 1).into())),
             ),
             Ok(true),
         );
@@ -963,11 +962,11 @@ fn probe() {
         };
         let got = apply(successor("Rat"), CodeValue::Int(2));
         p.demand("rat-admits-int", equals(&got, CodeValue::Int(3)), &format!("{got:?}"));
-        let got = apply(successor("Rat"), CodeValue::Rat((1, 2)));
-        p.demand("rat-admits-rat", equals(&got, CodeValue::Rat((3, 2))), &format!("{got:?}"));
+        let got = apply(successor("Rat"), CodeValue::Rat((1, 2).into()));
+        p.demand("rat-admits-rat", equals(&got, CodeValue::Rat((3, 2).into())), &format!("{got:?}"));
         let got = apply(successor("Int"), CodeValue::Int(2));
         p.demand("int-admits-int", equals(&got, CodeValue::Int(3)), &format!("{got:?}"));
-        let got = apply(successor("Int"), CodeValue::Rat((1, 2)));
+        let got = apply(successor("Int"), CodeValue::Rat((1, 2).into()));
         p.demand(
             "int-refuses-rat",
             matches!(&got, Err(e) if e == "type: closure domain `Int` does not admit the argument `1/2`"),
@@ -977,7 +976,7 @@ fn probe() {
         let made = view_quoted(successor("Int"), &ModuleTable::EMPTY)
             .make(&ModuleTable::EMPTY)
             .expect("the viewed closure rebuilds");
-        let got = apply(made, CodeValue::Rat((1, 2)));
+        let got = apply(made, CodeValue::Rat((1, 2).into()));
         p.demand(
             "made-closure-keeps-its-domain",
             matches!(&got, Err(e) if e == "type: closure domain `Int` does not admit the argument `1/2`"),

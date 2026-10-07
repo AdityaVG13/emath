@@ -24,38 +24,9 @@ fn tree_domain(domain: &Expr) -> TreeDomain {
 }
 
 fn canonical_ratio(numer: &str, denom: &str) -> Result<CodeValue, String> {
-    let numer: i128 = numer
-        .parse()
-        .map_err(|_| format!("rational numerator `{numer}` exceeds the artifact rational carrier"))?;
-    let denom: i128 = denom
-        .parse()
-        .map_err(|_| format!("rational denominator `{denom}` exceeds the artifact rational carrier"))?;
-    if denom == 0 {
-        return Err(String::from("rational literal has zero denominator"));
-    }
-    // Canonical form: reduced, denominator positive (the VM's
-    // `CValue::Rat::canon` law - `2/4` is the value `1/2`).
-    let (numer, denom) = if denom < 0 {
-        (-numer, -denom)
-    } else {
-        (numer, denom)
-    };
-    let gcd = gcd(numer.unsigned_abs(), denom.unsigned_abs());
-    let (numer, denom) = if gcd == 0 {
-        (numer, denom)
-    } else {
-        (numer / gcd as i128, denom / gcd as i128)
-    };
-    Ok(CodeValue::Rat((numer, denom)))
-}
-
-fn gcd(mut a: u128, mut b: u128) -> u128 {
-    while b != 0 {
-        let next = a % b;
-        a = b;
-        b = next;
-    }
-    a
+    let numer = emath_rt::ExactInt::parse(numer).map_err(|error| error.to_string())?;
+    let denom = emath_rt::ExactInt::parse(denom).map_err(|error| error.to_string())?;
+    emath_rt::ratio_normalize(numer, denom).map(CodeValue::Rat)
 }
 
 /// Distill an authored expression into the shared tree. The admitted

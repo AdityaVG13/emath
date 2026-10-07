@@ -287,7 +287,9 @@ fn dream_journal() {
             "library-holds-best",
             library.lines().any(|l| l == "use tune_prog")
                 && library.contains("result = count_primes_with([2, 1], n)")
-                && library.contains("Saving(work_after=37773, work_before=191112)"),
+                // Work is measured under lexical closure binding, without
+                // inheriting unrelated caller locals.
+                && library.contains("Saving(work_after=36418, work_before=178179)"),
             library.clone(),
         );
 
@@ -331,7 +333,7 @@ fn dream_journal() {
             "library-holds-factored",
             library.lines().any(|l| l == "use fold.reduce")
                 && library.contains("result = sum(tabulate(function i in Int: i * n, n)) * (3 + 4 + 1)")
-                && library.contains("Saving(work_after=880, work_before=2592)"),
+                && library.contains("Saving(work_after=842, work_before=2478)"),
             library.clone(),
         );
     });

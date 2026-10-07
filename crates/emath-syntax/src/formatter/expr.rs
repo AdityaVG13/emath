@@ -48,7 +48,11 @@ pub fn format_expr(out: &mut String, expr: &Expr, parent: Prec) {
         // `within rtol/atol` clause, which has the same swallowing shape.
         ExprKind::Cases { .. }
         | ExprKind::Approx { .. }
-        | ExprKind::If { .. } => parent > Prec::Root,
+        | ExprKind::If { .. }
+        | ExprKind::FunctionAbs { .. }
+        | ExprKind::Recur { .. }
+        | ExprKind::QuoteBind { .. }
+        | ExprKind::CallableBinder { .. } => parent > Prec::Root,
         _ => false,
     };
     if needs_parens {
@@ -363,7 +367,11 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             out.push_str("| else => ");
             format_expr(out, else_arm, Prec::Root);
         }
-        ExprKind::FunctionAbs { param, domain, body } => {
+        ExprKind::FunctionAbs {
+            param,
+            domain,
+            body,
+        } => {
             out.push_str("function ");
             out.push_str(param);
             out.push_str(" in ");
@@ -384,7 +392,11 @@ pub(super) fn format_expr_inner(out: &mut String, expr: &Expr) {
             format_expr(out, body, Prec::Root);
             out.push(')');
         }
-        ExprKind::QuoteBind { param, domain, body } => {
+        ExprKind::QuoteBind {
+            param,
+            domain,
+            body,
+        } => {
             out.push_str("quote ");
             out.push_str(param);
             out.push_str(" in ");

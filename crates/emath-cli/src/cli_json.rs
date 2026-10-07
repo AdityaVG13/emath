@@ -43,7 +43,7 @@ pub fn print_diagnostics_from(diagnostics: &Diagnostics, store: &emath_core::Sou
     eprintln!("{}", diagnostics_text(diagnostics, store));
 }
 
-fn diagnostics_text(diagnostics: &Diagnostics, store: &emath_core::SourceStore) -> String {
+pub(crate) fn diagnostics_text(diagnostics: &Diagnostics, store: &emath_core::SourceStore) -> String {
     let mut lines = Vec::new();
     for item in diagnostics.items() {
         if located(item, store).is_some() {
@@ -71,8 +71,8 @@ pub struct Refusal {
 /// same way (exit 2, located).
 pub fn admitted_tree(path: &std::path::Path, source: &str) -> Result<emath_syntax::tree::SyntaxTree, Refusal> {
     let name = path.display().to_string();
-    let (tree, diagnostics) = emath_syntax::parse_str(source);
-    if let Some(first) = diagnostics
+    let checked = crate::cli_build::checked_text(&name, source);
+    if let Some(first) = checked.result.diagnostics
         .items()
         .iter()
         .find(|item| item.severity == emath_core::Severity::Error)
@@ -80,18 +80,14 @@ pub fn admitted_tree(path: &std::path::Path, source: &str) -> Result<emath_synta
         return Err(Refusal {
             code: first.code.to_string(),
             message: first.message.clone(),
-            text: diagnostics_text(&diagnostics, &source_lines(&name, source)),
+            text: diagnostics_text(&checked.result.diagnostics, &checked.store),
         });
     }
-    if let Err(err) = emath_exec_ir::constructor_layer::admit_tree_at(&tree, Some(path)) {
-        let code = emath_exec_ir::constructor_layer::constructor_admit_code(&err.code);
-        return Err(Refusal {
-            code: code.to_string(),
-            message: err.message.clone(),
-            text: error_text(code, &err.message, &name, source, err.span),
-        });
-    }
-    Ok(tree)
+    checked.result.prepared.map(|module| module.tree().clone()).ok_or_else(|| Refusal {
+        code: "E-PKG-081".into(),
+        message: "checked source has no constructor module".into(),
+        text: "E-PKG-081 checked source has no constructor module".into(),
+    })
 }
 
 /// One error line for stderr: `path:line:col: code: message` with the

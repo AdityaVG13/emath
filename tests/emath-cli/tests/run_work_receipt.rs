@@ -331,3 +331,352 @@ fn step_resumes_under_the_runs_worlds() {
     p.eq("no other world", text.contains("reference") || text.contains("interval"), false);
     p.finish();
 }
+
+#[test]
+fn step_freezes_local_and_transitive_imports_across_repeated_resumes() {
+    let dir = std::env::temp_dir().join(format!("emath-step-imports-{}-résearch", std::process::id()));
+    std::fs::create_dir(&dir).expect("fresh scratch directory");
+    let elsewhere = dir.join("elsewhere");
+    std::fs::create_dir(&elsewhere).unwrap();
+    let source = dir.join("main.emath");
+    let helper = dir.join("helper.emath");
+    let leaf = dir.join("leaf.emath");
+    std::fs::write(
+        &leaf,
+        "# Unicode and codec-looking text stay source bytes: λ, source_len=7\nexports: Offset\n\nemath function Offset:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = n + 5\n",
+    ).unwrap();
+    std::fs::write(
+        &helper,
+        "exports: Finish\nuse leaf.{Offset as shifted}\n\nemath function Twice:\n    inputs:\n        x: Int\n    outputs:\n        result: Int\n    definitions:\n        result = x + x\n\nemath function Finish:\n    inputs:\n        x: Int\n    outputs:\n        result: Int\n    definitions:\n        result = Twice(x) + shifted(0)\n",
+    ).unwrap();
+    std::fs::write(
+        &source,
+        "use helper.{Finish as finish}\n\nemath function Walk:\n    inputs:\n        n: Int\n        i: Int\n        acc: Int\n    outputs:\n        result: Int\n    definitions:\n        result = if i >= n: acc else: Walk(n, i + 1, acc + i)\n\nemath function Main:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = Walk(n, 0, 0) + finish(1)\n",
+    ).unwrap();
+    let initial = std::process::Command::new(common::emath_bin())
+        .args([
+            "run", "main.emath", "--function", "Main", "--set", "n=200",
+            "--work", "100", "--out", &dir.to_string_lossy(), "--json",
+        ])
+        .env("EMATH_ROOT", std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert_eq!(
+        initial.status.code(), Some(EXIT_PARTIAL as i32),
+        "{}{}", String::from_utf8_lossy(&initial.stdout), String::from_utf8_lossy(&initial.stderr)
+    );
+    let moved = elsewhere.join("saved-checkpoint.json");
+    std::fs::copy(dir.join("constructor-checkpoint.json"), &moved).unwrap();
+    // A path-only repair would either use these changed bytes or fail to load.
+    for path in [&source, &helper, &leaf] {
+        std::fs::write(path, "this changed file does not even parse\n").unwrap();
+    }
+    let step = |path: &std::path::Path, work: &str| {
+        std::process::Command::new(common::emath_bin())
+            .args(["step", &path.to_string_lossy(), "--work", work, "--out",
+                &elsewhere.to_string_lossy(), "--json"])
+            .current_dir(&elsewhere)
+            .output()
+            .expect("resume from a different directory")
+    };
+    let suspended = step(&moved, "100");
+    assert_eq!(
+        suspended.status.code(), Some(EXIT_PARTIAL as i32),
+        "{}", String::from_utf8_lossy(&suspended.stdout)
+    );
+    let resumed = step(&elsewhere.join("constructor-checkpoint.json"), "50000");
+    assert_eq!(
+        resumed.status.code(), Some(EXIT_OK as i32),
+        "{}{}", String::from_utf8_lossy(&resumed.stdout), String::from_utf8_lossy(&resumed.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&resumed.stdout).contains("\"payload\": \"19907\""),
+        "{}", String::from_utf8_lossy(&resumed.stdout)
+    );
+}
+
+#[test]
+fn step_preserves_pending_scalar_literals() {
+    let dir = std::env::temp_dir().join(format!("emath-step-rat-{}", std::process::id()));
+    std::fs::create_dir(&dir).unwrap();
+    let source = dir.join("main.emath");
+    std::fs::write(
+        &source,
+        "emath function Walk:\n    inputs:\n        n: Int\n        acc: Int\n    outputs:\n        result: Int\n    definitions:\n        result = if n <= 0: acc else: Walk(n - 1, acc + n)\n\nemath function Main:\n    inputs:\n        n: Int\n    outputs:\n        result: Rat\n    definitions:\n        result = Walk(n, 0) / 1 + 7//13\n",
+    ).unwrap();
+    let (text, code) = common::cli(&[
+        "run", &source.to_string_lossy(), "--function", "Main", "--set", "n=200",
+        "--work", "50", "--out", &dir.to_string_lossy(),
+    ]);
+    assert_eq!(code, EXIT_PARTIAL as i32, "{text}");
+    let (text, code) = common::cli(&[
+        "step", &dir.join("constructor-checkpoint.json").to_string_lossy(), "--work", "50000",
+    ]);
+    assert_eq!(code, EXIT_OK as i32, "{text}");
+    assert!(text.contains("261307/13"), "{text}");
+    let message = dir.join("message.emath");
+    std::fs::write(
+        &message,
+        "emath function Walk:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = if n <= 0: 1 else: Walk(n - 1)\n\nemath function Main:\n    inputs:\n        n: Int\n    outputs:\n        result: Str\n    definitions:\n        result = if Walk(n) > 0: \"kept λ\" else: \"wrong\"\n",
+    ).unwrap();
+    let (text, code) = common::cli(&[
+        "run", &message.to_string_lossy(), "--function", "Main", "--set", "n=200",
+        "--work", "50", "--out", &dir.to_string_lossy(),
+    ]);
+    assert_eq!(code, EXIT_PARTIAL as i32, "{text}");
+    let (text, code) = common::cli(&[
+        "step", &dir.join("constructor-checkpoint.json").to_string_lossy(), "--work", "50000",
+    ]);
+    assert_eq!(code, EXIT_OK as i32, "{text}");
+    assert!(text.contains("kept λ"), "{text}");
+}
+
+#[test]
+fn step_preserves_scoped_bindings_and_invariant_completion() {
+    let dir = std::env::temp_dir().join(format!("emath-step-scopes-{}", std::process::id()));
+    std::fs::create_dir(&dir).unwrap();
+    let source = dir.join("main.emath");
+    std::fs::write(
+        &source,
+        r#"emath function Walk:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if n <= 0: 0 else: Walk(n - 1) + 1
+
+emath object Checked:
+    representation:
+        n: Int
+    invariants:
+        first = Walk(n) == n
+        second = n > 0
+
+emath object Rejected:
+    representation:
+        n: Int
+    invariants:
+        first = Walk(n) == n
+        second = false
+
+emath object Secret:
+    representation:
+        kind = "abstract"
+
+emath object Cells:
+    representation:
+        kind = "package"
+    invariants:
+        first = Walk(200) == 200
+
+emath function Record:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        held = Checked: {n: 200}
+        result = held.n + x
+
+emath function Refusal:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        held = Rejected: {n: 200}
+        result = x
+
+emath function View:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        inside = quote.view x in quote(1): Walk(200)
+        result = inside + x
+
+emath function OpenQuote:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        packed = quote.view(quote(1 + 2)).children[0]
+        inside = quote.open x in packed: Walk(200)
+        result = inside + x
+
+emath function OpenObject:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        packed = Secret.pack(17)
+        inside = Secret.open x in packed: Walk(200) + x
+        result = inside + x
+
+emath function Packed:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        packed = Cells.pack(1, [x])
+        result = packed.n + x
+
+emath function Projection:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = (Checked: {n: Walk(200)}).n + x
+
+emath function DelayedCode:
+    inputs:
+        n: Int
+    outputs:
+        result: Code
+    definitions:
+        result = if Walk(n) > 0: quote(200) else: quote(0)
+
+emath function ViewDomain:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        inside = quote.view node in DelayedCode(200): node.value
+        result = inside + x
+
+emath function PackArgument:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        packed = Secret.pack(Walk(200))
+        inside = Secret.open value in packed: value
+        result = inside + x
+
+emath function DelayedFunction:
+    inputs:
+        n: Int
+    outputs:
+        result: Int -> Int
+    definitions:
+        result = if Walk(n) > 0: function y in Int: y + 200 else: function y in Int: y
+
+emath function Callee:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = DelayedFunction(200)(x)
+
+emath function Choose:
+    inputs:
+        domain: Int
+        action: Int -> Int
+    outputs:
+        result: Int
+    definitions:
+        result = action(domain)
+
+emath function CallableBinder:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        inside = Choose y in Walk(200): y + 11
+        result = inside + x
+"#,
+    )
+    .unwrap();
+    let mut failures = Vec::new();
+    for (entry, payload, fault) in [
+        ("Record", "211", false),
+        ("Refusal", "object_invariant_failed", true),
+        ("View", "211", false),
+        ("OpenQuote", "211", false),
+        ("OpenObject", "228", false),
+        ("Packed", "12", false),
+        ("Projection", "211", false),
+        ("ViewDomain", "211", false),
+        ("PackArgument", "211", false),
+        ("Callee", "211", false),
+        ("CallableBinder", "222", false),
+    ] {
+        let (direct, direct_exit) = common::cli(&[
+            "run",
+            &source.to_string_lossy(),
+            "--function",
+            entry,
+            "--set",
+            "x=11",
+            "--work",
+            "50000",
+            "--json",
+        ]);
+        let expected_exit = if fault {
+            emath_cli::EXIT_FAULT
+        } else {
+            EXIT_OK
+        } as i32;
+        assert_eq!(
+            direct_exit, expected_exit,
+            "{entry}: uninterrupted contract: {direct}"
+        );
+        for cut in ["50", "100", "200"] {
+            let case = dir.join(format!("{entry}-{cut}"));
+            std::fs::create_dir(&case).unwrap();
+            let (text, code) = common::cli(&[
+                "run",
+                &source.to_string_lossy(),
+                "--function",
+                entry,
+                "--set",
+                "x=11",
+                "--work",
+                cut,
+                "--out",
+                &case.to_string_lossy(),
+                "--json",
+            ]);
+            assert_eq!(code, EXIT_PARTIAL as i32, "{entry}/{cut}: {text}");
+            // Stop once more inside the saved operation, not only at entry.
+            let checkpoint = case.join("constructor-checkpoint.json");
+            let (text, code) = common::cli(&[
+                "step",
+                &checkpoint.to_string_lossy(),
+                "--work",
+                "50",
+                "--out",
+                &case.to_string_lossy(),
+                "--json",
+            ]);
+            assert_eq!(code, EXIT_PARTIAL as i32, "{entry}/{cut}: {text}");
+            let (text, code) = common::cli(&[
+                "step",
+                &checkpoint.to_string_lossy(),
+                "--work",
+                "50000",
+                "--json",
+            ]);
+            if code != expected_exit
+                || !(text.contains(&format!("\"payload\": \"{payload}\""))
+                    || fault && text.contains(payload))
+            {
+                failures.push(format!(
+                    "{entry}/{cut}: exit {code}, expected {expected_exit}: {text}"
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

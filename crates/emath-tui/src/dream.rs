@@ -56,11 +56,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use emath_core::tree::{Item, StmtKind, SyntaxTree, TypeKind};
-use emath_exec_ir::constructor_layer::{
-    evaluate_function_at, evaluate_tree_at, BatchLedgerEntry, CValue,
-};
+use emath_exec_ir::constructor_layer::{BatchLedgerEntry, CValue, DEFAULT_WORK};
 use emath_exec_ir::exact_int::ExactInt;
-use emath_syntax::parse_str;
 
 use crate::host::{value_rational, HostFault, LoopHost, LoopSession};
 
@@ -313,13 +310,7 @@ fn observed_world(
     // engine's scalar admission widens it exactly into a Rat-declared
     // input (the same coercion the pred call relies on).
     let inputs = BTreeMap::from([(world_input.to_string(), CValue::Int(ExactInt::from(0)))]);
-    let value = evaluate_function_at(
-        host.tree(),
-        "dream_world",
-        &inputs,
-        Some(host.module_path()),
-    )
-    .map_err(HostFault::from)?;
+    let value = host.evaluate("dream_world", &inputs)?;
     let CValue::Sequence(items) = value else {
         return Err(HostFault::fault(
             "dream_emission_surface",
@@ -409,13 +400,7 @@ fn observed_prediction(
         (seam.pred_k_input.clone(), CValue::Int(ExactInt::from(key))),
         (seam.pred_i_input.clone(), CValue::Int(ExactInt::from(case))),
     ]);
-    let value = evaluate_function_at(
-        host.tree(),
-        "dream_pred",
-        &inputs,
-        Some(host.module_path()),
-    )
-    .map_err(HostFault::from)?;
+    let value = host.evaluate("dream_pred", &inputs)?;
     match (&value, seam.carrier) {
         (CValue::Int(n), SeamCarrier::Int) => {
             let raw = n.to_i128().ok_or_else(|| {
@@ -644,23 +629,10 @@ fn emit_level(
     // In-process certificate verification: parse and evaluate the
     // emitted file; every authored test must pass before the level is
     // reported verified.
-    let source = std::fs::read_to_string(&path).map_err(|err| {
-        HostFault::fault(
-            "dream_level_write",
-            format!("cannot read back {}: {err}", path.display()),
-        )
+    let (_, _, module) = crate::host::checked_source(&path).map_err(|err| {
+        HostFault::fault("dream_certificate", format!("the emitted level does not admit: {err} (driver emission bug)"))
     })?;
-    emath_syntax::install_source_parser();
-    let (tree, diagnostics) = parse_str(&source);
-    if diagnostics.has_errors() {
-        return Err(HostFault::fault(
-            "dream_certificate",
-            format!(
-                "the emitted level does not parse: {diagnostics:?} (driver emission bug)"
-            ),
-        ));
-    }
-    let report = evaluate_tree_at(&tree, None).map_err(|err| {
+    let report = module.evaluate_tests(DEFAULT_WORK).map_err(|err| {
         HostFault::fault(
             "dream_certificate",
             format!("the emitted level does not evaluate: {err} (driver emission bug)"),

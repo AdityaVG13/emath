@@ -6,7 +6,7 @@
 //! Answers, `work` counts, and refusals are the VM's own.
 //!
 //! The crossing covers the declared carriers an entry signature can name
-//! natively: `Int` (`i64`), `Rat` (`(i128, i128)`), `Bool`, `Float64`,
+//! natively: `Int` (`i64`), `Rat` (exact integer parts), `Bool`, `Float64`,
 //! `Str`, sequences (a native tuple is a sequence), and authored objects
 //! whose fields cross (the artifact implements the traits for their
 //! record structs). A value that does not fit its native
@@ -78,27 +78,21 @@ impl FromCValue for ExactInt {
     }
 }
 
-impl ToCValue for (i128, i128) {
+impl ToCValue for emath_rt::ExactRatio {
     fn to_cvalue(&self) -> CValue {
         CValue::Rat {
-            num: ExactInt::from(self.0),
-            den: ExactInt::from(self.1),
+            num: self.0.clone(),
+            den: self.1.clone(),
         }
     }
 }
 
-impl FromCValue for (i128, i128) {
+impl FromCValue for emath_rt::ExactRatio {
     fn from_cvalue(value: &CValue) -> Result<Self, String> {
         match value {
             // A Rat slot admits an Int exactly, as the VM's output check does.
-            CValue::Int(n) => n
-                .to_i128()
-                .map(|n| (n, 1))
-                .ok_or_else(|| format!("overflow: {n} exceeds the native Rat carrier")),
-            CValue::Rat { num, den } => match (num.to_i128(), den.to_i128()) {
-                (Some(num), Some(den)) => Ok((num, den)),
-                _ => Err(format!("overflow: {num}/{den} exceeds the native Rat carrier")),
-            },
+            CValue::Int(n) => Ok(Self(n.clone(), ExactInt::one())),
+            CValue::Rat { num, den } => Ok(Self(num.clone(), den.clone())),
             other => mismatch("Rat", other),
         }
     }
@@ -184,7 +178,7 @@ fn tree_expr(tree: &CodeTree) -> Expr {
     wrap(match tree {
         CodeTree::Literal(value) => match value {
             emath_rt::code::CodeValue::Int(n) => ExprKind::Int(n.to_string()),
-            emath_rt::code::CodeValue::Rat((num, den)) => ExprKind::Rational {
+            emath_rt::code::CodeValue::Rat(emath_rt::ExactRatio(num, den)) => ExprKind::Rational {
                 numer: num.to_string(),
                 denom: den.to_string(),
             },
@@ -325,7 +319,7 @@ impl FromCValue for emath_rt::code_tree::NodeValue {
         Ok(match value {
             CValue::Int(_) => NodeValue::Scalar(CodeValue::Int(i64::from_cvalue(value)?)),
             CValue::Rat { .. } => {
-                NodeValue::Scalar(CodeValue::Rat(<(i128, i128)>::from_cvalue(value)?))
+                NodeValue::Scalar(CodeValue::Rat(emath_rt::ExactRatio::from_cvalue(value)?))
             }
             CValue::Bool(b) => NodeValue::Scalar(CodeValue::Bool(*b)),
             CValue::Str(text) => NodeValue::Text(text.clone()),

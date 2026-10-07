@@ -13,6 +13,13 @@
 ## Public surface
 
 - `CompilerSession`: source loading, parsing, checking, and planning.
+  Disk loading searches ancestor edition manifests using a lexical absolute
+  source path, including for relative inputs; display names remain unchanged.
+  Loading changed bytes under the same display name allocates a new `FileId`;
+  older ids retain their source snapshots and line maps. Unchanged bytes reuse
+  the latest id. Stored checks carry that id through parser and admission spans.
+  `check_package` resolves loaded siblings to their latest matching revisions.
+  `parse_text` is anonymous, allocates no source, and uses `FileId(0)` spans.
 - `SourcePackage`, `CheckResult`, and `PlanResult`.
 - `CompilerPolicy`, `GeneratedCrate`, and `EmittedAnchor`.
 - `SemanticTrace` and `TraceEntry`.
@@ -28,6 +35,31 @@ the effective per-declaration units-profile table (empty without
 `@units_profile` attributes). Domain-policy side tables are not part of
 mathematical admission; the profile table is declaration metadata for later
 generic consumers.
+
+It also retains `syntax` and `parse_diagnostics` from the same check. Syntax
+can remain present after semantic refusal and is not permission to execute or
+translate. Consumers that claim admission must require the error-free result
+and its `prepared` module. Live conformance inspection follows this rule,
+including query receipts, rather than independently admitting a second parse.
+
+For the current constructor language, session checking includes constructor
+admission and its resolved imported object names before producing `CheckResult`.
+Hosts should consume that result rather than parse and admit the main source
+again. Its `prepared` field retains the constructor module resolved and admitted
+by that check. It is `None` on any parse, load or semantic error, including
+multi-file package pre-diagnostics; warnings alone do not remove it. Retained
+generic semantic checks still run before a module is exposed for execution.
+The package and prepared module are two current representations of one checking
+result, not a claim that semantic and execution type models have been unified.
+This does not promise an atomic filesystem snapshot of all imported files.
+Constructor `package` declarations retain legacy SIR signature projections,
+paired with `constructor_semantics`: the complete checked scoped declaration
+graph from `PreparedModule::meaning_tree`, including private/unselected helpers,
+resolved alias edges and direct/transitive imported bodies. No source file is
+reread to assign meaning or seal content. Constructor meaning structurally
+encodes full types, ordered bodies, lexical binding and policy; source spans,
+comments and tests are excluded. This is identity of admitted mathematics,
+not an extensional-equivalence decision or proof of a behavior-preserving rewrite.
 
 ## Authority boundary
 

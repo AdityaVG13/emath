@@ -2,7 +2,7 @@
 mod common;
 use common::cli;
 use emath_test_harness::Probe;
-fn scratch(name: &str) -> std::path::PathBuf { let d = std::env::temp_dir().join(format!("emath_migrate_{name}")); let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).expect("dir"); d }
+fn scratch(name: &str) -> std::path::PathBuf { let d = std::env::temp_dir().join(format!("emath_migrate_{name}_{}", std::process::id())); std::fs::create_dir_all(&d).expect("dir"); d }
 const NON_CANONICAL: &str = "emath function plain:\n    inputs:\n        x: Float64\n\n    outputs:\n        y: Float64\n\n    definitions:\n        y=x*2.0\n";
 const REFUSING: &str = "emath function broken:\n    inputs:\n        x: Float64\n\n    outputs:\n        y: Float64\n\n    definitions:\n        y = undefined_name\n";
 #[test]

@@ -97,68 +97,38 @@ pub(super) fn op_mig(source: &str) -> String {
 
 pub(super) fn op_generate(source: &str) -> String {
     let prepared = prepare_source(source);
-    let (tree, diagnostics) = emath_syntax::parse_str(&prepared.source);
-    if diagnostics.has_errors() {
+    let (mut session, file) = session_from_source(&prepared.source);
+    let checked = session.check(file);
+    if checked.diagnostics.has_errors() {
         let mut object = JsonWriter::object();
-        put_pipeline_status(&mut object, &diagnostics);
-        object.objects("diagnostics", &diagnostic_objects(&diagnostics));
+        put_pipeline_status(&mut object, &checked.diagnostics);
+        object.objects("diagnostics", &diagnostic_objects(&checked.diagnostics));
         return object.finish();
     }
-    let constructor_only = tree.items.iter().all(|item| match item {
-        emath_core::tree::Item::Use { .. } => true,
-        emath_core::tree::Item::Declaration(decl) => {
-            matches!(decl.as_kind.as_str(), "object" | "function" | "query")
-        }
-        _ => true,
-    });
-    if !constructor_only {
+    let Some(module) = checked.prepared else {
         return refuse_kind_gone("generate");
-    }
-    let functions: Vec<String> = tree
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            emath_core::tree::Item::Declaration(decl) if decl.as_kind == "function" => {
-                Some(decl.name.clone())
-            }
-            _ => None,
-        })
-        .collect();
-    if functions.is_empty() {
-        return refuse_kind_gone("generate");
-    }
-    let mut rust = String::from("#![forbid(unsafe_code)]\n\n");
-    for name in &functions {
-        match emath_exec_ir::constructor_emir::lower_constructor_function(&tree, name) {
-            Ok(lowered) if lowered.runnable => {
-                match emath_rust_backend::emit_constructor_program(&lowered.program, &lowered.inputs)
-                {
-                    Ok(body) => {
-                        rust.push_str(&format!("// function `{name}`\n"));
-                        rust.push_str(&body);
-                        rust.push('\n');
-                    }
-                    Err(err) => return error_json(&err.to_string()),
-                }
-            }
-            Ok(lowered) => {
-                rust.push_str(&format!(
-                    "// `{name}` is not marked runnable: {}\n",
-                    lowered.unresolved.join(", ")
-                ));
-            }
-            Err(err) => return error_json(&err),
-        }
-    }
-    let mut file = JsonWriter::object();
-    file.string("path", "src/lib.rs");
-    file.string("content", &rust);
+    };
+    let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(
+        &module, std::path::Path::new("input.emath"), &prepared.source,
+    ) {
+        Ok(emission) => emission,
+        Err(emath_rust_backend::constructor_crate::ConstructorEmitRefusal::NotConstructor(_)) => return refuse_kind_gone("generate"),
+        Err(emath_rust_backend::constructor_crate::ConstructorEmitRefusal::ImportsRefused { e_code, detail }) => return error_json(&format!("{e_code}: {detail}")),
+    };
+    let files: Vec<String> = emission.files().into_iter().map(|(path, contents)| {
+        let mut file = JsonWriter::object();
+        file.string("path", &path);
+        file.string("content", &contents);
+        file.finish().trim_end().to_string()
+    }).collect();
     let mut object = JsonWriter::object();
     object.bool("ok", true);
     object.bool("admitted", true);
     object.string("schema_version", "emath.constructor.v1");
-    object.string("crate_name", functions.first().map_or("package", String::as_str));
-    object.objects("files", &[file.finish().trim_end().to_string()]);
+    object.string("crate_name", &emission.package_name);
+    object.bool("runnable", emission.runnable);
+    object.strings("unresolved", &emission.unresolved);
+    object.objects("files", &files);
     object.finish()
 }
 
@@ -168,25 +138,33 @@ pub(super) fn op_run(payload: &str) -> String {
         Err(message) => return error_json(&message),
     };
     let prepared = prepare_source(&envelope.source);
-    let (tree, diagnostics) = emath_syntax::parse_str(&prepared.source);
-    if diagnostics.has_errors() {
+    let (mut session, file) = session_from_source(&prepared.source);
+    let checked = session.check(file);
+    if checked.diagnostics.has_errors() {
         let mut object = JsonWriter::object();
-        put_pipeline_status(&mut object, &diagnostics);
-        object.objects("diagnostics", &diagnostic_objects(&diagnostics));
+        put_pipeline_status(&mut object, &checked.diagnostics);
+        object.objects("diagnostics", &diagnostic_objects(&checked.diagnostics));
         return object.finish();
     }
-    if let Err(err) = emath_exec_ir::constructor_layer::admit_tree(&tree) {
-        return constructor_error_json(&err);
-    }
+    let Some(module) = checked.prepared else {
+        return refuse_kind_gone("run");
+    };
     if let Some(given) = &envelope.given
-        && let Some(name) = first_function_name(&tree)
+        && let Some(name) = first_function_name(module.tree())
     {
-        for input in function_input_names(&tree, &name) {
-            if !given.contains_key(&input) {
+        let signature = module.input_types(&name).unwrap_or_default();
+        for input in signature.keys() {
+            if !given.contains_key(input) {
                 return error_json(&format!("missing input `{input}`"));
             }
         }
-        let declared = function_input_types(&tree, &name);
+        let declared: BTreeMap<String, String> = signature.iter().map(|(name, ty)| {
+            let label = match &ty.kind {
+                emath_core::tree::TypeKind::Path { segments, .. } => segments.last().cloned().unwrap_or_default(),
+                _ => String::new(),
+            };
+            (name.clone(), label)
+        }).collect();
         let mut inputs = BTreeMap::new();
         for (key, value) in given {
             match value_to_cvalue(declared.get(key).map(String::as_str), value) {
@@ -196,9 +174,9 @@ pub(super) fn op_run(payload: &str) -> String {
                 Err(message) => return error_json(&message),
             }
         }
-        match emath_exec_ir::constructor_layer::evaluate_function(&tree, &name, &inputs) {
+        match module.evaluate_function(&name, &inputs, emath_exec_ir::constructor_layer::DEFAULT_WORK) {
             Ok(value) => {
-                let mut report = match emath_exec_ir::constructor_layer::evaluate_tree(&tree) {
+                let mut report = match module.evaluate_tests(emath_exec_ir::constructor_layer::DEFAULT_WORK) {
                     Ok(report) => report,
                     Err(err) => return constructor_error_json(&err),
                 };
@@ -208,7 +186,7 @@ pub(super) fn op_run(payload: &str) -> String {
             Err(err) => return constructor_error_json(&err),
         }
     }
-    match emath_exec_ir::constructor_layer::evaluate_tree(&tree) {
+    match module.evaluate_tests(emath_exec_ir::constructor_layer::DEFAULT_WORK) {
         Ok(report) => serialize_constructor_report(&report),
         Err(err) => constructor_error_json(&err),
     }
@@ -232,66 +210,6 @@ fn first_function_name(tree: &emath_core::tree::SyntaxTree) -> Option<String> {
         }
         _ => None,
     })
-}
-
-fn function_input_types(
-    tree: &emath_core::tree::SyntaxTree,
-    name: &str,
-) -> BTreeMap<String, String> {
-    tree.items
-        .iter()
-        .find_map(|item| match item {
-            emath_core::tree::Item::Declaration(decl)
-                if decl.as_kind == "function" && decl.name == name =>
-            {
-                let mut types = BTreeMap::new();
-                for section in decl.sections().filter(|section| section.name == "inputs") {
-                    for stmt in &section.suite.statements {
-                        if let emath_core::tree::StmtKind::FieldDecl { name, ty, .. } = &stmt.kind {
-                            let label = match &ty.kind {
-                                emath_core::tree::TypeKind::Path { segments, .. } => {
-                                    segments.last().cloned().unwrap_or_default()
-                                }
-                                _ => String::new(),
-                            };
-                            types.insert(name.clone(), label);
-                        }
-                    }
-                }
-                Some(types)
-            }
-            _ => None,
-        })
-        .unwrap_or_default()
-}
-
-fn function_input_names(tree: &emath_core::tree::SyntaxTree, name: &str) -> Vec<String> {
-    tree.items
-        .iter()
-        .find_map(|item| match item {
-            emath_core::tree::Item::Declaration(decl)
-                if decl.as_kind == "function" && decl.name == name =>
-            {
-                Some(
-                    decl.sections()
-                        .filter(|section| section.name == "inputs")
-                        .flat_map(|section| {
-                            section.suite.statements.iter().filter_map(|stmt| {
-                                if let emath_core::tree::StmtKind::FieldDecl { name, .. } =
-                                    &stmt.kind
-                                {
-                                    Some(name.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                        })
-                        .collect(),
-                )
-            }
-            _ => None,
-        })
-        .unwrap_or_default()
 }
 
 fn value_to_cvalue(

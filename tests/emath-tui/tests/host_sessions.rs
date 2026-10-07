@@ -48,6 +48,63 @@ fn temp_scratch(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("emath_host_{label}_{}.json", std::process::id()))
 }
 
+#[test]
+fn opened_host_retains_imports_before_the_first_evaluation() {
+    let dir = std::env::temp_dir().join(format!("emath-host-snapshot-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let helper = dir.join("helper.emath");
+    let dependency = "exports: fact_increment
+emath function fact_increment:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = n + 1
+";
+    std::fs::write(&helper, dependency).unwrap();
+    let module = dir.join("session.emath");
+    std::fs::write(&module, "use helper.{fact_increment}
+emath object State:
+    representation:
+        batch: Int
+        verdict: Int
+emath function SeedSnapshot:
+    inputs:
+        unused: Int
+    outputs:
+        result: State
+    definitions:
+        result = State: {batch: fact_increment(0), verdict: 0}
+emath function StepSnapshot:
+    inputs:
+        state: State
+        budget: Int
+    outputs:
+        result: State
+    definitions:
+        result = State: {batch: fact_increment(state.batch), verdict: 0}
+").unwrap();
+    let host = LoopHost::open(&module, Some("StepSnapshot")).unwrap();
+    assert!(host.fact_id().is_some(), "facts belong to the opened declarations");
+    std::fs::write(&helper, dependency.replace("n + 1", "n + 100")).unwrap();
+    let state = host.begin().unwrap();
+    assert_eq!(state.state_int("batch").unwrap(), 1, "opening must freeze the declarations, not defer import reads until evaluation");
+    assert_eq!(host.begin().unwrap().state_int("batch").unwrap(), 1);
+    let export = emath_tui::export::export_native(&host, &dir.join("native"));
+    assert!(
+        export.as_ref().is_err_and(|fault| fault.code == "loop_export_emit" && fault.message.contains("changed since")),
+        "native export must not pair the old session with changed imported mathematics: {export:?}"
+    );
+    let reopened = LoopHost::open(&module, Some("StepSnapshot")).unwrap();
+    assert_ne!(
+        reopened.identity().meaning_id,
+        host.identity().meaning_id,
+        "unchanged root text must not hide a changed executable dependency"
+    );
+    assert_eq!(reopened.begin().unwrap().state_int("batch").unwrap(), 100);
+}
+
 /// One-field text surgery on the deterministic scratch encoding.
 fn replace_field(text: &str, field: &str, from: &str, to: &str) -> String {
     let needle = format!("\"{field}\": {from}");
@@ -235,6 +292,15 @@ fn host_sessions() {
     });
 
     probe.case("host-missing-surface-diagnostic", |p| {
+        let malformed = "emath function Broken:\n    outputs:\n        result: Int\n    definitions:\n        result = (\n";
+        let path = temp_emath("parse_refusal", malformed);
+        let fault = LoopHost::open(&path, None).expect_err("malformed source must refuse");
+        p.eq("parse-refusal-code", fault.code, "loop_parse");
+        let invalid = malformed.replace("function Broken", "function _").replace("result = (", "result = 1");
+        let path = temp_emath("identity_refusal", &invalid);
+        let fault = LoopHost::open(&path, None).expect_err("reserved name must refuse");
+        p.eq("identity-refusal-code", fault.code, "loop_identity");
+
         // A loop module with no lifted surface gets the named
         // diagnostic: exactly what to author, with the example pointer.
         match LoopHost::open(&module_fixture_path("research_loop_valley.emath"), None) {

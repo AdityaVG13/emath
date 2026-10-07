@@ -65,7 +65,9 @@ impl CellValue {
         }
         let value: Rc<dyn Any> = if TypeId::of::<T>() == TypeId::of::<super::ExactRatio>() {
             if let Some(value) = self.value.downcast_ref::<i64>() {
-                Rc::new((i128::from(*value), 1i128))
+                Rc::new(super::ExactRatio::from((*value, 1)))
+            } else if let Some(value) = self.value.downcast_ref::<super::ExactInt>() {
+                Rc::new(super::ExactRatio(value.clone(), super::ExactInt::one()))
             } else {
                 self.value.clone()
             }
@@ -95,7 +97,7 @@ impl CellValue {
     pub fn scalar(&self) -> Result<super::code::CodeValue, String> {
         use super::code::CodeValue;
         if let Some(value) = self.value.downcast_ref::<CodeValue>() {
-            return Ok(*value);
+            return Ok(value.clone());
         }
         if let Some(value) = self.value.downcast_ref::<super::code_tree::NodeValue>() {
             return value.to_scalar();
@@ -112,7 +114,7 @@ impl CellValue {
             return Ok(CodeValue::Bool(*value));
         }
         if let Some(value) = self.value.downcast_ref::<super::ExactRatio>() {
-            return Ok(CodeValue::Rat(*value));
+            return Ok(CodeValue::Rat(value.clone()));
         }
         Err(String::from(
             "type: buffer cell is not an Int/Rat/Bool scalar",

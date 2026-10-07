@@ -34,13 +34,26 @@ You need three things.
    `--check` runs `lake`, which elan provides. Without `--check`,
    Lean is not needed at all.
 
-3. **Mathlib**, only when you export laws. The first `--check` with laws
-   downloads Mathlib and its prebuilt cache into
-   `~/.cache/emath/lean-mathlib`. This happens once and takes several GB.
-   Every later export reuses it. To use a copy you already have, set
+3. **Mathlib**, only when you export laws. `--check` reuses compatible
+   packages in `~/.cache/emath/lean-mathlib`. If absent, it downloads the
+   pinned packages and the prebuilt modules the law library needs there.
+   Existing downloaded cache files are reused, including when only extraction
+   into the shared packages needs repairing. Every program and iteration uses
+   the same packages, not a new Mathlib download.
+   To use a copy you already have, set
    `EMATH_LEAN_MATHLIB` to its packages folder (the one containing
-   `mathlib/`). emath never compiles Mathlib from source. If the cache
-   cannot be fetched, it stops and tells you to run `lake exe cache get`.
+   `mathlib/` and its dependency checkouts). This export targets Lean/Mathlib
+   **v4.34.1** and pinned dependency revisions. An incompatible installation is
+   reported, never silently updated or replaced. emath checks prebuilt
+   readiness without rebuilding the Mathlib library. If cache preparation
+   fails, it stops and prints the shared setup directory for recovery.
+
+   First-time setup is serialized by a shared lock. Mathlib's cache tool runs
+   in `~/.cache/emath/lean-mathlib/.emath-setup-v4.34.1`, whose
+   `.lake/packages` points to the shared packages. This keeps dependency
+   artifacts out of individual exported projects. The small cache executable
+   may be built during first-time preparation; the full library is not
+   compiled from source.
 
 ## A first export
 
@@ -97,8 +110,11 @@ exported 2 source files to /.../docs/guide/examples/sequences/lean: 4 functions,
 lean: accepted (4 examples, 15 library examples and 3 laws proved by the kernel)
 ```
 
-Exit code 0 means every example and every law was proved. With
-Mathlib already cached, this run takes about 10 seconds.
+Exit code 0 means every example and every law was proved. Once Mathlib is
+ready, `--check` skips cache fetching. Unchanged export files keep their
+modification times, so Lake reuses the project's compiled modules too.
+A new output directory still compiles its own translated files. Proof size
+and changes determine check time; no constant-time check is promised.
 
 "Library examples" are the examples of the emath library functions your
 code uses (here from `fold.reduce` and `analysis.powers`). They are
@@ -303,7 +319,10 @@ emath export lean <file.emath|dir> [--out <dir>] [--check] [--work N]
 | `EMATH_ROOT` | The folder containing `language/`, when you run outside the emath repository |
 | `EMATH_LEAN_MATHLIB` | The prebuilt Mathlib packages to use. Default: `~/.cache/emath/lean-mathlib` |
 
-Each export overwrites the files it writes. Do not edit them by hand.
+Each export replaces changed generated files and leaves identical files
+untouched. Do not edit them by hand.
+If a shared dependency changes while multiple source files are being checked,
+the export refuses before writing. Retry after the source edits are complete.
 
 ## Reading the result
 
@@ -355,6 +374,7 @@ rejected: guess.emath law 1 of `laws`: the two sides differ at n = 0
 | `rejected: ... law k of F: the two sides differ at a parameter point the hypotheses allow` | A `certify_all` law is false for some parameter values | Fix the law |
 | `lean: not checked: cannot run lake` | Lean is not installed | Install Lean with elan |
 | `lean: not checked: Mathlib in ... is not prebuilt` | The Mathlib cache could not be fetched | Run `lake exe cache get` in the printed folder, or set `EMATH_LEAN_MATHLIB` |
+| `lean: not checked: Mathlib ... needs ...` or `... is not at the required revision ...` | The selected installation is incompatible | Use matching v4.34.1 packages; the existing checkout is left unchanged |
 
 ## The Lean project it writes
 

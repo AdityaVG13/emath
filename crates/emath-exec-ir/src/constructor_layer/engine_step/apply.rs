@@ -34,7 +34,7 @@ impl Engine {
                     return Err(self.recursion_depth_exceeded(&frame_name));
                 }
                 self.call_depth += 1;
-                self.push_frame(&frame_name);
+                self.push_frame(&frame_name, super::super::ContinuationKind::Expression);
                 let saved = self.env.clone();
                 let entry = clos.clone();
                 let outcome = self.apply_closure_chain(clos, head.to_vec(), saved.clone());
@@ -90,14 +90,15 @@ impl Engine {
             if let Some(value) = self.completed_closure(&clos, &args) {
                 return Ok(value);
             }
-            self.charge()?;
             let frame_name = clos
                 .recursive
                 .clone()
                 .unwrap_or_else(|| format!("function {}", clos.param));
             // Frame reuse: this chain owns one frame; every iteration
             // rebinds it in place instead of pushing another.
-            self.env = saved.clone();
+            // Closures are lexical. Caller locals must not shadow a global
+            // reached by a named-function wrapper with an empty capture.
+            self.env.clear();
             self.env.extend(clos.env.iter().map(|(name, value)| (name.clone(), value.clone())));
             // The runtime lane of the closure discipline (fbpb6): the
             // argument is checked against the closure's recorded
@@ -123,6 +124,7 @@ impl Engine {
             let snapshot = !self.facts_only_memo;
             if let Some(frame) = self.frames.last_mut() {
                 frame.function = frame_name;
+                frame.kind = super::super::ContinuationKind::Expression;
                 if snapshot {
                     frame.env = self.env.clone();
                 }
@@ -131,8 +133,9 @@ impl Engine {
             self.set_frame_next("body");
             let position = self.kont_position();
             self.refresh_frame();
-            let outcome =
-                stacker::maybe_grow(1024 * 1024, 4 * 1024 * 1024, || self.eval_tail(&clos.body));
+            let outcome = self.charge().and_then(|()| {
+                stacker::maybe_grow(1024 * 1024, 4 * 1024 * 1024, || self.eval_tail(&clos.body))
+            });
             match outcome {
                 Ok(EvalTail::Value(value)) => {
                     self.env = saved;
@@ -220,7 +223,19 @@ impl Engine {
                         ),
                     ));
                 }
-                self.eval(&code.expr)
+                let saved = std::mem::take(&mut self.env);
+                let framed = !self.facts_only_memo;
+                if framed {
+                    self.push_frame("__quote", super::super::ContinuationKind::Expression);
+                }
+                let outcome = self.eval_with_kont(&code.expr, || Kont::EvalExpr {
+                    expr: Rc::new(code.expr.clone()),
+                });
+                self.env = saved;
+                if framed && !matches!(&outcome, Err(fault) if fault.code == "budget_exhausted") {
+                    self.pop_frame();
+                }
+                outcome
             }
             other => Ok(other),
         }
@@ -309,8 +324,7 @@ impl Engine {
         free_path_names(&code.expr, &mut Vec::new(), &mut free);
         let saved = self.env.clone();
         self.env = inputs.clone().into();
-        let outcome = self.eval(&code.expr);
-        self.env = saved;
+        let outcome = self.eval_scoped(&code.expr, saved);
         let value = outcome?;
         if matches!(value, CValue::Closure(_)) {
             let mut acc = value;

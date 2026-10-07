@@ -48,6 +48,90 @@ fn workspace() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+#[test]
+fn lean_translation_consumes_the_checked_syntax() {
+    use emath_core::parse::{SourceParser, register_source_parser};
+    use emath_core::{Diagnostics, Edition, FileId, limits::Limits, tree::SyntaxTree};
+    use std::sync::OnceLock;
+    static HELPER: OnceLock<PathBuf> = OnceLock::new();
+    const SOURCE: &str = "emath function Answer:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = 7
+";
+    struct CheckedSyntax;
+    impl SourceParser for CheckedSyntax {
+        fn parse(&self, text: &str, file: FileId, limits: &Limits, edition: Edition) -> (SyntaxTree, Diagnostics) {
+            if text.starts_with("# edit shared import\n") {
+                let helper = HELPER.get().unwrap();
+                let old = std::fs::read_to_string(helper).unwrap();
+                std::fs::write(helper, old.replace("result = 1", "result = 2")).unwrap();
+            }
+            let text = if text == SOURCE { text.replace("result = 7", "result = 42") } else { text.into() };
+            emath_syntax::parse_with_edition(&text, file, limits, edition)
+        }
+    }
+    if std::env::var_os("EMATH_LEAN_SYNTAX_CHILD").is_none() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "lean_translation_consumes_the_checked_syntax", "--nocapture"])
+            .env("EMATH_LEAN_SYNTAX_CHILD", "1")
+            .output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("emath-lean-syntax-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("input.emath");
+    let out = dir.join("lean");
+    std::fs::write(&source, SOURCE).unwrap();
+    register_source_parser(&CheckedSyntax);
+    assert_eq!(emath_cli::run(&[
+        "export".into(), "lean".into(), source.display().to_string(), "--out".into(), out.display().to_string(),
+    ]), EXIT_OK);
+    let lean = std::fs::read_to_string(out.join("Export/input.lean")).unwrap();
+    assert!(lean.contains("42"), "Lean must translate the syntax consumed by checking, not an independent parse: {lean}");
+
+    let project = dir.join("multiple_roots");
+    std::fs::create_dir_all(&project).unwrap();
+    let helper = project.join("helper.emath");
+    HELPER.set(helper.clone()).unwrap();
+    std::fs::write(&helper, format!("exports: Shared\n{}", SOURCE.replace("Answer", "Shared").replace("result = 7", "result = 1"))).unwrap();
+    std::fs::write(project.join("bridge.emath"), "exports: Forward
+use helper
+emath function Forward:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = Shared(unused)
+").unwrap();
+    let caller = "use bridge
+emath function Caller:
+    inputs:
+        unused: Int
+    outputs:
+        result: Int
+    definitions:
+        result = Forward(unused)
+";
+    std::fs::write(project.join("a.emath"), caller.replace("Caller", "First")).unwrap();
+    std::fs::write(project.join("b.emath"), caller.replace("Caller", "Second")).unwrap();
+    let stable = dir.join("stable");
+    assert_eq!(emath_cli::run(&[
+        "export".into(), "lean".into(), project.display().to_string(), "--out".into(), stable.display().to_string(),
+    ]), EXIT_OK, "multiple roots may share one unchanged dependency");
+    std::fs::write(project.join("b.emath"), format!("# edit shared import\n{}", caller.replace("Caller", "Second"))).unwrap();
+    let mixed = dir.join("mixed");
+    assert_eq!(emath_cli::run(&[
+        "export".into(), "lean".into(), project.display().to_string(), "--out".into(), mixed.display().to_string(),
+    ]), EXIT_ADMISSION, "a later root must not mix newly checked transitive imports with an earlier Lean translation");
+    assert!(!mixed.exists(), "a mixed-snapshot export must write nothing");
+}
+
 fn emath(dir: &Path, args: &[&str]) -> (String, i32) {
     let out = Command::new(emath_bin())
         .args(args)
@@ -85,6 +169,80 @@ fn prebuilt_mathlib() -> Option<PathBuf> {
     dir.join("mathlib/.lake/build/lib/lean/Mathlib/LinearAlgebra/Charpoly/Basic.olean")
         .is_file()
         .then_some(dir)
+}
+
+#[cfg(unix)]
+#[test]
+fn mathlib_setup_is_shared_and_unchanged_exports_are_reused() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("emath-lean-shared-{}", std::process::id()));
+    let bin = dir.join("bin");
+    let packages = dir.join("packages");
+    std::fs::create_dir_all(&bin).unwrap();
+    let git = bin.join("git");
+    std::fs::write(&git, "#!/bin/sh\nprintf '%s\\n' d13f23b723b8a846827a245b89c10fc7d3f11612\n").unwrap();
+    std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // Lake is substituted only in these child processes. This test pins
+    // cache placement/reuse, not kernel acceptance (the real gate below does).
+    let lake = bin.join("lake");
+    std::fs::write(&lake, r#"#!/bin/sh
+case "$*" in
+  "build --no-build "*)
+    test -f "$EMATH_TEST_PACKAGES/ready"
+    ;;
+  "exe cache get"*)
+    printf '%s\n' "$PWD" >> "$EMATH_TEST_LOG"
+    test "$PWD/.lake/packages" -ef "$EMATH_TEST_PACKAGES" || exit 9
+    mkdir -p "$EMATH_TEST_PACKAGES/mathlib"
+    printf 'leanprover/lean4:v4.34.1\n' > "$EMATH_TEST_PACKAGES/mathlib/lean-toolchain"
+    printf ready > "$EMATH_TEST_PACKAGES/ready"
+    ;;
+  "build")
+    test -f "$EMATH_TEST_PACKAGES/ready"
+    ;;
+  *) exit 8 ;;
+esac
+"#).unwrap();
+    std::fs::set_permissions(&lake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let source = workspace().join("docs/guide/examples/sequences");
+    let log = dir.join("fetches");
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
+    let invoke = |out: &Path| {
+        Command::new(emath_bin())
+            .args(["export", "lean", &source.to_string_lossy(), "--out", &out.to_string_lossy(), "--check"])
+            .env("EMATH_LEAN_MATHLIB", &packages)
+            .env("EMATH_TEST_PACKAGES", &packages)
+            .env("EMATH_TEST_LOG", &log)
+            .env("PATH", &path)
+            .output().unwrap()
+    };
+    let check = |out: &Path| {
+        let output = invoke(out);
+        assert!(output.status.success(), "shared Mathlib setup failed: {output:?}");
+    };
+    let first = dir.join("first");
+    let second = dir.join("second");
+    check(&first);
+    let tracked = ["lakefile.lean", "lake-manifest.json", "lean-toolchain", "Emath/Law.lean", "Export/laws.lean"];
+    let before: Vec<_> = tracked.iter().map(|file| {
+        std::fs::metadata(first.join(file)).unwrap().modified().unwrap()
+    }).collect();
+    check(&first);
+    check(&second);
+    let after: Vec<_> = tracked.iter().map(|file| {
+        std::fs::metadata(first.join(file)).unwrap().modified().unwrap()
+    }).collect();
+    assert_eq!(before, after, "unchanged export files must keep incremental build inputs");
+    let fetches = std::fs::read_to_string(&log).unwrap();
+    assert_eq!(fetches.lines().count(), 1, "one shared setup, not a fetch per export: {fetches}");
+    let setup = PathBuf::from(fetches.trim());
+    assert!(setup.canonicalize().unwrap().starts_with(packages.canonicalize().unwrap()), "setup must not belong to an individual export");
+    std::fs::write(packages.join("mathlib/lean-toolchain"), "leanprover/lean4:v4.32.0\n").unwrap();
+    let refused = invoke(&second);
+    let message = String::from_utf8_lossy(&refused.stdout);
+    assert!(!refused.status.success() && message.contains("v4.32.0") && message.contains("v4.34.1"), "an incompatible installation must be refused without changing it: {refused:?}");
+    assert_eq!(std::fs::read_to_string(packages.join("mathlib/lean-toolchain")).unwrap(), "leanprover/lean4:v4.32.0\n");
+    assert_eq!(std::fs::read_to_string(&log).unwrap(), fetches, "an incompatible installation must not trigger fetching");
 }
 
 #[test]

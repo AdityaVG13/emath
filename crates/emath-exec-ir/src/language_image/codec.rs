@@ -107,8 +107,10 @@ pub(super) fn decode_reference_entries(
                 "reference program bytes are truncated".to_string(),
             ));
         }
-        let (program_text, remainder) = rest.split_at(length);
-        rest = remainder;
+        let program_text = rest.get(..length).ok_or_else(|| {
+            malformed("reference program length splits a UTF-8 character".to_string())
+        })?;
+        rest = &rest[length..];
         let mut signature = Signature::default();
         note_term_arities(&term, &mut signature)
             .map_err(|detail| malformed(format!("reference entry declares {detail}")))?;

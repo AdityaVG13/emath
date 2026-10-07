@@ -10,8 +10,11 @@ fn ratio_construct(args: &[Value]) -> Result<Value, String> {
     let [Value::I64(a), Value::I64(b)] = args else {
         return Err(bad_value());
     };
-    let (num, den) = emath_rt::ratio_construct(*a, *b)?;
-    Ok(Value::Rat { num, den })
+    let emath_rt::ExactRatio(num, den) = emath_rt::ratio_construct(*a, *b)?;
+    Ok(Value::Rat {
+        num: num.to_i128().ok_or_else(bad_value)?,
+        den: den.to_i128().ok_or_else(bad_value)?,
+    })
 }
 
 fn ratio_norm(args: &[Value]) -> Result<Value, String> {
@@ -23,8 +26,8 @@ fn ratio_norm(args: &[Value]) -> Result<Value, String> {
         return Err(bad_value());
     }
     Ok(Value::Rat {
-        num: canonical.0,
-        den: canonical.1,
+        num: canonical.0.to_i128().ok_or_else(bad_value)?,
+        den: canonical.1.to_i128().ok_or_else(bad_value)?,
     })
 }
 

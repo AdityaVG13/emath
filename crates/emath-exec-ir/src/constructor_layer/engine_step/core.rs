@@ -1,7 +1,7 @@
-use super::super::{Engine, ConstructorError, Kont, Expr, CValue, ExprKind, parse_int, parse_exact, fault, Arc, BTreeMap, DomainShape, Closure, BinaryOp, Code, ExactInt, exact_fault};
+use super::super::{Engine, ConstructorError, Kont, Expr, CValue, ExprKind, parse_int, parse_exact, fault, Arc, BTreeMap, DomainShape, Closure, Code, ExactInt, exact_fault, Environment, Rc};
 use super::prelude::{
-    apply_unary, arrow_domain_of_expr, binary, join_values, domain_expr_of_shape, domain_shape_of_expr,
-    domain_shape_of_type, dummy_expr, index_seq, is_fn_type, is_guarded_recur_body, is_schema_tag,
+    apply_unary, arrow_domain_of_expr, join_values, domain_expr_of_shape, domain_shape_of_expr,
+    domain_shape_of_type, dummy_expr, is_fn_type, is_guarded_recur_body, is_schema_tag,
     project_field, schema_tag,
 };
 use super::super::scalar::decimal_to_rational;
@@ -43,6 +43,21 @@ impl Engine {
         pending: impl FnOnce() -> Kont,
     ) -> Result<CValue, ConstructorError> {
         self.eval_with_konts(expr, || std::iter::once(pending()))
+    }
+
+    /// Restore the caller's bindings after the body, including when a saved
+    /// child returns during resume. The suspended frame keeps its inner scope.
+    pub(in crate::constructor_layer) fn eval_scoped(
+        &mut self,
+        body: &Expr,
+        saved: Environment,
+    ) -> Result<CValue, ConstructorError> {
+        let result = self.eval_with_konts(body, || [
+            Kont::RestoreEnv { env: saved.clone().into_map() },
+            Kont::EvalExpr { expr: Rc::new(body.clone()) },
+        ]);
+        self.env = saved;
+        result
     }
 
     /// Evaluates `expr` with `pending` as the work that waits on it. The
@@ -321,21 +336,7 @@ impl Engine {
                     left: left.clone(),
                     right: right.clone(),
                 })?;
-                if matches!(op, BinaryOp::And | BinaryOp::Or) {
-                    return match (op, l) {
-                        (BinaryOp::And, CValue::Bool(false)) => Ok(CValue::Bool(false)),
-                        (BinaryOp::Or, CValue::Bool(true)) => Ok(CValue::Bool(true)),
-                        (BinaryOp::And, CValue::Bool(true)) => self.eval(right),
-                        (BinaryOp::Or, CValue::Bool(false)) => self.eval(right),
-                        _ => Err(fault("type", "boolean combinator expects Bool")),
-                    };
-                }
-                let r = self.eval_with_kont(right, || Kont::BinRight {
-                    op: *op,
-                    left: l.clone(),
-                    right: right.clone(),
-                })?;
-                binary(*op, l, r)
+                self.finish_binary_left(*op, l, right)
             }
             ExprKind::If {
                 condition,
@@ -384,21 +385,11 @@ impl Engine {
                 join_values(h, t, spread_head)
             }
             ExprKind::Index { value, indices } => {
-                let seq = self.eval(value)?;
-                if !matches!(seq, CValue::Sequence(_) | CValue::Buffer(_)) {
-                    return Err(fault("type", "index requires a sequence or buffer"));
-                }
-                let Some(index_expr) = indices.first() else {
-                    return Err(fault("invalid_index", "missing index"));
-                };
-                let CValue::Int(i) = self.eval_with_kont(index_expr, || Kont::IndexAfterSeq {
-                    seq: seq.clone(),
-                    index: Box::new(index_expr.clone()),
-                })?
-                else {
-                    return Err(fault("type", "index must be Int"));
-                };
-                index_seq(seq, i)
+                let seq = self.eval_with_kont(value, || Kont::IndexBeforeSeq {
+                    value: value.clone(),
+                    indices: indices.clone(),
+                })?;
+                self.finish_index_seq(seq, indices)
             }
             ExprKind::Call { function, args } => self.eval_call(function, args),
             ExprKind::FunctionAbs {
