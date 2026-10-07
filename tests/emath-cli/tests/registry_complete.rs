@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Repository root, two levels above the crate directory.
+/// Repository root, two levels above the test package directory.
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
@@ -154,10 +154,9 @@ fn ekind010_stays_retired() {
             let mut paths = Vec::new();
             rust_files_under(&root, &entry, &mut files, &mut paths);
             for (rel, path) in files.iter().zip(paths.iter()) {
-                if rel != "crates/emath-hir/tests/registry_complete.rs"
-                    && fs::read_to_string(path)
-                        .expect("read rust file")
-                        .contains("E-KIND-010")
+                if fs::read_to_string(path)
+                    .expect("read rust file")
+                    .contains("E-KIND-010")
                 {
                     emitting.insert(rel.clone());
                 }
@@ -168,16 +167,5 @@ fn ekind010_stays_retired() {
         emitting.is_empty(),
         "E-KIND-010 is retired; mint a new code instead of reusing it. Found in: {}",
         emitting.into_iter().collect::<Vec<_>>().join(", ")
-    );
-}
-
-/// The minted sibling is emitted and documented.
-#[test]
-fn ekind016_split_is_minted() {
-    let (emitted, _) = emitted_codes();
-    assert!(emitted.contains("E-KIND-016"), "E-KIND-016 must be emitted");
-    assert!(
-        documented_codes().contains("E-KIND-016"),
-        "E-KIND-016 must be in the registry"
     );
 }

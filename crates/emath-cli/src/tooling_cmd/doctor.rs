@@ -104,11 +104,8 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
         .map_err(|error| format!("cannot read {}: {error}", lock.display()))
         .and_then(|text| {
             parse_upstream_pins(&text)
-                .and_then(|pins| {
-                    emath_provider_api::pinned_fork_adapters(&pins)
-                        .map_err(|error| error.to_string())
-                })
-                .map(|adapters| (content_id_of_str(&text).0, adapters))
+                .and_then(|pins| validate_upstream_pins(&pins).map(|()| pins))
+                .map(|pins| (content_id_of_str(&text).0, pins))
         });
     let ok = probes.iter().all(|probe| probe.ok) && fork_lock.is_ok();
     if json {
@@ -130,24 +127,18 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
         object.objects("checks", &rows);
         object.string("fork_lock_source", UPSTREAM_LOCK_REL);
         match &fork_lock {
-            Ok((lock_id, adapters)) => {
+            Ok((lock_id, pins)) => {
                 object.string("fork_lock_id", lock_id);
                 let mut fork_rows = Vec::new();
-                for adapter in adapters {
+                for pin in pins {
                     let mut row = JsonWriter::object();
-                    row.string("provider_id", adapter.contract.provider_id);
-                    row.string("upstream_id", adapter.contract.upstream_id);
-                    row.string(
-                        "adapter_crate",
-                        adapter.contract.adapter_crate.unwrap_or("oracle-only"),
-                    );
-                    row.string("status", adapter.contract.status);
-                    row.string("repository", &adapter.pin.repository);
-                    row.string("source_lock", &adapter.pin.commit);
-                    row.string("license", &adapter.pin.license);
+                    row.string("id", &pin.id);
+                    row.string("repository", &pin.repository);
+                    row.string("source_lock", &pin.commit);
+                    row.string("license", &pin.license);
                     fork_rows.push(row.finish());
                 }
-                object.objects("fork_adapters", &fork_rows);
+                object.objects("fork_pins", &fork_rows);
             }
             Err(error) => {
                 object.string("fork_lock_error", error);
@@ -172,11 +163,11 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
             }
         }
         match &fork_lock {
-            Ok((lock_id, adapters)) => {
-                for adapter in adapters {
+            Ok((lock_id, pins)) => {
+                for pin in pins {
                     println!(
                         "doctor: fork {}: pinned {} license={} (lock {lock_id})",
-                        adapter.contract.provider_id, adapter.pin.commit, adapter.pin.license
+                        pin.id, pin.commit, pin.license
                     );
                 }
             }
@@ -189,9 +180,43 @@ pub(crate) fn doctor_cmd(json: bool) -> CliExit {
     if ok { EXIT_OK } else { EXIT_TOOLCHAIN }
 }
 
-pub(super) fn parse_upstream_pins(
-    text: &str,
-) -> Result<Vec<emath_provider_api::UpstreamPin>, String> {
+/// Reproducibility fields for one repository in the upstream lock.
+struct UpstreamPin {
+    id: String,
+    repository: String,
+    commit: String,
+    license: String,
+}
+
+/// Every pin must be unique, fetchable over https, locked to an immutable
+/// commit, and carry a declared license.
+fn validate_upstream_pins(pins: &[UpstreamPin]) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for pin in pins {
+        if !seen.insert(&pin.id) {
+            return Err(format!("upstream lock contains duplicate pin `{}`", pin.id));
+        }
+        if !pin.repository.starts_with("https://") {
+            return Err(format!("pin `{}` repository is not an https URL", pin.id));
+        }
+        let hex = pin
+            .commit
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+        if pin.commit.len() != 40 || !hex {
+            return Err(format!(
+                "pin `{}` commit is not a lowercase 40-hex source lock",
+                pin.id
+            ));
+        }
+        if pin.license.trim().is_empty() {
+            return Err(format!("pin `{}` license is empty", pin.id));
+        }
+    }
+    Ok(())
+}
+
+fn parse_upstream_pins(text: &str) -> Result<Vec<UpstreamPin>, String> {
     let document = emath_artifact::parse_json_document(text).map_err(|error| error.to_string())?;
     let repositories = match document
         .field("repositories")
@@ -203,7 +228,7 @@ pub(super) fn parse_upstream_pins(
     repositories
         .iter()
         .map(|repository| {
-            Ok(emath_provider_api::UpstreamPin {
+            Ok(UpstreamPin {
                 id: repository
                     .string_field("id")
                     .map_err(|error| error.to_string())?,

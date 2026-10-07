@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """Upstream-lock honesty gate.
 
-Checks the shipped upstream lock and its adapter-seam bindings:
+Checks the shipped upstream lock:
 
 1. `forks/UPSTREAM_LOCK.json` validates against
    `implementation/schemas/upstream-lock.schema.json` (jsonschema when the
    package is importable, otherwise a structural check of the same
    constraints).
-2. Adapter seams that claim lock binding contain their locked commit:
-   - `dew`    → `crates/emath-adapter-dew/src/seam.rs`
-   - `rumoca` → `crates/emath-adapter-rumoca/CONTRACT.md`
-3. No repository row may claim `required: "conformance"` without a
+2. No repository row may claim `required: "conformance"` without a
    consuming gate (the schema enum refuses `conformance` outright; MSL
    is a `future` row under the no-MSL-CI fence, DISC-005).
 
@@ -27,12 +24,6 @@ import json
 import pathlib
 import re
 import sys
-
-SEAM_BINDINGS = {
-    "dew": ("crates/emath-adapter-dew/src/seam.rs", "AdapterSeam::LOCKED_UPSTREAM_COMMIT"),
-    "rumoca": ("crates/emath-adapter-rumoca/CONTRACT.md", "No-claim fence"),
-}
-
 
 def structural_validate(lock: dict, schema: dict) -> list[str]:
     problems: list[str] = []
@@ -91,22 +82,6 @@ def main() -> int:
         problems.extend(structural_validate(lock, schema))
 
     repos = {row["id"]: row for row in lock.get("repositories", [])}
-    for rid, (rel, marker) in SEAM_BINDINGS.items():
-        path = root / rel
-        if rid not in repos:
-            problems.append(f"seam binding names unknown repo {rid!r}")
-            continue
-        if not path.is_file():
-            problems.append(f"seam binding file missing: {rel}")
-            continue
-        commit = repos[rid]["commit"]
-        text = path.read_text(encoding="utf-8")
-        if commit not in text:
-            problems.append(
-                f"seam binding stale: {rel} does not name the locked {rid} commit {commit}"
-            )
-        if marker not in text:
-            problems.append(f"seam binding unmarked: {rel} lacks {marker!r}")
 
     if problems:
         print(f"upstream lock: FAIL ({len(problems)} problems)", file=sys.stderr)
@@ -114,10 +89,7 @@ def main() -> int:
             print(f"  - {problem}", file=sys.stderr)
         return 1
 
-    print(
-        f"upstream lock: {len(repos)} repos schema-valid "
-        f"(schema {lock['schema']}); {len(SEAM_BINDINGS)} adapter seams bound to lock commits"
-    )
+    print(f"upstream lock: {len(repos)} repos schema-valid (schema {lock['schema']})")
     return 0
 
 

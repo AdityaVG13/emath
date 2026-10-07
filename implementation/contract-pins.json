@@ -190,12 +190,13 @@
     "gauntlet pass 8: kernel artifact codegen (fd/einsum/rs-encode) + cmp/may-fault alignment",
     "gauntlet pass 9: Field<7> carrier (FieldPrime\u2192i64) + E-SEC-133 default skips carrier-typed-input declarations; E-SEC-133 emitter list gains session/requests.rs; annex re-spliced (449 emitted, 0 newly covered). No new codes.",
     "gauntlet pass 10: emath run plans before executing (planned_package) \u2014 goal kinds become visible at the run boundary; non-evaluate goals on no-test declarations refuse E-GOAL-043 before any checkpoint (typed-hole discipline: never a produced crate); E-GOAL-043 emitter list gains cli/execution.rs. No new codes.",
-    "gauntlet pass 10 coordination: CalmPine's category authored-reference migration (uncommitted in tree) removed native_kernels/category.rs from the E-TYPE-012 emitter list; annex re-spliced to the current emission set (449 emitted, 0 newly covered). No new codes."
+    "gauntlet pass 10 coordination: CalmPine's category authored-reference migration (uncommitted in tree) removed native_kernels/category.rs from the E-TYPE-012 emitter list; annex re-spliced to the current emission set (449 emitted, 0 newly covered). No new codes.",
+    "dead-code deletion: genesis, world-ir, store, adapter-dew, adapter-rumoca, plan, hir, registry and provider-api crates removed. ERROR_CODES issued list pruned to the 154 emitted codes; 247 no-longer-emitted codes move to a Retired codes section (never reissued); E-INT-002, E-INT-003, E-NAME-026 and E-MEANING-001 gain issued entries; annex re-spliced. CRATE_MAP rebuilt for the 15 remaining crates. CLI_REFERENCE re-pinned after the earlier removal of the lab, verify and dead CLI lanes."
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "dab20bcf57a3cd95fdb92f39bb5d5ababcb86bc2ca070e52a1ded3c450496c42",
-    "implementation/CLI_REFERENCE.md": "c67574c4d241606bc4d3c75c932ea849e25708296352e186d288b03df67d6949",
-    "implementation/CRATE_MAP.md": "117a66fd21a1dd3aa2bb85f55bef9c45c92fedaa86ab0823326486ead048b1b5",
+    "implementation/ERROR_CODES.md": "bed8cfc8e3331d787840a43b1c0dedeb05a08c4cae779234fb2092e8150b37e9",
+    "implementation/CLI_REFERENCE.md": "b5bc9a677be00b124be8140a2b53eb59a572051794f8c368803731f5918dbcd5",
+    "implementation/CRATE_MAP.md": "cf6d869dece8572995c79320c43ac4c877efde203e7d656f4c62a357acccfd12",
     "implementation/PUBLIC_API_INVENTORY.md": "28de167a2cfcbd4ef162caa262e8ecbd437f4b6658b543b2088bbc37fb25348e"
   }
 }

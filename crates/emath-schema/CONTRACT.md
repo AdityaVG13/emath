@@ -2,68 +2,54 @@
 
 ## Purpose and layer
 
-Tier 1 custom kind schemas and restricted lowering. Defines a schema
-language, bounded lowering into core HIR, the thirteen canonical schema
-registry, and kind package loading. Output is the shared
-`emath_ir::KindSchema` that compiler and builder both admit against.
+Language-owned records at the foundation layer: the section schemas of the
+three core declaration kinds (`object`, `function`, `query`) and Feature
+Capsule records. `emath-ir` re-exports `kind_schema` and `capsule_record`;
+the Language Image compiler in `emath-exec-ir` parses capsules here, and
+`cargo xtask generate-language` rewrites their semantic hashes.
 
 ## Public types and semantics
 
-- `parse_schema_language`, `SchemaIssue`: schema language parsing.
-- `resolve_kind`, `KindPackage`, `ResolveIssue`, `VersionPolicy`,
-  `ExpandTrace`, `MAX_EXPANSION_DEPTH`: kind package loading and resolution.
-- `apply_lowering`, `validate_lowered`, `is_bound`, `LowerOp`,
-  `LoweringIssue`, `MAX_LOWER_OPS`: restricted lowering into core HIR.
-- `is_known_schema`, `schema_names`, `all_schema_names`, `schema_json`,
-  `example_json`, `write_schema_json`, `write_example_json`: thirteen
-  canonical schema registry access. Each `$id` emits its own JSON Schema
-  document (not a shared stub). Closed-world ids encode the in-tree
-  emitter's top-level `properties` / `required`; ids with no JSON
-  emitter are an open envelope (`schema` const, `additionalProperties:
-  true`).
-- `SchemaError`, `UnknownSchemaError`: registry error types.
-- Version constants: `VERSION`, `REGISTRY_VERSION`, `SCHEMAS_VERSION`,
-  `SCHEMA_VERSION`, `SCHEMA_NAMES`.
-- Modules: `lang`, `load`, `lower`, `registry`.
+- `kind_schema`: `KindSchema`, `SectionSchema`, `RepeatPolicy`,
+  `PayloadPolicy`, `CoreKind`, `payload_allows`, and the constructors
+  `core_function_schema`, `core_object_schema`, `core_query_schema`.
+- `capsule_record`: `FeatureCapsule`, `FeatureClass`, `Maturity`,
+  `CapsuleSlot`, `CapsuleEdge`, `CapsuleProjection`, `ProjectionDisposition`,
+  `LegacyCellMapping`, `CapsuleRecordError`, `FEATURE_CAPSULE_SCHEMA`.
+- `feature_capsule`: `capsule_documents`, `parse_feature_capsule`,
+  `validate_capsule`, `validate_maturity_transition`,
+  `capsule_semantic_hash`, `rewrite_declared_semantic_hashes`,
+  `parse_capsule_slot`, `parse_projection_disposition`, `CapsuleIssue`,
+  `ClassRule`, `CLASS_RULES`, `CAPSULE_EDGE_KINDS`, `SemanticHashRewrite`.
 
 ## Invariants
 
-- Invalid lowering cannot publish HIR; every application keeps an expansion
-  trace.
-- Schema language sections follow required/optional/repeatable policies with
-  payload policies, defaults and predicates.
-- Kind package loading fails on missing kinds, checksum mismatch, incompatible
-  schema versions and recursive expansion, bounded by `MAX_EXPANSION_DEPTH`
-  and `MAX_LOWER_OPS`.
-- Unknown schema names are typed refusals (`E-SCHEMA-001`).
-- Closed-world registry ids (`emath.source-artifact`,
-  `emath.parse-forest`, `emath.answer-receipt`,
-  `emath.interpretation-portfolio`) set `additionalProperties: false`
-  and list the emitter's field names and JSON types. Optional
-  `$schema` is admitted on instances so examples can round-trip `$id`.
-- The other nine ids have no in-tree JSON document with that `$id`;
-  their schemas are envelope-only and must not invent fields.
+- Sections follow required/optional/repeatable policies with payload
+  policies, defaults and predicates. An absent section schema means an
+  unknown section; the caller refuses.
+- Only `object`, `function` and `query` have kind schemas. `model`,
+  `policy` and `kind` are not core kinds.
+- A capsule's semantic hash covers its semantic fields, including raw
+  reference-default text. Hash rewriting never changes a capsule body.
 
 ## Error model
 
-Typed issue enums `SchemaIssue`, `ResolveIssue`, `LoweringIssue` plus
-`SchemaError` / `UnknownSchemaError`. Diagnostics also flow through
+`CapsuleIssue` and `CapsuleRecordError` for capsules. Kind-schema
+violations are reported by the admitting caller through
 `emath_core::Diagnostics`.
 
 ## Determinism class
 
-Deterministic JSON schema and example writers; stable version constants for
-the registry. Closed-world documents are distinct from each other and from
-the envelope template even after `$id` / title / description are ignored.
+Deterministic. Parsing, validation and hashing are pure functions of the
+input text.
 
 ## Cancellation behavior
 
-Not applicable. Std-only synchronous crate, no cancellation surface.
+Not applicable. Std-only synchronous crate.
 
 ## Unsafe boundary
 
-None. Crate root is `#![forbid(unsafe_code)]` (registry comments note the root
-forbids unsafe).
+None. `#![forbid(unsafe_code)]`.
 
 ## Feature flags
 
@@ -71,31 +57,12 @@ None.
 
 ## Conformance tests
 
-No `crates/emath-schema/tests/` directory and no inline `#[cfg(test)]`
-modules in `src/`. Conformance lives in the standalone `tests/emath-schema`
-package: `tests/registry.rs` (thirteen-name fixed order, stable version
-constants, byte-stable valid JSON and matching examples per id,
-pairwise-distinct bodies, closed-world emitter fields for
-source-artifact / parse-forest / answer-receipt / interpretation-portfolio,
-envelope no-invention, `$id` example round-trip, typed unknown-name refusal
-`E-SCHEMA-001`, known-name checks), `tests/version_policy.rs`, and
-`tests/lowering_rename.rs`.
+`tests/emath-schema`: the `*_dumps_absent` suites pin that catalog and
+domain-kind dumps stay out of the shipped language image.
 
 ## No-claim boundaries
 
-Registry and lowering cover the thirteen canonical schema ids only;
-arbitrary user-defined kinds beyond these are not certified.
-
-No JSON emitter in this tree for: `emath.symbol-signature` (genesis writes
-`emath.signature`), `emath.term-ir` (durable document is `emath.free-term`;
-`TERM_IR_SCHEMA` versions the canonical text encoding), `emath.world-ir`
-and `emath.world-morphism` (canonical text forms, not JSON documents),
-`emath.meaning-lock`, `emath.agent-world-proposal` (genesis writes
-`emath.world-candidate`), `emath.continuation` (Rust `ContinuationHandle`,
-not a JSON document), `emath.math-layout-graph`,
-`emath.provenance-receipt` (13th registry id; the "plus examples" are
-the per-id `example_json` writers, not a 13th artifact name). These
-nine are disclosed envelope-only.
+User-defined declaration kinds are not supported.
 
 ## Authored reference defaults
 

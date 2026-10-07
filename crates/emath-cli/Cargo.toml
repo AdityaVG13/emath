@@ -19,7 +19,6 @@ emath-lab-core = { workspace = true }
 emath-exec-ir = { workspace = true }
 emath-rust-backend = { workspace = true }
 emath-ir = { workspace = true }
-emath-provider-api = { workspace = true }
 emath-sema = { workspace = true }
 emath-syntax = { workspace = true }
 # Research-loop sessions: `emath loop` opens an authored session surface

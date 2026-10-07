@@ -1,36 +1,25 @@
-//! Artifact emission: deterministic JSON writers for the four durable
-//! schemas (`emath.artifact`, `emath.source-map`,
-//! `emath.resolution-plan`, `emath.evidence-bundle`), staging and
-//! atomic publish with content-identity verification, and an independent checker that
-//! never calls generator internals.
+//! Deterministic JSON for host documents: the std-only streaming writer
+//! (re-exported from `emath-core`) and its parse-back reader. The reader
+//! accepts the writer's grammar and refuses anything else with a typed
+//! [`JsonError`].
 
 #![forbid(unsafe_code)]
 
-use emath_core::{ContentId, SchemaId, bootstrap_content_id, content_id_of_str, fnv1a64_bytes};
-use emath_ir::{
-    ClaimVerdict, EvidenceClaim, EvidenceLevel, PlanNodeDef, PlanOperation, ResolutionPlan,
-    TargetProfile,
-};
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-
-mod emit;
-mod identity;
 mod json;
 mod jsonval;
-mod manifest_io;
-mod model;
-mod staging;
 
-pub use emath_ir::{
-    AUTHORITY_LOCK_SCHEMA, AUTHORITY_RECEIPT_SCHEMA, AuthorityEntry, AuthorityError,
-    AuthorityEvidence, AuthorityLock, AuthorityReceipt, AuthorityState,
-};
-pub use emit::*;
-pub use identity::*;
 pub use json::*;
 pub use jsonval::*;
-pub use manifest_io::*;
-pub use model::*;
-pub use staging::*;
 
+/// A document that does not match the writer's JSON grammar or the shape a
+/// caller asked for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JsonError(pub String);
+
+impl std::fmt::Display for JsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "malformed JSON: {}", self.0)
+    }
+}
+
+impl std::error::Error for JsonError {}

@@ -275,20 +275,6 @@ impl KindSchema {
         }
     }
 
-    /// Not a constructor kind. Kept so historical call sites compile;
-    /// the returned schema has no kind name and no sections.
-    #[must_use]
-    pub fn core_policy() -> Self {
-        Self::default()
-    }
-
-    /// Not a constructor kind. Kept so historical call sites compile;
-    /// the returned schema has no kind name and no sections.
-    #[must_use]
-    pub fn core_model() -> Self {
-        Self::default()
-    }
-
     /// Section schema; absent = unknown section (caller refuses).
     #[must_use]
     pub fn section(&self, name: &str) -> Option<&SectionSchema> {
@@ -401,12 +387,3 @@ pub fn core_query_schema() -> KindSchema {
     KindSchema::core_query()
 }
 
-#[must_use]
-pub fn core_policy_schema() -> KindSchema {
-    KindSchema::core_policy()
-}
-
-#[must_use]
-pub fn core_model_schema() -> KindSchema {
-    KindSchema::core_model()
-}

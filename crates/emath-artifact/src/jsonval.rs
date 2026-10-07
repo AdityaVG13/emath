@@ -1,6 +1,6 @@
 //! The `JsonValue` DOM and its parser.
 
-use super::{ArtifactError, ContentId, skip_json_ws, parse_json_string};
+use super::{JsonError, parse_json_string, skip_json_ws};
 
 /// Minimal JSON value tree accepted by [`parse_json_document`].
 #[derive(Clone, Debug, PartialEq)]
@@ -21,94 +21,46 @@ pub enum JsonValue {
 
 impl JsonValue {
     /// Look up an object field by name (typed parse-back support).
-    pub fn field(&self, name: &str) -> Result<&JsonValue, ArtifactError> {
+    pub fn field(&self, name: &str) -> Result<&JsonValue, JsonError> {
         match self {
             Self::Obj(entries) => entries
                 .iter()
                 .find(|(key, _)| key == name)
                 .map(|(_, value)| value)
-                .ok_or_else(|| ArtifactError::ManifestMalformed(format!("missing `{name}`"))),
-            _ => Err(ArtifactError::ManifestMalformed(
-                "not an object".to_string(),
-            )),
+                .ok_or_else(|| JsonError(format!("missing `{name}`"))),
+            _ => Err(JsonError("not an object".to_string())),
         }
     }
 
     /// Read a string field (typed parse-back support).
-    pub fn string_field(&self, name: &str) -> Result<String, ArtifactError> {
+    pub fn string_field(&self, name: &str) -> Result<String, JsonError> {
         match self.field(name)? {
             Self::Str(value) => Ok(value.clone()),
-            _ => Err(ArtifactError::ManifestMalformed(format!(
-                "`{name}` is not a string"
-            ))),
+            _ => Err(JsonError(format!("`{name}` is not a string"))),
         }
     }
 
-    pub(super) fn optional_string_field(
-        &self,
-        name: &str,
-    ) -> Result<Option<String>, ArtifactError> {
-        if self.obj_has(name)? {
-            Ok(Some(self.string_field(name)?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub(super) fn obj_has(&self, name: &str) -> Result<bool, ArtifactError> {
-        match self {
-            Self::Obj(entries) => Ok(entries.iter().any(|(key, _)| key == name)),
-            _ => Err(ArtifactError::ManifestMalformed(
-                "not an object".to_string(),
-            )),
-        }
-    }
-
-    /// Read an integer field (typed parse-back support).
-    pub fn int_field(&self, name: &str) -> Result<u64, ArtifactError> {
+    pub fn int_field(&self, name: &str) -> Result<u64, JsonError> {
         match self.field(name)? {
-            Self::Num(value) => value.parse::<u64>().map_err(|_| {
-                ArtifactError::ManifestMalformed(format!("`{name}` is not an integer"))
-            }),
-            _ => Err(ArtifactError::ManifestMalformed(format!(
-                "`{name}` is not a number"
-            ))),
+            Self::Num(value) => value
+                .parse::<u64>()
+                .map_err(|_| JsonError(format!("`{name}` is not an integer"))),
+            _ => Err(JsonError(format!("`{name}` is not a number"))),
         }
-    }
-
-    pub fn strings_field(&self, name: &str) -> Result<Vec<String>, ArtifactError> {
-        match self.field(name)? {
-            Self::Arr(items) => items
-                .iter()
-                .map(|item| match item {
-                    Self::Str(value) => Ok(value.clone()),
-                    _ => Err(ArtifactError::ManifestMalformed(format!(
-                        "`{name}` array has a non-string entry"
-                    ))),
-                })
-                .collect(),
-            _ => Err(ArtifactError::ManifestMalformed(format!(
-                "`{name}` is not an array"
-            ))),
-        }
-    }
-
-    pub(super) fn content_id_field(&self, name: &str) -> Result<ContentId, ArtifactError> {
-        Ok(ContentId(self.string_field(name)?))
     }
 }
 
 /// Parse one deterministic writer document into a value tree. Accepts the
 /// writer's grammar (RFC 8259 subset: objects, arrays, strings, integers,
 /// booleans and `null`); anything else is a typed refusal.
-pub fn parse_json_document(text: &str) -> Result<JsonValue, ArtifactError> {
+pub fn parse_json_document(text: &str) -> Result<JsonValue, JsonError> {
     let bytes = text.as_bytes();
     let mut index = 0;
     let value = parse_json_value(bytes, &mut index)
-        .ok_or_else(|| ArtifactError::ManifestMalformed("cannot parse JSON".to_string()))?;
+        .ok_or_else(|| JsonError("cannot parse JSON".to_string()))?;
     skip_json_ws(bytes, &mut index);
     if index != bytes.len() {
-        return Err(ArtifactError::ManifestMalformed(
+        return Err(JsonError(
             "trailing content after JSON document".to_string(),
         ));
     }

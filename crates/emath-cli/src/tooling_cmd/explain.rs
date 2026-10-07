@@ -121,7 +121,7 @@ pub(super) const DIAGNOSTIC_ROWS: [(&str, &str, &str, &str); 15] = [
 /// `language/reference/` (the language owns those diagnostics).
 /// The code registry: each code the compiler and tools emit, most with a
 /// one-line meaning (`- `CODE`: meaning`, continued on indented lines).
-/// `crates/emath-hir/tests/registry_complete.rs` keeps every emitted code
+/// `tests/emath-cli/tests/registry_complete.rs` keeps every emitted code
 /// in it.
 const CODE_REGISTRY: &str = include_str!("../../../../implementation/ERROR_CODES.md");
 

@@ -10,11 +10,9 @@ emath-core = { path = "../../crates/emath-core" }
 emath-ir = { path = "../../crates/emath-ir" }
 emath-exec-ir = { path = "../../crates/emath-exec-ir" }
 emath-term = { path = "../../crates/emath-term" }
-emath-genesis = { path = "../../crates/emath-genesis" }
 emath-sema = { path = "../../crates/emath-sema" }
 emath-syntax = { path = "../../crates/emath-syntax" }
 emath-cli = { path = "../../crates/emath-cli" }
-emath-provider-api = { path = "../../crates/emath-provider-api" }
 emath-rust-backend = { path = "../../crates/emath-rust-backend" }
 emath-rt = { path = "../../crates/emath-rt" }
 

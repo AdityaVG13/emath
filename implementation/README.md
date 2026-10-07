@@ -24,7 +24,7 @@ HEAD without a named, intentional change.
 - `scripts/validate.sh` runs the doc-gates; `scripts/check_doc_gates.py` and
   `scripts/check_doc_pins.py` are the individual lanes.
 - `ERROR_CODES.md`'s annex is regenerated with `scripts/dump_error_codes.py`;
-  `crates/emath-hir/tests/registry_complete.rs` enforces the same extraction
+  `tests/emath-cli/tests/registry_complete.rs` enforces the same extraction
   rule so the two cannot drift.
 - Other material in this directory is local-only (gitignored); the shipped
   set is exactly the files listed here.

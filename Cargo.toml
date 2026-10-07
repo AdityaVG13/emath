@@ -4,53 +4,32 @@ members = [
   "crates/emath-core",
   "crates/emath-syntax",
   "crates/emath-ir",
-  "crates/emath-plan",
   "crates/emath-sema",
   "crates/emath-exec-ir",
-  "crates/emath-adapter-dew",
-  "crates/emath-hir",
   "crates/emath-rust-backend",
   "crates/emath-rt",
   "crates/emath-artifact",
-  "crates/emath-provider-api",
   "crates/emath-build",
   "crates/emath-lab-core",
   "crates/emath-schema",
-  "crates/emath-store",
   "crates/emath-cli",
   "crates/emath-term",
-  "crates/emath-world-ir",
-  "crates/emath-genesis",
-  "crates/emath-adapter-rumoca",
-  "crates/emath-registry",
   "crates/emath-wasm",
   "crates/emath-tui",
   "tests/harness",
-  "tests/emath-adapter-dew",
-  "tests/emath-adapter-rumoca",
-  "tests/emath-artifact",
   "tests/emath-build",
   "tests/emath-cli",
   "tests/emath-exec-ir",
-  "tests/emath-genesis",
-  "tests/emath-hir",
   "tests/emath-ir",
   "tests/emath-lab-core",
-  "tests/emath-plan",
-  "tests/emath-provider-api",
   "tests/emath-schema",
   "tests/emath-rust-backend",
   "tests/emath-rt",
   "tests/emath-sema",
-  "tests/emath-store",
   "tests/emath-syntax",
   "tests/emath-term",
-  "tests/emath-world-ir",
   "tests/emath-wasm",
-  "tests/emath-registry",
   "tests/emath-tui",
-  "examples/provider-skeleton",
-  "examples/generated/semantic-genesis-worlds",
   "xtask",
 ]
 exclude = ["bootstrap", "artifacts"]
@@ -69,52 +48,18 @@ emath-test-harness = { path = "tests/harness" }
 emath-core = { path = "crates/emath-core" }
 emath-syntax = { path = "crates/emath-syntax" }
 emath-ir = { path = "crates/emath-ir" }
-emath-plan = { path = "crates/emath-plan" }
 emath-sema = { path = "crates/emath-sema" }
 emath-exec-ir = { path = "crates/emath-exec-ir" }
 emath-tui = { path = "crates/emath-tui" }
 emath-rust-backend = { path = "crates/emath-rust-backend" }
 emath-rt = { path = "crates/emath-rt" }
 emath-artifact = { path = "crates/emath-artifact" }
-emath-provider-api = { path = "crates/emath-provider-api" }
 emath-build = { path = "crates/emath-build" }
 emath-lab-core = { path = "crates/emath-lab-core" }
-emath-hir = { path = "crates/emath-hir" }
 emath-schema = { path = "crates/emath-schema" }
-emath-adapter-dew = { path = "crates/emath-adapter-dew" }
 emath-cli = { path = "crates/emath-cli" }
 emath-term = { path = "crates/emath-term" }
-emath-world-ir = { path = "crates/emath-world-ir" }
-emath-genesis = { path = "crates/emath-genesis" }
-emath-adapter-rumoca = { path = "crates/emath-adapter-rumoca" }
 emath-wasm = { path = "crates/emath-wasm" }
-emath-registry = { path = "crates/emath-registry" }
-# FrankenStack base infrastructure: asupersync
-# replaces tokio. Optional + feature-gated: ships std-only with zero
-# mandatory third-party deps. Exact-commit pin mirrors UPSTREAM_LOCK.json
-# row 11; never move to a floating version.
-# Optionality is decided per consumer (emath-cli lsp gate: async-runtime feature),
-# so this entry must not be marked optional (Cargo rejects that at workspace
-# level).
-asupersync = { git = "https://github.com/Dicklesworthstone/asupersync.git", rev = "9eb0600e6ef4d17633dff3dc43ad99c64e72adbe", default-features = false }
-# frankensqlite evidence-state engine:
-# fsqlite facade (frankensqlite workspace) at exact-commit pin
-# 8281cf285433b1746d9c29a598152e58cc205bd8 (v0.3.11 release). Optional for the
-# workspace; the consumer (emath-store sqlite-store feature) decides
-# optionality, so this entry must not be marked optional (Cargo rejects that at
-# workspace level).
-fsqlite = { git = "https://github.com/Dicklesworthstone/frankensqlite.git", rev = "8281cf285433b1746d9c29a598152e58cc205bd8", default-features = false }
-# frankensearch artifact-corpus search engine: facade `frankensearch` v0.3.2 from repository release v1.7.0 at
-# exact-commit pin 22859f74056c31fd3a713bacecd4a1f22f0cf82d.
-# Unlike frankensqlite/frankengraphdb, frankensearch declares asupersync
-# internally as a crates.io VERSION RANGE (>=0.4.4, <0.5), NOT an internal
-# git rev: emath-search declares the same crates.io range and Cargo
-# unifies one crates.io asupersync instance for the whole emath-search graph
-# (no fgdb-style inline-git-rev unification needed). Optional for the
-# workspace; the consumer (emath-search `search` feature) decides
-# optionality, so this entry must not be marked optional (Cargo rejects that
-# at workspace level).
-frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch.git", rev = "22859f74056c31fd3a713bacecd4a1f22f0cf82d", default-features = false }
 
 # Full debuginfo made target/ balloon (every tests/ binary carries it);
 # line tables keep file:line backtraces at a fraction of the size.

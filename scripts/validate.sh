@@ -160,32 +160,23 @@ artifact, negative-control, capstone, and doc lanes.)"
 
 echo "== fork-type identity gate (AGENTS.md rule 1) =="
 # The firewall forbids fork-NATIVE TYPES/symbols in crates — not
-# identity STRINGS. `crates/emath-provider-api/src/constellation.rs` is the
-# neutral provider census (the declared single registration point):
-# `upstream_id` there is the repository id in forks/UPSTREAM_LOCK.json, and
-# plans reference providers by id strings only (module doc). CONTRACT.md
-# prose describes the same census. Both are exempt as identity DATA; every
-# other line of every scanned crate still refuses fork identifiers.
+# identity STRINGS. CONTRACT.md prose may name upstreams as identity DATA;
+# every other line of every scanned crate still refuses fork identifiers.
 if grep -rniE '(^|[^a-z0-9_.-])(dew|rumoca|wrenfold|franken|modelica)([^a-z0-9_.-]|$)' \
-    crates/emath-core crates/emath-ir crates/emath-plan \
-    crates/emath-sema crates/emath-rt crates/emath-provider-api \
-    crates/emath-artifact examples/provider-skeleton/src/main.rs \
-    --exclude=constellation.rs --exclude=CONTRACT.md \
+    crates/emath-core crates/emath-ir crates/emath-sema crates/emath-rt \
+    crates/emath-artifact \
+    --exclude=CONTRACT.md \
     >"$TMP_DIR/fork-grep.txt"; then
     echo "FAIL: upstream fork-type identifier leaked into a native crate or schema:" >&2
     cat "$TMP_DIR/fork-grep.txt" >&2
     exit 1
 fi
-echo "no fork-type identifiers in native crates or durable schemas (census identity strings exempt by design)"
+echo "no fork-type identifiers in native crates or durable schemas"
 
 # Cut with tests/valid/affine_scorer.emath (dead-lane cut a9b5c3d) and the
 # `build --verify` flag (fit-goal surface cut bb38f0d). The generated-crate
 # host lane (demo-host-independent) went with the affine-scorer artifact
 # (2026-09-23).
-
-# Cut: the `emath-lab provider` command was removed by the constructor
-# cutover; the provider census (constellation.rs) is pinned by
-# tests/emath-provider-api (provider_constellation).
 
 echo "== negative controls =="
 # Each invalid fixture must be refused AND carry its documented code, so a
@@ -384,17 +375,16 @@ if ! SPEC_OUT="$("$PYTHON" scripts/check_spec_pin.py 2>&1)"; then
 fi
 printf '%s\n' "$SPEC_OUT"
 lane_done "conformance-register" "spec-pin" "passed" "language spec files match the pinned edition"
-# Upstream lock honesty: schema validation + adapter-seam commit binding
-# (dew seam.rs const, rumoca CONTRACT.md no-claim fence).
+# Upstream lock honesty: schema validation.
 lane_begin
 if ! LOCK_OUT="$("$PYTHON" scripts/check_upstream_lock.py 2>&1)"; then
-    echo "FAIL: upstream lock failed schema or seam-binding honesty" >&2
+    echo "FAIL: upstream lock failed schema validation" >&2
     printf '%s\n' "$LOCK_OUT" >&2
-    lane_done "conformance-register" "upstream-lock" "failed" "lock schema or seam binding drifted"
+    lane_done "conformance-register" "upstream-lock" "failed" "lock schema drifted"
     exit 1
 fi
 printf '%s\n' "$LOCK_OUT"
-lane_done "conformance-register" "upstream-lock" "passed" "lock schema-valid; adapter seams bound to lock commits"
+lane_done "conformance-register" "upstream-lock" "passed" "lock schema-valid"
 echo "conformance register: spec pin + upstream lock green"
 
 echo "== ELP pipeline gates =="
@@ -656,8 +646,7 @@ echo "language examples: admitted or refused with documented codes"
 
 # Cut: the semantic-genesis capstone family (`compile --parametric`, `genesis`,
 # arbitrary-glyphs.emath) was removed by the constructor cutover and the
-# dead-lane fixture cut; the committed generated crate stays pinned by the
-# demo-host-independent behavioral asserts above.
+# dead-lane fixture cut; its committed generated crate went with emath-genesis.
 
 lane_done "validate" "gate" "passed" "all lanes green"
 summary_done

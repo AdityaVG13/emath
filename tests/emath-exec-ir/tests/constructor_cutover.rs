@@ -1792,16 +1792,6 @@ emath function Fib:
                 .unwrap_or(""),
             "query",
         );
-        p.eq(
-            "core-model-not-a-kind",
-            emath_ir::KindSchema::core_model().name(),
-            "",
-        );
-        p.eq(
-            "core-policy-not-a-kind",
-            emath_ir::KindSchema::core_policy().name(),
-            "",
-        );
         let (feature_tree, feature_diag) = parse_str(
             "emath feature Tool:\n    schema: \"emath.feature-capsule\"\n    feature_id: \"user.tool\"\n    class: \"capability\"\n    maturity: \"stable\"\n    summary: \"not a constructor\"\n    source: \"test\"\n    surface: \"none\"\n    semantics: \"none\"\n    exactness: \"none\"\n    effects: \"pure\"\n    worlds: \"std.world.reference\"\n    providers: \"n/a\"\n    artifacts: \"source\"\n    reference: \"authored\"\n    conformance: \"none\"\n    migration: \"gone\"\n    authority_target: \"capsule-active\"\n    presentation: \"none\"\n    agent: \"none\"\n",
         );
