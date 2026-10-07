@@ -97,7 +97,7 @@ fn native_numeric_boundaries() {
     ).unwrap();
     std::fs::write(
         out.join("Cargo.toml"),
-        format!("{}\n[workspace]\n", emission.manifest),
+        &emission.manifest,
     )
     .unwrap();
     let main = r#"

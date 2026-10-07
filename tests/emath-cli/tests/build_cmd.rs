@@ -235,6 +235,35 @@ fn probe() {
         );
     });
 
+    p.case("emitted-crate-is-its-own-workspace-root", |p| {
+        // The default output (`target/emath`) sits inside the user's
+        // project; under a parent workspace Cargo refuses a package that
+        // is neither a member nor its own root.
+        let parent = scratch("nested-ws");
+        let out = parent.join("target/emath");
+        std::fs::create_dir_all(&parent).expect("parent dir");
+        std::fs::write(parent.join("Cargo.toml"), "[workspace]\nmembers = []\n").expect("parent manifest");
+        let src = scratch("nested-src");
+        std::fs::write(&src, SINGLE).expect("write source");
+        let (_, code) = build(&src, &["--out", &out.to_string_lossy()]);
+        p.eq("exit", code, EXIT_OK as i32);
+        let located = std::process::Command::new(env!("CARGO"))
+            .args(["locate-project", "--workspace", "--message-format", "plain", "--manifest-path"])
+            .arg(out.join("Cargo.toml"))
+            .output()
+            .expect("run cargo locate-project");
+        p.demand(
+            "own workspace root",
+            located.status.success()
+                && String::from_utf8_lossy(&located.stdout).trim() == out.join("Cargo.toml").to_string_lossy(),
+            format!(
+                "emitted crate must be its own workspace root: {}{}",
+                String::from_utf8_lossy(&located.stdout),
+                String::from_utf8_lossy(&located.stderr)
+            ),
+        );
+    });
+
     p.case("closure-param-emits-native-entry", |p| {
         let src = scratch("closure-src");
         let out = scratch("closure-out");
