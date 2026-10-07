@@ -3396,18 +3396,9 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
- "emath-cli",
- "emath-cli-lab",
  "emath-core",
  "emath-exec-ir",
- "emath-genesis",
- "emath-lab-core",
  "emath-schema",
- "emath-sema",
- "emath-store",
- "emath-syntax",
- "emath-term",
- "emath-world-ir",
 ]
 
 [[package]]

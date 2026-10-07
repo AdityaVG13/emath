@@ -208,7 +208,7 @@ inventory must be checked before redistribution.
 | `examples/demo-host-independent` | `examples/demo-host-independent` | fingerprint-free behavioral-assert host |
 | `examples/provider-skeleton` | `examples/provider-skeleton` | provider adapter skeleton |
 | `examples/generated/semantic-genesis-worlds` | `examples/generated/semantic-genesis-worlds` | generated parametric worlds crate (golden artifacts) |
-| `xtask` | `xtask` | demo/tooling carrier (`cargo xtask demo ...`) |
+| `xtask` | `xtask` | repository tasks: `generate-language`, `check-wasm`, `build-web`, `serve-web` |
 
 ## Planned crates (not yet in `crates/`, never certifying)
 

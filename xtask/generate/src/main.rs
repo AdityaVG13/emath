@@ -6,7 +6,7 @@ mod generate_language;
 fn main() {
     let mut args = std::env::args().skip(1);
     let Some(command) = args.next() else {
-        eprintln!("usage: cargo xtask <generate-language|demo|build-web|check-wasm|serve-web>");
+        eprintln!("usage: cargo xtask <generate-language|build-web|check-wasm|serve-web>");
         std::process::exit(2);
     };
     if command == "generate-language" {
@@ -16,7 +16,7 @@ fn main() {
     }
 
     let status = std::process::Command::new("cargo")
-        .args(["run", "-q", "-p", "xtask", "--bin", "xtask", "--features", "demos", "--"])
+        .args(["run", "-q", "-p", "xtask", "--bin", "xtask", "--"])
         .arg(command)
         .args(args)
         .status()
