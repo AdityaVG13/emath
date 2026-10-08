@@ -108,7 +108,19 @@ Recursive-call arguments and results, closure-call arguments, and authored recor
 fields share numeric representation conversion, including sequence elements and
 sequence index operands. A fixed
 `i64` slot checks an `ExactInt` with `to_i64` and returns `E-INT-002` outside
-that lane. Int-to-Rat retains both exact integer parts without an i128
+that lane; checked i64 arithmetic returns the same fault on overflow, never a
+panic.
+
+The i64 lane has an exact fallback. An entry whose i64 body can return that
+fault, and whose body uses only scalar, sequence, branch, frame and call ops
+over Int/Rat/Float64/Bool carriers, also emits a private twin
+`emath_exact_{name}`. The twin renders Int carriers, Int literals and declared
+Int signatures as `ExactInt`. The public entry runs the i64 body
+(`emath_fast_{name}`) and, on that fault, re-runs the twin under the same
+budget (`Frame::hold`). It returns the VM's answer narrowed onto the declared
+carrier, or `E-INT-002` when the answer itself does not fit i64. Twins call
+twins; other callees keep their public entries. Bodies with records, closures,
+Code or buffers keep the plain refusal. Int-to-Rat retains both exact integer parts without an i128
 crossing. Authored integer fields and local mathematical binders retain
 `ExactInt`, including scalar accumulators initialized with small literals.
 Inferred-wide recursive and sibling frames and results stay wide;
@@ -244,7 +256,9 @@ exactly one reference layer, so consumers add `&` only for owned operand
 expressions. Index lanes that `.cloned()`/`.copied()` (an `ExactInt` element,
 copy elements) render owned values and take the `&`.
 `tests/emath-rust-backend/tests/numeric_boundaries.rs` compiles and executes the
-generated fixture, including named overflow refusals and wide-frame preservation.
+generated fixture, including named overflow refusals, wide-frame preservation,
+and the exact fallback (intermediate overflow, a result past i64, overflow in a
+recursive callee, and a tail walk over a sequence).
 
 ## Authored sugar and refusal carriers
 

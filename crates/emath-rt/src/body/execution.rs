@@ -40,16 +40,22 @@ pub struct Frame {
 impl Frame {
     /// One authored call: charges work and one level of depth.
     pub fn enter() -> Result<Self, String> {
-        Self::open(true)
+        Self::open(true, 1)
     }
 
     /// The public wrapper of a recursive entry: its first `__self` frame is
     /// the authored call, so the wrapper charges work but no depth.
     pub fn enter_entry() -> Result<Self, String> {
-        Self::open(false)
+        Self::open(false, 1)
     }
 
-    fn open(counted: bool) -> Result<Self, String> {
+    /// Holds the run's budget across an entry's i64 attempt and its exact
+    /// re-run, so the re-run continues the same allowance. Charges nothing.
+    pub fn hold() -> Result<Self, String> {
+        Self::open(false, 0)
+    }
+
+    fn open(counted: bool, work: u64) -> Result<Self, String> {
         let limit_cap = if ON_STACK.with(Cell::get) { MAX_DEPTH } else { OFF_STACK_DEPTH };
         STATE.with(|slot| {
             let mut slot = slot.borrow_mut();
@@ -62,12 +68,12 @@ impl Frame {
             });
             let fault = if let Some(fault) = state.fault {
                 Some(fault)
-            } else if state.remaining == 0 {
+            } else if state.remaining < work {
                 Some(WORK_FAULT)
             } else if counted && state.depth >= state.max_depth.min(limit_cap) {
                 Some(DEPTH_FAULT)
             } else {
-                state.remaining -= 1;
+                state.remaining -= work;
                 state.depth += usize::from(counted);
                 None
             };

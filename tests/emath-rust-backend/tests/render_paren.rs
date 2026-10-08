@@ -4,8 +4,8 @@
 //! Regression fence for over-wrapped emission: register inlining wrapped
 //! every substituted token and each method call wrapped itself, so
 //! `int_quot(a + b, c)` emitted
-//! `(((a).checked_add((b))).expect("i64 overflow"))` where canonical Rust
-//! is `a.checked_add(b).expect("i64 overflow")`. The pins below demand
+//! `(((a).checked_add((b))).ok_or(..))` where canonical Rust is
+//! `a.checked_add(b).ok_or(..)`. The pins below demand
 //! the canonical chain and refuse any paren-wrapped bare atom.
 
 use emath_rust_backend::emit_constructor_program;
@@ -91,7 +91,7 @@ fn probe() {
         p.contains(
             "canonical checked chain",
             &body,
-            "a.checked_add(b).expect(\"i64 overflow\")",
+            "a.checked_add(b).ok_or(\"E-INT-002: exact integer result exceeds the i64 lane\")",
         );
         p.contains(
             "quot operand bare",

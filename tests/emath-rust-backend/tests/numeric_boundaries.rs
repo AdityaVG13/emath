@@ -154,6 +154,14 @@ fn native_numeric_boundaries() {
             ("1".into(), "0".into(), "9".into(), "2".into()),
             "native recurrence must preserve subtraction order, guard orientation, and terminal base"
         );
+        // An i64 overflow re-runs the call exactly: the VM's answer when it
+        // fits the i64 carrier, the named lane refusal when it does not.
+        assert_eq!(SquareGap(4294967296).unwrap(), 1);
+        assert_eq!(WideSquare(3).unwrap(), 9);
+        assert!(WideSquare(4294967296).unwrap_err().starts_with("E-INT-002"));
+        assert_eq!(PowerSign(70).unwrap(), 1);
+        assert_eq!(WindowGap(30).unwrap(), 0);
+        assert_eq!(WindowGap(3).unwrap(), 0);
         println!("native numeric boundaries passed");
     }
     "#;

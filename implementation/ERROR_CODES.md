@@ -319,8 +319,10 @@ LSP (`crates/emath-lsp/src`):
   literal denominators, `EvalFault::Arithmetic` at run otherwise):
   never a panic, never a silent zero.
 - `E-INT-002`: an exact integer does not fit the native i64 lane (a
-  buffer integer, an index, or a ratio narrowed onto i64). The narrowing
-  is checked, never truncated.
+  buffer integer, an index, a ratio narrowed onto i64, or checked i64
+  arithmetic). The narrowing is checked, never truncated. An entry with an
+  exact twin re-runs over `ExactInt` on this fault, so it surfaces only when
+  the answer itself does not fit i64.
 - `E-INT-003`: an exact-integer operand is a non-integral rational.
 
 ### Host/lab (`crates/emath-rust-backend/src/rust_ir/host.rs`)

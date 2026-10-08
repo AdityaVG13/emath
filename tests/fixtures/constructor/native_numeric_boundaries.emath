@@ -337,3 +337,72 @@ emath function RecordIteration:
         example <empty>:
             given n = 0
             expect result == 0
+
+emath function SquareGap:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = x * x - (x - 1) * (x + 1)
+    tests:
+        example <intermediate_past_i64>:
+            given x = 4294967296
+            expect result == 1
+
+emath function WideSquare:
+    inputs:
+        x: Int
+    outputs:
+        result: Int
+    definitions:
+        result = x * x
+    tests:
+        example <result_past_i64>:
+            given x = 4294967296
+            expect result == 18446744073709551616
+
+emath function PowerOf:
+    inputs:
+        b: Int
+        e: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if e == 0: 1 else: b * PowerOf(b, e - 1)
+
+emath function PowerSign:
+    inputs:
+        e: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if PowerOf(2, e) > 0: 1 else: 0
+    tests:
+        example <callee_past_i64>:
+            given e = 70
+            expect result == 1
+
+emath function WindowProduct:
+    inputs:
+        ds: sequence(Int)
+        k: Int
+        acc: Int
+        span: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if k == span: acc else: WindowProduct(ds, k + 1, acc * ds[k], span)
+
+emath function WindowGap:
+    inputs:
+        span: Int
+    outputs:
+        result: Int
+    definitions:
+        sevens = [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
+        result = WindowProduct(sevens, 0, 1, span) - 7 * WindowProduct(sevens, 0, 1, span - 1)
+    tests:
+        example <tail_walk_past_i64>:
+            given span = 30
+            expect result == 0

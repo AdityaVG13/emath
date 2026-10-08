@@ -1,6 +1,6 @@
 //! Runtime calls and universal register/type helpers.
 
-use super::{EmirProgram, EmirValue, Expr, ValueKind, kind_at, render_expr, EmirOp, typed_operand, BackendError, EmirSliceAxis};
+use super::{EmirProgram, EmirValue, Expr, ValueKind, kind_at, render_expr, EmirOp, typed_operand, BackendError, EmirSliceAxis, INT_LANE_FAULT};
 
 pub(crate) fn operand(_program: &EmirProgram, value: EmirValue) -> Expr {
     Expr::Var(format!("__e{}", value.0))
@@ -144,11 +144,7 @@ impl Drop for SharedCaptureScope {
     fn drop(&mut self) { SHARED_CAPTURES.with(|stack| { stack.borrow_mut().pop(); }); }
 }
 pub(super) fn checked_integer_result(call: Expr) -> Expr {
-    if REFERENCE_CONTEXT.with(std::cell::Cell::get) {
-        map_runtime_result(format!("{}.ok_or(\"i64 overflow\")", render_expr(&call)))
-    } else {
-        Expr::MethodCall { receiver: Box::new(call), method: "expect".into(), args: vec![Expr::Str("i64 overflow".into())] }
-    }
+    map_runtime_result(format!("{}.ok_or({INT_LANE_FAULT:?})", render_expr(&call)))
 }
 
 pub(super) fn index_f64(program: &EmirProgram, value: EmirValue, kinds: &[ValueKind]) -> String {

@@ -16,13 +16,15 @@
 //! backend's carrier-signature interchange (an unmappable field leaves
 //! the record unregistered; referencing it refuses by name).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use emath_core::tree::SyntaxTree;
 
 use crate::codegen_render::{
-    EntryAbi, EntryAbiScope, InputKinds, SiblingEntryScope, ValueKind, entry_abi,
-    internal_entry_name, program_kind, register_entry_abi,
+    EntryAbi, EntryAbiScope, ExactTwinScope, INT_LANE_FAULT, InputKinds, SiblingEntryScope,
+    ValueKind, entry_abi, exact_twin_name, internal_entry_name, numeric_boundary_value,
+    program_kind, register_entry_abi,
 };
 use crate::{emit_constructor_entry_abi, emit_record_definitions, AuthoredRecord};
 
@@ -184,7 +186,6 @@ pub fn emit_constructor_crate(
     // backend's carrier-signature interchange. An object with a field
     // the interchange cannot map is left unregistered - referencing it
     // then refuses with the named no-layout error instead of guessing.
-    use std::collections::BTreeSet;
     let objects: BTreeSet<String> = tree
         .items
         .iter()
@@ -296,7 +297,7 @@ pub fn emit_constructor_crate(
     // sibling a lowered program names - recursion-cycle edges
     // (`CallSibling`, which need an entry) and inlined sibling frames
     // (named `CallFrame`s, which may call one) - to a fixed point.
-    use std::collections::{BTreeMap, VecDeque};
+    use std::collections::VecDeque;
     let mut lowered: BTreeMap<String, Result<emath_exec_ir::constructor_emir::LoweredFunction, String>> =
         BTreeMap::new();
     let mut session = emath_exec_ir::constructor_emir::ConstructorLowering::new(&tree);
@@ -624,6 +625,7 @@ pub fn emit_constructor_crate(
             }
         }
     }
+    emit_exact_twins(&post_order, &lowered, &emitted_entries, &tree, &objects, &records, &mut rendered);
     for name in required.iter().chain(&helpers) {
         if let Some(text) = rendered.get(name) {
             rust.push_str(text);
@@ -990,6 +992,236 @@ fn node_entry_adapter(
         "#[allow(dead_code)]\nfn emath_node_callable_{name}(__args: &[emath_rt::code_tree::NodeValue]) -> Result<emath_rt::code_tree::NodeValue, String> {{\n    if __args.len() != {arity} {{ return Err(format!(\"type: `{name}` expects {arity} argument(s), got {{}}\", __args.len())); }}\n    {}\n    let __node_result = crate::{target}({})?;\n    Ok({value})\n}}\n\n",
         bindings.join("\n    "), arguments.join(", "),
     ))
+}
+
+type Lowered = BTreeMap<String, Result<emath_exec_ir::constructor_emir::LoweredFunction, String>>;
+
+/// The i64 lane's exact fallback. An entry whose i64 body can refuse with
+/// [`INT_LANE_FAULT`] gets a private twin rendered over `ExactInt`
+/// carriers, and its public entry re-runs the twin on that fault. The VM's
+/// Int is exact, so the twin computes the VM's answer; the public entry
+/// narrows it onto the declared i64 carrier and returns the same fault only
+/// when the answer itself does not fit. Only bodies of scalar, sequence,
+/// branch and call ops qualify. A twin that does not render, or whose ABI
+/// drifts from its table row, is dropped and the pass re-runs without it.
+fn emit_exact_twins(
+    post_order: &[String],
+    lowered: &Lowered,
+    emitted_entries: &[(String, Vec<(String, Option<String>)>, EntryAbi)],
+    tree: &SyntaxTree,
+    objects: &BTreeSet<String>,
+    records: &[AuthoredRecord],
+    rendered: &mut BTreeMap<String, String>,
+) {
+    let fast: BTreeMap<&str, (&[(String, Option<String>)], &EntryAbi)> = emitted_entries
+        .iter()
+        .map(|(name, inputs, abi)| (name.as_str(), (inputs.as_slice(), abi)))
+        .collect();
+    let program_of = |name: &str| match lowered.get(name) {
+        Some(Ok(function)) => Some(&function.program),
+        _ => None,
+    };
+    let mut twins: BTreeSet<String> = BTreeSet::new();
+    for name in post_order {
+        let (Some((_, abi)), Some(program), Some(text)) =
+            (fast.get(name.as_str()), program_of(name), rendered.get(name))
+        else {
+            continue;
+        };
+        let mut callees = Vec::new();
+        collect_named_calls(program, true, &mut callees);
+        let faults = text.contains(INT_LANE_FAULT) || callees.iter().any(|callee| twins.contains(callee));
+        if faults
+            && exact_abi(abi).is_some()
+            && exact_body(program)
+            && text.contains(&fast_entry_head(name))
+        {
+            twins.insert(name.clone());
+        }
+    }
+    loop {
+        if twins.is_empty() {
+            return;
+        }
+        let _pass = ExactTwinScope::enter(twins.clone());
+        let mut table: BTreeMap<String, EntryAbi> = twins
+            .iter()
+            .filter_map(|name| Some((name.clone(), exact_abi(fast[name.as_str()].1)?)))
+            .collect();
+        let input_names = |name: &str| -> Vec<String> {
+            fast[name].0.iter().map(|(input, _)| input.clone()).collect()
+        };
+        // Twin results feed callers' kinds: settle them as the fast pass does.
+        let mut unsettled = None;
+        for _ in 0..=table.len() {
+            let _scope = SiblingEntryScope::enter(table.clone());
+            let mut changed = false;
+            for name in &twins {
+                let names = input_names(name);
+                let frame = names.iter().cloned().zip(table[name].inputs.iter().cloned()).collect();
+                let result = program_kind(program_of(name).expect("twin is lowered"), &names, &[], &frame);
+                if exact_kind(&result).is_none() {
+                    unsettled = Some(name.clone());
+                    break;
+                }
+                let row = table.get_mut(name).expect("twin has a row");
+                changed |= row.result != result;
+                row.result = result;
+            }
+            if unsettled.is_some() || !changed {
+                break;
+            }
+        }
+        if let Some(name) = unsettled {
+            twins.remove(&name);
+            continue;
+        }
+        let _scope = SiblingEntryScope::enter(table.clone());
+        let _entries = EntryAbiScope::enter(BTreeSet::new());
+        let mut texts = Vec::new();
+        let mut failed = None;
+        for name in post_order.iter().filter(|name| twins.contains(*name)) {
+            let output = declared_output(tree, name, objects);
+            let output = output.as_ref().map(|(output, signature)| (output.as_str(), signature.as_str()));
+            match emit_constructor_entry_abi(
+                program_of(name).expect("twin is lowered"),
+                name,
+                fast[name.as_str()].0,
+                output,
+                records,
+            ) {
+                Ok((text, abi)) if abi == table[name] => {
+                    register_entry_abi(name, abi);
+                    texts.push((name.clone(), text));
+                }
+                _ => {
+                    failed = Some(name.clone());
+                    break;
+                }
+            }
+        }
+        if let Some(name) = failed {
+            twins.remove(&name);
+            continue;
+        }
+        let entries: Vec<_> = texts
+            .into_iter()
+            .filter_map(|(name, twin)| {
+                let (inputs, abi) = fast[name.as_str()];
+                Some((name.clone(), twin, exact_entry(&name, inputs, abi, &table[&name])?))
+            })
+            .collect();
+        for (name, twin, entry) in entries {
+            if let Some(text) = rendered.get_mut(&name) {
+                *text = text.replacen(&fast_entry_head(&name), &format!("fn emath_fast_{name}("), 1);
+                text.push_str(&twin);
+                text.push('\n');
+                text.push_str(&entry);
+            }
+        }
+        return;
+    }
+}
+
+fn fast_entry_head(name: &str) -> String {
+    format!("pub fn {}(", crate::rust_ir::ast::escape_ident(name))
+}
+
+/// The public entry over an i64 body and its exact twin.
+fn exact_entry(name: &str, inputs: &[(String, Option<String>)], fast: &EntryAbi, exact: &EntryAbi) -> Option<String> {
+    use crate::rust_ir::ast::{escape_ident, Expr};
+    use crate::rust_ir::render::{render_expr, render_ty};
+    let mut params = Vec::new();
+    let mut fast_args = Vec::new();
+    let mut exact_args = Vec::new();
+    for ((input, _), (fast_kind, exact_kind)) in inputs.iter().zip(fast.inputs.iter().zip(&exact.inputs)) {
+        let arg = escape_ident(input);
+        params.push(format!("{arg}: {}", render_ty(&fast_kind.rust_ty().ok()?)));
+        fast_args.push(if fast_kind.is_copy() { arg.clone() } else { format!("{arg}.clone()") });
+        exact_args.push(if fast_kind == exact_kind {
+            arg
+        } else {
+            render_expr(&numeric_boundary_value(&Expr::Raw(arg), fast_kind, exact_kind, input)?)
+        });
+    }
+    let narrowed = if fast.result == exact.result {
+        "__exact".to_string()
+    } else {
+        render_expr(&numeric_boundary_value(&Expr::Raw("__exact".into()), &exact.result, &fast.result, name)?)
+    };
+    let (open, close) = if fast.inputs.iter().all(ValueKind::is_send) && fast.result.is_send() {
+        ("    emath_rt::execution::on_stack(move || {\n", "    })\n")
+    } else {
+        ("", "")
+    };
+    Some(format!(
+        "pub fn {ident}({params}) -> Result<{ty}, String> {{\n{open}    let __native_entry = emath_rt::execution::Frame::hold()?;\n    let __native_value = match emath_fast_{name}({fast_args}) {{\n        Err(fault) if fault == {INT_LANE_FAULT:?} => {{\n            let __exact = {twin}({exact_args})?;\n            {narrowed}\n        }}\n        other => other?,\n    }};\n    __native_entry.check()?;\n    Ok(__native_value)\n{close}}}\n",
+        ident = escape_ident(name),
+        params = params.join(", "),
+        ty = render_ty(&fast.result.rust_ty().ok()?),
+        fast_args = fast_args.join(", "),
+        twin = exact_twin_name(name),
+        exact_args = exact_args.join(", "),
+    ))
+}
+
+/// A carrier's exact counterpart: Int widens to `ExactInt`; carriers the
+/// twin cannot take return `None`.
+fn exact_kind(kind: &ValueKind) -> Option<ValueKind> {
+    match kind {
+        ValueKind::I64 => Some(ValueKind::ExactInt),
+        ValueKind::ExactInt | ValueKind::F64 | ValueKind::Rational | ValueKind::Bool => Some(kind.clone()),
+        ValueKind::Vector(inner) => exact_kind(inner).map(|inner| ValueKind::Vector(Box::new(inner))),
+        _ => None,
+    }
+}
+
+fn exact_abi(abi: &EntryAbi) -> Option<EntryAbi> {
+    Some(EntryAbi {
+        inputs: abi.inputs.iter().map(exact_kind).collect::<Option<_>>()?,
+        result: exact_kind(&abi.result)?,
+    })
+}
+
+/// Whether every op renders over exact carriers: scalars, sequences,
+/// branches, frames and calls. Records, closures, code and buffers keep
+/// the i64 lane's refusal.
+fn exact_body(program: &emath_exec_ir::EmirProgram) -> bool {
+    use emath_exec_ir::EmirOp;
+    program.ops.iter().all(|(op, _)| match op {
+        EmirOp::ConstF64(_)
+        | EmirOp::ConstI64(_)
+        | EmirOp::ConstExactInt(_)
+        | EmirOp::ConstBool(_)
+        | EmirOp::LoadInput(_)
+        | EmirOp::F64Add(..)
+        | EmirOp::F64Sub(..)
+        | EmirOp::F64Mul(..)
+        | EmirOp::F64Div(..)
+        | EmirOp::Neg(_)
+        | EmirOp::ExactIntCall { .. }
+        | EmirOp::Lt(..)
+        | EmirOp::Le(..)
+        | EmirOp::Gt(..)
+        | EmirOp::Ge(..)
+        | EmirOp::Eq(..)
+        | EmirOp::Ne(..)
+        | EmirOp::And(..)
+        | EmirOp::Or(..)
+        | EmirOp::Not(_)
+        | EmirOp::ListCreate(_)
+        | EmirOp::ListConcat(_)
+        | EmirOp::VectorLength(_)
+        | EmirOp::VectorIndex { .. }
+        | EmirOp::Refuse(_)
+        | EmirOp::RefuseValue(_)
+        | EmirOp::CallSelf { .. }
+        | EmirOp::CallSibling { .. } => true,
+        EmirOp::Branch { then_body, else_body, .. } => exact_body(then_body) && exact_body(else_body),
+        EmirOp::CallFrame { body, .. } | EmirOp::Collect { body, .. } => exact_body(body),
+        EmirOp::Iterate { body, stop, .. } => exact_body(body) && stop.as_ref().is_none_or(exact_body),
+        _ => false,
+    })
 }
 
 /// The entry parameters for one function: each lowered input with its

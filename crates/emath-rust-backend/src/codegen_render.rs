@@ -724,6 +724,9 @@ pub(crate) fn op_expr(
             render_expr(&typed_operand(program, *right, ValueKind::F64, kinds))
         ))),
         EmirOp::ConstF64(bits) => Ok(Expr::F64(*bits)),
+        EmirOp::ConstI64(value) if exact_twin_pass() => {
+            Ok(Expr::Raw(format!("emath_rt::ExactInt::from({value}i64)")))
+        }
         EmirOp::ConstI64(value) => Ok(Expr::Int(*value)),
         EmirOp::ConstExactInt(digits) => Ok(Expr::Raw(format!(
             "emath_rt::ExactInt::parse(\"{digits}\").expect(\"const-exact-int digits\")"

@@ -359,7 +359,10 @@ pub(crate) fn emit_constructor_entry_abi(
     // engine state). The public entry is the reset wrapper over a
     // body fn; in-crate calls target the body fn so a run's mint is
     // never restarted mid-run.
-    let (entry_name, wrapper) = if contains_tree_ops(program) {
+    let exact_twin = crate::codegen_render::exact_twin_pass();
+    let (entry_name, wrapper) = if exact_twin {
+        (crate::codegen_render::exact_twin_name(function_name), String::new())
+    } else if contains_tree_ops(program) {
         let body_name = crate::codegen_render::tree_entry_body_name(function_name);
         let wrapper = format!(
             "pub fn {}({params}) -> Result<{result_ty}, String> {{\n    emath_rt::execution::run(|| {{ emath_rt::code_tree::reset_mint(); {body_name}({}) }})\n}}\n#[doc(hidden)]\n",
@@ -371,8 +374,10 @@ pub(crate) fn emit_constructor_entry_abi(
         (escape_ident(function_name), String::new())
     };
     // Carriers that can cross threads run the whole call on the runtime's
-    // reserved stack, so native recursion reaches the VM's depth.
+    // reserved stack, so native recursion reaches the VM's depth. An exact
+    // twin runs under its public entry, which already holds that stack.
     let on_stack = wrapper.is_empty()
+        && !exact_twin
         && abi.inputs.iter().all(ValueKind::is_send)
         && abi.result.is_send();
     let (open, close) = if on_stack {
@@ -380,6 +385,7 @@ pub(crate) fn emit_constructor_entry_abi(
     } else {
         ("", "")
     };
+    let visibility = if exact_twin { "" } else { "pub " };
     if recursive {
         // Tail self calls rebind the `mut` parameters and `continue`
         // this loop (see `TailLoopScope`); other self calls recurse.
@@ -391,14 +397,14 @@ pub(crate) fn emit_constructor_entry_abi(
         let call_args = self_args.join(", ");
         Ok((
             format!(
-                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{open}    let __native_entry = emath_rt::execution::Frame::enter_entry()?;\n    #[allow(unused_mut, unreachable_code)]\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        let __native_call = emath_rt::execution::Frame::enter()?;\n        loop {{ return Ok({body}); }}\n    }}\n    let __native_value = __self({call_args})?;\n    __native_entry.check()?;\n    Ok(__native_value)\n{close}}}\n"
+                "{wrapper}{visibility}fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{open}    let __native_entry = emath_rt::execution::Frame::enter_entry()?;\n    #[allow(unused_mut, unreachable_code)]\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        let __native_call = emath_rt::execution::Frame::enter()?;\n        loop {{ return Ok({body}); }}\n    }}\n    let __native_value = __self({call_args})?;\n    __native_entry.check()?;\n    Ok(__native_value)\n{close}}}\n"
             ),
             abi,
         ))
     } else {
         Ok((
             format!(
-                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{open}    let __native_entry = emath_rt::execution::Frame::enter()?;\n    let __native_value = {body};\n    __native_entry.check()?;\n    Ok(__native_value)\n{close}}}\n"
+                "{wrapper}{visibility}fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{open}    let __native_entry = emath_rt::execution::Frame::enter()?;\n    let __native_value = {body};\n    __native_entry.check()?;\n    Ok(__native_value)\n{close}}}\n"
             ),
             abi,
         ))

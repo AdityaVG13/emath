@@ -64,6 +64,40 @@ pub(crate) struct EntryAbi {
     pub(crate) result: ValueKind,
 }
 
+/// The refusal every native i64 lane returns when an Int value leaves it
+/// (checked arithmetic, exact-to-i64 narrowing). An entry with an exact
+/// twin catches exactly this fault and re-runs the call over `ExactInt`.
+pub(crate) const INT_LANE_FAULT: &str = "E-INT-002: exact integer result exceeds the i64 lane";
+
+thread_local! {
+    /// Functions whose exact twin the current pass renders: in-crate calls
+    /// to them target `emath_exact_{name}`.
+    static EXACT_TWINS: std::cell::RefCell<Option<std::collections::BTreeSet<String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Guarded exact-twin rendering pass (see `EXACT_TWINS`).
+pub(crate) struct ExactTwinScope(Option<std::collections::BTreeSet<String>>);
+impl ExactTwinScope {
+    pub(crate) fn enter(twins: std::collections::BTreeSet<String>) -> Self {
+        Self(EXACT_TWINS.with(|slot| slot.replace(Some(twins))))
+    }
+}
+impl Drop for ExactTwinScope {
+    fn drop(&mut self) {
+        EXACT_TWINS.with(|slot| *slot.borrow_mut() = self.0.take());
+    }
+}
+
+/// Whether an exact-twin pass is rendering.
+pub(crate) fn exact_twin_pass() -> bool {
+    EXACT_TWINS.with(|slot| slot.borrow().is_some())
+}
+
+pub(crate) fn exact_twin_name(name: &str) -> String {
+    format!("emath_exact_{name}")
+}
+
 /// Guarded entry-ABI table (see `ENTRY_ABIS`): one crate emission's
 /// registry over its tree-lane function names, popped on drop. Outside
 /// a scope no entry is registered and every named frame inlines.
@@ -113,6 +147,9 @@ pub(crate) fn tree_entry_body_name(name: &str) -> String {
 /// The fn an in-crate call to `name` targets: the tree-lane body fn
 /// when the crate emits `name` on the tree lane, else the entry itself.
 pub(crate) fn internal_entry_name(name: &str) -> String {
+    if EXACT_TWINS.with(|slot| slot.borrow().as_ref().is_some_and(|twins| twins.contains(name))) {
+        return exact_twin_name(name);
+    }
     let tree_lane = ENTRY_ABIS.with(|stack| {
         stack
             .borrow()
@@ -374,6 +411,7 @@ impl ValueKind {
                 return ValueKind::Other;
             }
             match text.trim() {
+                "Int" | "I64" | "Nat" if exact_twin_pass() => ValueKind::ExactInt,
                 "Int" | "I64" | "Nat" => ValueKind::I64,
                 "ExactInt" => ValueKind::ExactInt,
                 "Float64" => ValueKind::F64,
@@ -1562,6 +1600,8 @@ pub(super) fn kind_of_op(
     call_self_kind: Option<&ValueKind>,
 ) -> ValueKind {
     match op {
+        // The VM's Int literals are exact; an exact twin carries them so.
+        EmirOp::ConstI64(_) if exact_twin_pass() => ValueKind::ExactInt,
         EmirOp::ConstI64(_)
         | EmirOp::VectorLength(_)
          => ValueKind::I64,
@@ -2812,7 +2852,7 @@ pub(crate) fn coerce_to_ty(expr: Expr, from: ValueKind, to: &Ty) -> Expr {
         // A fixed native i64 slot is narrower than the VM's arbitrary-precision
         // Int. Refuse an out-of-lane value rather than truncating it.
         (ValueKind::ExactInt, Ty::I64) => Expr::Raw(format!(
-            "({}).to_i64().ok_or_else(|| String::from(\"E-INT-002: exact integer result exceeds the i64 lane\"))?",
+            "({}).to_i64().ok_or_else(|| String::from({INT_LANE_FAULT:?}))?",
             render_expr(&expr)
         )),
         _ => expr,

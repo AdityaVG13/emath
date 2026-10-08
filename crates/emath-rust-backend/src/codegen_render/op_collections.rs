@@ -2,7 +2,7 @@
 
 use super::{
     BackendError, EmirOp, EmirProgram, EmirValue, Expr, ValueKind, checked_integer_operand,
-    exact_int_operand, index_f64, kind_at, kind_is_never_indexable, map_runtime_result, operand,
+    INT_LANE_FAULT, exact_int_operand, index_f64, kind_at, kind_is_never_indexable, map_runtime_result, operand,
     owned_operand, render_expr, tensor_slice_call, to_node, typed_operand,
 };
 
@@ -217,7 +217,7 @@ pub(super) fn op_collection_exprs(
                 // carrier and never fits an ExactInt register.
                 let index = render_expr(&exact_int_operand(program, *index, kinds));
                 Ok(map_runtime_result(format!(
-                    "{{ let __index = {index}.to_i64().ok_or(\"E-INT-002: exact integer result exceeds the i64 lane\"); usize::try_from(__index?).ok().and_then(|index| ({collection}).get(index)){materialize}.ok_or(\"vector index out of bounds\") }}"
+                    "{{ let __index = {index}.to_i64().ok_or({INT_LANE_FAULT:?}); usize::try_from(__index?).ok().and_then(|index| ({collection}).get(index)){materialize}.ok_or(\"vector index out of bounds\") }}"
                 )))
             } else {
                 let index = index_f64(program, *index, kinds);

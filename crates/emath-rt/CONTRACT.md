@@ -181,6 +181,8 @@ stack, and wasm targets, run in place. Emitted entries whose carriers are all
 `Send` use it. A run off that stack (an entry over `Rc` carriers, called from a
 host thread of unknown size) is capped at 512 frames and refuses with
 `E-NATIVE-DEPTH` past it. A failed thread spawn returns `E-NATIVE-STACK`.
+`Frame::hold` charges neither work nor depth; an entry holds it across its
+i64 attempt and exact re-run so both draw on one allowance.
 
 Work covers generated bodies, calls, control iterations and evaluated tree
 nodes, not VM instructions or wall-clock time. Exhaustion returns
