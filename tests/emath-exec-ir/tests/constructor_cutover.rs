@@ -3157,6 +3157,14 @@ emath function NamedTailWalk:
         }
     });
 
+    probe.case("evaluation-order-and-example-isolation", |_p| {
+        // Eager definitions in source order, the untaken `if` arm and the
+        // decided `and`/`or` operand skipped, and each test example its own
+        // evaluation (no answer carried from a shallow row lets a deep row
+        // skip the depth cap). The fixture header names the reference rows.
+        all_passed("evaluation_order.emath");
+    });
+
     probe.case("recur-record-body-preserved", |p| {
         // Pass-3 destination-first pin (S13 record lane): a `recur`
         // over a record of function literals builds its body Expr

@@ -125,9 +125,18 @@ fn evaluate_tests_on(
                 // givens or query run fails that example alone. A budget
                 // fault keeps its frames and depth for resume; the test lane
                 // never resumes, so a later example must not inherit them.
+                // Answers to non-fact calls are dropped too: reusing them
+                // would skip the work and depth a later example must pay,
+                // so its faults would depend on row order. Facts carry.
                 engine.work = 0;
                 engine.call_depth = 0;
                 engine.frames.clear();
+                engine.scalar_memo.clear();
+                for key in std::mem::take(&mut engine.memo_added) {
+                    if !super::carry::is_fact_key(&key) {
+                        engine.memo.remove(&key);
+                    }
+                }
                 let mut givens = BTreeMap::new();
                 let mut given_fault = None;
                 for (name, expr) in &given_exprs {
