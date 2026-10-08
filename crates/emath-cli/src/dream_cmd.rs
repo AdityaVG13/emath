@@ -7,6 +7,7 @@
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "dashboard")]
 use emath_tui::dashboard::app::{watch, WatchOptions};
 use emath_tui::dashboard::canvas::THEMES;
 use emath_tui::dashboard::model::{dec4, units};
@@ -23,7 +24,10 @@ use crate::{CliExit, EXIT_OK, EXIT_REFUSED};
 pub(crate) const USAGE: &str = "dream <file.emath> [--target StepFn] [--run NAME] [--overwrite] [--budget N] [--budget-step N] [--plateau-close N] [--max-batches N] [--max-units N] [--checkpoint-every N] [--keep-checkpoints N] [--work N] [--worlds w1,w2,...] [--detach] [--theme aurora|nordic|paper] [--hide p1,p2] [--no-measure] [--root DIR] | dream watch|resume|fork|export <run> | dream list";
 
 /// Viewer flags shared by every attaching subcommand.
+/// Parsed and validated even without the dashboard so a bad flag is
+/// refused the same way in both builds.
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(not(feature = "dashboard"), allow(dead_code))]
 pub(crate) struct ViewFlags {
     theme: usize,
     hidden: Vec<PanelId>,
@@ -213,6 +217,15 @@ fn launch(run: RunDir, detach: bool, view: ViewFlags, root: &Path) -> CliExit {
     attach(run, view, root)
 }
 
+#[cfg(not(feature = "dashboard"))]
+fn attach(run: RunDir, _view: ViewFlags, _root: &Path) -> CliExit {
+    if std::io::stdout().is_terminal() {
+        eprintln!("note: this emath was built without the live dashboard (cargo build -p emath-cli --features dashboard)");
+    }
+    snapshot(run)
+}
+
+#[cfg(feature = "dashboard")]
 fn attach(run: RunDir, view: ViewFlags, root: &Path) -> CliExit {
     let name = run.name();
     if !std::io::stdout().is_terminal() {

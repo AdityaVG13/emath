@@ -528,7 +528,7 @@ None. The crate inherits the workspace `forbid(unsafe_code)`.
 `dashboard`: adds the `ftui` dependency and compiles `dashboard::app`,
 the terminal presenter. The fold, model, layout and headless render
 are always compiled, so the goldens need no terminal. `emath-cli`
-enables it.
+enables it only through its own non-default `dashboard` feature.
 
 ## Conformance
 
