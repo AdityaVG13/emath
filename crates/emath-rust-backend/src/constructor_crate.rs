@@ -24,7 +24,7 @@ use emath_core::tree::SyntaxTree;
 use crate::codegen_render::{
     EntryAbi, EntryAbiScope, ExactTwinScope, INT_LANE_FAULT, InputKinds, SiblingEntryScope,
     ValueKind, entry_abi, exact_twin_name, internal_entry_name, numeric_boundary_value,
-    program_kind, register_entry_abi,
+    program_kind, register_entry_abi, substitute_signature_vars,
 };
 use crate::{emit_constructor_entry_abi, emit_record_definitions, AuthoredRecord};
 
@@ -537,16 +537,329 @@ pub fn emit_constructor_crate(
             _ => None,
         })
         .collect();
+    // Generic cycle members: a `CallSibling` edge names a callee with
+    // type parameters, which has no single-carrier entry of its own.
+    // Each call site instantiates the callee - the site's argument
+    // carriers are the instantiation - so the emitter monomorphizes
+    // ONE concrete entry per member (under the plain mangled name,
+    // which is what every site already calls) when exactly one
+    // instantiation exists. A member with no sites, with conflicting
+    // instantiations, or with an unresolvable type parameter renders
+    // no entry, and the calling function refuses by name at its
+    // `CallSibling` - the crate NEVER calls a missing entry (bead
+    // emath-qhl1i).
+    //
+    // The site walk replays the render's own kind laws (kind_of_op via
+    // value_kinds, frame bindings from argument carriers) without
+    // rendering: the render re-derives everything it needs, so a
+    // mis-collected binding can only fail to compile, never produce a
+    // wrong-but-compiling artifact.
+    let mut instantiations: BTreeMap<String, (BTreeMap<String, String>, bool)> = BTreeMap::new();
+    {
+        use crate::codegen_render;
+        fn merge_site(
+            callee: &str,
+            bound: &BTreeMap<String, String>,
+            out: &mut BTreeMap<String, (BTreeMap<String, String>, bool)>,
+        ) {
+            for (var, concrete) in bound {
+                let member = out.entry(callee.to_string()).or_default();
+                match member.0.get(var) {
+                    Some(existing) if existing != concrete => member.1 = true,
+                    _ => {
+                        member.0.insert(var.clone(), concrete.clone());
+                    }
+                }
+            }
+        }
+        fn walk_generic_sites(
+            program: &emath_exec_ir::EmirProgram,
+            kinds: &[ValueKind],
+            input_kinds: &InputKinds,
+            names: &[String],
+            states: &[String],
+            prefix: &BTreeMap<String, String>,
+            generic: &BTreeSet<String>,
+            out: &mut BTreeMap<String, (BTreeMap<String, String>, bool)>,
+        ) {
+            use crate::codegen_render;
+            use emath_exec_ir::EmirOp;
+            let kind_of = |value: emath_exec_ir::EmirValue| -> ValueKind {
+                kinds.get(value.0 as usize).cloned().unwrap_or(ValueKind::Other)
+            };
+            for (op, _) in &program.ops {
+                match op {
+                    EmirOp::CallSibling { name, inputs, declared, .. }
+                        if generic.contains(name) =>
+                    {
+                        let mut bound = prefix.clone();
+                        for (signature, value) in declared.iter().zip(inputs) {
+                            codegen_render::bind_signature_vars(
+                                signature,
+                                &kind_of(*value),
+                                &mut bound,
+                            );
+                        }
+                        merge_site(name, &bound, out);
+                    }
+                    EmirOp::CallFrame { body, inputs, declared, bindings, .. } => {
+                        // The frame's carriers: the render's law - the
+                        // frame's declared signatures bind from the
+                        // site's argument kinds (plus the enclosing
+                        // frames' bindings), and the body walks with
+                        // its own register space.
+                        let mut frame_bound = prefix.clone();
+                        frame_bound.extend(bindings.iter().cloned());
+                        for (signature, value) in declared.iter().zip(inputs) {
+                            codegen_render::bind_signature_vars(
+                                signature,
+                                &kind_of(*value),
+                                &mut frame_bound,
+                            );
+                        }
+                        let frame_names: Vec<String> = (0..usize::from(body.input_count))
+                            .map(|index| format!("__frame_input_{index}"))
+                            .collect();
+                        let mut frame_input_kinds = InputKinds::new();
+                        for (name, signature) in frame_names.iter().zip(declared) {
+                            frame_input_kinds.insert(
+                                name.clone(),
+                                ValueKind::from_signature(&codegen_render::substitute_signature_vars(
+                                    signature, &frame_bound,
+                                )),
+                            );
+                        }
+                        let body_kinds = codegen_render::value_kinds(
+                            body,
+                            &frame_names,
+                            &[],
+                            &frame_input_kinds,
+                        );
+                        walk_generic_sites(
+                            body,
+                            &body_kinds,
+                            &frame_input_kinds,
+                            &frame_names,
+                            &[],
+                            &frame_bound,
+                            generic,
+                            out,
+                        );
+                    }
+                    EmirOp::Branch {
+                        then_body, else_body, ..
+                    } => {
+                        for body in [then_body, else_body] {
+                            let body_kinds =
+                                codegen_render::value_kinds(body, names, states, input_kinds);
+                            walk_generic_sites(
+                                body, &body_kinds, input_kinds, names, states, prefix, generic,
+                                out,
+                            );
+                        }
+                    }
+                    EmirOp::ProgramLiteral { body, .. }
+                    | EmirOp::Fold { body, .. }
+                    | EmirOp::Collect { body, .. } => {
+                        let body_kinds =
+                            codegen_render::value_kinds(body, names, states, input_kinds);
+                        walk_generic_sites(
+                            body, &body_kinds, input_kinds, names, states, prefix, generic, out,
+                        );
+                    }
+                    EmirOp::Iterate { body, stop, .. } => {
+                        let body_kinds =
+                            codegen_render::value_kinds(body, names, states, input_kinds);
+                        walk_generic_sites(
+                            body, &body_kinds, input_kinds, names, states, prefix, generic, out,
+                        );
+                        if let Some(stop) = stop {
+                            let stop_kinds =
+                                codegen_render::value_kinds(stop, names, states, input_kinds);
+                            walk_generic_sites(
+                                stop, &stop_kinds, input_kinds, names, states, prefix, generic,
+                                out,
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for root in required.iter().chain(&extra_roots) {
+            let Some(Ok(function)) = lowered.get(root) else {
+                continue;
+            };
+            if !function.runnable {
+                continue;
+            }
+            let mut kinds = InputKinds::new();
+            let mut input_names = Vec::new();
+            for (input, signature) in entry_inputs(&tree, root, &function.inputs, &objects) {
+                kinds.insert(
+                    input.clone(),
+                    signature
+                        .as_deref()
+                        .map_or(ValueKind::I64, ValueKind::from_signature),
+                );
+                input_names.push(input);
+            }
+            crate::codegen_render::refine_recursive_frame_kinds(
+                &function.program,
+                &input_names,
+                &[],
+                &mut kinds,
+            );
+            let program_kinds = codegen_render::value_kinds(
+                &function.program,
+                &input_names,
+                &[],
+                &kinds,
+            );
+            walk_generic_sites(
+                &function.program,
+                &program_kinds,
+                &kinds,
+                &input_names,
+                &[],
+                &BTreeMap::new(),
+                &generic,
+                &mut instantiations,
+            );
+        }
+    }
     let mut rendered: BTreeMap<String, String> = BTreeMap::new();
     let mut refusals: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut helpers: Vec<String> = Vec::new();
     let mut emitted_entries: Vec<(String, Vec<(String, Option<String>)>, EntryAbi)> = Vec::new();
     for name in &post_order {
         if generic.contains(name) {
-            rendered.insert(
-                name.clone(),
-                format!("// function `{name}` has type parameters: each call site inlines it\n"),
+            let stub = || {
+                format!("// function `{name}` has type parameters: each call site inlines it\n")
+            };
+            let Some(Ok(function)) = lowered.get(name) else {
+                rendered.insert(name.clone(), stub());
+                continue;
+            };
+            if !function.runnable {
+                rendered.insert(name.clone(), stub());
+                continue;
+            }
+            // Monomorphize the cycle member: exactly one call-site
+            // instantiation (no conflicts) renders a concrete entry
+            // under the plain mangled name every site already calls.
+            let Some((bindings, false)) = &instantiations.get(name) else {
+                rendered.insert(name.clone(), stub());
+                continue;
+            };
+            if bindings.is_empty() {
+                rendered.insert(name.clone(), stub());
+                continue;
+            }
+            // The member's authored input signatures with the site's
+            // instantiation substituted: `Receipt<S>` under
+            // `S = Vector<ExactInt>` re-resolves where the raw
+            // generic text refused to map (`constructor_type_signature`
+            // declines a type parameter), and the entry's input kinds
+            // follow the concrete carriers, not the I64 fallback.
+            let authored_inputs: Vec<(String, Option<String>)> = tree
+                .items
+                .iter()
+                .find_map(|item| match item {
+                    emath_core::tree::Item::Declaration(decl) if decl.name == *name => {
+                        let vars: Vec<String> =
+                            decl.generics.iter().map(|generic| generic.name.clone()).collect();
+                        Some(
+                            emath_exec_ir::constructor_emir::section_typed_fields(decl, "inputs")
+                                .into_iter()
+                                .map(|(input, ty)| {
+                                    (
+                                        input,
+                                        emath_exec_ir::constructor_emir::generic_type_signature(
+                                            &ty, &objects, &vars,
+                                        ),
+                                    )
+                                })
+                                .collect(),
+                        )
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default();
+            let bound_inputs: Vec<(String, Option<String>)> = entry_inputs(
+                &tree,
+                name,
+                &function.inputs,
+                &objects,
+            )
+            .into_iter()
+            .map(|(input, signature)| {
+                let signature = signature.or_else(|| {
+                    authored_inputs
+                        .iter()
+                        .find(|(declared, _)| declared == &input)
+                        .and_then(|(_, text)| text.as_ref())
+                        .map(|text| substitute_signature_vars(text, bindings))
+                });
+                (input, signature)
+            })
+            .collect();
+            let bound_output = declared_output(&tree, name, &objects)
+                .map(|(output, signature)| (output, substitute_signature_vars(&signature, bindings)));
+            let bindings_scope = crate::codegen_render::TypeBindingScope::enter_bound(
+                &bindings
+                    .iter()
+                    .map(|(name, carrier)| (name.clone(), carrier.clone()))
+                    .collect::<Vec<_>>(),
             );
+            let mut kinds = InputKinds::new();
+            let mut input_names = Vec::new();
+            for (input, signature) in &bound_inputs {
+                kinds.insert(
+                    input.clone(),
+                    signature
+                        .as_deref()
+                        .map_or(ValueKind::I64, ValueKind::from_signature),
+                );
+                input_names.push(input.clone());
+            }
+            crate::codegen_render::refine_recursive_frame_kinds(
+                &function.program,
+                &input_names,
+                &[],
+                &mut kinds,
+            );
+            needs_module_table |= crate::contains_tree_ops(&function.program);
+            needs_definition_table |= crate::contains_body_ops(&function.program);
+            let previous_rendering =
+                crate::codegen_render::set_rendering_generic_member(Some(name.clone()));
+            let emitted =
+                emit_constructor_entry_abi(
+                    &function.program,
+                    name,
+                    &bound_inputs,
+                    bound_output
+                        .as_ref()
+                        .map(|(output, signature)| (output.as_str(), signature.as_str())),
+                    &records,
+                );
+            crate::codegen_render::set_rendering_generic_member(previous_rendering);
+            match emitted {
+                Ok((body, abi)) => {
+                    emitted_entries.push((name.clone(), bound_inputs.clone(), abi.clone()));
+                    register_entry_abi(name, abi);
+                    rendered.insert(name.clone(), format!("// function `{name}`\n{body}\n"));
+                }
+                Err(error) => {
+                    runnable = false;
+                    refusals.insert(name.clone(), vec![error.to_string()]);
+                    rendered.insert(
+                        name.clone(),
+                        format!("// `{name}` is not marked runnable: {error}\n"),
+                    );
+                }
+            }
+            drop(bindings_scope);
             continue;
         }
         let is_required = required.contains(name);
@@ -636,31 +949,48 @@ pub fn emit_constructor_crate(
     }
     // Generic objects emit one struct per instantiation the rendered
     // entries resolved; a struct's own fields may name further
-    // instantiations, so this runs to a fixed point.
+    // instantiations, so this runs to a fixed point. Rendering that
+    // follows the entries (the callable adapters over entry ABIs,
+    // the distilled definition table) resolves further instantiations,
+    // so the pass repeats after the tables assemble too.
     let mut instantiated: BTreeSet<String> = BTreeSet::new();
-    loop {
-        let fresh: Vec<AuthoredRecord> = crate::codegen_render::take_instantiations()
-            .into_iter()
-            .filter(|(name, _)| instantiated.insert(name.clone()))
-            .map(|(name, fields)| AuthoredRecord { name, fields })
-            .collect();
-        if fresh.is_empty() {
-            break;
-        }
-        for record in &fresh {
-            for (_, signature) in &record.fields {
-                crate::codegen_render::touch_record_kinds(signature);
+    let emit_instantiated = |rust: &mut String,
+                                 records: &mut Vec<AuthoredRecord>,
+                                 instantiated: &mut BTreeSet<String>,
+                                 runnable: &mut bool,
+                                 unresolved: &mut Vec<String>| {
+        loop {
+            let drained = crate::codegen_render::take_instantiations();
+            let fresh: Vec<AuthoredRecord> = drained
+                .into_iter()
+                .filter(|(name, _)| instantiated.insert(name.clone()))
+                .map(|(name, fields)| AuthoredRecord { name, fields })
+                .collect();
+            if fresh.is_empty() {
+                break;
             }
-        }
-        match emit_record_definitions(&fresh) {
-            Ok(definitions) => rust.push_str(&definitions),
-            Err(error) => {
-                runnable = false;
-                unresolved.push(error.to_string());
+            for record in &fresh {
+                for (_, signature) in &record.fields {
+                    crate::codegen_render::touch_record_kinds(signature);
+                }
             }
+            match emit_record_definitions(&fresh) {
+                Ok(definitions) => rust.push_str(&definitions),
+                Err(error) => {
+                    *runnable = false;
+                    unresolved.push(error.to_string());
+                }
+            }
+            records.extend(fresh);
         }
-        records.extend(fresh);
-    }
+    };
+    emit_instantiated(
+        &mut rust,
+        &mut records,
+        &mut instantiated,
+        &mut runnable,
+        &mut unresolved,
+    );
     // A union-lane executor (`evaluate`/`evaluate_callable` over a Code
     // input) reads the table without carrying the tree lane.
     if needs_module_table || rust.contains("&__EMATH_MODULE_TABLE") {
@@ -721,6 +1051,13 @@ pub fn emit_constructor_crate(
             "#[allow(dead_code)]\nstatic __EMATH_DEFINITIONS: std::sync::LazyLock<emath_rt::code_tree::DefinitionTable> = std::sync::LazyLock::new(|| emath_rt::code_tree::DefinitionTable {{ rows: vec![{rows}] }});\n\n"
         ));
     }
+    emit_instantiated(
+        &mut rust,
+        &mut records,
+        &mut instantiated,
+        &mut runnable,
+        &mut unresolved,
+    );
     // A function using `quote.cost`/`quote.world`/`quote.worlds` runs in
     // the reference engine, which reads the module source: the crate
     // embeds it, every module its `use` imports resolve to (so the

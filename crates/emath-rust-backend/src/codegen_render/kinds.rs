@@ -2,10 +2,10 @@
 
 use super::op_arith::exact_int_ratio_parts;
 use super::{
-    BTreeMap, BackendError, BinOp, Block, EmirOp, EmirProgram, EmirValue, Expr, FoldCombine, Stmt,
-    Ty, UnOp, checked_integer_result, escape_ident, exact_int_ref, flat_ssa, op_expr, operand,
-    infer_instantiation, owned_value, record_ident, record_layout, record_template, render_expr,
-    rt_call, to_code_value, to_node,
+    BTreeMap, BTreeSet, BackendError, BinOp, Block, EmirOp, EmirProgram, EmirValue, Expr,
+    FoldCombine, Stmt, Ty, UnOp, checked_integer_result, escape_ident, exact_int_ref, flat_ssa,
+    op_expr, operand, infer_instantiation, owned_value, record_ident, record_layout,
+    record_template, render_expr, rt_call, to_code_value, to_node,
 };
 
 /// Scalar carrier of an EMIR register. Exact carriers never widen implicitly.
@@ -490,6 +490,15 @@ impl ValueKind {
                             .map(|part| parse(part, remaining - 1))
                             .fold(ValueKind::Other, join_tuple_element);
                         ValueKind::Vector(Box::new(joined))
+                    } else if record_template(text).is_some() {
+                        // A bare record type name (`Step`,
+                        // `Receipt<Vector<ExactInt>>` as a field
+                        // signature): the dynamic record kind - the
+                        // record's own layout resolves its fields, so
+                        // projections and conversions over it kind and
+                        // lower uniformly with wrapped `Record<..>`
+                        // spellings (bead emath-qhl1i).
+                        ValueKind::Record(text.to_string())
                     } else {
                         ValueKind::Other
                     }
@@ -734,6 +743,25 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
     {
         return ValueKind::Rational;
     }
+    // An evaluated quoted value (the scalar union) binding a
+    // structured declared parameter converts through the node view
+    // at the frame binding - the tree evaluator is the runtime form
+    // that carries structure - so the body's carrier is the declared
+    // one (bead emath-qhl1i).
+    if kind == ValueKind::CodeValue {
+        let declared_kind = ValueKind::from_signature(signature);
+        if !matches!(
+            declared_kind,
+            ValueKind::CodeValue
+                | ValueKind::I64
+                | ValueKind::ExactInt
+                | ValueKind::Rational
+                | ValueKind::Bool
+                | ValueKind::Other
+        ) {
+            return declared_kind;
+        }
+    }
     kind
 }
 
@@ -759,6 +787,52 @@ pub(super) fn instantiate_declared(arg_kinds: &[ValueKind], declared: &[String])
 thread_local! {
     static TYPE_BINDINGS: std::cell::RefCell<Vec<BTreeMap<String, String>>> =
         const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    static RENDERING_GENERIC_MEMBER: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The generic cycle member whose monomorphic entry is being rendered:
+/// its own recursive edges call the entry under construction, not a
+/// missing one. Returns the previous name so a nested render restores it.
+pub(crate) fn set_rendering_generic_member(name: Option<String>) -> Option<String> {
+    RENDERING_GENERIC_MEMBER.with(|cell| std::mem::replace(&mut *cell.borrow_mut(), name))
+}
+
+pub(crate) fn rendering_generic_member() -> Option<String> {
+    RENDERING_GENERIC_MEMBER.with(|cell| cell.borrow().clone())
+}
+
+thread_local! {
+    /// Body registers of plain `quote.evaluate` decodes that a frame
+    /// binding replaced with the node-lane re-decode (the structured
+    /// parameter law). The scalar tree evaluator refuses node-shaped
+    /// trees - a node-callable call has no scalar entry - so an
+    /// ignored decode must not stay an eager let: it would fault the
+    /// checker on a certificate the binding itself decodes fine.
+    static REDECODED_CODE_EVALUATES: std::cell::RefCell<BTreeSet<u32>> =
+        const { std::cell::RefCell::new(BTreeSet::new()) };
+}
+
+/// Records a plain-decode register the frame binding ignored.
+pub(crate) fn record_redecoded_code_evaluate(index: u32) {
+    REDECODED_CODE_EVALUATES.with(|set| {
+        set.borrow_mut().insert(index);
+    });
+}
+
+/// Takes the current body's ignored-decode set (fresh scope for a
+/// nested body's own registers).
+pub(crate) fn take_redecoded_code_evaluates() -> BTreeSet<u32> {
+    REDECODED_CODE_EVALUATES.with(std::cell::RefCell::take)
+}
+
+/// Restores the enclosing body's ignored-decode set after a nested
+/// body's flattening.
+pub(crate) fn restore_redecoded_code_evaluates(saved: BTreeSet<u32>) {
+    REDECODED_CODE_EVALUATES.with(|set| set.replace(saved));
 }
 
 /// The type parameters an inlined generic frame's call site binds,
@@ -1138,7 +1212,7 @@ pub(crate) fn program_kind(
         .unwrap_or(ValueKind::Other)
 }
 
-pub(super) fn value_kinds(
+pub(crate) fn value_kinds(
     program: &EmirProgram,
     names: &[String],
     states: &[String],

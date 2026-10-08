@@ -200,7 +200,15 @@ pub(crate) fn record_layout(name: &str) -> Option<RecordFields> {
         return authored;
     }
     if let Some(fields) = instantiated_layout(name) {
-        INSTANTIATIONS.with(|used| used.borrow_mut().insert(name.to_string()));
+        // An unbound-parameter spelling (`Frame<Var<S>>`) is a walk over
+        // the generic template, not an instantiation: it needs no
+        // struct, and registering it would emit a struct whose field
+        // carriers the kind parser refuses (`Var<S>` maps to no
+        // carrier) - one such registration used to poison the whole
+        // declaration batch.
+        if !name.contains("Var<") {
+            INSTANTIATIONS.with(|used| used.borrow_mut().insert(name.to_string()));
+        }
         return Some(fields);
     }
     emath_exec_ir::native_kernel::installed_record_layout(name).map(|layout| layout.fields)

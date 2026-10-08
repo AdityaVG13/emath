@@ -1729,6 +1729,26 @@ fn evaluate_node_body(tree: &CodeTree, module: &ModuleTable) -> Result<NodeValue
                 .cloned()
                 .ok_or_else(|| String::from("invalid_index: sequence index out of range"))
         }
+        CodeTree::Call { function, args } => {
+            // A module call in a node context resolves through the
+            // table's node callables (the record-returning entries the
+            // scalar table cannot carry); arguments evaluate as nodes.
+            // Everything else - scalar calls, applied closures - keeps
+            // the scalar fallback's law.
+            if let CodeTree::Path(segments) = &**function {
+                let name = segments.join(".");
+                if let Some((_, callable)) =
+                    module.node_callables.iter().find(|(entry, _)| *entry == name)
+                {
+                    let values = args
+                        .iter()
+                        .map(|arg| evaluate_node_tree(arg, module))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    return callable(&values);
+                }
+            }
+            evaluate_tree(tree, &BTreeMap::new(), module).map(NodeValue::Scalar)
+        }
         _ => evaluate_tree(tree, &BTreeMap::new(), module).map(NodeValue::Scalar),
     }
 }

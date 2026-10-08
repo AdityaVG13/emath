@@ -88,6 +88,36 @@ const EVALUATED_FIELD: &str = "emath function probe:
         result = c.start < 0
 ";
 
+const CONFLICT_CYCLE: &str = r#"# Fixture for the cannot-monomorphize guard (bead emath-qhl1i): the
+# generic cycle f<S> <-> g<S> is reached at two different instantiations,
+# S = Int and S = sequence(Int), so no single concrete entry exists.
+# The calling function must refuse by name, and the emitted crate must
+# never call an entry that was not rendered.
+emath function f<S>:
+    inputs:
+        x: S
+    outputs:
+        result: S
+    definitions:
+        result = g(x)
+
+emath function g<S>:
+    inputs:
+        x: S
+    outputs:
+        result: S
+    definitions:
+        result = f(x)
+
+emath function conflict_caller:
+    inputs:
+        n: Int
+    outputs:
+        result: Int
+    definitions:
+        result = f(n) + length(f([n, n]))
+"#;
+
 #[test]
 fn probe() {
     boot();
@@ -167,6 +197,145 @@ fn probe() {
             "no bare field access",
             !body.contains(".start"),
             format!("bare field access off the union enum:\n{body}"),
+        );
+    });
+
+    // The generic recursion cycle (`replay` ⇄ `replay_step` ⇄
+    // `replay_checked` over `S`) in the exhaustion receipt rechecker:
+    // every member is a type-parameterized function, so no single-
+    // carrier entry exists until the emitter monomorphizes one from
+    // the call-site instantiation (`S = sequence(Int)` in the claims
+    // fixture). The emitted artifact must (a) render the concrete
+    // entry under the plain mangled name its sites already call,
+    // (b) declare every instantiated record the entry touches
+    // (`Receipt<Vector<Int>>` and friends), and (c) never call an
+    // entry that was not rendered — a member with no resolvable
+    // instantiation refuses the calling function by name instead.
+    p.case("generic-cycle-monomorphizes", |p| {
+        let source = include_str!("../../../tests/fixtures/verify/claims.emath");
+        let mut session =
+            emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
+        let checked = session.check_owned("claims.emath", source);
+        let Some(prepared) = checked.prepared.as_ref() else {
+            p.fail("check", format!("{:?}", checked.diagnostics));
+            return;
+        };
+        let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(
+            prepared,
+            std::path::Path::new("claims.emath"),
+            source,
+        ) {
+            Ok(emission) => emission,
+            Err(err) => {
+                p.fail("emit", format!("{err:?}"));
+                return;
+            }
+        };
+        // The crate is not blanket-runnable while a required producer
+        // refuses (the bound claim's certificate template, its own
+        // bead) - that is the vm-only law, not a defect. The cycle
+        // itself must monomorphize: one concrete entry under the
+        // plain mangled name its sites already call, the exhaustion
+        // checker lowering against it, every instantiated record the
+        // pair touches declared, and no call refused for a member the
+        // emitter did render.
+        let lib = emission.lib.as_str();
+        p.contains(
+            "monomorphic entry rendered",
+            lib,
+            "pub fn replay__search_receipts(",
+        );
+        p.contains("exhaustion checker lowered", lib, "pub fn exhaustion_checker(");
+        p.contains(
+            "receipt instantiation declared",
+            lib,
+            "pub struct EmathRecord_Receipt_Vector_ExactInt",
+        );
+        // The checker's certificate decode crosses the node lane: the
+        // scalar union cannot carry the receipt record, so the frame
+        // binding re-decodes the quoted tree through evaluate_node and
+        // builds the declared record from its fields (the same bridge
+        // the declared application lane uses).
+        p.contains(
+            "certificate decodes through the node lane",
+            lib,
+            "evaluate_node(&__EMATH_MODULE_TABLE)?).field(\"steps\")",
+        );
+        p.demand(
+            "no missing-entry refusal",
+            !lib.contains("no monomorphic entry"),
+            "an entry call refused for a member the emitter monomorphized",
+        );
+        p.contains(
+            "bound template refusal stays",
+            lib,
+            "quote template body must compute its declared `Int` carrier",
+        );
+    });
+
+    // The cannot-monomorphize guard itself: a generic cycle the emitter
+    // CANNOT resolve to one instantiation makes the calling function
+    // refuse BY NAME, and the crate never calls an entry it did not
+    // render (ruling 1691; the guard at the `CallSibling` arm). The
+    // cycle `f<S>` <-> `g<S>` here is reached at S = Int and at
+    // S = sequence(Int), so no single concrete entry exists.
+    p.case("unresolvable-cycle-refuses-by-name", |p| {
+        let mut session =
+            emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
+        let checked = session.check_owned("conflict_cycle.emath", CONFLICT_CYCLE);
+        let Some(prepared) = checked.prepared.as_ref() else {
+            p.fail("check", format!("{:?}", checked.diagnostics));
+            return;
+        };
+        let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(
+            prepared,
+            std::path::Path::new("conflict_cycle.emath"),
+            CONFLICT_CYCLE,
+        ) {
+            Ok(emission) => emission,
+            Err(err) => {
+                p.fail("emit", format!("{err:?}"));
+                return;
+            }
+        };
+        p.contains(
+            "caller refuses by name",
+            &emission.unresolved.join("; "),
+            "has no monomorphic entry",
+        );
+        // The crate never calls a missing entry: every `crate::<name>(`
+        // call token in the rendered code must name a rendered `pub fn`.
+        // The embedded authored source is excluded (prose, not code).
+        let code = emission
+            .lib
+            .split("static __EMATH_SOURCE")
+            .next()
+            .unwrap_or_default();
+        let defined: std::collections::BTreeSet<String> = code
+            .match_indices("pub fn ")
+            .filter_map(|(at, _)| {
+                let rest = &code[at + 7..];
+                let end = rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))?;
+                Some(rest[..end].to_string())
+            })
+            .collect();
+        let mut missing: Vec<String> = Vec::new();
+        let mut rest = code;
+        while let Some(at) = rest.find("crate::") {
+            let after = &rest[at + 7..];
+            let end = after
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(after.len());
+            let name = &after[..end];
+            if after[end..].starts_with('(') && !defined.contains(name) {
+                missing.push(name.to_string());
+            }
+            rest = &after[end..];
+        }
+        p.demand(
+            "no call to an unrendered entry",
+            missing.is_empty(),
+            format!("calls without a `pub fn`: {missing:?}"),
         );
     });
 

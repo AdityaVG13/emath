@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::rust_ir::ast::{BinOp, Block, Expr, Stmt, Ty, UnOp, escape_ident};
 use crate::rust_ir::render::render_expr;
@@ -140,6 +140,10 @@ pub(crate) fn node_family(kind: &ValueKind) -> bool {
         | ValueKind::Rational
         | ValueKind::Bool
         | ValueKind::Text => true,
+        // A record is a family member: the VM's record view IS a node
+        // record (`NodeValue::Record`), so record-typed registers and
+        // record sequences fold into the family like any other member.
+        ValueKind::Record(_) => true,
         ValueKind::Vector(element) => node_family(element),
         _ => false,
     }
@@ -148,6 +152,10 @@ pub(crate) fn node_family(kind: &ValueKind) -> bool {
 fn carries_exact_int(kind: &ValueKind) -> bool {
     match kind {
         ValueKind::ExactInt => true,
+        // A record's fields may carry exact ints at any depth: the
+        // family fold must collect through `Result` so the fields'
+        // checked narrows can propagate.
+        ValueKind::Record(_) => true,
         ValueKind::Vector(element) => carries_exact_int(element),
         _ => false,
     }
@@ -218,6 +226,37 @@ pub(crate) fn to_node(expr: Expr, kind: &ValueKind) -> Result<Expr, BackendError
             "emath_rt::code_tree::NodeValue::Scalar(emath_rt::code::CodeValue::Bool({}))",
             render_expr(&expr)
         )),
+        // A record enters the node family as the VM's record view: the
+        // base type name (the instantiation's carriers live in the
+        // fields, exactly as `artifact_bridge::record` names them),
+        // every field converted by its own carrier. The layout lookup
+        // also registers nested instantiations the fields name.
+        ValueKind::Record(name) => {
+            let base = name.split('<').next().unwrap_or(name).to_string();
+            let Some(layout) = crate::codegen_render::record_layout(name) else {
+                return Err(BackendError::UnsupportedType(format!(
+                    "code node conversion cannot resolve the layout of record `{name}`"
+                )));
+            };
+            let fields = layout
+                .iter()
+                .map(|(field, signature)| {
+                    let converted = to_node(
+                        Expr::Raw(format!(
+                            "({}).{}",
+                            render_expr(&expr),
+                            escape_ident(field)
+                        )),
+                        &ValueKind::from_signature(signature),
+                    )?;
+                    Ok(format!("({field:?}.to_string(), {})", render_expr(&converted)))
+                })
+                .collect::<Result<Vec<_>, BackendError>>()?
+                .join(", ");
+            Expr::Raw(format!(
+                "emath_rt::code_tree::NodeValue::Record({base:?}.to_string(), std::collections::BTreeMap::from([{fields}]))"
+            ))
+        }
         other => {
             return Err(BackendError::UnsupportedType(format!(
                 "code node conversion cannot represent {other:?}; supported carriers are node/Code/union/Int/Rat/Bool and their sequences"
@@ -527,7 +566,21 @@ pub(crate) fn op_expr(
             // function lives in the same crate. Arguments cross
             // through the callee's declared carriers (the same
             // frame-input law: numeric boundaries, closure handle
-            // clones, owned non-copy carriers).
+            // clones, owned non-copy carriers). A callee with NO
+            // entry (a generic cycle member the emitter could not
+            // monomorphize) refuses HERE, by name, for the function
+            // being rendered: the crate never calls a missing entry
+            // (bead emath-qhl1i). The member's OWN recursive edge is
+            // the exception: it targets the entry under construction,
+            // whose carriers the site's instantiated declarations
+            // carry.
+            if entry_abi(name).is_none()
+                && crate::codegen_render::rendering_generic_member().as_deref() != Some(name.as_str())
+            {
+                return Err(BackendError::UnsupportedType(format!(
+                    "the generic cycle member `{name}` has no monomorphic entry: its type parameters do not resolve to one instantiation at this call site"
+                )));
+            }
             let entry = internal_entry_name(name);
             let args = inputs
                 .iter()
@@ -1266,8 +1319,19 @@ pub(crate) fn op_expr(
                     }
                     None => String::from("None"),
                 };
+                // The open-constant law: a free name the module table
+                // stamps (a module function the body calls) is not an
+                // open constant - the tree evaluator resolves it
+                // through the table's callables, exactly as the VM's
+                // quote resolves a module function from the global
+                // scope. Leaving it in the free list would refuse
+                // `unbound_code` at the guard before the evaluator
+                // ever runs (the exhaustion receipt's certificate
+                // call). Authored open constants - the substitute
+                // lane's bindings - stay, in distillation order.
                 let free_list = free
                     .iter()
+                    .filter(|name| !deps.contains_key(*name))
                     .map(|name| format!("String::from({name:?})"))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -1307,7 +1371,12 @@ pub(crate) fn op_expr(
             if kinds::template_uses_tree(body, &param, free, carrier)
                 && let Some(tree) = tree
             {
-                let free = free.iter().map(|name| format!("String::from({name:?})"))
+                // The same open-constant law: dep-stamped names resolve
+                // through the module table, never as open constants.
+                let free = free
+                    .iter()
+                    .filter(|name| !deps.contains_key(*name))
+                    .map(|name| format!("String::from({name:?})"))
                     .collect::<Vec<_>>().join(", ");
                 let deps = deps.iter().map(|(name, stamp)| format!("(String::from({name:?}), {stamp}u64)"))
                     .collect::<Vec<_>>().join(", ");
@@ -1328,21 +1397,67 @@ pub(crate) fn op_expr(
             for name in &parameters {
                 inputs.insert(name.clone(), carrier_kind.clone());
             }
-            if program_kind(body, &parameters, &[], &inputs) != carrier_kind {
-                return Err(BackendError::UnsupportedType(format!(
-                    "quote template body must compute its declared `{carrier}` carrier"
-                )));
-            }
+            let body_kind = program_kind(body, &parameters, &[], &inputs);
             let _reference = ReferenceScope::enter();
             let body_code = render_expr(&value_expr(body, &parameters, &[], &inputs)?);
             // The nested body's result is a plain value; the closure
             // returns Result (a Never body - an authored refusal -
             // already renders as the error tail, mirroring the typed
-            // literal's law).
-            let tail = if program_kind(body, &parameters, &[], &inputs) == ValueKind::Never {
-                body_code
+            // literal's law). The declared domain types the parameter
+            // and the constants; the body may compute a different
+            // NUMERIC carrier, and its value crosses into the declared
+            // one through the same checked boundary a substitute uses
+            // (widening exact, narrowing checked, E-INT-002) - the
+            // VM's admission law at the template's carrier boundary
+            // (bead emath-qhl1i).
+            let crossing = if body_kind == ValueKind::Never {
+                Some(body_code)
+            } else if body_kind == carrier_kind {
+                Some(format!("Ok({body_code})"))
             } else {
-                format!("Ok({body_code})")
+                numeric_boundary_value(
+                    &Expr::Raw(body_code),
+                    &body_kind,
+                    &carrier_kind,
+                    "quote template body",
+                )
+                .map(|crossed| format!("Ok({})", render_expr(&crossed)))
+            };
+            let tail = match crossing {
+                Some(tail) => tail,
+                // A body computing a carrier the declared one cannot
+                // admit (a structured result: the filled certificate
+                // template's record) has no monomorphic `Code<V>`
+                // instantiation - the cell carries its tree alone, the
+                // same law the expression template's union lane
+                // follows: evaluation runs the shared tree evaluator,
+                // which computes exactly what the VM computes. Without
+                // a tree the typed refusal stands.
+                None => {
+                    let tree = tree.as_ref().ok_or_else(|| {
+                        BackendError::UnsupportedType(format!(
+                            "quote template body must compute its declared `{carrier}` carrier"
+                        ))
+                    })?;
+                    // The open-constant law applies here too: dep-stamped
+                    // names resolve through the module table, never as
+                    // open constants.
+                    let free = free
+                        .iter()
+                        .filter(|name| !deps.contains_key(*name))
+                        .map(|name| format!("String::from({name:?})"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let deps = deps
+                        .iter()
+                        .map(|(name, stamp)| format!("(String::from({name:?}), {stamp}u64)"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Ok(Expr::Raw(format!(
+                        "{{ emath_rt::code::open_expr(vec![{free}], {}, None, vec![{deps}].into_iter().collect()) }}",
+                        tree_expr(tree)
+                    )));
+                }
             };
             let carrier_ty = crate::rust_ir::render::render_ty(&carrier_kind.rust_ty()?);
             let unary_ty =
@@ -2118,20 +2233,52 @@ pub(crate) fn node_into(expression: &str, target: &ValueKind) -> Option<String> 
     match target {
         ValueKind::ExprCode => Some(format!("({expression}).to_code()?")),
         // A scalar node into a declared scalar: the checked projection
-        // (a Rational refuses an Int parameter by name).
-        ValueKind::I64 | ValueKind::Rational | ValueKind::Bool => {
+        // (a Rational refuses an Int parameter by name). The exact
+        // carrier rebuilds from the projected machine Int - the
+        // record layouts store exact integers (E-INT-002's boundary,
+        // mirrored here for record fields).
+        ValueKind::I64 | ValueKind::Rational | ValueKind::Bool | ValueKind::ExactInt => {
             let projection = match target {
-                ValueKind::I64 => "project_i64",
+                ValueKind::I64 | ValueKind::ExactInt => "project_i64",
                 ValueKind::Rational => "project_ratio",
                 _ => "project_bool",
             };
-            Some(format!(
+            let projected = format!(
                 "emath_rt::code::{projection}(&({expression}).to_scalar()?, \"argument\")?"
-            ))
+            );
+            Some(if *target == ValueKind::ExactInt {
+                format!("emath_rt::ExactInt::from({projected})")
+            } else {
+                projected
+            })
         }
         // A family element of a family sequence (`sequence(T)` with T
         // bound to the node family) stays a node.
         ValueKind::Node => Some(format!("({expression}).clone()")),
+        // A node record into a declared record: every field projects
+        // checked by name off the dynamic tree and crosses into its
+        // declared carrier recursively; a missing or mis-carried
+        // field refuses by name (the VM's project_field law).
+        ValueKind::Record(name) => {
+            let layout = match record_layout(name) {
+                Some(layout) => layout,
+                None => return None,
+            };
+            let members = layout
+                .iter()
+                .map(|(field, signature)| {
+                    let field_kind = ValueKind::from_signature(signature);
+                    let field_expr = format!("({expression}).field({field:?})?");
+                    let value = node_into(&field_expr, &field_kind)?;
+                    Some(format!("{}: {value}", escape_ident(field)))
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!(
+                "EmathRecord_{} {{ {} }}",
+                record_ident(name),
+                members.join(", ")
+            ))
+        }
         ValueKind::Vector(element) => {
             let inner = node_into("__item", element)?;
             let element_ty = crate::rust_ir::render::render_ty(&element.rust_ty().ok()?);
@@ -2216,27 +2363,10 @@ fn literal_frame_expr(
     let mut refined = InputKinds::new();
     for (index, (name, value)) in names.iter().zip(inputs).enumerate() {
         let actual = kind_at(kinds, *value);
-        // The scalar union cannot bind a sequence (or any non-scalar)
-        // parameter: the inlined body would index or measure a scalar
-        // and the crate would not compile. Refusing here lets an
-        // expression template keep its tree without a compiled factory.
-        if actual == ValueKind::CodeValue
-            && let Some(signature) = declared.get(index)
-            && !matches!(
-                ValueKind::from_signature(signature),
-                ValueKind::CodeValue
-                    | ValueKind::I64
-                    | ValueKind::ExactInt
-                    | ValueKind::Rational
-                    | ValueKind::Bool
-                    | ValueKind::Other
-            )
-        {
-            return Err(BackendError::UnsupportedType(format!(
-                "a scalar union value cannot bind a `{signature}` parameter"
-            )));
-        }
-        refined.insert(name.clone(), frame_input_kind(actual, declared.get(index)));
+        refined.insert(
+            name.clone(),
+            frame_input_kind(actual, declared.get(index)),
+        );
     }
     for (name, value) in states.iter().zip(state) {
         refined.insert(name.clone(), kind_at(kinds, *value));
@@ -2244,7 +2374,7 @@ fn literal_frame_expr(
     refine_recursive_frame_kinds(body, &names, &states, &mut refined);
     let mut frame_kinds = InputKinds::new();
     let mut code = String::from("{ ");
-    for (name, value) in names.iter().zip(inputs) {
+    for (index, (name, value)) in names.iter().zip(inputs).enumerate() {
         let kind = refined.get(name).cloned().unwrap_or(ValueKind::Other);
         // A closure carrier binds as a clone of the shared `Rc<dyn
         // Fn>` handle: every closure carrier (register or scope
@@ -2257,6 +2387,48 @@ fn literal_frame_expr(
                 callable_ty(params, result)?
             ));
             frame_kinds.insert(name.clone(), kind);
+            continue;
+        }
+        // An evaluated quoted value (the scalar union) binding a
+        // structured parameter: the scalar evaluate lane yields
+        // scalars only, so the binding lowers through the node view -
+        // the same evaluate_node + node_into bridge the declared
+        // application lane uses (bead emath-qhl1i). A scalar register
+        // that is not an evaluate still refuses named: no runtime
+        // form carries the structure.
+        if kind_at(kinds, *value) == ValueKind::CodeValue && kind != ValueKind::CodeValue {
+            let node_form = match outer.ops.get(value.0 as usize) {
+                Some((EmirOp::CodeEvaluate { code: quoted, .. }, _)) => {
+                    let quoted_target = render_expr(&operand(outer, *quoted));
+                    let quoted_target = if kind_at(kinds, *quoted) == ValueKind::Node {
+                        format!("({quoted_target}).to_code()?")
+                    } else {
+                        quoted_target
+                    };
+                    Some(format!(
+                        "({quoted_target}).evaluate_node(&__EMATH_MODULE_TABLE)?"
+                    ))
+                }
+                _ => None,
+            };
+            let converted = node_form
+                .and_then(|form| node_into(&form, &kind))
+                .ok_or_else(|| {
+                    let signature = declared
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_else(|| format!("{kind:?}"));
+                    BackendError::UnsupportedType(format!(
+                        "a scalar union value cannot bind a `{signature}` parameter"
+                    ))
+                })?;
+            code.push_str(&format!("let {name} = {converted}; "));
+            frame_kinds.insert(name.clone(), kind);
+            // The frame binds the quoted tree's node decode, not the
+            // operand's scalar register; record the register so the
+            // flat-SSA let loop can drop an ignored (and possibly
+            // faulting) scalar decode.
+            record_redecoded_code_evaluate(value.0);
             continue;
         }
         // A node value whose frame kind resolved to the declared Code

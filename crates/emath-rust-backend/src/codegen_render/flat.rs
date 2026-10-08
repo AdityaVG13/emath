@@ -2,7 +2,7 @@
 
 use super::{
     BackendError, EmirOp, EmirProgram, HashMap, InputKinds, ValueKind, is_total, op_expr,
-    operand_registers, render_expr,
+    operand_registers, render_expr, restore_redecoded_code_evaluates, take_redecoded_code_evaluates,
 };
 
 /// Register-inlined SSA body renderer: single-use, provably-total
@@ -170,6 +170,23 @@ pub(crate) fn flat_ssa(
     input_kinds: &InputKinds,
     kinds: &[ValueKind],
 ) -> Result<FlatSsa, BackendError> {
+    // Each body flattens with its own ignored-decode scope: nested
+    // bodies rendered during register resolution keep their own
+    // register namespace, so their recordings must not drop this
+    // body's lets (and this body's set must not outlive it).
+    let saved_redecodes = take_redecoded_code_evaluates();
+    let outcome = flat_ssa_scoped(program, names, states, input_kinds, kinds);
+    restore_redecoded_code_evaluates(saved_redecodes);
+    outcome
+}
+
+fn flat_ssa_scoped(
+    program: &EmirProgram,
+    names: &[String],
+    states: &[String],
+    input_kinds: &InputKinds,
+    kinds: &[ValueKind],
+) -> Result<FlatSsa, BackendError> {
     let n = program.ops.len();
     // Primal sources for every register.
     let mut e_src = Vec::with_capacity(n);
@@ -203,8 +220,17 @@ pub(crate) fn flat_ssa(
     };
     let mut e_lets = Vec::new();
     let result = program.result;
+    // Plain `quote.evaluate` registers a frame binding re-decoded
+    // through the node lane: with no other consumer the scalar decode
+    // is dead weight that can only fault (the scalar tree evaluator
+    // refuses node-shaped trees), so its let never emits. The result
+    // register and shared registers stay bound.
+    let dropped_redecodes = take_redecoded_code_evaluates();
     for i in 0..n {
-        if !inline_e[i] && !deferred.contains(&(i as u32)) {
+        let ignored_redecode = e_direct[i] <= 1
+            && result.0 as usize != i
+            && dropped_redecodes.contains(&(i as u32));
+        if !inline_e[i] && !deferred.contains(&(i as u32)) && !ignored_redecode {
             e_lets.push((format!("__e{i}"), resolver.e(i as u32)?));
         }
     }

@@ -3,14 +3,11 @@
 //! bound) verifies with one row per claim, where a row reads settled
 //! only when the reference VM and the emitted Rust AGREE on the
 //! checker's verdict; a claim whose checker the emitter cannot lower
-//! is reported vm-only with the emit refusal named, not settled, not a
-//! crash; a tampered certificate in any kind refuses with the claim
-//! named; a claim whose stored content id does not match its content
-//! refuses; a claim whose checker the library neither defines nor uses
-//! refuses; an injected native disagreement (a compile-time-gated test
-//! fault, unreachable from production builds) leaves the claim
-//! unsettled with both verdicts shown; and `--json` emits the same
-//! rows as the table.
+//! is still reported vm-only with the emit refusal named, not settled,
+//! not a crash; a tampered certificate in any kind refuses with the
+//! claim named; a claim whose stored content id does not match its
+//! content refuses; a claim whose checker the library neither defines
+//! nor uses refuses; and `--json` emits the same rows as the table.
 
 mod common;
 
@@ -65,11 +62,11 @@ fn verify_cmd() {
     }
 
     // A library with one claim of each producer kind verifies: one row
-    // per claim. The witness claim's checker lowers, and the VM and
-    // the emitted Rust agree on its verdict, so its row reads settled.
-    // The other two claims are outside the emitter's current subset
-    // (the refusals are named), so their rows read vm-only, not
-    // settled, not a crash.
+    // per claim. The witness and the exhaustion checkers lower and the
+    // VM and the emitted Rust agree on their verdicts, so those rows
+    // read settled. The bound claim's producer carries a certificate
+    // template the typed code-cell ABI cannot instantiate (its own
+    // bead), so its row reads vm-only with the emit refusal named.
     let (text, code) = verify(&dir, "claims.emath", &[]);
     probe.demand(
         "witness-claim-settles-on-agreement",
@@ -78,12 +75,17 @@ fn verify_cmd() {
         format!("exit {code}\n{text}"),
     );
     probe.demand(
-        "unlowerable-checker-is-vm-only-not-a-crash",
+        "exhaustion-claim-settles",
         code == EXIT_OK as i32
-            && text.contains("exhaustion_claim kind=1 standing=3 checker=exhaustion_checker conditions=2 verdict=vm-only native=unavailable")
+            && text.contains("exhaustion_claim kind=1 standing=3 checker=exhaustion_checker conditions=2 verdict=settled native=true"),
+        format!("exit {code}\n{text}"),
+    );
+    probe.demand(
+        "bound-claim-is-vm-only-naming-the-refusal",
+        code == EXIT_OK as i32
             && text.contains("certified_bound_claim kind=2 standing=4 checker=bound_checker")
             && text.contains("verdict=vm-only native=unavailable")
-            && text.contains("the emitter cannot lower"),
+            && text.contains("quote template body must compute its declared `Int` carrier"),
         format!("exit {code}\n{text}"),
     );
 
@@ -96,8 +98,9 @@ fn verify_cmd() {
             && text.contains("\"name\":\"witness_claim\"")
             && text.contains("\"verdict\":\"settled\",\"native\":true")
             && text.contains("\"name\":\"exhaustion_claim\"")
-            && text.contains("\"verdict\":\"vm-only\",\"native\":\"unavailable\"")
+            && text.contains("\"verdict\":\"settled\",\"native\":true")
             && text.contains("\"name\":\"certified_bound_claim\"")
+            && text.contains("\"verdict\":\"vm-only\",\"native\":\"unavailable\"")
             && text.contains("\"kind\":0")
             && text.contains("\"standing\":5"),
         format!("exit {code}\n{text}"),
