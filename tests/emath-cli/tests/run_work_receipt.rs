@@ -4,6 +4,7 @@
 //! datum at all before the fix.
 
 mod common;
+use std::path::PathBuf;
 use emath_cli::{EXIT_OK, EXIT_PARTIAL};
 use emath_test_harness::Probe;
 
@@ -80,17 +81,26 @@ emath function Cheap:
         result = 1 / 1
 ";
 
-/// The module-lane counterpart: the same walk pinned by a literal
-/// given, so the suite is a legitimate pass under a raised `--work`
-/// (the walk costs ~2.2M work units, above the DEFAULT_WORK gate,
-/// below `--work 5000000`). Without `--function` the run lane DOES
-/// evaluate the suite, and `--work` is the budget that evaluation runs
-/// under. Before the fix the tree was evaluated at DEFAULT_WORK with
-/// `--work` unread, so this module exited EXIT_PARTIAL (suite test
-/// failed at the default) even with a generous `--work`.
-/// Failure-first evidence: on the pre-fix gate the `--work 5000000`
-/// command exits EXIT_PARTIAL instead of EXIT_OK.
-const SUITE_HEAVY_UNDER_WORK: &str = "emath function WalkAt:
+/// A module of one entry whose evaluation needs more than the
+/// constructor layer's DEFAULT_WORK gate: the walk costs ~2.2M work
+/// units, above DEFAULT_WORK, below `--work 5000000`. Without
+/// `--function` the run lane runs the single entry, and `--work` is
+/// the budget that run executes under.
+const SINGLE_ENTRY_WALK: &str = "emath function Walk:
+    inputs:
+        n: Int
+        i: Int
+        acc: Int
+    outputs:
+        result: Int
+    definitions:
+        result = if i >= n: acc else: Walk(n, i + 1, acc + i)
+";
+
+/// A module with several runnable entries (and an authored suite): a
+/// bare `emath run` cannot pick, so it must refuse with a usage error
+/// listing the entries instead of silently evaluating anything.
+const TWO_ENTRY_MODULE: &str = "emath function WalkAt:
     inputs:
         n: Int
         i: Int
@@ -198,27 +208,93 @@ emath function forever:
     let (text, code) = common::cli(&["run", &main.to_string_lossy(), "--function", "f", "--set", "n=1"]);
     p.contains("private name", &text, "E-NAME-025");
     p.eq("private name exit", code, emath_cli::EXIT_ADMISSION as i32);
+
+    // An aliased import whose member access does not resolve (bead
+    // emath-use-alias-run-error-c32rz): `run` must surface the SAME
+    // admission diagnostic `check` reports — never the misleading
+    // "no constructor entry" for the entry that contains the error.
+    let aliased = std::env::temp_dir().join(format!("emath-run-alias-{}", std::process::id()));
+    std::fs::create_dir_all(&aliased).expect("scratch dir");
+    std::fs::write(
+        aliased.join("m.emath"),
+        "exports: double\n\nemath function double:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = n + n\n",
+    )
+    .expect("write module");
+    std::fs::write(
+        aliased.join("main.emath"),
+        "use m as x\n\nemath function main:\n    inputs:\n        n: Int\n    outputs:\n        result: Int\n    definitions:\n        result = x.double(n)\n",
+    )
+    .expect("write main");
+    let main_path = aliased.join("main.emath").to_string_lossy().to_string();
+    let (check_text, check_code) = common::cli(&["check", &main_path]);
+    p.eq("check admission exit", check_code, emath_cli::EXIT_ADMISSION as i32);
+    p.contains("check diagnostic", &check_text, "unbound `x.double`");
+    let (text, code) = common::cli(&["run", &main_path, "--function", "main", "--set", "n=3"]);
+    p.contains("run diagnostic", &text, "unbound `x.double`");
+    p.eq("run exit matches check", code, check_code);
+    p.eq("not a missing entry", text.contains("no constructor entry"), false);
     p.finish();
 }
 
-/// The other side of the same hunk: without `--function` the run lane
-/// DOES evaluate the module suite, and `--work` is the budget that
-/// evaluation runs under. Two demands pin it: a generous `--work` runs
-/// the suite green (exit OK), and the default budget still refuses it
-/// (exit PARTIAL), proving the suite is really being evaluated and
-/// that `--work`, not the default, is the budget in force.
+/// Without `--function` the run lane runs the module's single entry,
+/// and `--work` is that run's budget; with zero or several runnable
+/// entries it refuses with a usage error listing them. A bare run
+/// must never print only `{admission: ok}` while running nothing
+/// (bead emath-run-without-function-7v79k). Failure-first: the pre-fix
+/// lane evaluated the authored suite and printed only the admission
+/// line, at every budget.
 #[test]
-fn run_lane_honors_work_for_module_runs() {
-    let mut p = Probe::new("run without --function evaluates the suite under --work");
-    let src = std::env::temp_dir().join(format!(
-        "emath-run-gate-mod-{}.emath",
-        std::process::id()
-    ));
-    std::fs::write(&src, SUITE_HEAVY_UNDER_WORK).expect("write source");
-    let (_, code) = common::cli(&["run", &src.to_string_lossy(), "--work", "5000000"]);
-    p.eq("raised work exits ok", code, EXIT_OK as i32);
-    let (_, code) = common::cli(&["run", &src.to_string_lossy()]);
-    p.eq("default budget still partial", code, EXIT_PARTIAL as i32);
+fn run_without_function_runs_the_single_entry() {
+    let mut p = Probe::new("run without --function runs the single entry under --work");
+    let walk = std::env::temp_dir().join(format!("emath-run-single-{}.emath", std::process::id()));
+    std::fs::write(&walk, SINGLE_ENTRY_WALK).expect("write source");
+    let src = walk.to_string_lossy().to_string();
+    let (text, code) = common::cli(&[
+        "run", &src, "--set", "n=200000", "--set", "i=0", "--set", "acc=0", "--work", "5000000",
+    ]);
+    p.eq("raised work runs the entry", code, EXIT_OK as i32);
+    p.contains("entry payload", &text, "19999900000");
+    let (text, code) = common::cli(&["run", &src, "--set", "n=200000", "--set", "i=0", "--set", "acc=0"]);
+    p.eq("default budget is partial", code, EXIT_PARTIAL as i32);
+    p.contains("budget refusal", &text, "budget_exhausted");
+
+    let multi = std::env::temp_dir().join(format!("emath-run-multi-{}.emath", std::process::id()));
+    std::fs::write(&multi, TWO_ENTRY_MODULE).expect("write source");
+    let (text, code) = common::cli(&["run", &multi.to_string_lossy()]);
+    p.eq("several entries usage exit", code, emath_cli::EXIT_USAGE as i32);
+    p.contains("several entries listed", &text, "Walk, WalkAt");
+    p.contains("names the flag", &text, "--function");
+
+    let none = std::env::temp_dir().join(format!("emath-run-none-{}.emath", std::process::id()));
+    std::fs::write(&none, "emath object Point:\n    representation:\n        x: Rat\n").expect("write source");
+    let (text, code) = common::cli(&["run", &none.to_string_lossy()]);
+    p.eq("no entries usage exit", code, emath_cli::EXIT_USAGE as i32);
+    p.contains("no entries message", &text, "no runnable entries");
+
+    // The bead's exact repro (rework): the shipped example imports
+    // `exact.modular`, whose helpers must not count as entries — the
+    // file's own `ChineseRemainder` is the single entry and RUNS (its
+    // missing inputs fault; they were never provided), instead of a
+    // usage error listing every imported helper and qualified alias.
+    let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../language/examples/algebra/chinese-remainder.emath");
+    let (text, code) = common::cli(&["run", &example.to_string_lossy()]);
+    p.eq("bead repro runs its own entry", code, emath_cli::EXIT_FAULT as i32);
+    p.contains("bead repro missing inputs", &text, "Absent");
+    p.eq("bead repro not usage", text.contains("runnable entries"), false);
+
+    // One own function behind a `use`: the import's surface must not
+    // turn the bare run into a usage refusal.
+    let used = std::env::temp_dir().join(format!("emath-run-use-{}.emath", std::process::id()));
+    std::fs::write(
+        &used,
+        "use exact.modular\n\nemath function SmallRemainder:\n    inputs:\n        unused: Int\n    outputs:\n        result: Int\n    definitions:\n        result = int_rem(7, 3)\n",
+    )
+    .expect("write source");
+    let (text, code) = common::cli(&["run", &used.to_string_lossy(), "--set", "unused=0"]);
+    p.eq("use-file runs its own entry", code, EXIT_OK as i32);
+    p.contains("use-file payload", &text, "1");
+    p.eq("use-file not usage", text.contains("runnable entries"), false);
     p.finish();
 }
 

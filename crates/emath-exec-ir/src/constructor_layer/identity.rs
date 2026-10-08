@@ -510,13 +510,20 @@ pub(super) fn free_path_names(expr: &Expr, binders: &mut Vec<String>, out: &mut 
     }
 }
 
-/// Every environment name evaluating `expr` could read: the first
-/// segment of each path anywhere in it, binder domains included.
-/// Binders are not subtracted, so the set only over-approximates; a
-/// closure that captures just these names reads exactly what it read
-/// when it captured the whole scope.
-pub(super) fn mentioned_names(expr: &Expr, out: &mut BTreeSet<String>) {
-    let mut walk = |e: &Expr| mentioned_names(e, out);
+/// The role a name plays where the traversal met it: the first segment
+/// of a path reference, or a binder's parameter (the spellings `emath
+/// keep` prints back as source).
+pub(super) enum NameRole {
+    Path,
+    Binder,
+}
+
+/// One shared arm-by-arm traversal over every `ExprKind`: hands each
+/// name to `out` with its role — the first segment of each path
+/// anywhere in the expression, binder domains included, and each
+/// binder's parameter. Binders are not subtracted from path heads, so
+/// consumers over-approximate freely and filter by role.
+pub(super) fn for_each_name<V: FnMut(NameRole, &str)>(expr: &Expr, out: &mut V) {
     match &expr.kind {
         ExprKind::Int(_)
         | ExprKind::Float(_)
@@ -526,75 +533,100 @@ pub(super) fn mentioned_names(expr: &Expr, out: &mut BTreeSet<String>) {
         | ExprKind::Measured { .. } => {}
         ExprKind::Path { segments, .. } => {
             if let Some(first) = segments.first() {
-                out.insert(first.clone());
+                out(NameRole::Path, first);
             }
+        }
+        ExprKind::FunctionAbs { param, domain, body } | ExprKind::QuoteBind { param, domain, body } => {
+            out(NameRole::Binder, param);
+            for_each_name(domain, out);
+            for_each_name(body, out);
+        }
+        ExprKind::Recur { name, ty, body } => {
+            out(NameRole::Binder, name);
+            for_each_name(ty, out);
+            for_each_name(body, out);
+        }
+        ExprKind::CallableBinder { callee, param, domain, body } => {
+            out(NameRole::Binder, param);
+            for_each_name(callee, out);
+            for_each_name(domain, out);
+            for_each_name(body, out);
         }
         ExprKind::Quantity { value, .. }
         | ExprKind::Unary { value, .. }
         | ExprKind::WithSeriesPolicy { value, .. }
         | ExprKind::UnitQuery { expr: value, .. }
-        | ExprKind::Quote { body: value } => walk(value),
+        | ExprKind::Quote { body: value } => for_each_name(value, out),
         ExprKind::Call { function, args } => {
-            walk(function);
-            args.iter().for_each(&mut walk);
+            for_each_name(function, out);
+            args.iter().for_each(|e| for_each_name(e, out));
         }
         ExprKind::Index { value, indices } => {
-            walk(value);
-            indices.iter().for_each(&mut walk);
+            for_each_name(value, out);
+            indices.iter().for_each(|e| for_each_name(e, out));
         }
         ExprKind::Slice { start, end } | ExprKind::Range { start, end, .. } => {
-            start.iter().chain(end).for_each(|e| walk(e));
+            start.iter().chain(end).for_each(|e| for_each_name(e, out));
         }
         ExprKind::Binary { left, right, .. } | ExprKind::SequenceCons { head: left, tail: right, .. } => {
-            walk(left);
-            walk(right);
+            for_each_name(left, out);
+            for_each_name(right, out);
         }
         ExprKind::Approx { left, right, tolerance } => {
-            walk(left);
-            walk(right);
+            for_each_name(left, out);
+            for_each_name(right, out);
             if let Some(tolerance) = tolerance {
-                tolerance.rtol.iter().chain(&tolerance.atol).for_each(&mut walk);
+                tolerance
+                    .rtol
+                    .iter()
+                    .chain(&tolerance.atol)
+                    .for_each(|e| for_each_name(e, out));
             }
         }
         ExprKind::If { condition, then_value, else_value } => {
-            walk(condition);
-            walk(then_value);
-            walk(else_value);
+            for_each_name(condition, out);
+            for_each_name(then_value, out);
+            for_each_name(else_value, out);
         }
-        ExprKind::List(items) | ExprKind::Tuple(items) | ExprKind::Set(items) => items.iter().for_each(&mut walk),
-        ExprKind::Table { rows, .. } => rows.iter().flatten().for_each(&mut walk),
+        ExprKind::List(items) | ExprKind::Tuple(items) | ExprKind::Set(items) => {
+            items.iter().for_each(|e| for_each_name(e, out))
+        }
+        ExprKind::Table { rows, .. } => rows
+            .iter()
+            .flatten()
+            .for_each(|e| for_each_name(e, out)),
         ExprKind::SetComprehension { element, domain, guard, .. } => {
-            walk(element);
-            walk(domain);
-            guard.iter().for_each(|e| walk(e));
+            for_each_name(element, out);
+            for_each_name(domain, out);
+            guard.iter().for_each(|e| for_each_name(e, out));
         }
-        ExprKind::Record { fields, .. } => fields.iter().for_each(|(_, e)| walk(e)),
+        ExprKind::Record { fields, .. } => fields.iter().for_each(|(_, e)| for_each_name(e, out)),
         ExprKind::Conditioned { value, condition } => {
-            walk(value);
-            walk(condition);
+            for_each_name(value, out);
+            for_each_name(condition, out);
         }
         ExprKind::Cases { subject, arms, else_arm } => {
-            subject.iter().for_each(|e| walk(e));
+            subject.iter().for_each(|e| for_each_name(e, out));
             arms.iter().for_each(|(c, v)| {
-                walk(c);
-                walk(v);
+                for_each_name(c, out);
+                for_each_name(v, out);
             });
-            walk(else_arm);
-        }
-        ExprKind::FunctionAbs { domain, body, .. } | ExprKind::QuoteBind { domain, body, .. } => {
-            walk(domain);
-            walk(body);
-        }
-        ExprKind::Recur { ty, body, .. } => {
-            walk(ty);
-            walk(body);
-        }
-        ExprKind::CallableBinder { callee, domain, body, .. } => {
-            walk(callee);
-            walk(domain);
-            walk(body);
+            for_each_name(else_arm, out);
         }
     }
+}
+
+/// Every environment name evaluating `expr` could read: the first
+/// segment of each path anywhere in it, binder domains included.
+/// Binders are not subtracted, so the set only over-approximates; a
+/// closure that captures just these names reads exactly what it read
+/// when it captured the whole scope.
+pub(super) fn mentioned_names(expr: &Expr, out: &mut BTreeSet<String>) {
+    for_each_name(expr, &mut |role, name| {
+        if matches!(role, NameRole::Path) {
+            out.insert(name.to_string());
+        }
+    });
 }
 
 /// Identity stamp of a function declaration: the FNV-1a digest over the

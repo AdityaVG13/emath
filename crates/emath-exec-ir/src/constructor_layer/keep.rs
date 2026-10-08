@@ -10,9 +10,9 @@ use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use super::expr::{path_expr, substitute_path};
-use super::identity::mentioned_names;
+use super::identity::{for_each_name, mentioned_names, NameRole};
 use super::{CValue, ConstructorError, ExprKind};
-use emath_core::tree::Item;
+use emath_core::tree::{Expr, Item};
 use emath_syntax::formatter::{format_expr, Prec};
 
 fn shape(message: impl Into<String>) -> ConstructorError {
@@ -27,6 +27,22 @@ fn is_identifier(name: &str) -> bool {
     let mut chars = name.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// The first hygiene token in `expr`, if any: a binder that
+/// capture-avoiding substitution renamed to `#x.cap.N` (`avoid_capture`
+/// in `expr.rs`). Such a token has no source spelling — a leading `#`
+/// starts a comment — so printing it into a library would write
+/// unparsable source. Binders are met through the one shared traversal
+/// (`identity.rs` `for_each_name`) with their `Binder` role.
+fn hygiene_binder(expr: &Expr) -> Option<String> {
+    let mut token = None;
+    for_each_name(expr, &mut |role, name| {
+        if matches!(role, NameRole::Binder) && !is_identifier(name) {
+            token.get_or_insert_with(|| name.to_string());
+        }
+    });
+    token
 }
 
 /// What keeping one program into a library text did.
@@ -345,6 +361,11 @@ pub fn kept_definition(value: &CValue, name: &str, note: &str) -> Result<String,
     let ExprKind::Recur { name: self_name, ty, body } = &code.expr.kind else {
         return Err(shape("expected `recur f in A -> B: function x in A: body`"));
     };
+    if let Some(token) = hygiene_binder(&code.expr) {
+        return Err(shape(format!(
+            "the kept program renames a binder to the hygiene token `{token}`, which is not a writable identifier (a leading `#` starts a comment); keep a program whose binders are plain names"
+        )));
+    }
     let ExprKind::FunctionAbs { param, domain, body } = &body.kind else {
         return Err(shape("the recur body is not `function x in A: ...`"));
     };

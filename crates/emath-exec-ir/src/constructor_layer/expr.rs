@@ -13,12 +13,25 @@ pub(super) fn value_to_expr(value: &CValue) -> Expr {
         CValue::Float64(v) => ExprKind::Float(format!("{v}f64")),
         CValue::Sequence(items) => ExprKind::List(items.iter().map(value_to_expr).collect()),
         CValue::Tuple(items) => ExprKind::Tuple(items.iter().map(value_to_expr).collect()),
+        // Splice the code's expression itself: substitution binds an
+        // open name at the expression level (template splice), which
+        // the search lane's synthesized programs evaluate.
         CValue::Code(code) => code.expr.kind.clone(),
+        // A record literal is DATA: each field holds a VALUE, so a
+        // Code-valued field converts to `quote(body)` — the expr that
+        // evaluates back to the code it stores. Printing the body bare
+        // wrote the code's contents where the kept source needs the
+        // code itself: an object field `checker: accept_all` re-parsed
+        // as a value lookup (unbound at run) instead of the quoted
+        // checker name the claim stored (bead emath-zi6bj). A Code
+        // value spliced at an EXPRESSION position (call args, operators)
+        // keeps the inline template splice the substitution contract
+        // pins — see the Code arm below.
         CValue::Record { type_name, fields } => ExprKind::Record {
             type_path: vec![type_name.to_string()],
             fields: fields
                 .iter()
-                .map(|(k, v)| (k.clone(), value_to_expr(v)))
+                .map(|(k, v)| (k.clone(), value_to_expr_field(v)))
                 .collect(),
         },
         other => ExprKind::Path {
@@ -29,6 +42,23 @@ pub(super) fn value_to_expr(value: &CValue) -> Expr {
     Expr {
         kind,
         source: emath_core::Span::default(),
+    }
+}
+
+/// One record field's expr: the field holds a VALUE, so a Code value
+/// converts to `quote(body)` — the expr that evaluates back to the
+/// code it stores — while every other value converts as an expression
+/// (nested records recurse through `value_to_expr`, whose Record arm
+/// reapplies this rule to their fields).
+fn value_to_expr_field(value: &CValue) -> Expr {
+    match value {
+        CValue::Code(code) => Expr {
+            kind: ExprKind::Quote {
+                body: Box::new(code.expr.clone()),
+            },
+            source: emath_core::Span::default(),
+        },
+        other => value_to_expr(other),
     }
 }
 

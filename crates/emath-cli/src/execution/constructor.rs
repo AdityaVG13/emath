@@ -31,93 +31,95 @@ pub(super) fn run_constructor_layer(request: &RunRequest, checked: &crate::cli_b
         Ok(inputs) => inputs,
         Err(exit) => return exit,
     };
-    // `--function` runs one entry; the module's authored tests are not
-    // an input to that evaluation. Gating first would evaluate every
-    // test under DEFAULT_WORK and refuse modules whose suites are
-    // larger than that default, regardless of --work, the budget the
-    // flag exists to raise. The report is only consumed by the
-    // no-function lane below.
-    let report = if request.function.is_some() {
-        None
-    } else {
-        let work = if request.work_set {
-            request.work as u64
-        } else {
-            emath_exec_ir::constructor_layer::DEFAULT_WORK
-        };
-        match module.evaluate_tests(work) {
-            Ok(report) => Some(report),
-            Err(err) => return fail(request, source, &err),
-        }
-    };
     if let Some(name) = &request.function {
-        if request.work_set {
-            return run_constructor_budgeted(request, source, module, name, &inputs);
-        }
-        match module.evaluate_function(
-            name,
-            &inputs,
-            emath_exec_ir::constructor_layer::DEFAULT_WORK,
-        ) {
-            Ok(value) => {
-                return print_constructor_json(
-                    request.json,
-                    "returned",
-                    "satisfied",
-                    constructor_representation(&value),
-                    &value.to_string(),
-                    None,
-                    EXIT_OK,
-                );
-            }
-            // Only the entry itself being unknown falls through to the query
-            // lookup and the E-RUN-ENTRY refusal. Any other error, including
-            // an `unbound` name inside the body (an input that did not parse
-            // as a value), means the entry EXISTS and its evaluation
-            // faulted; surface the fault instead of masking it as a missing
-            // entry.
-            Err(err) if err.code == "unbound" && err.message == format!("unknown function `{name}`") => {}
-            Err(err) => return fail(request, source, &err),
-        }
-        if module.has_query(name) {
-            let receipt = match module.evaluate_query(name, &inputs) {
-                Ok(receipt) => receipt,
-                Err(err) => return fail(request, source, &err),
-            };
-            let exit = match receipt.fulfillment.as_str() {
-                "satisfied" => EXIT_OK,
-                "partial" | "unmet" => EXIT_PARTIAL,
-                _ => EXIT_FAULT,
-            };
-            return print_constructor_receipt(request.json, &receipt, exit);
-        }
-        return diagnostic(
-            request.json,
-            EXIT_ADMISSION,
-            "E-RUN-ENTRY",
-            &format!("no constructor entry `{name}`"),
-        );
+        return run_entry(request, source, module, name, &inputs);
     }
-    // Every path above returns; the only way here is the no-function
-    // lane, which always evaluated the tree (report is Some).
-    let report = report.expect("no-function lane evaluated the tree above");
-    let failed = report.tests.iter().any(|test| !test.passed);
-    let partial = report.tests.iter().any(|test| {
-        test.receipt
-            .as_ref()
-            .is_some_and(|receipt| matches!(receipt.fulfillment.as_str(), "partial" | "unmet"))
-    });
-    let exit = if failed || partial {
-        EXIT_PARTIAL
-    } else {
-        EXIT_OK
-    };
-    let mut out = JsonWriter::object();
-    out.string("schema_version", "emath.constructor.v1");
-    out.string("command", "run");
-    out.string("admission", "ok");
-    println!("{}", out.finish());
-    exit
+    // Without `--function` the run lane runs the module's single entry; a
+    // module with zero or several runnable entries cannot be picked
+    // silently and refuses with a usage error listing them (bead
+    // emath-run-without-function-7v79k). The authored suite belongs to
+    // `emath test`, which reports every test; a bare run printed only
+    // `{admission: ok}` while evaluating at most the suite.
+    let entries = module.entry_names();
+    match entries.as_slice() {
+        [only] => run_entry(request, source, module, only, &inputs),
+        _ => {
+            let detail = if entries.is_empty() {
+                "this module has no runnable entries; declare `emath function` or `emath query`".to_string()
+            } else {
+                format!(
+                    "this module has {} runnable entries: {} — pass --function NAME",
+                    entries.len(),
+                    entries.join(", ")
+                )
+            };
+            diagnostic(
+                request.json,
+                EXIT_USAGE,
+                "E-RUN-USAGE",
+                &format!("`emath run` without `--function` runs the single entry; {detail}"),
+            )
+        }
+    }
+}
+
+/// Run one named entry: a function under the given or default budget, a
+/// query under its own lane. Only a truly unknown name refuses
+/// `E-RUN-ENTRY`; any other error means the entry EXISTS and its
+/// evaluation faulted, and is surfaced as-is.
+fn run_entry(
+    request: &RunRequest,
+    source: &str,
+    module: &emath_exec_ir::constructor_layer::PreparedModule,
+    name: &str,
+    inputs: &BTreeMap<String, emath_exec_ir::constructor_layer::CValue>,
+) -> CliExit {
+    if request.work_set {
+        return run_constructor_budgeted(request, source, module, name, inputs);
+    }
+    match module.evaluate_function(
+        name,
+        inputs,
+        emath_exec_ir::constructor_layer::DEFAULT_WORK,
+    ) {
+        Ok(value) => {
+            return print_constructor_json(
+                request.json,
+                "returned",
+                "satisfied",
+                constructor_representation(&value),
+                &value.to_string(),
+                None,
+                EXIT_OK,
+            );
+        }
+        // Only the entry itself being unknown falls through to the query
+        // lookup and the E-RUN-ENTRY refusal. Any other error, including
+        // an `unbound` name inside the body (an input that did not parse
+        // as a value), means the entry EXISTS and its evaluation
+        // faulted; surface the fault instead of masking it as a missing
+        // entry.
+        Err(err) if err.code == "unbound" && err.message == format!("unknown function `{name}`") => {}
+        Err(err) => return fail(request, source, &err),
+    }
+    if module.has_query(name) {
+        let receipt = match module.evaluate_query(name, inputs) {
+            Ok(receipt) => receipt,
+            Err(err) => return fail(request, source, &err),
+        };
+        let exit = match receipt.fulfillment.as_str() {
+            "satisfied" => EXIT_OK,
+            "partial" | "unmet" => EXIT_PARTIAL,
+            _ => EXIT_FAULT,
+        };
+        return print_constructor_receipt(request.json, &receipt, exit);
+    }
+    diagnostic(
+        request.json,
+        EXIT_ADMISSION,
+        "E-RUN-ENTRY",
+        &format!("no constructor entry `{name}`"),
+    )
 }
 
 pub(super) fn run_constructor_budgeted(

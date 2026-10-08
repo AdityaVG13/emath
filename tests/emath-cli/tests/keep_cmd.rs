@@ -354,3 +354,79 @@ emath function Main:
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(text.contains("\"payload\": \"3\""), "{text}");
 }
+
+// Substituting a replacement that mentions `x` under a binder of the
+// same name mints the hygiene token `#x.cap.1`; a leading `#` is a
+// comment, so printing that binder into the library would write
+// unparsable source. Keep must refuse by name instead.
+const HYGIENE_BUILDER: &str = "emath function Capture:
+    inputs:
+        unused: Int
+    outputs:
+        result: Code
+    definitions:
+        result = quote.substitute(quote(recur f in sequence(Rat) -> Rat: function x in sequence(Rat): body), body, quote(x[0]))
+";
+
+#[test]
+fn keep_refuses_hygiene_renamed_binders() {
+    let dir = std::env::temp_dir().join(format!("emath_keep_hygiene_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("build.emath"), HYGIENE_BUILDER).unwrap();
+    let (text, code) = emath(&dir, &[
+        "keep", "build.emath", "--function", "Capture", "--name", "captured",
+        "--to", "library.emath", "--set", "unused=0",
+    ]);
+    assert_eq!(code, EXIT_REFUSED as i32, "{text}");
+    assert!(text.contains("E-KEEP-SHAPE"), "{text}");
+    assert!(!dir.join("library.emath").exists(), "an unwritable kept program must not create a library");
+}
+
+// A claim built by substitute over an object value carries Code-typed
+// fields (statement, certificate, checker, conditions, refutation).
+// Printing those fields as bare expressions writes a library that
+// means something else: `checker: accept_all` re-parses as a value
+// lookup (unbound at run), `certificate: [1, ...]` as a plain list.
+// Faithful value-to-source renders every Code value as `quote(...)`,
+// so the kept claim rechecks to status 1 (bead emath-zi6bj).
+const CLAIM_BUILDER: &str = "use search.claim
+
+emath function accept_all:
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        result = true
+
+emath function Claimed:
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = quote.substitute(quote(recur me in Int -> Claim: function unused in Int: v), \"v\", make_claim(0, quote(function s in sequence(Int): length(s) == 5), quote([1, 0 - 1, 1, 1, 0 - 1]), quote(accept_all), quote(5), 5, quote(function s in sequence(Int): length(s) != 5)))
+";
+
+#[test]
+fn kept_claim_round_trips_through_the_library() {
+    let dir = std::env::temp_dir().join(format!("emath_keep_claim_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("claim.emath"), CLAIM_BUILDER).unwrap();
+    let (text, code) = keep_from(&dir, "claim.emath", "Claimed", "claimed", &[]);
+    assert_eq!(code, EXIT_OK as i32, "{text}");
+    let library = std::fs::read_to_string(dir.join("lib/seq.emath")).unwrap();
+    assert!(library.contains("checker: quote(accept_all)"), "{library}");
+    assert!(
+        library.contains("statement: quote(function s in sequence(Int): length(s) == 5)"),
+        "{library}"
+    );
+    std::fs::write(
+        dir.join("recheck.emath"),
+        "use lib.seq\nuse search.claim\n\nemath function Verdict:\n    inputs:\n        unused: Int\n    outputs:\n        result: Int\n    definitions:\n        result = check_claim(claimed(0), [Checker: {name: quote(accept_all), run: function cert in Code: true}]).status\n    tests:\n        example <kept_claim_accepted>:\n            given unused = 0\n            expect result == 1\n",
+    )
+    .unwrap();
+    let (text, code) = emath(&dir, &["test", "recheck.emath"]);
+    assert_eq!(code, EXIT_OK as i32, "{text}");
+    assert!(text.contains("1 authored tests passed"), "{text}");
+}

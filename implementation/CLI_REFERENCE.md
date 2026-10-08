@@ -14,7 +14,7 @@ unmet/partial/suspended, **4** fault, **5** incompatible checkpoint.
 | Command | Behavior |
 | --- | --- |
 | `emath check <file\|-> [--json]` | Parse and admit constructor source |
-| `emath run <file> [--function NAME] [--set name=value] [--work N] [--json]` | Evaluate a function or query; print a constructor receipt |
+| `emath run <file> [--function NAME] [--set name=value] [--work N] [--json]` | Evaluate a function or query; print a constructor receipt. Without `--function`, run the file's single entry, or refuse `E-RUN-USAGE` listing the entries |
 | `emath step <checkpoint> [--work N] [--json]` | Resume a constructor-layer continuation |
 | `emath inspect <checkpoint> [--json]` | Read a saved constructor checkpoint |
 | `emath test <file>` | Authored `tests:` |

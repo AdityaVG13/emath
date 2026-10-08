@@ -18,6 +18,7 @@
 | `E-CODEGEN-*` | backend/artifact | unsupported lowering, manifest mismatch |
 | `E-RES-*` | resources | budget, memory, cancellation |
 | `E-HOST-*` | host/lab | ABI mismatch (001), invalid experiment manifest (003), insufficient evidence (006), incomparable experiment (008), self-comparison refused (016) |
+| `E-RUN-*` | run lane | no constructor entry named (E-RUN-ENTRY), unreadable `--set-file` (E-RUN-SET-FILE), bare run with zero or several runnable entries needs `--function` (E-RUN-USAGE) |
 | `E-TLT-*` | tooling/CLI | bench harness absent (E-TLT-004), manifest missing (E-TLT-005), network sync disabled (E-TLT-006), invalid package name (E-TLT-010), scaffold overwrite refused (E-TLT-011) |
 | `E-CAPSULE-*` | feature capsules | malformed field/line (001), duplicate field (003), id/class mismatch (014), semantic-hash mismatch (022), reference-term refusals (023-026) |
 | `E-TRANS-*` | transitions | undeclared event (001), bad action target (002/005), non-assignment body (003/004), unbound event parameter (006/007), runtime action fault (008) |

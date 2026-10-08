@@ -39,6 +39,7 @@ fallback.
 | --- | --- |
 | `emath check FILE` | Parse and admit. Nothing runs. `-` reads from standard input |
 | `emath run FILE --function F` | Evaluate one function or query on the reference VM |
+| `emath run FILE` | Run the file's single entry; with zero or several runnable entries, refuse with a usage error listing them |
 | `emath test FILE` | Run the file's authored `tests:` |
 | `emath build FILE` | Emit a self-contained, runnable Rust crate |
 | `emath fmt FILE` | Check canonical formatting |

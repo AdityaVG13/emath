@@ -288,6 +288,25 @@ impl PreparedModule {
         self.queries.contains_key(name)
     }
 
+    /// The runnable constructor entry names: the file's OWN `emath
+    /// function` and `emath query` declarations, sorted. Origins in
+    /// `name_sources` are the empty path for the local tree and the
+    /// resolved import file for imports (bare, qualified aliases, and
+    /// mangled private helpers alike), so an entry is a name whose
+    /// origin is the empty path.
+    pub fn entry_names(&self) -> Vec<String> {
+        self.functions
+            .keys()
+            .chain(self.queries.keys())
+            .filter(|name| {
+                self.name_sources
+                    .get(*name)
+                    .is_some_and(|origin| origin.as_os_str().is_empty())
+            })
+            .cloned()
+            .collect()
+    }
+
     /// Input declarations from the resolved callable, including import aliases.
     pub fn input_types(&self, name: &str) -> Option<BTreeMap<String, emath_core::tree::TypeExpr>> {
         let function = self.functions.get(name)?;
