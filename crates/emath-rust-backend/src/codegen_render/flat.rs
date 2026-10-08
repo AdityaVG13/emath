@@ -1,8 +1,9 @@
 //! Flat-SSA construction: register resolution and let-binding policy.
 
 use super::{
-    BackendError, EmirOp, EmirProgram, HashMap, InputKinds, ValueKind, is_total, op_expr,
-    operand_registers, render_expr, restore_redecoded_code_evaluates, take_redecoded_code_evaluates,
+    BackendError, EmirOp, EmirProgram, EmirValue, HashMap, InputKinds, ValueKind, is_total,
+    kind_at, op_expr, operand_registers, render_expr, restore_redecoded_code_evaluates,
+    take_redecoded_code_evaluates,
 };
 
 /// Register-inlined SSA body renderer: single-use, provably-total
@@ -120,7 +121,15 @@ pub(super) fn reg_token_collision(names: &[String], states: &[String]) -> bool {
 /// scans of rendered source over-count (`sign` mentions its arg twice)
 /// and under-count operands that do not appear as `__eN` (nested bodies),
 /// which made multi-use registers look single-use.
-pub(super) fn count_ssa_uses(program: &EmirProgram) -> Vec<u32> {
+///
+/// The node-lane decodes bypass their register operand: a field off an
+/// unapplied `quote.evaluate` result and a branch/capture argument
+/// carrying one re-evaluate the quoted tree from the PRODUCER register,
+/// so those edges do not consume the plain scalar decode register. The
+/// count mirrors the render's true reads (bead emath-886vm): a decoded
+/// certificate whose readers are all node-lane decodes counts zero uses
+/// and drops its eager (faulting) scalar decode.
+pub(super) fn count_ssa_uses(program: &EmirProgram, kinds: &[ValueKind]) -> Vec<u32> {
     let n = program.ops.len();
     let mut uses = vec![0u32; n];
     let mut operands = Vec::new();
@@ -132,11 +141,54 @@ pub(super) fn count_ssa_uses(program: &EmirProgram) -> Vec<u32> {
                 uses[v.0 as usize] += 1;
             }
         }
+        match op {
+            EmirOp::RecordField { record, .. } => {
+                if bypassed_decode(program, *record, kinds) && (record.0 as usize) < n {
+                    uses[record.0 as usize] -= 1;
+                }
+            }
+            EmirOp::Branch { args, .. } | EmirOp::Collect { args, .. } | EmirOp::Iterate { args, .. } => {
+                for value in args {
+                    if bypassed_decode(program, *value, kinds) && (value.0 as usize) < n {
+                        uses[value.0 as usize] -= 1;
+                    }
+                }
+            }
+            // An inlined frame's binding decodes a scalar-union operand
+            // through the node lane from the PRODUCER register (the
+            // structured-parameter law, bead emath-qhl1i) unless the
+            // parameter itself is the scalar union: the edge does not
+            // consume the plain decode register.
+            EmirOp::CallFrame { inputs, declared, .. } => {
+                for (value, signature) in inputs.iter().zip(declared) {
+                    if bypassed_decode(program, *value, kinds)
+                        && ValueKind::from_signature(signature) != ValueKind::CodeValue
+                        && (value.0 as usize) < n
+                    {
+                        uses[value.0 as usize] -= 1;
+                    }
+                }
+            }
+            _ => {}
+        }
     }
     if (program.result.0 as usize) < n {
         uses[program.result.0 as usize] += 1;
     }
     uses
+}
+
+/// True when the render re-evaluates this register's quoted tree
+/// through the node lane instead of reading the register's scalar
+/// decode: a CodeValue-kind register produced by an unapplied
+/// `quote.evaluate` (the decode the Field and branch/capture lanes
+/// share, beads emath-qhl1i and emath-cfe89).
+fn bypassed_decode(program: &EmirProgram, value: EmirValue, kinds: &[ValueKind]) -> bool {
+    kind_at(kinds, value) == ValueKind::CodeValue
+        && matches!(
+            program.ops.get(value.0 as usize),
+            Some((EmirOp::CodeEvaluate { applied: None, .. }, _))
+        )
 }
 
 pub(super) fn has_nested_body(op: &EmirOp) -> bool {
@@ -200,7 +252,7 @@ fn flat_ssa_scoped(
             kinds,
         )?));
     }
-    let e_direct = count_ssa_uses(program);
+    let e_direct = count_ssa_uses(program, kinds);
     let collision = reg_token_collision(names, states);
     // Nested bodies already flatten with the same `__eN` namespace. Outer
     // token substitution would rewrite those inner names as outer
@@ -220,14 +272,17 @@ fn flat_ssa_scoped(
     };
     let mut e_lets = Vec::new();
     let result = program.result;
-    // Plain `quote.evaluate` registers a frame binding re-decoded
-    // through the node lane: with no other consumer the scalar decode
-    // is dead weight that can only fault (the scalar tree evaluator
-    // refuses node-shaped trees), so its let never emits. The result
-    // register and shared registers stay bound.
+    // Plain `quote.evaluate` registers whose readers all re-decode
+    // through the node lane (a frame binding, a field projection, a
+    // branch/capture argument): with no in-body reader the scalar
+    // decode is dead weight that can only fault (the scalar tree
+    // evaluator refuses node-shaped trees), so its let never emits.
+    // A recorded register with any in-body reader keeps its let: that
+    // reader consumes the scalar decode itself. The result register
+    // and shared registers stay bound.
     let dropped_redecodes = take_redecoded_code_evaluates();
     for i in 0..n {
-        let ignored_redecode = e_direct[i] <= 1
+        let ignored_redecode = e_direct[i] == 0
             && result.0 as usize != i
             && dropped_redecodes.contains(&(i as u32));
         if !inline_e[i] && !deferred.contains(&(i as u32)) && !ignored_redecode {

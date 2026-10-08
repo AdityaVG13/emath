@@ -171,9 +171,15 @@ impl core::fmt::Display for TreeDomain {
 }
 
 /// The distilled expression tree: exactly the shapes the view/make
-/// walk consumes in the emitted subset. `List` and `Tuple` authoring
-/// both distill to [`CodeTree::Tuple`] (both view as a `Sequence`
-/// node).
+/// walk consumes in the emitted subset. `Tuple` authoring distills to
+/// [`CodeTree::Tuple`]; an authored `sequence` literal distills to
+/// [`CodeTree::Sequence`] (bead emath-886vm): the VM evaluates a
+/// quoted list as a sequence, so the tree must carry the distinction
+/// the node family makes (`NodeValue::Sequence` carries `length`,
+/// a tuple does not). Both view as a `Sequence` record, and the
+/// make direction rebuilds a tuple tree, exactly as the conflated
+/// lane did - the view seam stays lossy on the distinction, the
+/// canonical bytes and the node evaluation are not.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CodeTree {
     Literal(CodeValue),
@@ -209,6 +215,11 @@ pub enum CodeTree {
         body: Box<CodeTree>,
     },
     Tuple(Vec<CodeTree>),
+    /// An authored `sequence` literal (`[a, b, c]`): evaluates to the
+    /// node family's sequence, whose `length` the VM's list law
+    /// answers (bead emath-886vm). The view and the make direction
+    /// spell it as the shared `Sequence` record, as before.
+    Sequence(Vec<CodeTree>),
     /// An inline record literal (`Point:{x: 1, y: 2}`): the declared
     /// type path and the field trees, canonicalized to name-sorted
     /// order at distillation (the VM stores record fields in a map,
@@ -878,7 +889,7 @@ pub fn view_tree(tree: &CodeTree, module: &ModuleTable) -> NodeValue {
                 ],
             )
         }),
-        CodeTree::Tuple(items) => with_mint(|mint| {
+        CodeTree::Tuple(items) | CodeTree::Sequence(items) => with_mint(|mint| {
             view_record(
                 "Sequence",
                 vec![
@@ -1235,6 +1246,13 @@ fn canonical_tree_bytes(
         }
         CodeTree::Tuple(items) => {
             out.push(b'[');
+            count_bytes(items.len(), out);
+            for item in items {
+                canonical_tree_bytes(item, binders, out)?;
+            }
+        }
+        CodeTree::Sequence(items) => {
+            out.push(b'S');
             count_bytes(items.len(), out);
             for item in items {
                 canonical_tree_bytes(item, binders, out)?;
@@ -1689,6 +1707,18 @@ pub fn substitute_tree(tree: &CodeTree, reference: &str, replacement: &CodeTree)
                 .map(|item| substitute_tree(item, reference, replacement))
                 .collect(),
         ),
+        // A list stays a list through substitution, matching the VM's
+        // substitute_path (which keeps ExprKind::List). Collapsing a
+        // sequence to a Tuple here would make the emitted certificate
+        // answer NodeValue::Tuple where the VM answers a sequence, and
+        // node-lane ops like `length` would then refuse (bead
+        // emath-886vm rework 2).
+        CodeTree::Sequence(items) => CodeTree::Sequence(
+            items
+                .iter()
+                .map(|item| substitute_tree(item, reference, replacement))
+                .collect(),
+        ),
         CodeTree::Record { type_path, fields } => CodeTree::Record {
             type_path: type_path.clone(),
             fields: fields
@@ -1760,7 +1790,9 @@ fn collect_free_names(tree: &CodeTree, free: &mut BTreeSet<String>) {
             inner.remove(name);
             free.extend(inner);
         }
-        CodeTree::Tuple(items) => items.iter().for_each(|item| collect_free_names(item, free)),
+        CodeTree::Tuple(items) | CodeTree::Sequence(items) => {
+            items.iter().for_each(|item| collect_free_names(item, free))
+        }
         CodeTree::Record { type_path, fields } => {
             // The type path is a type expression, never a value
             // reference; only the field trees contribute free names.
@@ -1835,6 +1867,12 @@ pub fn evaluate_node_tree(tree: &CodeTree, module: &ModuleTable) -> Result<NodeV
 fn evaluate_node_body(tree: &CodeTree, module: &ModuleTable) -> Result<NodeValue, String> {
     match tree {
         CodeTree::Tuple(items) => Ok(NodeValue::Tuple(
+            items
+                .iter()
+                .map(|item| evaluate_node_tree(item, module))
+                .collect::<Result<_, _>>()?,
+        )),
+        CodeTree::Sequence(items) => Ok(NodeValue::Sequence(
             items
                 .iter()
                 .map(|item| evaluate_node_tree(item, module))
@@ -2192,7 +2230,7 @@ fn evaluate_tree_value(
                 op: *op, value: Box::new(CodeTree::Literal(value)),
             }, &BTreeMap::new(), module).map(TreeValue::Scalar)
         }
-        CodeTree::Tuple(values) => values.iter()
+        CodeTree::Tuple(values) | CodeTree::Sequence(values) => values.iter()
             .map(|value| evaluate_tree_value(value, inputs, module)?.node())
             .collect::<Result<Vec<_>, _>>()
             .map(|values| TreeValue::from_node(NodeValue::Sequence(values))),
@@ -2318,7 +2356,11 @@ fn evaluate_scalar_body(
                 TreeUnary::Pos => Ok(value),
             }
         }
-        CodeTree::Tuple(_) | CodeTree::Index { .. } | CodeTree::Record { .. } | CodeTree::Code(_) => {
+        CodeTree::Tuple(_)
+        | CodeTree::Sequence(_)
+        | CodeTree::Index { .. }
+        | CodeTree::Record { .. }
+        | CodeTree::Code(_) => {
             Err(String::from(
                 "tree: structured values are not emitted in the scalar tree evaluator",
             ))

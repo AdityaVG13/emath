@@ -73,7 +73,18 @@ pub(crate) fn distill_tree(expr: &Expr) -> Result<CodeTree, String> {
                 args: trees,
             })
         }
-        ExprKind::List(items) | ExprKind::Tuple(items) => {
+        ExprKind::List(items) => {
+            let mut trees = Vec::with_capacity(items.len());
+            for item in items {
+                trees.push(distill_tree(item)?);
+            }
+            // An authored sequence literal distills as a sequence: the
+            // VM evaluates a quoted list as a sequence (its `length`
+            // answers), so the tree carries the distinction the node
+            // family makes (bead emath-886vm).
+            Ok(CodeTree::Sequence(trees))
+        }
+        ExprKind::Tuple(items) => {
             let mut trees = Vec::with_capacity(items.len());
             for item in items {
                 trees.push(distill_tree(item)?);

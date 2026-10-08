@@ -358,6 +358,10 @@ pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
             "emath_rt::code_tree::CodeTree::Tuple(vec![{}])",
             items.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
         ),
+        CodeTree::Sequence(items) => format!(
+            "emath_rt::code_tree::CodeTree::Sequence(vec![{}])",
+            items.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
+        ),
         CodeTree::Record { type_path, fields } => format!(
             "emath_rt::code_tree::CodeTree::Record {{ type_path: vec![{}], fields: vec![{}] }}",
             type_path
@@ -806,6 +810,13 @@ pub(crate) fn op_expr(
                         EmirOp::CodeEvaluate { code, .. } => *code,
                         _ => unreachable!("decode checked the producer"),
                     };
+                    // The decode re-evaluates the quoted tree through
+                    // the node lane from the PRODUCER register, so the
+                    // plain scalar decode register loses its reader:
+                    // record it, and the flat-SSA let loop drops the
+                    // eager (and, on a structured certificate,
+                    // faulting) decode (bead emath-886vm).
+                    crate::codegen_render::kinds::record_redecoded_code_evaluate(record.0);
                     let quoted_target = render_expr(&operand(program, quoted));
                     let quoted_target = if kind_at(kinds, quoted) == ValueKind::Node {
                         format!("({quoted_target}).to_code()?")

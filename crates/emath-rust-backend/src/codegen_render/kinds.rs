@@ -755,6 +755,22 @@ pub(super) fn frame_input_kind(kind: ValueKind, declared: Option<&String>) -> Va
         ) {
             return declared_kind;
         }
+        // A decoded node (an unapplied `quote.evaluate` result or a
+        // projection off one) binding a declared structured carrier
+        // rebuilds into it checked by field name at the frame binding
+        // (bead emath-886vm): the generic callee's instantiation is
+        // declared here, so a dynamic register would carry NodeValue
+        // into the body's record ops and mix instantiations - the
+        // receipt-side arguments of one generic call must unify to
+        // the same concrete S the problem-side arguments already
+        // carry. Missing or mis-carried fields refuse by name (the
+        // VM's project_field law).
+        if matches!(
+            declared_kind,
+            ValueKind::Record(_) | ValueKind::Vector(_)
+        ) {
+            return declared_kind;
+        }
     }
     // An Int actual into a Rat-declared parameter widens to the
     // declared ratio carrier (the VM's Int-to-Rat admission,
@@ -885,10 +901,24 @@ impl Drop for TypeBindingScope {
     }
 }
 
+/// The operand spelling for a projection whose parameter is `&T`:
+/// a rendered expression that already yields a reference (the
+/// non-copy load lane's `__borrow` binding, rtcalls' law) passes
+/// bare - a second reference layer would be `&&T` and refuse to
+/// compile - while an owned expression takes the `&` the slot asks
+/// for (bead emath-886vm).
+fn projected_operand(expression: &Expr) -> String {
+    let rendered = render_expr(expression);
+    if rendered.starts_with("{ let __borrow: &") {
+        rendered
+    } else {
+        format!("&{rendered}")
+    }
+}
+
 /// `signature` with each `Var<T>` the innermost binding frame knows
 /// replaced by its carrier; unbound variables stay (and kind as Other).
-pub(crate) fn bound_signature(signature: &str) -> String {
-    if !signature.contains("Var<") {
+pub(crate) fn bound_signature(signature: &str) -> String {    if !signature.contains("Var<") {
         return signature.to_string();
     }
     TYPE_BINDINGS.with(|stack| {
@@ -2911,23 +2941,27 @@ pub(crate) fn numeric_boundary_value(
         // checked projections - the same law the declared output
         // boundary applies, at record fields, sequence elements, and
         // branch arms. The refusal names the slot and the found
-        // value; an Int widens into Rat/ExactInt exactly.
+        // value; an Int widens into Rat/ExactInt exactly. A rendered
+        // operand that already yields a reference (the non-copy load
+        // lane's `__borrow` binding, rtcalls' law) passes bare: the
+        // projection's `&T` slot must not gain a second reference
+        // layer.
         (ValueKind::Node, target) => super::node_into(&render_expr(expression), target).map(Expr::Raw),
         (ValueKind::CodeValue, ValueKind::I64) => Some(Expr::Raw(format!(
-            "emath_rt::code::project_i64(&{}, {slot:?})?",
-            render_expr(expression)
+            "emath_rt::code::project_i64({}, {slot:?})?",
+            projected_operand(expression)
         ))),
         (ValueKind::CodeValue, ValueKind::Rational) => Some(Expr::Raw(format!(
-            "emath_rt::code::project_ratio(&{}, {slot:?})?",
-            render_expr(expression)
+            "emath_rt::code::project_ratio({}, {slot:?})?",
+            projected_operand(expression)
         ))),
         (ValueKind::CodeValue, ValueKind::ExactInt) => Some(Expr::Raw(format!(
-            "emath_rt::code::project_exact_int(&{}, {slot:?})?",
-            render_expr(expression)
+            "emath_rt::code::project_exact_int({}, {slot:?})?",
+            projected_operand(expression)
         ))),
         (ValueKind::CodeValue, ValueKind::Bool) => Some(Expr::Raw(format!(
-            "emath_rt::code::project_bool(&{}, {slot:?})?",
-            render_expr(expression)
+            "emath_rt::code::project_bool({}, {slot:?})?",
+            projected_operand(expression)
         ))),
         (
             ValueKind::I64 | ValueKind::ExactInt | ValueKind::Rational | ValueKind::Bool,

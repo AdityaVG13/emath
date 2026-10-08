@@ -283,3 +283,46 @@ fn verify_work_budget() {
 
     probe.finish();
 }
+
+/// A generic receipt recheck over a node-decoded certificate settles
+/// natively (bead emath-886vm). The checker decodes the certificate
+/// with an unapplied `quote.evaluate`, projects the receipt's fields,
+/// and hands the decoded receipt to the generic `recheck_receipt<S>`
+/// beside a concrete `Extend<Int>` problem: the two arguments must
+/// unify S to one concrete instantiation and the decoded receipt must
+/// cross into it checked (the declared record carrier wins over the
+/// dynamic node at the frame binding). The claim reads settled only
+/// when the emitted artifact compiles and agrees with the VM; a
+/// merged-instantiation render (the defect: one body carrying two
+/// S bindings) leaves the artifact uncompilable and the claim vm-only.
+///
+/// The second claim pins the substitution edge (rework 2): its
+/// certificate is built by `quote.substitute` over a quoted list
+/// literal, and the VM's `substitute_path` keeps a list a list - the
+/// emitted `substitute_tree` must keep `CodeTree::Sequence` a
+/// sequence too, or the decoded certificate loses `length` and the
+/// checker faults while the VM answers.
+#[test]
+fn generic_recheck_settles() {
+    let mut probe = Probe::new("emath verify: generic receipt recheck over a decoded certificate");
+    let dir = std::env::temp_dir().join(format!("emath_verify_generic_recheck_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    std::fs::copy(
+        workspace().join("tests/fixtures/verify/generic_recheck.emath"),
+        dir.join("generic_recheck.emath"),
+    )
+    .expect("copy fixture");
+    let (text, code) = verify(&dir, "generic_recheck.emath", &[]);
+    probe.demand(
+        "generic-recheck-settles-natively",
+        code == EXIT_OK as i32 && text.contains("generic_recheck_claim") && text.contains("verdict=settled native=true"),
+        format!("exit {code}\n{text}"),
+    );
+    let settled = text.matches("verdict=settled native=true").count();
+    probe.demand(
+        "substitution-list-settles-natively",
+        text.contains("substitution_list_claim") && settled == 2,
+        format!("expected both claims settled native=true, got {settled}\n{text}"),
+    );
+    probe.finish();
+}

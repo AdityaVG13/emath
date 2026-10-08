@@ -1,0 +1,82 @@
+# Fixture for bead emath-886vm: a generic receipt recheck over a
+# node-decoded certificate. The checker decodes the certificate with
+# an unapplied `quote.evaluate`, projects the receipt's fields, and
+# hands the decoded receipt to the GENERIC `recheck_receipt<S>` (the
+# receipts module) beside a concrete `Extend<Int>` problem. The two
+# arguments must unify S to one concrete instantiation and the decoded
+# receipt must cross into it checked - the claim settles native=true
+# only when the emitted artifact monomorphizes consistently.
+exports: generic_recheck_claim, substitution_list_claim
+
+use search.backtrack
+use search.claim
+use search.receipts
+
+emath function tiny_problem:
+    # The two-node chain problem: the root's only option is node 1,
+    # node 1 is a leaf. The replay of the receipt below walks both.
+    inputs:
+        unused: Int
+    outputs:
+        result: Extend<Int>
+    definitions:
+        result = Extend: {start: 0, options: function state in Int: if state == 0: [1] else: [], ok: function state in Int: true, done: function state in Int: false}
+
+emath function generic_recheck_checker:
+    # The same decode law as bench179_exhaustion_checker, minimized:
+    # decode the certificate, shape-check the receipt's tallies, and
+    # recheck it against a freshly built problem. The search is never
+    # rerun.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        c = quote.evaluate(cert)
+        shaped = length(c.receipt.steps) > 0 and length(c.receipt.nodes_per_depth) == length(c.receipt.kept_per_depth) and all(function k in Int: k >= 0, c.receipt.nodes_per_depth)
+        v = if shaped: recheck_receipt(tiny_problem(0), c.receipt) else: ReceiptVerdict: {ok: false, reason: 0 - 1, node_index: 0 - 1, depth: 0 - 1}
+        result = c.receipt.complete and v.ok and v.reason == receipt_ok(0)
+
+emath function generic_recheck_claim:
+    # The F0 finite claim whose certificate is a hand-built honest
+    # receipt for the two-node chain, wrapped in a certificate record
+    # the checker decodes (the bench179_exhaustion_checker shape):
+    # the root expands its one kept child, the leaf expands nothing,
+    # the tallies obey the counting law (nodes[0] == 1, each depth's
+    # nodes are the previous depth's kept children, the last depth
+    # keeps nothing), and the walk ran to exhaustion.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_finite(0), quote(function s in Int: s == 0), quote(RecheckCert: {receipt: Receipt: {steps: [Step: {depth: 0, node: 0, kept: [1], prunes: []}, Step: {depth: 1, node: 1, kept: [], prunes: []}], nodes_per_depth: [1, 1], kept_per_depth: [1, 0], complete: true}}), quote(generic_recheck_checker), quote(0), standing_finite_certificate(0), quote(function s in Int: false))
+
+emath function substitution_list_checker:
+    # The substitution claim's checker: decode the substituted
+    # certificate and require the list law the VM answers - a list
+    # stays a sequence through quote.substitute, so `length` reads 3
+    # (bead emath-886vm rework 2: the substitution edge must keep the
+    # List/Tuple distinction, as the VM's substitute_path does). The
+    # list rides inside a record because the checker's field
+    # projection is the decode bridge the emitted lane already has;
+    # the substitution still runs over the list itself.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        c = quote.evaluate(cert)
+        result = length(c.items) == 3
+
+emath function substitution_list_claim:
+    # The certificate is built by quote.substitute over a quoted list
+    # literal: the open name A is substituted with 1, yielding the
+    # list [1, 2, 3]. The claim settles only when the emitted tree
+    # keeps the list a sequence after substitution.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_construction(0), quote(function l in sequence(Int): length(l) == 3), quote.substitute(quote(RecheckCert: {items: [A, 2, 3]}), "A", 1), quote(substitution_list_checker), quote(0), standing_proven(0), quote(function l in sequence(Int): length(l) != 3))

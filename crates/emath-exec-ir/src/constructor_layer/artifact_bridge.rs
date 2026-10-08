@@ -241,6 +241,7 @@ fn tree_expr(tree: &CodeTree) -> Expr {
             body: Box::new(tree_expr(body)),
         },
         CodeTree::Tuple(items) => ExprKind::Tuple(items.iter().map(tree_expr).collect()),
+        CodeTree::Sequence(items) => ExprKind::List(items.iter().map(tree_expr).collect()),
         CodeTree::Record { type_path, fields } => ExprKind::Record {
             type_path: type_path.clone(),
             fields: fields

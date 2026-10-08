@@ -133,6 +133,15 @@ pub(super) fn authored_control_expr(
             let decode = super::kinds::branch_input_kind(program, kinds, *value)
                 == ValueKind::Node
                 && kind_at(kinds, *value) == ValueKind::CodeValue;
+            if decode {
+                // The decode re-evaluates the quoted tree through the
+                // node lane from the PRODUCER register, so the plain
+                // scalar decode register this argument would have read
+                // loses its reader: record it, and the flat-SSA let
+                // loop drops the eager (and, on a structured
+                // certificate, faulting) decode (bead emath-886vm).
+                super::kinds::record_redecoded_code_evaluate(value.0);
+            }
             let expression = if decode {
                 let quoted = match &program.ops.get(value.0 as usize)
                     .expect("decode checked the producer")
