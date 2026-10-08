@@ -194,12 +194,13 @@
     "dead-code deletion: genesis, world-ir, store, adapter-dew, adapter-rumoca, plan, hir, registry and provider-api crates removed. ERROR_CODES issued list pruned to the 154 emitted codes; 247 no-longer-emitted codes move to a Retired codes section (never reissued); E-INT-002, E-INT-003, E-NAME-026 and E-MEANING-001 gain issued entries; annex re-spliced. CRATE_MAP rebuilt for the 15 remaining crates. CLI_REFERENCE re-pinned after the earlier removal of the lab, verify and dead CLI lanes.",
     "dead public items removed from core, ir, lab-core, schema, sema, syntax, term and tui (sigfigs, text, stage0, biform, cell projections, provider conversion contracts, world translation, the MIG node graph). E-CELL-007..011, E-PROV-410..412 and E-SHAPE-002 move to Retired codes; PUBLIC_API_INVENTORY drops CompilerSession::parse_text and with_edition.",
     "native i64 lane exact fallback: checked i64 arithmetic refuses with E-INT-002 instead of panicking, and entries with an exact twin re-run over ExactInt on that fault; the E-INT-002 story names both.",
-    "CRATE_MAP re-pinned: the terminal dashboard becomes the non-default emath-cli `dashboard` feature, so the default CLI no longer links ftui."
+    "CRATE_MAP re-pinned: the terminal dashboard becomes the non-default emath-cli `dashboard` feature, so the default CLI no longer links ftui.",
+    "CRATE_MAP re-pinned: emath-cli `dashboard` is a default feature again; `--no-default-features` gives the headless CLI."
   ],
   "files": {
     "implementation/ERROR_CODES.md": "45962b5ba8095b8aed66e5c0fa9b4d20175f144497aa34371e3dd0ac446623b3",
     "implementation/CLI_REFERENCE.md": "b5bc9a677be00b124be8140a2b53eb59a572051794f8c368803731f5918dbcd5",
-    "implementation/CRATE_MAP.md": "b46363136ad0347f566bece87750881fdd8e7c3b302c09c2e1aeff46d405940e",
+    "implementation/CRATE_MAP.md": "06095618f529bb8ac4cadd5b90ae7d280fd1eb9d8619f97a6f99b3577c972b42",
     "implementation/PUBLIC_API_INVENTORY.md": "51b7d3d4977eb884d4e5ddc439e9210732e5d0921a7b21115cea8ab30080c5db"
   }
 }

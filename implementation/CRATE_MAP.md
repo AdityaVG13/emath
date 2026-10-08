@@ -93,7 +93,7 @@ not a claim that every line or optional configuration passed a quality gate.
 
 | Profile | First-party normal dependency closure | Distribution boundary |
 |---|---|---|
-| Default `emath-cli` | 14 crates | Binary plus shipped `language/` tree; backend, lab core and TUI are linked dependencies; the terminal dashboard is the opt-in `dashboard` feature |
+| Default `emath-cli` | 14 crates | Binary plus shipped `language/` tree; backend, lab core and TUI are linked dependencies; the terminal dashboard is the default `dashboard` feature |
 | `emath-wasm` | 11 crates | `cargo xtask build-web` builds wasm32 release and stages `web/dist/emath.wasm`; not full mathematical-capability parity |
 | Direct generated Rust | Runtime source included when needed | Shared constructor emitter, named entries and manifest; target support/refusal remains explicit |
 | Engine-backed generated Rust | 8 engine crates from exec-ir's manifest closure | `vendor/` first-party sources and a trimmed lockfile; third-party sources are not vendored, so an uncached machine is not guaranteed offline compilation |
@@ -112,9 +112,9 @@ ship as data. `emath-rt::SOURCE` similarly concatenates runtime parts, including
 core-owned numeric source. Removing a module declaration alone does not remove
 its source from generated artifacts.
 
-Optional profiles: CLI `dashboard` (non-default) enables TUI `dashboard`,
-which adds ftui for the live `emath dream` terminal; the default CLI prints
-the plain-text run status instead. Default transitive graphs already include
+Optional profiles: CLI `dashboard` (default) enables TUI `dashboard`,
+which adds ftui for the live `emath dream` terminal; a
+`--no-default-features` CLI prints the plain-text run status instead. Default transitive graphs already include
 unicode-normalization and stacker. Release optimization settings in
 `Cargo.toml` are not release assembly or passing-release evidence.
 

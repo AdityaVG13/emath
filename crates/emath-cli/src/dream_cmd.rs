@@ -220,7 +220,7 @@ fn launch(run: RunDir, detach: bool, view: ViewFlags, root: &Path) -> CliExit {
 #[cfg(not(feature = "dashboard"))]
 fn attach(run: RunDir, _view: ViewFlags, _root: &Path) -> CliExit {
     if std::io::stdout().is_terminal() {
-        eprintln!("note: this emath was built without the live dashboard (cargo build -p emath-cli --features dashboard)");
+        eprintln!("note: this emath was built without the live dashboard (rebuild without --no-default-features)");
     }
     snapshot(run)
 }

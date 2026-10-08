@@ -102,7 +102,7 @@ Details: [carrier worlds and claims](language/reference/diagnostics-and-tooling-
 
 | Command | Purpose |
 | --- | --- |
-| `emath dream FILE --target StepFn` | Launch a background discovery run under `.emath/runs/NAME/`; attaching shows the run status, or the live dashboard when built with `--features dashboard` |
+| `emath dream FILE --target StepFn` | Launch a background discovery run under `.emath/runs/NAME/`; attaching opens the live dashboard (plain-text status in a `--no-default-features` build) |
 | `emath dream watch\|resume\|fork\|export RUN`, `emath dream list` | Manage runs. Detaching never stops a run |
 | `emath keep FILE --function F --to LIB` | Evaluate a function that returns a closed quoted program and write it into a library as an ordinary `emath function` |
 | `emath export lean FILE\|DIR` | Write a Lean 4 project of the functions and their examples for review; add `--check` to have the Lean kernel prove every example and every `certify_equal` and `certify_all` law (laws use a shared prebuilt Mathlib); `--work N` raises the emath budget each example runs under, as in `emath test` |

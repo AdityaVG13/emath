@@ -26,8 +26,9 @@ emath-syntax = { workspace = true }
 emath-tui = { workspace = true }
 
 [features]
-# The live `emath dream` terminal dashboard (FrankenTUI). Without it,
-# attaching prints the plain-text run status instead.
+default = ["dashboard"]
+# The live `emath dream` terminal dashboard (FrankenTUI). Without it
+# (`--no-default-features`), attaching prints the plain-text run status.
 dashboard = ["emath-tui/dashboard"]
 
 [lints]
