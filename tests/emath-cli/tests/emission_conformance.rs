@@ -7112,7 +7112,7 @@ fn exhausted<T>(result: Result<T, String>, code: &str) {
 }
 
 fn swallowed(_: &[CodeValue]) -> Result<CodeValue, String> {
-    let _ = deep(200);
+    let _ = deep(10_000);
     Ok(CodeValue::Int(7))
 }
 
@@ -7126,7 +7126,11 @@ fn main() {
     exhausted(with_budget(1000, 64, || sum_down(1000)), "E-NATIVE-WORK");
     exhausted(with_budget(10000, 8, || deep(50)), "E-NATIVE-DEPTH");
     exhausted(with_budget(10000, 8, || even(50)), "E-NATIVE-DEPTH");
-    exhausted(deep(200), "E-NATIVE-DEPTH");
+    // The VM's depth law (MAX_CALL_DEPTH 10 000 authored calls):
+    // deep(9999) nests 10 000 calls and computes, deep(10000) refuses.
+    assert_eq!(deep(9_999), Ok(9_999));
+    exhausted(deep(10_000), "E-NATIVE-DEPTH");
+    assert_eq!(std::thread::spawn(|| deep(9_999)).join().unwrap(), Ok(9_999));
     assert_eq!(with_budget(10000, 256, || deep(200)).unwrap(), 200);
     exhausted(down(i64::try_from(emath_rt::execution::DEFAULT_WORK).unwrap() + 1), "E-NATIVE-WORK");
 

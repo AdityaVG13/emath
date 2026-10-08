@@ -461,6 +461,28 @@ impl ValueKind {
         parse(text, 32)
     }
 
+    /// Whether the rendered carrier is `Send`, so an entry over it can run
+    /// on the runtime's reserved-stack thread. Closures, buffers, code and
+    /// node values hold `Rc`; records may hold closures.
+    pub(crate) fn is_send(&self) -> bool {
+        match self {
+            Self::I64
+            | Self::ExactInt
+            | Self::F64
+            | Self::Rational
+            | Self::Bool
+            | Self::Unit
+            | Self::BigInt
+            | Self::Text
+            | Self::Complex
+            | Self::Tensor
+            | Self::Never => true,
+            Self::Vector(inner) | Self::Matrix(inner) => inner.is_send(),
+            Self::Result(ok, err) => ok.is_send() && err.is_send(),
+            _ => false,
+        }
+    }
+
     pub(crate) fn rust_ty(&self) -> Result<Ty, BackendError> {
         use crate::rust_ir::render::render_ty;
         Ok(match self {

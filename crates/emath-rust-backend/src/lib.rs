@@ -83,7 +83,7 @@ pub fn emit_constructor_program(
     if contains_call_self(program) {
         let call_args = input_names.join(", ");
         Ok(format!(
-            "pub fn entry({params}) -> Result<impl core::fmt::Debug, String> {{\n    let __native_entry = emath_rt::execution::Frame::enter()?;\n    fn __self({params}) -> Result<i64, String> {{\n        let __native_call = emath_rt::execution::Frame::enter()?;\n        let __native_value = {body};\n        __native_call.check()?;\n        Ok(__native_value)\n    }}\n    let __native_value = __self({call_args})?;\n    __native_entry.check()?;\n    Ok(__native_value)\n}}\n"
+            "pub fn entry({params}) -> Result<impl core::fmt::Debug, String> {{\n    let __native_entry = emath_rt::execution::Frame::enter_entry()?;\n    fn __self({params}) -> Result<i64, String> {{\n        let __native_call = emath_rt::execution::Frame::enter()?;\n        let __native_value = {body};\n        __native_call.check()?;\n        Ok(__native_value)\n    }}\n    let __native_value = __self({call_args})?;\n    __native_entry.check()?;\n    Ok(__native_value)\n}}\n"
         ))
     } else {
         Ok(format!(
@@ -370,6 +370,16 @@ pub(crate) fn emit_constructor_entry_abi(
     } else {
         (escape_ident(function_name), String::new())
     };
+    // Carriers that can cross threads run the whole call on the runtime's
+    // reserved stack, so native recursion reaches the VM's depth.
+    let on_stack = wrapper.is_empty()
+        && abi.inputs.iter().all(ValueKind::is_send)
+        && abi.result.is_send();
+    let (open, close) = if on_stack {
+        ("    emath_rt::execution::on_stack(move || {\n", "    })\n")
+    } else {
+        ("", "")
+    };
     if recursive {
         // Tail self calls rebind the `mut` parameters and `continue`
         // this loop (see `TailLoopScope`); other self calls recurse.
@@ -381,14 +391,14 @@ pub(crate) fn emit_constructor_entry_abi(
         let call_args = self_args.join(", ");
         Ok((
             format!(
-                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    let __native_entry = emath_rt::execution::Frame::enter()?;\n    #[allow(unused_mut, unreachable_code)]\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        let __native_call = emath_rt::execution::Frame::enter()?;\n        loop {{ return Ok({body}); }}\n    }}\n    let __native_value = __self({call_args})?;\n    __native_entry.check()?;\n    Ok(__native_value)\n}}\n"
+                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{open}    let __native_entry = emath_rt::execution::Frame::enter_entry()?;\n    #[allow(unused_mut, unreachable_code)]\n    fn __self({self_params}) -> Result<{result_ty}, String> {{\n        let __native_call = emath_rt::execution::Frame::enter()?;\n        loop {{ return Ok({body}); }}\n    }}\n    let __native_value = __self({call_args})?;\n    __native_entry.check()?;\n    Ok(__native_value)\n{close}}}\n"
             ),
             abi,
         ))
     } else {
         Ok((
             format!(
-                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n    let __native_entry = emath_rt::execution::Frame::enter()?;\n    let __native_value = {body};\n    __native_entry.check()?;\n    Ok(__native_value)\n}}\n"
+                "{wrapper}pub fn {entry_name}({params}) -> Result<{result_ty}, String> {{\n{open}    let __native_entry = emath_rt::execution::Frame::enter()?;\n    let __native_value = {body};\n    __native_entry.check()?;\n    Ok(__native_value)\n{close}}}\n"
             ),
             abi,
         ))

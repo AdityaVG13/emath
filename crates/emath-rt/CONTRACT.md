@@ -168,10 +168,19 @@ dynamic Code evaluators share a cooperative `execution` budget on the current
 thread. Callable evaluation enters that scope before executing an expression
 factory, as well as on later application. Non-callable expressions therefore
 retain their ordinary type refusal without an explicit host budget.
-Default entry limits are 50,000,000 native work units and 128 active
-execution frames. `with_budget(work, depth, body)` establishes explicit limits
-before entry; depth is capped at 512. Nested scopes cannot increase a parent's
-remaining allowance, and consumed work remains charged to that parent.
+Default entry limits are 50,000,000 native work units and 10,000 active
+execution frames, the VM's `MAX_CALL_DEPTH`. `with_budget(work, depth, body)`
+establishes explicit limits before entry; depth is capped at 10,000. Nested
+scopes cannot increase a parent's remaining allowance, and consumed work
+remains charged to that parent.
+
+`on_stack(run)` runs a top-level call on a thread with a 512 MiB stack
+reservation (pages commit on use) so the full depth fits in debug builds. The
+caller's budget state moves to that thread and back; calls already on that
+stack, and wasm targets, run in place. Emitted entries whose carriers are all
+`Send` use it. A run off that stack (an entry over `Rc` carriers, called from a
+host thread of unknown size) is capped at 512 frames and refuses with
+`E-NATIVE-DEPTH` past it. A failed thread spawn returns `E-NATIVE-STACK`.
 
 Work covers generated bodies, calls, control iterations and evaluated tree
 nodes, not VM instructions or wall-clock time. Exhaustion returns
