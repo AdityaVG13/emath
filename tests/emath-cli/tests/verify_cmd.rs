@@ -177,3 +177,50 @@ fn two_path_decision() {
     };
     probe.finish();
 }
+
+/// Bounded verify notes (bead emath-agq2i): a run over a library with
+/// unlowerable claims must not print the crate-wide emitter report per
+/// claim, and a diagnostic must name the expression form and span, not
+/// the Debug tree of the whole Expr subtree. Every refusal stays
+/// named: each claim's note names the function that failed to lower,
+/// and the shared emitter refusals appear once per run.
+#[test]
+fn verify_notes_are_bounded() {
+    let mut probe = Probe::new("emath verify: emitter refusals stay bounded and named");
+    let dir = workspace();
+    let (text, code) = verify(&dir, "tests/fixtures/invention/bench_179/library.emath", &[]);
+    probe.demand("verify-succeeds", code == EXIT_OK as i32, format!("exit {code}\n{text}"));
+
+    // Every claim the emitter cannot lower still names that function.
+    let cannot_lower = text.matches("the emitter cannot lower `").count();
+    probe.demand(
+        "every-unlowerable-claim-still-named",
+        cannot_lower >= 13,
+        format!("only {cannot_lower} cannot-lower notes in the run"),
+    );
+
+    // The shared emitter refusals print once per run, not once per
+    // claim: the receipt-field projection refusal (one of the shared
+    // emitter reports) must not repeat per vm-only row.
+    let shared = text.matches("field `n` projected off a CodeValue carrier").count();
+    probe.demand(
+        "shared-refusals-once-per-run",
+        shared == 1,
+        format!("the shared emitter refusal printed {shared} times"),
+    );
+
+    // The whole run stays bounded: no Debug tree of an Expr subtree in
+    // any note.
+    let spanned = text.matches("Span { file: FileId").count();
+    probe.demand(
+        "no-expr-debug-tree-in-notes",
+        spanned == 0,
+        format!("{spanned} raw span dumps in the run's output"),
+    );
+    probe.demand(
+        "run-output-bounded",
+        text.len() < 16 * 1024,
+        format!("the verify run printed {} bytes", text.len()),
+    );
+    probe.finish();
+}

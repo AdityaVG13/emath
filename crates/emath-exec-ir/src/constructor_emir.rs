@@ -1730,7 +1730,12 @@ impl Lowerer {
                         inputs.push(self.expr(arg)?);
                     }
                     if inputs.is_empty() {
-                        return Err(format!("call is not yet emitted: {other:?}"));
+                        return Err(format!(
+                            "call is not yet emitted: {} at {}..{}",
+                            kind_form(other),
+                            function.source.start,
+                            function.source.end
+                        ));
                     }
                     Ok(self.push(EmirOp::CallValue { program, inputs }))
                 }
@@ -2040,9 +2045,11 @@ impl Lowerer {
                 ExprKind::Path { segments, .. } if segments.len() == 2 && segments[1] == "open" => {
                     self.lower_open(&segments[0], param, domain, body)
                 }
-                _ => Err(format!(
-                    "expression form is not yet emitted: {:?}",
-                    expr.kind
+                other => Err(format!(
+                    "expression form `{}` at {}..{} is not yet emitted",
+                    kind_form(other),
+                    callee.source.start,
+                    callee.source.end
                 )),
             },
             ExprKind::Cases { arms, else_arm, .. } => self.lower_cases(arms, else_arm),
@@ -2065,8 +2072,55 @@ impl Lowerer {
                 }
                 self.expr(body)
             }
-            other => Err(format!("expression form is not yet emitted: {other:?}")),
+            other => Err(format!(
+                "expression form `{}` at {}..{} is not yet emitted",
+                kind_form(other),
+                expr.source.start,
+                expr.source.end
+            )),
         }
+    }
+}
+
+/// The form a refusal names: the `ExprKind` variant, never its
+/// payload. Formatting an `Expr`'s Debug dumps every nested subtree
+/// with spans - megabytes per refusal, repeated once per claim - so a
+/// diagnostic names the variant and the byte span instead (bead
+/// emath-agq2i).
+pub(crate) fn kind_form(kind: &ExprKind) -> &'static str {
+    match kind {
+        ExprKind::Int(_) => "Int",
+        ExprKind::Float(_) => "Float",
+        ExprKind::Rational { .. } => "Rational",
+        ExprKind::Str(_) => "Str",
+        ExprKind::Bool(_) => "Bool",
+        ExprKind::Quantity { .. } => "Quantity",
+        ExprKind::Measured { .. } => "Measured",
+        ExprKind::Path { .. } => "Path",
+        ExprKind::Call { .. } => "Call",
+        ExprKind::Index { .. } => "Index",
+        ExprKind::Slice { .. } => "Slice",
+        ExprKind::Unary { .. } => "Unary",
+        ExprKind::Binary { .. } => "Binary",
+        ExprKind::Approx { .. } => "Approx",
+        ExprKind::If { .. } => "If",
+        ExprKind::List(_) => "List",
+        ExprKind::Table { .. } => "Table",
+        ExprKind::Set(_) => "Set",
+        ExprKind::SetComprehension { .. } => "SetComprehension",
+        ExprKind::Record { .. } => "Record",
+        ExprKind::Tuple(_) => "Tuple",
+        ExprKind::WithSeriesPolicy { .. } => "WithSeriesPolicy",
+        ExprKind::Range { .. } => "Range",
+        ExprKind::Conditioned { .. } => "Conditioned",
+        ExprKind::UnitQuery { .. } => "UnitQuery",
+        ExprKind::Cases { .. } => "Cases",
+        ExprKind::FunctionAbs { .. } => "FunctionAbs",
+        ExprKind::Recur { .. } => "Recur",
+        ExprKind::Quote { .. } => "Quote",
+        ExprKind::QuoteBind { .. } => "QuoteBind",
+        ExprKind::CallableBinder { .. } => "CallableBinder",
+        ExprKind::SequenceCons { .. } => "SequenceCons",
     }
 }
 

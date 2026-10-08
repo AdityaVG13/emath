@@ -114,7 +114,10 @@ pub(crate) fn distill_tree(expr: &Expr) -> Result<CodeTree, String> {
             "text templates are not emitted in the artifact tree lane",
         )),
         other => Err(format!(
-            "expression form `{other:?}` is not emitted in artifact trees"
+            "expression form `{}` at {}..{} is not emitted in artifact trees",
+            crate::constructor_emir::kind_form(other),
+            expr.source.start,
+            expr.source.end
         )),
     }
 }

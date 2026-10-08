@@ -171,13 +171,16 @@ pub fn two_path(native: Result<bool, String>) -> TwoPath {
 /// extracts the certificate field (a code value the claim function
 /// built), and calls the emitted checker on it. Every queued claim
 /// gets an outcome; one the emitter cannot lower carries the emit
-/// refusal as its error.
+/// refusal as its error. The emitter's crate-wide refusals return
+/// separately: they are shared across the run, so they print once,
+/// not once per claim (each claim's own reason names only the
+/// function that failed to lower).
 fn native_verdicts(
     module: &PreparedModule,
     source: &str,
     path: &Path,
     queue: &[(String, String)],
-) -> BTreeMap<String, Result<bool, String>> {
+) -> (BTreeMap<String, Result<bool, String>>, Vec<String>) {
     let mut outcomes: BTreeMap<String, Result<bool, String>> = BTreeMap::new();
     let emission = match emit_constructor_crate(module, path, source) {
         Ok(emission) => emission,
@@ -193,7 +196,7 @@ fn native_verdicts(
             for (claim, _) in queue {
                 outcomes.insert(claim.clone(), Err(reason.clone()));
             }
-            return outcomes;
+            return (outcomes, Vec::new());
         }
     };
     // `functions` lists the module's own entries whether or not they
@@ -201,6 +204,18 @@ fn native_verdicts(
     // artifact only as a refusal comment. The membership test is the
     // emitted signature itself.
     let lib = emission.lib.as_str();
+    // The emitter's crate-wide refusals are shared across the run:
+    // deduplicated, they print once, not once per claim.
+    let shared: Vec<String> = {
+        let mut shared: Vec<String> = Vec::new();
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        for message in &emission.unresolved {
+            if seen.insert(message.clone()) {
+                shared.push(message.clone());
+            }
+        }
+        shared
+    };
     let emitted = |name: &str| lib.contains(&format!("pub fn {}(", escape_ident(name)));
     let mut included: Vec<(String, String)> = Vec::new();
     for (claim, checker) in queue {
@@ -213,17 +228,20 @@ fn native_verdicts(
         };
         match missing {
             Some(name) => {
-                let mut reason = format!("the emitter cannot lower `{name}`");
-                if !emission.unresolved.is_empty() {
-                    reason.push_str(&format!("; the emitter reported: {}", emission.unresolved.join("; ")));
-                }
-                outcomes.insert(claim.clone(), Err(reason));
+                // The claim's own reason names the function that failed
+                // to lower. The emitter's crate-wide report is shared:
+                // it returns once for the run, not once per claim.
+                outcomes.insert(
+                    claim.clone(),
+                    Err(format!("the emitter cannot lower `{name}`")),
+                );
             }
             None => included.push((claim.clone(), checker.clone())),
         }
     }
     if included.is_empty() {
-        return outcomes;
+        // Shared emitter refusals still return once per run.
+        return (outcomes, shared);
     }
 
     // The run's own scratch: the artifact crate, the driver host, a
@@ -307,7 +325,7 @@ fn native_verdicts(
                     }
                 }
                 let _ = std::fs::remove_dir_all(&root);
-                return outcomes;
+                return (outcomes, shared);
             }
         }
     }
@@ -316,7 +334,7 @@ fn native_verdicts(
         outcomes.insert(claim.clone(), Err(failure.clone()));
     }
     let _ = std::fs::remove_dir_all(&root);
-    outcomes
+    (outcomes, shared)
 }
 
 fn crate_ident(package_name: &str) -> String {
@@ -508,8 +526,11 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
     // limits report vm-only, a disagreement is a compiler defect and
     // refuses.
     let mut notes: Vec<String> = Vec::new();
+    let mut shared: Vec<String> = Vec::new();
     if !native_queue.is_empty() && refusal.is_none() {
-        let outcomes = native_verdicts(module, checked.source(), &request.path, &native_queue);
+        let (outcomes, shared_refusals) =
+            native_verdicts(module, checked.source(), &request.path, &native_queue);
+        shared = shared_refusals;
         for (row_index, (claim, _checker)) in accepted_rows.iter().zip(&native_queue) {
             match two_path(outcomes[claim.as_str()].clone()) {
                 TwoPath::Settled => {
@@ -578,6 +599,11 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
     }
     for note in &notes {
         eprintln!("note: {note}");
+    }
+    // The emitter's crate-wide refusals are shared across every claim:
+    // they print once per run, not once per claim.
+    for message in &shared {
+        eprintln!("note: the emitter reported: {message}");
     }
     match refusal {
         Some((code, message)) => refuse(code, message, EXIT_REFUSED),
