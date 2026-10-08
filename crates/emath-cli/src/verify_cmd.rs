@@ -31,21 +31,34 @@ use emath_syntax::formatter::{format_expr, Prec};
 
 use crate::{CliExit, EXIT_ADMISSION, EXIT_FAULT, EXIT_IO, EXIT_OK, EXIT_REFUSED};
 
-pub(crate) const USAGE: &str = "verify <library.emath> [--json]";
+pub(crate) const USAGE: &str = "verify <library.emath> [--work N] [--json]";
 
 #[derive(Clone, Debug)]
 pub(crate) struct VerifyRequest {
     pub path: PathBuf,
+    /// Per-claim work budget for the producer evaluation and the
+    /// checker replay, as `emath run --work` budgets an example.
+    pub work: u64,
     pub json: bool,
 }
 
 impl VerifyRequest {
     pub(crate) fn parse(rest: &[String]) -> Option<Self> {
-        let (mut path, mut json) = (None, false);
+        let (mut path, mut work, mut json) = (None, None, false);
         let mut i = 0;
         while i < rest.len() {
             match rest[i].as_str() {
                 "--json" => json = true,
+                "--work" => {
+                    // Same law as `emath run --work`: a positive
+                    // integer, given once.
+                    let value: u64 = rest.get(i + 1)?.parse().ok()?;
+                    if value == 0 || work.is_some() {
+                        return None;
+                    }
+                    work = Some(value);
+                    i += 1;
+                }
                 other => {
                     if other.starts_with('-') || path.is_some() {
                         return None;
@@ -55,7 +68,7 @@ impl VerifyRequest {
             }
             i += 1;
         }
-        Some(Self { path: path?, json })
+        Some(Self { path: path?, work: work.unwrap_or(DEFAULT_WORK), json })
     }
 }
 
@@ -417,8 +430,18 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
     for name in &claims {
         let inputs: BTreeMap<String, CValue> =
             BTreeMap::from([("unused".to_string(), parse_constructor_scalar("0"))]);
-        let value = match module.evaluate_function(name, &inputs, DEFAULT_WORK) {
+        let value = match module.evaluate_function(name, &inputs, request.work) {
             Ok(value) => value,
+            Err(err) if err.code == "budget_exhausted" => {
+                return refuse(
+                    "E-VERIFY-WORK",
+                    format!(
+                        "{library}: {name}: producing the claim exhausted the work budget {}; raise it with --work",
+                        request.work
+                    ),
+                    EXIT_REFUSED,
+                );
+            }
             Err(err) => return refuse(&err.code, format!("{library}: {name}: {}", err.message), EXIT_FAULT),
         };
         let CValue::Record { type_name, fields } = &value else {
@@ -466,8 +489,19 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
         let verdict = match module.evaluate_expr(
             call,
             BTreeMap::from([("claim".to_string(), value.clone())]),
+            request.work,
         ) {
             Ok(verdict) => verdict,
+            Err(err) if err.code == "budget_exhausted" => {
+                return refuse(
+                    "E-VERIFY-WORK",
+                    format!(
+                        "{library}: {name}: replaying the checker exhausted the work budget {}; raise it with --work",
+                        request.work
+                    ),
+                    EXIT_REFUSED,
+                );
+            }
             Err(err) => {
                 return refuse(&err.code, format!("{library}: {name}: {}", err.message), EXIT_FAULT)
             }

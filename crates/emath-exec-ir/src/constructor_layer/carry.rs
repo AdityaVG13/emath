@@ -354,18 +354,27 @@ impl PreparedModule {
     /// explicit closed inputs. The generic host seam for a caller
     /// holding a value that is cheaper to pass than to print: `emath
     /// verify` builds the single call `check_claim(claim, registry)`
-    /// and evaluates it here with the claim record as an input.
+    /// and evaluates it here with the claim record as an input, under
+    /// the caller's work budget.
     pub fn evaluate_expr(
         &self,
         expr: Expr,
         inputs: BTreeMap<String, CValue>,
+        work_limit: u64,
     ) -> Result<CValue, ConstructorError> {
         let tree = self.merged_tree()?;
         // Unstamped deps: the expression is synthesized here, so its
         // free callables resolve against the module's own table.
         let code = Code { expr, deps: BTreeMap::new() };
         let order: Vec<String> = inputs.keys().cloned().collect();
-        super::query::evaluate_code_at(&tree, &code, &inputs, &order, self.source_path.as_deref())
+        super::query::evaluate_code_at(
+            &tree,
+            &code,
+            &inputs,
+            &order,
+            self.source_path.as_deref(),
+            work_limit,
+        )
     }
 
     /// Only immutable declarations are shared. Environments, buffers allocated

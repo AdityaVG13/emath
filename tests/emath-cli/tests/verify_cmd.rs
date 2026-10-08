@@ -224,3 +224,47 @@ fn verify_notes_are_bounded() {
     );
     probe.finish();
 }
+
+/// `--work N` budgets each claim's producer evaluation and checker
+/// replay, as `emath test --work` budgets an example (bead
+/// emath-8cz8x). The bench_179 receipts exceed the default 1,000,000
+/// work units, so under the default budget the run refuses the first
+/// oversized claim by name with the named code and the named budget
+/// (never the bare VM error), and at a stated budget every claim
+/// verifies.
+#[test]
+fn verify_work_budget() {
+    let mut probe = Probe::new("emath verify --work: per-claim budget for large certificates");
+    let file = "tests/fixtures/invention/bench_179/library_large.emath";
+
+    // The default budget refuses the first oversized claim: the named
+    // code, the claim, and the 1,000,000 budget it exhausted.
+    let (text, code) = verify(&workspace(), file, &[]);
+    probe.demand(
+        "default-budget-refuses-by-name",
+        code == EXIT_REFUSED as i32
+            && text.contains("E-VERIFY-WORK")
+            && text.contains("bench179_claim_15")
+            && text.contains("1000000"),
+        format!("exit {code}\n{text}"),
+    );
+
+    // A stated budget verifies the whole library: the last claim's row
+    // is present and no refusal stands.
+    let (text, code) = verify(&workspace(), file, &["--work", "40000000"]);
+    probe.demand(
+        "stated-work-verifies-every-claim",
+        code == EXIT_OK as i32 && text.contains("bench179_claim_20") && text.contains("verdict="),
+        format!("exit {code}\n{text}"),
+    );
+
+    // `--work 0` is refused at parse, as in `emath run`.
+    let (text, code) = verify(&workspace(), file, &["--work", "0"]);
+    probe.demand(
+        "work-zero-refuses-at-parse",
+        code != EXIT_OK as i32 && text.contains("usage"),
+        format!("exit {code}\n{text}"),
+    );
+
+    probe.finish();
+}

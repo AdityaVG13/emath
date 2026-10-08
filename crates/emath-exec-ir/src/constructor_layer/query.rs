@@ -33,15 +33,19 @@ impl super::PreparedModule {
 /// program against a tree with an explicit input environment (ordered
 /// by `order`). This is the engine seam for callers holding a captured
 /// `Code` value; stale-dependency verification and fuel bounding are
-/// exercised through it directly.
+/// exercised through it directly — `work_limit` is the fuel budget
+/// (exhaustion raises `budget_exhausted`), `DEFAULT_WORK` when the
+/// caller has no opinion.
 pub fn evaluate_code_at(
     tree: &SyntaxTree,
     code: &Code,
     inputs: &BTreeMap<String, CValue>,
     order: &[String],
     source: Option<&Path>,
+    work_limit: u64,
 ) -> Result<CValue, ConstructorError> {
     let mut engine = engine_from_tree_at(tree, source)?;
+    engine.work_limit = work_limit;
     engine.facts_only_memo = true;
     engine.eval_closed_code(code, inputs, order)
 }

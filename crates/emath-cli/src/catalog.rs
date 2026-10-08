@@ -150,7 +150,7 @@ pub fn command_usage(command: &str) -> Option<&'static str> {
         "dream" => "dream <file.emath> [--target StepFn] [--run NAME] [--budget N] [--worlds w1,w2,...] [--detach] | dream watch|resume|fork|export <run> | dream list",
         "export" => "export lean <file.emath|dir> [--out <dir>] [--check] [--work N]",
         "keep" => "keep <file.emath> --function F [--name NAME] --to <library.emath> [--set name=value] [--work N] [--overwrite]",
-        "verify" => "verify <library.emath> [--json]",
+        "verify" => "verify <library.emath> [--work N] [--json]",
         "compare" => "compare <file.emath> --function F [--set name=value] [--grid name=v1,v2,... | name=LO..HI | name=LO..HI/N] [--world reference|exact|float64|float32|bfloat16|int64|interval|affine] [--work N] [--json]",
         "experiment" => "experiment <manifest.json> [--state dir] [--audit-ledger path] [--stop-after-pairs N]",
         "step" => {
@@ -209,7 +209,7 @@ pub fn command_summary(command: &str) -> Option<&'static str> {
             "evaluate a function that returns a closed quoted program and write it into a library file as an ordinary `emath function` with its source and content id; different existing text refuses without `--overwrite`"
         }
         "verify" => {
-            "recheck every kept claim in a library file against the checkers the library itself names, one row per claim, never rerunning the search; a tampered certificate, a content id that does not match the claim's content, or a checker the library neither defines nor uses refuses with the claim named"
+            "recheck every kept claim in a library file against the checkers the library itself names, one row per claim, never rerunning the search; a tampered certificate, a content id that does not match the claim's content, or a checker the library neither defines nor uses refuses with the claim named; `--work N` sets the work budget for producing each claim and replaying its checker, as `emath test --work`"
         }
         "compare" => {
             "evaluate one function under several carrier worlds (reference as authored, exact rationals, binary64) and report every answer, the gap between them, and whether they agree; never picks a winner"
@@ -647,7 +647,7 @@ pub fn flags_for(command: &str) -> &'static [&'static str] {
         "loop" => &["--target", "--budget", "--script", "--help", "-h"],
         "export" => &["--out", "-o", "--check", "--work", "--help", "-h"],
         "keep" => &["--function", "--name", "--to", "--set", "--work", "--overwrite", "--help", "-h"],
-        "verify" => &["--json", "--help", "-h"],
+        "verify" => &["--json", "--work", "--help", "-h"],
         "compare" => &["--function", "--set", "--grid", "--world", "--work", "--json", "--help", "-h"],
         "dream" => &[
             "--target",

@@ -7,7 +7,7 @@ use emath_exec_ir::constructor_emir::{cvalue_to_emir, lower_constructor_function
 use emath_exec_ir::constructor_layer::{
     admit_tree, evaluate_code_at, evaluate_function, evaluate_function_at,
     evaluate_function_budgeted_at, evaluate_tree, evaluate_tree_at, evaluate_tree_budgeted_at,
-    parse_constructor_scalar, CValue,
+    parse_constructor_scalar, CValue, DEFAULT_WORK,
 };
 use emath_exec_ir::exact_int::ExactInt;
 use emath_exec_ir::interp::{evaluate, Value};
@@ -172,14 +172,14 @@ emath function dep:
         // integer-valued (the operand-carrier rule; the emitted
         // ExactRatio arithmetic and cross-lane scratch parity require
         // it), so the sum displays as the Rat 2/1.
-        let same = evaluate_code_at(&capture_tree, &code, &BTreeMap::new(), &[], None);
+        let same = evaluate_code_at(&capture_tree, &code, &BTreeMap::new(), &[], None, DEFAULT_WORK);
         p.demand(
             "1",
             same.as_ref().map(|v| v.to_string()).as_deref() == Ok("2/1"),
             format!("same-tree evaluation: {same:?}"),
         );
         // On the changed tree the stamp differs: stale_dependency.
-        let stale = evaluate_code_at(&eval_tree, &code, &BTreeMap::new(), &[], None);
+        let stale = evaluate_code_at(&eval_tree, &code, &BTreeMap::new(), &[], None, DEFAULT_WORK);
         let stale_code = stale.expect_err("changed dependency must refuse").code;
         p.demand(
             "2",

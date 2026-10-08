@@ -15,7 +15,7 @@ unmet/partial/suspended, **4** fault, **5** incompatible checkpoint.
 | --- | --- |
 | `emath check <file\|-> [--json]` | Parse and admit constructor source |
 | `emath run <file> [--function NAME] [--set name=value] [--work N] [--json]` | Evaluate a function or query; print a constructor receipt. Without `--function`, run the file's single entry, or refuse `E-RUN-USAGE` listing the entries |
-| `emath verify <library> [--json]` | Recheck every kept claim in a library through the frozen `check_claim` on its stored certificate; one row per claim, `--json` emits the same rows. A row reads settled only when the reference VM and the emitted Rust agree on the checker verdict; a checker the emitter cannot lower reports vm-only with the emit refusal named |
+| `emath verify <library> [--work N] [--json]` | Recheck every kept claim in a library through the frozen `check_claim` on its stored certificate; one row per claim, `--json` emits the same rows. A row reads settled only when the reference VM and the emitted Rust agree on the checker verdict; a checker the emitter cannot lower reports vm-only with the emit refusal named. `--work N` budgets each claim's producer evaluation and checker replay as `emath run --work` budgets an example; a claim that exhausts the budget refuses `E-VERIFY-WORK` naming the claim and the budget |
 | `emath step <checkpoint> [--work N] [--json]` | Resume a constructor-layer continuation |
 | `emath inspect <checkpoint> [--json]` | Read a saved constructor checkpoint |
 | `emath test <file>` | Authored `tests:` |

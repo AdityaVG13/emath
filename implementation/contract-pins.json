@@ -198,11 +198,12 @@
     "CRATE_MAP re-pinned: emath-cli `dashboard` is a default feature again; `--no-default-features` gives the headless CLI.",
     "bare `emath run FILE` runs the file's single own entry or refuses E-RUN-USAGE listing them: ERROR_CODES gains the E-RUN-* family row (E-RUN-ENTRY, E-RUN-SET-FILE, E-RUN-USAGE); CLI_REFERENCE run row states the no-function behavior.",
     "`emath verify LIB [--json]` rechecks kept claims through the frozen check_claim: ERROR_CODES gains the E-VERIFY-* family row (SHAPE, REJECTED, CHECKER, SETS, CONTENT-ID) and the annex re-splices (279 rust files); CLI_REFERENCE gains the verify row.",
-    "`emath verify` settles a claim only when the reference VM and the emitted Rust agree (d09ve): ERROR_CODES gains E-VERIFY-PATHS (VM accepted, native rejected) in the E-VERIFY-* row; CLI_REFERENCE verify row documents the `native=` row field and the vm-only verdict."
+    "`emath verify` settles a claim only when the reference VM and the emitted Rust agree (d09ve): ERROR_CODES gains E-VERIFY-PATHS (VM accepted, native rejected) in the E-VERIFY-* row; CLI_REFERENCE verify row documents the `native=` row field and the vm-only verdict.",
+    "`emath verify --work N` budgets each claim's producer evaluation and checker replay (8cz8x): ERROR_CODES gains E-VERIFY-WORK (budget exhausted, naming the claim and the budget) in the E-VERIFY-* row; CLI_REFERENCE verify row documents `--work N`."
   ],
   "files": {
-    "implementation/ERROR_CODES.md": "1649e9dcaf043ee52696945c7e6ee228dbe155c854e95a5355c6393e94cec9fc",
-    "implementation/CLI_REFERENCE.md": "0d0a2a5fcdf7bc6eabe9edf50b710944b96565b2b3841b8bdbca90704c11c251",
+    "implementation/ERROR_CODES.md": "8bbac7af0b7a852a39d237a9cee562f02aaee0b6ecd11d7f9acf004adaa6be00",
+    "implementation/CLI_REFERENCE.md": "22b02ec246ca14de350484454e290c707212869515501f498a66897d5076435a",
     "implementation/CRATE_MAP.md": "06095618f529bb8ac4cadd5b90ae7d280fd1eb9d8619f97a6f99b3577c972b42",
     "implementation/PUBLIC_API_INVENTORY.md": "51b7d3d4977eb884d4e5ddc439e9210732e5d0921a7b21115cea8ab30080c5db"
   }
