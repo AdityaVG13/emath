@@ -626,11 +626,22 @@ pub(crate) fn op_expr(
             }
             // A field off a node value is the family's dynamic
             // projection - a typed refusal on a missing field, never
-            // a silent default (the VM's `project_field` law).
+            // a silent default (the VM's `project_field` law). The
+            // code-evaluation union projects through its node view
+            // first: the union enum has no fields of its own (bead
+            // emath-d09ve).
 
-            if kind_at(kinds, *record) == ValueKind::Node {
+            if matches!(
+                kind_at(kinds, *record),
+                ValueKind::Node | ValueKind::Evaluated
+            ) {
                 let record_code = render_expr(&operand(program, *record));
-                return Ok(Expr::Raw(format!("({record_code}).field({field:?})?")));
+                let receiver = if kind_at(kinds, *record) == ValueKind::Evaluated {
+                    format!("({record_code}).to_node()?")
+                } else {
+                    record_code
+                };
+                return Ok(Expr::Raw(format!("({receiver}).field({field:?})?")));
             }
             // The authored `p.length` sugar: a `length` projection
             // off a sequence-shaped receiver is the storage length,

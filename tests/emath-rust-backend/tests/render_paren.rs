@@ -6,7 +6,10 @@
 //! `int_quot(a + b, c)` emitted
 //! `(((a).checked_add((b))).ok_or(..))` where canonical Rust is
 //! `a.checked_add(b).ok_or(..)`. The pins below demand
-//! the canonical chain and refuse any paren-wrapped bare atom.
+//! the canonical chain and refuse any paren-wrapped bare atom. Field
+//! projection off a `quote.evaluate` result is pinned to the node-view
+//! chain for the same reason: the render shape decides whether the crate
+//! compiles.
 
 use emath_rust_backend::emit_constructor_program;
 use emath_test_harness::{boot, Probe};
@@ -75,6 +78,16 @@ const REM_PLAIN: &str = "emath function rem_plain:
             expect result == 2
 ";
 
+const EVALUATED_FIELD: &str = "emath function probe:
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        c = quote.evaluate(cert)(0)
+        result = c.start < 0
+";
+
 #[test]
 fn probe() {
     boot();
@@ -115,6 +128,46 @@ fn probe() {
             "emath_rt::ExactInt::from(a).rem_euclid(&emath_rt::ExactInt::from(c))",
         );
         no_wrapped_atoms(p, &body, &["(a)", "(c)"]);
+    });
+
+    // A field off a `quote.evaluate` result projects through the node view,
+    // the same law a `Node` receiver follows. A bare struct access against
+    // the `EvaluatedValue` union does not compile, yet emission still
+    // reported the crate runnable.
+    p.case("evaluated-field-projects-through-node", |p| {
+        let mut session =
+            emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
+        let checked = session.check_owned("evaluated_field.emath", EVALUATED_FIELD);
+        let Some(prepared) = checked.prepared.as_ref() else {
+            p.fail("check", format!("{:?}", checked.diagnostics));
+            return;
+        };
+        let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(
+            prepared,
+            std::path::Path::new("evaluated_field.emath"),
+            EVALUATED_FIELD,
+        ) {
+            Ok(emission) => emission,
+            Err(err) => {
+                p.fail("emit", format!("{err:?}"));
+                return;
+            }
+        };
+        p.demand(
+            "runnable",
+            emission.runnable,
+            format!("unresolved {:?}", emission.unresolved),
+        );
+        // The crate embeds the authored source (`__EMATH_SOURCE`); only the
+        // rendered code region may be searched for `.start`.
+        let code = emission.lib.split("static __EMATH_SOURCE").next().unwrap_or_default();
+        let body = code.split("pub fn probe").nth(1).unwrap_or(code);
+        p.contains("node projection", body, ".to_node()?).field(\"start\")");
+        p.demand(
+            "no bare field access",
+            !body.contains(".start"),
+            format!("bare field access off the union enum:\n{body}"),
+        );
     });
 
     p.finish();

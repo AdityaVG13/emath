@@ -4,18 +4,29 @@
 //! keep shape: one `unused: Int` input), builds a registry entry for
 //! each distinct named checker that resolves in the library's own
 //! scope, and runs the frozen `check_claim` on the stored certificate
-//! — the search that produced the claim is never rerun. One row per
-//! claim; any verdict other than accepted refuses with the claim
-//! named; `--json` emits the same rows.
+//! — the search that produced the claim is never rerun. A claim is
+//! SETTLED only when the reference VM and the emitted Rust agree on
+//! the checker's verdict: verify emits the library's artifact crate
+//! once per run through the existing emit path, drives each accepted
+//! claim's checker natively on the certificate it built into the
+//! record, and compares. One row per claim; a verdict the checker
+//! rejected, a checker the library neither defines nor uses, or a
+//! content-id mismatch refuses with the claim named; a disagreement
+//! between the two paths refuses as a compiler defect; a checker the
+//! emitter cannot lower is reported vm-only (not settled, not a
+//! crash), with the emit refusal named; `--json` emits the same rows.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use emath_core::json_escape;
 use emath_core::tree::{Expr, ExprKind, Item};
 use emath_exec_ir::constructor_layer::{
     parse_constructor_scalar, CValue, DEFAULT_WORK, PreparedModule,
 };
+use emath_rust_backend::constructor_crate::emit_constructor_crate;
+use emath_rust_backend::rust_ir::ast::escape_ident;
 use emath_syntax::formatter::{format_expr, Prec};
 
 use crate::{CliExit, EXIT_ADMISSION, EXIT_FAULT, EXIT_IO, EXIT_OK, EXIT_REFUSED};
@@ -48,6 +59,30 @@ impl VerifyRequest {
     }
 }
 
+/// The native (emitted Rust) verdict a claim's checker returned, as
+/// the row reports it: agreement (true), disagreement (false), a
+/// checker or claim function the emitter cannot lower (unavailable),
+/// or a claim the VM already refused, where no second path is needed
+/// (skipped).
+#[derive(Clone, Copy, PartialEq)]
+enum Native {
+    True,
+    False,
+    Unavailable,
+    Skipped,
+}
+
+impl Native {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Native::True => "true",
+            Native::False => "false",
+            Native::Unavailable => "unavailable",
+            Native::Skipped => "skipped",
+        }
+    }
+}
+
 /// One claim's recheck outcome. `kind`/`standing` are the claim's own
 /// closed-set tags carried as data; `checker`/`conditions` are the
 /// stored code rendered as text.
@@ -58,6 +93,8 @@ struct ClaimRow {
     checker: String,
     conditions: String,
     verdict: &'static str,
+    native: Native,
+    note: Option<String>,
 }
 
 fn refuse(code: &str, message: impl std::fmt::Display, exit: CliExit) -> CliExit {
@@ -101,6 +138,233 @@ fn quoted(expr: Expr) -> Expr {
     }
 }
 
+/// The two-path verdict for one VM-accepted claim (DESIGN §Verification
+/// Rule 3): the claim is settled only when the emitted Rust AGREES
+/// with the reference VM on the checker's verdict. A checker the
+/// emitter cannot lower is vm-only (not settled, not a crash), with
+/// the emit refusal carried as the reason; a disagreement is a
+/// compiler defect and refuses `E-VERIFY-PATHS`. Pure so the decision
+/// is testable directly, without a native build.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TwoPath {
+    /// Both paths accepted the certificate.
+    Settled,
+    /// The emitted Rust rejected what the VM accepted: not settled.
+    CompilerDefect,
+    /// The native lane could not reach a verdict; the emit refusal is
+    /// the reason.
+    VmOnly(String),
+}
+
+pub fn two_path(native: Result<bool, String>) -> TwoPath {
+    match native {
+        Ok(true) => TwoPath::Settled,
+        Ok(false) => TwoPath::CompilerDefect,
+        Err(reason) => TwoPath::VmOnly(reason),
+    }
+}
+
+/// Run every queued claim's checker natively through the existing
+/// emit path: the library's artifact crate (one emission, one compile
+/// per run — the cache is the run's own, never a persistent one),
+/// plus a generated std-only driver that builds each claim record,
+/// extracts the certificate field (a code value the claim function
+/// built), and calls the emitted checker on it. Every queued claim
+/// gets an outcome; one the emitter cannot lower carries the emit
+/// refusal as its error.
+fn native_verdicts(
+    module: &PreparedModule,
+    source: &str,
+    path: &Path,
+    queue: &[(String, String)],
+) -> BTreeMap<String, Result<bool, String>> {
+    let mut outcomes: BTreeMap<String, Result<bool, String>> = BTreeMap::new();
+    let emission = match emit_constructor_crate(module, path, source) {
+        Ok(emission) => emission,
+        Err(refusal) => {
+            let reason = match refusal {
+                emath_rust_backend::constructor_crate::ConstructorEmitRefusal::NotConstructor(message) => {
+                    format!("artifact emission refused: {message}")
+                }
+                emath_rust_backend::constructor_crate::ConstructorEmitRefusal::ImportsRefused { e_code, detail } => {
+                    format!("artifact emission refused ({e_code}): {detail}")
+                }
+            };
+            for (claim, _) in queue {
+                outcomes.insert(claim.clone(), Err(reason.clone()));
+            }
+            return outcomes;
+        }
+    };
+    // `functions` lists the module's own entries whether or not they
+    // lowered: a function outside the emitter's subset appears in the
+    // artifact only as a refusal comment. The membership test is the
+    // emitted signature itself.
+    let lib = emission.lib.as_str();
+    let emitted = |name: &str| lib.contains(&format!("pub fn {}(", escape_ident(name)));
+    let mut included: Vec<(String, String)> = Vec::new();
+    for (claim, checker) in queue {
+        let missing = if !emitted(claim) {
+            Some(claim)
+        } else if !emitted(checker) {
+            Some(checker)
+        } else {
+            None
+        };
+        match missing {
+            Some(name) => {
+                let mut reason = format!("the emitter cannot lower `{name}`");
+                if !emission.unresolved.is_empty() {
+                    reason.push_str(&format!("; the emitter reported: {}", emission.unresolved.join("; ")));
+                }
+                outcomes.insert(claim.clone(), Err(reason));
+            }
+            None => included.push((claim.clone(), checker.clone())),
+        }
+    }
+    if included.is_empty() {
+        return outcomes;
+    }
+
+    // The run's own scratch: the artifact crate, the driver host, a
+    // private target. Removed when the lane ends; nothing persists.
+    let root = std::env::temp_dir().join(format!("emath_verify_native_{}", std::process::id()));
+    let artifact = root.join("artifact");
+    let host_dir = root.join("host");
+    let crate_ident = crate_ident(&emission.package_name);
+    let mut failure: Option<String> = None;
+    for (relative, contents) in emission.files() {
+        let path = artifact.join(relative);
+        let written = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&path, contents.as_bytes()));
+        if let Err(err) = written {
+            failure = Some(format!("cannot write {}: {err}", path.display()));
+            break;
+        }
+    }
+    if failure.is_none() {
+        let manifest = std::fs::create_dir_all(host_dir.join("src"))
+            .and_then(|()| std::fs::write(host_dir.join("Cargo.toml"), host_manifest(&crate_ident, &artifact)))
+            .and_then(|()| std::fs::write(host_dir.join("src/main.rs"), driver_source(&crate_ident, &included)));
+        if let Err(err) = manifest {
+            failure = Some(format!("cannot write the native driver: {err}"));
+        }
+    }
+    if failure.is_none() {
+        match Command::new("cargo")
+            .args(["build", "-q"])
+            .current_dir(&host_dir)
+            .env("CARGO_TARGET_DIR", root.join("target"))
+            .output()
+        {
+            Err(err) => failure = Some(format!("cannot run cargo: {err}")),
+            Ok(out) if !out.status.success() => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let tail: Vec<String> = stderr
+                    .lines()
+                    .filter(|line| line.contains("error") || line.trim_start().starts_with('|'))
+                    .take(3)
+                    .map(|line| line.trim().to_string())
+                    .collect();
+                failure = Some(format!(
+                    "the emitted artifact did not compile: {}",
+                    if tail.is_empty() { stderr.lines().last().unwrap_or("unknown").trim().to_string() } else { tail.join(" | ") }
+                ));
+            }
+            Ok(_) => {}
+        }
+    }
+    if failure.is_none() {
+        match Command::new(root.join("target/debug/verify-native")).output() {
+            Err(err) => failure = Some(format!("cannot run the native driver: {err}")),
+            Ok(out) if !out.status.success() => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                failure = Some(format!(
+                    "the native driver failed: {}",
+                    stderr.lines().last().unwrap_or("unknown").trim()
+                ));
+            }
+            Ok(out) => {
+                let mut seen: BTreeSet<String> = BTreeSet::new();
+                for line in String::from_utf8_lossy(&out.stdout).lines() {
+                    if let Some((claim, verdict)) = line.split_once(' ') {
+                        seen.insert(claim.to_string());
+                        outcomes.insert(
+                            claim.to_string(),
+                            match verdict {
+                                "true" => Ok(true),
+                                "false" => Ok(false),
+                                other => Err(format!("the native checker failed: {other}")),
+                            },
+                        );
+                    }
+                }
+                for (claim, _) in &included {
+                    if !seen.contains(claim.as_str()) {
+                        outcomes.insert(claim.clone(), Err("the native driver produced no verdict".to_string()));
+                    }
+                }
+                let _ = std::fs::remove_dir_all(&root);
+                return outcomes;
+            }
+        }
+    }
+    let failure = failure.unwrap_or_else(|| "the native lane failed".to_string());
+    for (claim, _) in &included {
+        outcomes.insert(claim.clone(), Err(failure.clone()));
+    }
+    let _ = std::fs::remove_dir_all(&root);
+    outcomes
+}
+
+fn crate_ident(package_name: &str) -> String {
+    package_name.replace('-', "_")
+}
+
+fn host_manifest(crate_ident: &str, artifact: &Path) -> String {
+    let artifact = artifact.canonicalize().unwrap_or_else(|_| artifact.to_path_buf());
+    format!(
+        "# Generated by emath (deterministic; do not edit). The verify\
+        \n# native lane's driver: builds each claim record, runs the\
+        \n# emitted checker on the certificate it carries, prints one\
+        \n# `claim verdict` line.\n\
+        [package]\n\
+        name = \"verify-native\"\n\
+        version = \"0.1.0\"\n\
+        edition = \"2024\"\n\
+        publish = false\n\n\
+        [workspace]\n\n\
+        [[bin]]\n\
+        name = \"verify-native\"\n\
+        path = \"src/main.rs\"\n\n\
+        [dependencies]\n\
+        {crate_ident} = {{ path = {artifact:?} }}\n"
+    )
+}
+
+fn driver_source(crate_ident: &str, pairs: &[(String, String)]) -> String {
+    let mut text = String::from("fn main() {\n");
+    for (claim, checker) in pairs {
+        let claim_fn = escape_ident(claim);
+        let checker_fn = escape_ident(checker);
+        text.push_str(&format!(
+            "    println!(\"{claim} {{}}\", match {crate_ident}::{claim_fn}(0i64) {{\n"
+        ));
+        text.push_str(&format!(
+            "        Ok(record) => match {crate_ident}::{checker_fn}(record.certificate) {{\n"
+        ));
+        text.push_str("            Ok(verdict) => format!(\"{verdict}\"),\n");
+        text.push_str("            Err(e) => format!(\"error {e}\"),\n");
+        text.push_str("        },\n");
+        text.push_str("        Err(e) => format!(\"error {e}\"),\n");
+        text.push_str("    });\n");
+    }
+    text.push_str("}\n");
+    text
+}
+
 pub(crate) fn run(request: VerifyRequest) -> CliExit {
     let checked = crate::cli_build::checked_file(&request.path);
     if let Some(first) = checked.result.diagnostics.errors().next() {
@@ -128,6 +392,9 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
     let declared = declared_names(module);
     let mut registry_names: Vec<String> = Vec::new();
     let mut rows: Vec<ClaimRow> = Vec::new();
+    // VM-accepted claims, in row order: the native lane checks these.
+    let mut native_queue: Vec<(String, String)> = Vec::new();
+    let mut accepted_rows: Vec<usize> = Vec::new();
     let mut refusal: Option<(&'static str, String)> = None;
     for name in &claims {
         let inputs: BTreeMap<String, CValue> =
@@ -200,9 +467,15 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
             checker: checker_name.clone(),
             conditions: code_text(conditions),
             verdict: "accepted",
+            native: Native::Skipped,
+            note: None,
         };
         match status.to_i64() {
-            Some(1) => rows.push(row),
+            Some(1) => {
+                accepted_rows.push(rows.len());
+                native_queue.push((name.clone(), checker_name.clone()));
+                rows.push(row);
+            }
             Some(0) => {
                 refusal = Some(("E-VERIFY-REJECTED", format!("{library}: {name}: the checker {checker_name} rejected the stored certificate")));
                 rows.push(ClaimRow { verdict: "refused", ..row });
@@ -229,29 +502,82 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
         }
     }
 
+    // The native lane: only when the VM accepted something and no
+    // refusal already stands. The two-path decision is the pure
+    // `two_path` function: agreement settles the claim, the emitter's
+    // limits report vm-only, a disagreement is a compiler defect and
+    // refuses.
+    let mut notes: Vec<String> = Vec::new();
+    if !native_queue.is_empty() && refusal.is_none() {
+        let outcomes = native_verdicts(module, checked.source(), &request.path, &native_queue);
+        for (row_index, (claim, _checker)) in accepted_rows.iter().zip(&native_queue) {
+            match two_path(outcomes[claim.as_str()].clone()) {
+                TwoPath::Settled => {
+                    let row = &mut rows[*row_index];
+                    row.verdict = "settled";
+                    row.native = Native::True;
+                }
+                TwoPath::CompilerDefect => {
+                    let row = &mut rows[*row_index];
+                    row.verdict = "refused";
+                    row.native = Native::False;
+                    if refusal.is_none() {
+                        refusal = Some((
+                            "E-VERIFY-PATHS",
+                            format!(
+                                "{library}: {claim}: the reference VM and the emitted Rust disagree on the checker verdict (VM accepted, native rejected): the claim is not settled; this is a compiler defect"
+                            ),
+                        ));
+                    }
+                }
+                TwoPath::VmOnly(reason) => {
+                    let row = &mut rows[*row_index];
+                    row.verdict = "vm-only";
+                    row.native = Native::Unavailable;
+                    row.note = Some(reason.clone());
+                    notes.push(format!("{claim}: {reason}"));
+                }
+            }
+        }
+    }
+
     if request.json {
         let rows: Vec<String> = rows
             .iter()
             .map(|row| {
-                format!(
-                    "{{\"name\":\"{}\",\"kind\":{},\"standing\":{},\"checker\":\"{}\",\"conditions\":\"{}\",\"verdict\":\"{}\"}}",
+                let mut object = format!(
+                    "{{\"name\":\"{}\",\"kind\":{},\"standing\":{},\"checker\":\"{}\",\"conditions\":\"{}\",\"verdict\":\"{}\",\"native\":{}",
                     json_escape(&row.name),
                     row.kind,
                     row.standing,
                     json_escape(&row.checker),
                     json_escape(&row.conditions),
                     row.verdict,
-                )
+                    match row.native {
+                        Native::True => "true".to_string(),
+                        Native::False => "false".to_string(),
+                        Native::Unavailable => "\"unavailable\"".to_string(),
+                        Native::Skipped => "\"skipped\"".to_string(),
+                    },
+                );
+                if let Some(note) = &row.note {
+                    object.push_str(&format!(",\"note\":\"{}\"", json_escape(note)));
+                }
+                object.push('}');
+                object
             })
             .collect();
         println!("[{}]", rows.join(", "));
     } else {
         for row in &rows {
             println!(
-                "{} kind={} standing={} checker={} conditions={} verdict={}",
-                row.name, row.kind, row.standing, row.checker, row.conditions, row.verdict
+                "{} kind={} standing={} checker={} conditions={} verdict={} native={}",
+                row.name, row.kind, row.standing, row.checker, row.conditions, row.verdict, row.native.as_str()
             );
         }
+    }
+    for note in &notes {
+        eprintln!("note: {note}");
     }
     match refusal {
         Some((code, message)) => refuse(code, message, EXIT_REFUSED),

@@ -1647,8 +1647,15 @@ pub(super) fn kind_of_op(
             // A field off a node value stays in the node family
             // (dynamic records: the field's own kind is a runtime
             // fact); a field off a typed record keeps the declared
-            // layout carrier.
-            if kind_at(kinds, *record) == ValueKind::Node {
+            // layout carrier. The code-evaluation union (a
+            // `quote.evaluate` applied result) carries the same
+            // dynamic tree, so its projections are dynamic too: a
+            // bare struct access rendered against the union enum and
+            // the crate did not compile (bead emath-d09ve).
+            if matches!(
+                kind_at(kinds, *record),
+                ValueKind::Node | ValueKind::Evaluated
+            ) {
                 return ValueKind::Node;
             }
             // The authored `p.length` sugar: a `length` projection

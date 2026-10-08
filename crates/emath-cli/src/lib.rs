@@ -27,7 +27,7 @@ mod cli_parse;
 mod loop_cmd;
 mod dream_cmd;
 mod keep_cmd;
-mod verify_cmd;
+pub mod verify_cmd;
 mod export_cmd;
 mod compare_cmd;
 mod experiment_cmd;
