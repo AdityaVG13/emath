@@ -1,0 +1,37 @@
+# Tampered twin of the exhaustion claim: the receipt's kept-per-depth
+# count says one child survived depth 1, but no step keeps a child —
+# the counts cannot add up, so the recheck must reject the receipt.
+exports: exhaustion_receipt, exhaustion_checker, tampered_exhaustion_claim
+
+use search.claim
+use search.backtrack
+use search.receipts
+
+emath function exhaustion_receipt:
+    # The receipt with a forged kept count: kept_per_depth [2, 1]
+    # against steps that keep nothing.
+    inputs:
+        unused: Int
+    outputs:
+        result: Receipt<sequence(Int)>
+    definitions:
+        result = Receipt: {steps: [Step: {depth: 0, node: [], kept: [[0], [1]], prunes: []}, Step: {depth: 1, node: [0], kept: [], prunes: [Prune: {node_index: 1, child: [0, 0]}, Prune: {node_index: 1, child: [0, 1]}]}, Step: {depth: 1, node: [1], kept: [], prunes: [Prune: {node_index: 2, child: [1, 0]}, Prune: {node_index: 2, child: [1, 1]}]}], nodes_per_depth: [1, 2], kept_per_depth: [2, 1], complete: true}
+
+emath function exhaustion_checker:
+    # The claim's checker: decode the receipt and replay it against a
+    # freshly built 2-queens problem.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        result = recheck_receipt(queens(2), quote.evaluate(cert)).ok
+
+emath function tampered_exhaustion_claim:
+    # The claim with the tampered receipt as its certificate.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = receipt_claim(quote(function s in sequence(Int): not queens_valid(s)), quote(exhaustion_receipt(0)), quote(exhaustion_checker), quote(2), quote(function s in sequence(Int): queens_valid(s)))

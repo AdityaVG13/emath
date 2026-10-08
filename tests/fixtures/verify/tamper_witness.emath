@@ -1,0 +1,35 @@
+# Tampered twin of the witness claim: the certificate has a 0 where
+# the witness alphabet demands ±1. make_claim recomputes the content
+# id, so the record is consistent and the refusal comes from the
+# checker itself: it must reject the altered certificate.
+exports: is_pm_one, witness_checker, tampered_witness_claim
+
+use search.claim
+
+emath function is_pm_one:
+    # The property the witness must have: length 5, every entry ±1.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        result = length(s) == 5 and all(function x in Int: x == 1 or x == 0 - 1, s)
+
+emath function witness_checker:
+    # The claim's checker: decode the certificate and compute the
+    # property of the witness.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        result = is_pm_one(quote.evaluate(cert))
+
+emath function tampered_witness_claim:
+    # The claim with the tampered certificate.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_construction(0), quote(function s in sequence(Int): is_pm_one(s)), quote([1, 0, 1, 1, 0 - 1]), quote(witness_checker), quote(5), standing_proven(0), quote(function s in sequence(Int): not is_pm_one(s)))

@@ -23,8 +23,8 @@ use std::path::Path;
 use super::identity::{canonical_expr_bytes, free_path_names};
 use super::prelude::*;
 use super::{
-    CHECKPOINT_ABI, CValue, ConstructorError, Engine, Expr, ExprKind, FnDecl, Item, ObjectSchema,
-    PathBuf, QueryDecl, Rc, SyntaxTree,
+    CHECKPOINT_ABI, Code, CValue, ConstructorError, Engine, Expr, ExprKind, FnDecl, Item,
+    ObjectSchema, PathBuf, QueryDecl, Rc, SyntaxTree,
 };
 
 /// Name prefix of fact functions.
@@ -318,6 +318,54 @@ impl PreparedModule {
                 .zip(function.input_types.iter().cloned())
                 .collect(),
         )
+    }
+
+    /// The file's own `emath function` declarations mapped to their
+    /// declared output type names (the final path segment of each
+    /// output type; non-path types are absent). A host that identifies
+    /// entries by their result type reads this instead of evaluating
+    /// every entry.
+    pub fn function_output_types(&self) -> BTreeMap<String, Vec<String>> {
+        self.functions
+            .iter()
+            .filter(|(name, _)| {
+                self.name_sources
+                    .get(*name)
+                    .is_some_and(|origin| origin.as_os_str().is_empty())
+            })
+            .map(|(name, function)| {
+                let names = function
+                    .output_types
+                    .iter()
+                    .filter_map(|ty| match &ty.kind {
+                        emath_core::tree::TypeKind::Path { segments, .. } => {
+                            segments.last().cloned()
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                (name.clone(), names)
+            })
+            .collect()
+    }
+
+    /// Evaluate one expression against the module's full scope (the
+    /// file's own declarations plus the retained import graph) with
+    /// explicit closed inputs. The generic host seam for a caller
+    /// holding a value that is cheaper to pass than to print: `emath
+    /// verify` builds the single call `check_claim(claim, registry)`
+    /// and evaluates it here with the claim record as an input.
+    pub fn evaluate_expr(
+        &self,
+        expr: Expr,
+        inputs: BTreeMap<String, CValue>,
+    ) -> Result<CValue, ConstructorError> {
+        let tree = self.merged_tree()?;
+        // Unstamped deps: the expression is synthesized here, so its
+        // free callables resolve against the module's own table.
+        let code = Code { expr, deps: BTreeMap::new() };
+        let order: Vec<String> = inputs.keys().cloned().collect();
+        super::query::evaluate_code_at(&tree, &code, &inputs, &order, self.source_path.as_deref())
     }
 
     /// Only immutable declarations are shared. Environments, buffers allocated

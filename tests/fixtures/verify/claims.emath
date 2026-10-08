@@ -1,0 +1,98 @@
+# Fixture kept library for `emath verify`: one claim of each producer
+# kind — a construction witness, an exhaustion receipt (2-queens), and
+# an inductively certified bound. Every claim's checker is defined here
+# or reached through a `use`, so the verify registry resolves in the
+# library's own scope. Run: emath verify tests/fixtures/verify/claims.emath
+exports: is_pm_one, witness_checker, witness_claim,
+    exhaustion_receipt, exhaustion_checker, exhaustion_claim,
+    bound_gap, certified_bound_claim
+
+use search.claim
+use search.backtrack
+use search.receipts
+use search.certify_bound
+use fold.reduce
+
+emath function is_pm_one:
+    # The property the witness must have: length 5, every entry ±1.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        result = length(s) == 5 and all(function x in Int: x == 1 or x == 0 - 1, s)
+
+emath function witness_checker:
+    # The witness claim's checker: decode the certificate and compute
+    # the property of the witness. The search that found the sequence
+    # is never rerun.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        result = is_pm_one(quote.evaluate(cert))
+
+emath function witness_claim:
+    # The construction witness as an F0 claim: kind construction,
+    # standing proven, the witness sequence as the certificate.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_construction(0), quote(function s in sequence(Int): is_pm_one(s)), quote([1, 0 - 1, 1, 1, 0 - 1]), quote(witness_checker), quote(5), standing_proven(0), quote(function s in sequence(Int): not is_pm_one(s)))
+
+emath function exhaustion_receipt:
+    # The receipt of the 2-queens exhaustion, as data: the root (all
+    # options kept), then the two depth-1 nodes (every child rightly
+    # refused by the problem's ok). nodes[d+1] == kept[d] and the
+    # last depth keeps nothing.
+    inputs:
+        unused: Int
+    outputs:
+        result: Receipt<sequence(Int)>
+    definitions:
+        result = Receipt: {steps: [Step: {depth: 0, node: [], kept: [[0], [1]], prunes: []}, Step: {depth: 1, node: [0], kept: [], prunes: [Prune: {node_index: 1, child: [0, 0]}, Prune: {node_index: 1, child: [0, 1]}]}, Step: {depth: 1, node: [1], kept: [], prunes: [Prune: {node_index: 2, child: [1, 0]}, Prune: {node_index: 2, child: [1, 1]}]}], nodes_per_depth: [1, 2], kept_per_depth: [2, 0], complete: true}
+
+emath function exhaustion_checker:
+    # The exhaustion claim's checker: decode the receipt from the
+    # certificate and replay it against a freshly built 2-queens
+    # problem. The search is never rerun.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        result = recheck_receipt(queens(2), quote.evaluate(cert)).ok
+
+emath function exhaustion_claim:
+    # The 2-queens exhaustion as an F0 claim: kind finite, standing
+    # finite_certificate, the receipt literal as the certificate,
+    # conditions the board size.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = receipt_claim(quote(function s in sequence(Int): not queens_valid(s)), quote(exhaustion_receipt(0)), quote(exhaustion_checker), quote(2), quote(function s in sequence(Int): queens_valid(s)))
+
+emath function bound_gap:
+    # The gap g - f = 2^n: positive everywhere.
+    inputs:
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = rat_pow(2, n)
+
+emath function certified_bound_claim:
+    # The certified bound as an F0 claim: kind universal_certified,
+    # standing certified_bound; bound_checker (through the use of
+    # search.certify_bound) re-runs the whole certification fresh.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = bound_claim(quote(function n in Int: bound_gap(n)), quote(function n in Int: bound_gap(n + 1) - 2 * bound_gap(n)), [2], 0, 10000000)

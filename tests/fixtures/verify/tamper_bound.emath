@@ -1,0 +1,27 @@
+# Tampered twin of the certified-bound claim: a negative coefficient
+# smuggled into the certificate. make_claim recomputes the content id,
+# so the record is consistent; bound_checker's own gate rejects the
+# certificate (a negative coefficient cannot induct).
+exports: bound_gap, tampered_bound_claim
+
+use search.claim
+use search.certify_bound
+use fold.reduce
+
+emath function bound_gap:
+    # The gap g - f = 2^n: positive everywhere.
+    inputs:
+        n: Int
+    outputs:
+        result: Rat
+    definitions:
+        result = rat_pow(2, n)
+
+emath function tampered_bound_claim:
+    # The claim whose certificate smuggles the coefficient -2.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = bound_claim(quote(function n in Int: bound_gap(n)), quote(function n in Int: bound_gap(n + 1) - 2 * bound_gap(n)), [0 - 2], 0, 10000000)

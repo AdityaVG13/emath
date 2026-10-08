@@ -19,6 +19,7 @@
 | `E-RES-*` | resources | budget, memory, cancellation |
 | `E-HOST-*` | host/lab | ABI mismatch (001), invalid experiment manifest (003), insufficient evidence (006), incomparable experiment (008), self-comparison refused (016) |
 | `E-RUN-*` | run lane | no constructor entry named (E-RUN-ENTRY), unreadable `--set-file` (E-RUN-SET-FILE), bare run with zero or several runnable entries needs `--function` (E-RUN-USAGE) |
+| `E-VERIFY-*` | verify lane | claim-shaped entry that is not a claim (E-VERIFY-SHAPE), checker rejected the stored certificate (E-VERIFY-REJECTED), checker the library neither defines nor uses (E-VERIFY-CHECKER), kind or standing outside the closed sets (E-VERIFY-SETS), stored content id does not match the claim's content (E-VERIFY-CONTENT-ID) |
 | `E-TLT-*` | tooling/CLI | bench harness absent (E-TLT-004), manifest missing (E-TLT-005), network sync disabled (E-TLT-006), invalid package name (E-TLT-010), scaffold overwrite refused (E-TLT-011) |
 | `E-CAPSULE-*` | feature capsules | malformed field/line (001), duplicate field (003), id/class mismatch (014), semantic-hash mismatch (022), reference-term refusals (023-026) |
 | `E-TRANS-*` | transitions | undeclared event (001), bad action target (002/005), non-assignment body (003/004), unbound event parameter (006/007), runtime action fault (008) |
@@ -546,7 +547,7 @@ regenerated as the registry changes. The workspace test
 `tests/emath-cli/tests/registry_complete.rs` enforces that every emitted
 code appears here (emitted ⊆ documented).
 
-Emissions: **145 unique codes** from 278 rust files.
+Emissions: **145 unique codes** from 279 rust files.
 Not yet documented at generation time: **0**.
 
 | Code | Emitting files | Context |

@@ -1,0 +1,15 @@
+# A claim whose checker is named but never defined or used: the
+# verify registry has no entry for it, so check_claim must answer
+# status -1 and verify must refuse with the claim named.
+exports: stranger_claim
+
+use search.claim
+
+emath function stranger_claim:
+    # The claim naming a checker this library does not define or use.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_construction(0), quote(function s in sequence(Int): length(s) == 5), quote([1, 0 - 1, 1, 1, 0 - 1]), quote(nobody_checks), quote(5), standing_proven(0), quote(function s in sequence(Int): length(s) != 5))

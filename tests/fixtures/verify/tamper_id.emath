@@ -1,0 +1,34 @@
+# A claim whose stored content id does not match its content: the
+# record is hand-built (not through make_claim) with a wrong id, so
+# check_claim must answer status -3 before any checker runs.
+exports: is_pm_one, witness_checker, tampered_id_claim
+
+use search.claim
+
+emath function is_pm_one:
+    # The property the witness must have: length 5, every entry ±1.
+    inputs:
+        s: sequence(Int)
+    outputs:
+        result: Bool
+    definitions:
+        result = length(s) == 5 and all(function x in Int: x == 1 or x == 0 - 1, s)
+
+emath function witness_checker:
+    # The claim's named checker: never reached, the id gate fires
+    # first.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        result = is_pm_one(quote.evaluate(cert))
+
+emath function tampered_id_claim:
+    # The hand-built record: the content id does not match the fields.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = Claim: {kind: 0, statement: quote(function s in sequence(Int): is_pm_one(s)), certificate: quote([1, 0 - 1, 1, 1, 0 - 1]), checker: quote(witness_checker), conditions: quote(5), standing: 5, refutation: quote(function s in sequence(Int): not is_pm_one(s)), content_id: [0, 5, 1, 2, 3, 4, 6]}

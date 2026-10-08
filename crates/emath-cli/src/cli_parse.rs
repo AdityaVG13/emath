@@ -1,6 +1,6 @@
 //! CLI entry (`run`), argument parsing, and the command grammar.
 
-use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, BuildRequest, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, language_cmd, parse_check_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_inspect_request, parse_diff_request, no_extra_positionals};
+use super::{CliExit, terminal, catalog, help_text, EXIT_OK, help_cmd, catalog_read_cmd, capabilities, triage, print_command_help, PedagogicError, unknown_command, run_command, PathBuf, FileJsonRequest, BuildRequest, execution, loop_cmd, dream_cmd, keep_cmd, verify_cmd, export_cmd, experiment_cmd, language_cmd, parse_check_request, parse_build_request, parse_new_request, parse_explain_request, parse_path_out_request, parse_inspect_request, parse_diff_request, no_extra_positionals};
 
 /// Entry used by main; keeps the CLI testable.
 pub fn run(args: &[String]) -> CliExit {
@@ -101,6 +101,7 @@ pub(super) enum Command {
     Loop(loop_cmd::LoopRequest),
     Dream(dream_cmd::DreamRequest),
     Keep(keep_cmd::KeepRequest),
+    Verify(verify_cmd::VerifyRequest),
     Export(export_cmd::ExportRequest),
     Compare(super::compare_cmd::CompareRequest),
     Experiment(experiment_cmd::ExperimentRequest),
@@ -369,6 +370,8 @@ pub(super) fn parse_known(name: &str, rest: &[String]) -> Result<Command, ParseK
         }),
         "keep" => require_single_file("keep", keep_cmd::USAGE, rest, keep_cmd::KeepRequest::parse)
             .map(Command::Keep),
+        "verify" => require_single_file("verify", verify_cmd::USAGE, rest, verify_cmd::VerifyRequest::parse)
+            .map(Command::Verify),
         "export" => export_cmd::ExportRequest::parse(rest).map(Command::Export).ok_or_else(|| {
             ParseKnownError::Pedagogic(
                 PedagogicError::new(

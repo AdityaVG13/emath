@@ -1,6 +1,6 @@
 //! Command dispatch and per-subcommand argument parsers.
 
-use super::{Command, Path, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, build, tooling_cmd, execution, loop_cmd, dream_cmd, keep_cmd, export_cmd, experiment_cmd, language_cmd, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError};
+use super::{Command, Path, BuildRequest, PathBuf, CliExit, print_json_diagnostics, json_diagnostic_entry, EXIT_REFUSED, check, build, tooling_cmd, execution, loop_cmd, dream_cmd, keep_cmd, verify_cmd, export_cmd, experiment_cmd, language_cmd, catalog, ExplainRequest, help_text, EXIT_OK, PedagogicError};
 
 fn language_gate(command: &Command) -> Option<(&'static str, bool, Option<&Path>)> {
     match command {
@@ -136,6 +136,7 @@ pub(super) fn run_command(command: Command) -> CliExit {
         Command::Loop(request) => loop_cmd::run(request),
         Command::Dream(request) => dream_cmd::run(request),
         Command::Keep(request) => keep_cmd::run(request),
+        Command::Verify(request) => verify_cmd::run(request),
         Command::Export(request) => export_cmd::run(request),
         Command::Compare(request) => super::compare_cmd::run(request),
         Command::Experiment(request) => experiment_cmd::run(request),
