@@ -649,6 +649,48 @@ impl Environment {
         *self = Self::default();
     }
 
+    /// Drop the OUTERMOST binding of `name` and return its value. The
+    /// spine is rebuilt without that node; a shared node is cloned out
+    /// and left to its other holders, so the value leaves this
+    /// environment only when this environment was its last holder.
+    fn remove(&mut self, name: &str) -> Option<CValue> {
+        let mut prefix: Vec<(String, CValue)> = Vec::new();
+        let mut cursor = self.0.take();
+        let mut found = None;
+        while let Some(node) = cursor {
+            if found.is_none() && node.name == name {
+                match Rc::try_unwrap(node) {
+                    Ok(binding) => {
+                        found = Some(binding.value);
+                        cursor = binding.next;
+                    }
+                    Err(shared) => {
+                        found = Some(shared.value.clone());
+                        cursor = shared.next.clone();
+                    }
+                }
+                break;
+            }
+            match Rc::try_unwrap(node) {
+                Ok(binding) => {
+                    cursor = binding.next;
+                    prefix.push((binding.name, binding.value));
+                }
+                Err(shared) => {
+                    cursor = shared.next.clone();
+                    prefix.push((shared.name.clone(), shared.value.clone()));
+                }
+            }
+        }
+        *self = Environment(cursor);
+        // The prefix was collected newest first; re-consing oldest first
+        // restores the shadowing order (a newer binding wins).
+        for (name, value) in prefix.into_iter().rev() {
+            self.insert(name, value);
+        }
+        found
+    }
+
     /// The value of the least visible name: what the map representation
     /// yielded first.
     fn first_value(&self) -> Option<&CValue> {
@@ -821,6 +863,23 @@ struct Engine {
     /// arguments are small scalars, keyed without building text. These
     /// entries live for one evaluation and are never carried or saved.
     scalar_memo: HashMap<String, HashMap<ScalarArgs, CValue, FastHash>, FastHash>,
+    /// Tail-call argument release mode: while a tail call's arguments
+    /// evaluate, a binding named in the set is dropped from the
+    /// environment as the cons over it reads it, so the append onto the
+    /// read value finds a unique `Arc` and happens in place. The mode is
+    /// anchored to the environment spine it was activated with — a
+    /// nested evaluation swaps the environment, and its reads are not
+    /// the counted ones — and only runs under `facts_only_memo`, whose
+    /// evaluations never suspend: the single-use count guarantees no
+    /// second read, and the value lives on inside the argument that
+    /// consumed it.
+    tail_move: Option<(Option<Rc<Binding>>, BTreeSet<String>)>,
+    /// Set when a suspension unwound through a swapped scope (`eval_scoped`
+    /// / `eval_code`) during the current resume: the frame already carries
+    /// the inner env pin that the pending kont re-evaluation reads, so the
+    /// resume error path must not overwrite it with the restored env.
+    /// Reset when the flag is read, and at the start of every evaluation.
+    swapped_unwind: bool,
 }
 
 /// Multiply-rotate hashing (the rustc FxHash scheme) for in-process

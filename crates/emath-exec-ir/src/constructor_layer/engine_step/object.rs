@@ -155,6 +155,10 @@ impl Engine {
                 result?
             };
             if taken {
+                // The arm's pattern bindings live only in the live env;
+                // pin them so a suspension inside the arm body resumes
+                // with the bindings its re-evaluation reads.
+                self.pin_frame_env();
                 return self.eval_with_kont(value, || Kont::EvalExpr {
                     expr: Rc::new(value.clone()),
                 });

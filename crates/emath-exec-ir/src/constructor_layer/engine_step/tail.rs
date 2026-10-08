@@ -1,5 +1,5 @@
-use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, Rc, BTreeMap, Arc, Environment};
-use super::prelude::project_field;
+use super::super::{Engine, Expr, EvalTail, ConstructorError, ExprKind, Kont, fault, CValue, machine_int_basename, machine_buffer_basename, expect_int, exact_fault, expect_ints, exact_int_sum, exact_int_prod, Rc, BTreeMap, BTreeSet, Arc, Environment};
+use super::prelude::{for_each_name, NameRole, project_field};
 
 /// An expression waiting in a resume record: evaluated in place, and
 /// shared into the record only when one is built.
@@ -24,6 +24,28 @@ impl PendingExpr for Rc<Expr> {
     fn shared(&self) -> Rc<Expr> {
         self.clone()
     }
+}
+
+/// Names the tail call's arguments read exactly once anywhere in them
+/// (path heads; binder parameters are a different role, and binder
+/// domains still report their paths). An occurrence inside a binder body
+/// or quoted code raises the count past one, so such names are never
+/// released: a capture or deferred read after the release would miss the
+/// binding.
+fn single_use_tail_names(args: &[Expr]) -> BTreeSet<String> {
+    let mut counts: BTreeMap<String, u32> = BTreeMap::new();
+    for arg in args {
+        for_each_name(arg, &mut |role, name| {
+            if matches!(role, NameRole::Path) {
+                *counts.entry(name.to_string()).or_insert(0) += 1;
+            }
+        });
+    }
+    counts
+        .into_iter()
+        .filter(|(_, count)| *count == 1)
+        .map(|(name, _)| name)
+        .collect()
 }
 
 impl Engine {
@@ -62,11 +84,41 @@ impl Engine {
                     let local = segments.len() == 1
                         && matches!(self.env.get(&name), Some(CValue::Closure(_)));
                     if !local && self.functions.contains_key(&name) {
-                        let vals = self.eval_tail_args(args, |done, rest| Kont::FnCall {
+                        // Release mode for the append pattern: an argument
+                        // that builds a sequence over a binding it reads
+                        // nowhere else lets that binding leave the
+                        // environment as it is read, so the append onto it
+                        // happens in place. Safe against resume because the
+                        // single-use count means no read ever follows the
+                        // release: a suspension carries the read value in
+                        // its continuation, and the caller's environment
+                        // dies at the tail swap anyway. Skipped when no
+                        // argument is itself a cons (the scalar-loop shape
+                        // pays nothing).
+                        let mut outer_move = None;
+                        let mut move_active = false;
+                        if args
+                            .iter()
+                            .any(|arg| matches!(arg.kind, ExprKind::SequenceCons { .. }))
+                        {
+                            let names = single_use_tail_names(args);
+                            if !names.is_empty() {
+                                outer_move = self.tail_move.take();
+                                move_active = true;
+                                self.tail_move = Some((self.env.0.clone(), names));
+                            }
+                        }
+                        let released = self.eval_tail_args(args, |done, rest| Kont::FnCall {
                             name: name.clone(),
                             done,
                             rest,
-                        })?;
+                        });
+                        if move_active {
+                            // Restore (not clear): a closure body inside an
+                            // argument may have run its own release mode.
+                            self.tail_move = outer_move;
+                        }
+                        let vals = released?;
                         return Ok(EvalTail::Call { name, args: vals });
                     }
                     // Only a local closure in tail position reuses its frame;
@@ -421,6 +473,10 @@ impl Engine {
             for (name, value) in &map {
                 self.env.insert(name.clone(), value.clone());
             }
+            // The field bindings feed the invariant checks; pin them so a
+            // suspension inside an invariant resumes with the bindings its
+            // re-evaluation reads.
+            self.pin_frame_env();
             return self.finish_record_invariants(type_name, map, &schema.invariants, saved, None);
         }
         Ok(CValue::Record {

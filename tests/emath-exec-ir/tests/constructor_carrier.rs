@@ -930,7 +930,7 @@ emath function Main:
                     }
                     p.demand(format!("{label}-multiple-stops"), stops >= 2, format!("stops={stops}"));
                     p.demand(label, outcome.as_ref().is_ok_and(|value| value == &CValue::Int(expected.into())),
-                        format!("expected {expected}, result={:?}", outcome.as_ref().map_err(|(fault, checkpoint)| (fault.code.as_str(), checkpoint.work, checkpoint.frames.len()))));
+                        format!("expected {expected}, result={:?}", outcome.as_ref().map_err(|(fault, checkpoint)| (fault.code.as_str(), &fault.message, checkpoint.work, checkpoint.frames.len()))));
                 }
             }
         }

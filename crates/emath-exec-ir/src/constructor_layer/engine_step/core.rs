@@ -45,6 +45,60 @@ impl Engine {
         self.eval_with_konts(expr, || std::iter::once(pending()))
     }
 
+    /// Release a binding the current cons just read, when the tail-move
+    /// mode says this is its last read: the caller's environment dies at
+    /// the tail swap, so the read value's `Arc` becomes unique and the
+    /// append onto it happens in place instead of copying the whole
+    /// list. Every condition guards a way this read could be the wrong
+    /// one: a nested evaluation swapped the environment (its reads are
+    /// not the counted ones), the binding moved on since the read, or
+    /// the carrier is one where a copy is not the defect.
+    fn release_single_use(&mut self, expr: &Expr, value: &CValue) {
+        let ExprKind::Path { segments, .. } = &expr.kind else {
+            return;
+        };
+        let [name] = segments.as_slice() else {
+            return;
+        };
+        let Some((spine, names)) = &self.tail_move else {
+            return;
+        };
+        if !names.contains(name.as_str()) {
+            return;
+        }
+        let same_spine = match (&self.env.0, spine) {
+            (Some(current), Some(anchor)) => Rc::ptr_eq(current, anchor),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same_spine {
+            return;
+        }
+        let same_value = match (value, self.env.get(name)) {
+            (CValue::Sequence(read), Some(CValue::Sequence(bound))) => Arc::ptr_eq(read, bound),
+            _ => false,
+        };
+        if !same_value {
+            return;
+        }
+        self.env.remove(name);
+        // The frame's pinned resume env holds the same binding (the pin
+        // predates the release), so it must evict the name too: the whole
+        // point is that no retained holder keeps the value's `Arc` alive
+        // across the append. A restart of this definition only happens
+        // from a pre-release suspension, where the re-evaluation re-fires
+        // the release; after the release the remaining work is
+        // continuation-protected and never re-reads the name.
+        if let Some(frame) = self.frames.last_mut() {
+            let _ = frame.env.remove(name);
+        }
+        // The release rebuilt the spine; re-anchor the mode to it so the
+        // remaining arguments keep the mode.
+        if let Some((spine, _)) = &mut self.tail_move {
+            *spine = self.env.0.clone();
+        }
+    }
+
     /// Restore the caller's bindings after the body, including when a saved
     /// child returns during resume. The suspended frame keeps its inner scope.
     pub(in crate::constructor_layer) fn eval_scoped(
@@ -52,11 +106,34 @@ impl Engine {
         body: &Expr,
         saved: Environment,
     ) -> Result<CValue, ConstructorError> {
+        // The swap below replaced the frame's live env with the inner
+        // scope. A suspension inside the body resumes by re-evaluating the
+        // body (the pending `EvalExpr` kont), so the frame must pin the
+        // INNER env here; the unwind restores `saved` before any later pin
+        // could see it. On success the swap is over, so the boundary env
+        // (`saved`) is pinned back for the next def restart.
+        if !self.facts_only_memo
+            && let Some(frame) = self.frames.last_mut()
+        {
+            frame.env = self.env.clone();
+        }
         let result = self.eval_with_konts(body, || [
             Kont::RestoreEnv { env: saved.clone().into_map() },
             Kont::EvalExpr { expr: Rc::new(body.clone()) },
         ]);
+        if result.is_err() {
+            // The entry pin above already holds the inner env the pending
+            // kont re-evaluation reads; mark it so the resume error path
+            // does not overwrite the pin with this restored env.
+            self.swapped_unwind = true;
+        }
         self.env = saved;
+        if result.is_ok()
+            && !self.facts_only_memo
+            && let Some(frame) = self.frames.last_mut()
+        {
+            frame.env = self.env.clone();
+        }
         result
     }
 
@@ -377,11 +454,13 @@ impl Engine {
                     tail: tail.clone(),
                     spread_head,
                 })?;
+                self.release_single_use(head, &h);
                 let t = self.eval_with_kont(tail, || Kont::ConsAfterHead {
                     head: h.clone(),
                     tail: tail.clone(),
                     spread_head,
                 })?;
+                self.release_single_use(tail, &t);
                 join_values(h, t, spread_head)
             }
             ExprKind::Index { value, indices } => {

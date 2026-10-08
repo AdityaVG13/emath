@@ -132,6 +132,8 @@ pub(super) fn empty_engine() -> Engine {
         facts_only_memo: false,
         memo_added: Vec::new(),
         scalar_memo: HashMap::default(),
+        tail_move: None,
+        swapped_unwind: false,
     }
 }
 

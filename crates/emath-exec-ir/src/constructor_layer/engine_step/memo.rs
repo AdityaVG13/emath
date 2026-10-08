@@ -264,32 +264,53 @@ impl Engine {
     }
 
     pub(in crate::constructor_layer) fn push_frame(&mut self, function: &str, kind: super::super::ContinuationKind) {
+        // A new frame's body starts by evaluating against the INHERITED
+        // environment (machine bodies, argument evaluation before the
+        // first definition boundary), so the resume env is the env at the
+        // push. Frames that rebind (the named def loop, the closure
+        // chain) re-pin at `set_frame_next` right after; machine frames
+        // never rebind and keep this pin for their whole body.
+        let inherited = if self.facts_only_memo {
+            Environment::default()
+        } else {
+            self.env.clone()
+        };
         self.frames.push(ContinuationFrame {
             function: function.to_string(),
             kind,
             pc: self.visit as u64,
             next: String::new(),
-            env: Environment::default(),
+            env: inherited,
             kont: Vec::new(),
         });
     }
 
-    // Frame environments exist for `snapshot` (suspend and resume). An
-    // evaluation under `facts_only_memo` never suspends, and a snapshot
-    // taken here would make the next binding copy the whole environment
-    // (it is copy-on-write), so those evaluations skip it.
+    // Frame environments exist for resume. Each resume path needs a
+    // different env, and the pins place exactly those:
+    //
+    // - def restart (konts empty): the env at the def boundary, pinned
+    //   here. A release inside the interrupted def re-fires on the
+    //   restart, so the boundary env is the right one to replay from.
+    // - kont resume (the deepest pending work re-evaluates): the env at
+    //   the deepest swap, pinned at `eval_scoped`/`eval_code` entry.
+    // - drain re-suspension: the env the drained konts left, pinned by
+    //   `pin_innermost_env` on the resume error path.
+    //
+    // A per-step snapshot (the old `refresh_frame` sync) would keep
+    // every binding alive across the whole step, and an append onto a
+    // bound sequence would copy the whole list instead of happening in
+    // place. An evaluation under `facts_only_memo` never suspends and
+    // keeps no frames for resume.
     pub(in crate::constructor_layer) fn set_frame_next(&mut self, next: &str) {
-        // `next` and `pc` are resume positions; nothing else reads them.
+        // `next`, `pc`, and the boundary env are resume positions; the
+        // env is read only by `snapshot`, which runs after a suspension.
         if self.facts_only_memo {
             return;
         }
-        let snapshot = !self.facts_only_memo;
         if let Some(frame) = self.frames.last_mut() {
             frame.next = next.to_string();
             frame.pc = self.visit as u64;
-            if snapshot {
-                frame.env = self.env.clone();
-            }
+            frame.env = self.env.clone();
         }
     }
 
@@ -297,12 +318,23 @@ impl Engine {
         if self.facts_only_memo {
             return;
         }
-        let snapshot = !self.facts_only_memo;
         if let Some(frame) = self.frames.last_mut() {
             frame.pc = self.visit as u64;
-            if snapshot {
-                frame.env = self.env.clone();
-            }
+        }
+    }
+
+    /// Pin the current frame's env after a MID-DEFINITION binding insert
+    /// (`open`/`bind`/match-arm binders) whose body evaluates in this same
+    /// frame: a suspension inside that body resumes by re-evaluating the
+    /// pending operation, which reads the just-bound name. The def
+    /// boundary pin predates the insert, so without this pin the resume
+    /// would find the name unbound.
+    pub(in crate::constructor_layer) fn pin_frame_env(&mut self) {
+        if self.facts_only_memo {
+            return;
+        }
+        if let Some(frame) = self.frames.last_mut() {
+            frame.env = self.env.clone();
         }
     }
 

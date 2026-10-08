@@ -128,12 +128,27 @@ impl Engine {
         }
         self.frames = frames;
         self.call_depth = u32::try_from(self.frames.len()).unwrap_or(u32::MAX);
+        // The frame being resumed owns the kont chain the drain works on.
+        // A suspension during the drain can retain child frames ABOVE it,
+        // and those pin their own envs at their own boundaries; a pin by
+        // top-of-stack here would clobber a child's pin with the parent's
+        // bindings. The resumed frame never moves: children push above it.
+        let resumed_index = self.frames.len() - 1;
         let innermost =
             self.frames.last().cloned().ok_or_else(|| {
                 fault("incompatible_checkpoint", "checkpoint frame stack is empty")
             })?;
         self.env = innermost.env.clone();
-        let mut value = self.resume_current(&innermost)?;
+        let mut value = match self.resume_current(&innermost) {
+            Ok(value) => value,
+            Err(err) => {
+                if !self.swapped_unwind {
+                    self.pin_resumed_env(resumed_index);
+                }
+                self.swapped_unwind = false;
+                return Err(err);
+            }
+        };
         while !self.frames.is_empty() {
             self.pop_frame();
             self.call_depth = u32::try_from(self.frames.len()).unwrap_or(0);
@@ -144,9 +159,31 @@ impl Engine {
                 fault("incompatible_checkpoint", "checkpoint frame stack is empty")
             })?;
             self.env = parent.env.clone();
-            value = self.return_into_kont(value)?;
+            // Same rule one level up: the frame whose kont consumes the
+            // value owns the pin, even if the kont's work retained a child
+            // frame above it before suspending.
+            let owner_index = self.frames.len() - 1;
+            value = match self.return_into_kont(value) {
+                Ok(value) => value,
+                Err(err) => {
+                    if !self.swapped_unwind {
+                        self.pin_resumed_env(owner_index);
+                    }
+                    self.swapped_unwind = false;
+                    return Err(err);
+                }
+            };
         }
         Ok(value)
+    }
+
+    /// The resumed frame's remaining work advanced the environment before
+    /// suspending again; pin it so the driver's snapshot resumes from the
+    /// bindings as they now stand.
+    fn pin_resumed_env(&mut self, index: usize) {
+        if let Some(frame) = self.frames.get_mut(index) {
+            frame.env = self.env.clone();
+        }
     }
 
     pub(in crate::constructor_layer) fn resume_current(

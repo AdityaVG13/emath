@@ -1,4 +1,4 @@
-use super::super::{Engine, Expr, CValue, ConstructorError, ExprKind, Rc, Kont, fault, machine_int_basename, machine_buffer_basename, cint, Code, FnDecl, MAX_CALL_DEPTH, EvalTail};
+use super::super::{Engine, Expr, CValue, ConstructorError, ExprKind, Rc, Kont, fault, machine_int_basename, machine_buffer_basename, cint, Code, FnDecl, MAX_CALL_DEPTH, EvalTail, is_scalar, FACT_PREFIX};
 use super::super::world::CarrierWorld;
 use super::prelude::{admit_input_type, code_identity, is_refused_recipe, path_expr, project_field, rebuild_expr};
 use super::tail::PendingExpr;
@@ -387,6 +387,12 @@ impl Engine {
             &result,
             Err(err) if err.code == "budget_exhausted"
         );
+        // No env pin here: the frame's resume env is already correct. The
+        // def boundary pin (`set_frame_next`) covers a def restart, and a
+        // suspension inside a swapped scope pinned the inner env at the
+        // swap. A pin here would capture the env AFTER the unwind restored
+        // the caller's bindings, clobbering the deeper pin the kont resume
+        // reads.
         self.env = saved;
         if !exhausted {
             self.pop_frame();
@@ -492,19 +498,32 @@ impl Engine {
             for (ty, value) in decl.input_types.iter().zip(vals.iter()) {
                 admit_input_type(ty, value)?;
             }
+            // The memo keeps only fact calls and all-scalar calls; a call
+            // carrying a sequence is never keyed. Moving the values into
+            // the environment (instead of cloning them out of `vals`)
+            // leaves the new binding the only holder of the value the
+            // body is about to read, so an append onto it can happen in
+            // place.
+            let memo_args = if name.starts_with(FACT_PREFIX) || vals.iter().all(is_scalar) {
+                Some(vals.to_vec())
+            } else {
+                None
+            };
             self.env.clear();
-            for (input, value) in decl.inputs.iter().zip(vals.iter()) {
-                self.env.insert(input.clone(), value.clone());
+            for (input, value) in decl.inputs.iter().zip(vals.drain(..)) {
+                self.env.insert(input.clone(), value);
             }
-            let snapshot = !self.facts_only_memo;
             if let Some(frame) = self.frames.last_mut() {
                 frame.function = name.clone();
                 frame.kind = super::super::ContinuationKind::Function;
-                if snapshot {
-                    frame.env = self.env.clone();
-                }
                 frame.next.clear();
                 frame.kont.clear();
+                // The loop-top charge below suspends with `next` cleared,
+                // so the resume replays every definition from the rebuilt
+                // environment: pin it here, at the rebind.
+                if !self.facts_only_memo {
+                    frame.env = self.env.clone();
+                }
             }
             self.charge()?;
             self.refresh_frame();
@@ -512,7 +531,9 @@ impl Engine {
             if decl.defs.is_empty() {
                 last = self.function_result(&decl, &name, last)?;
                 self.set_frame_next("__done");
-                self.remember_call(&name, &vals, last.clone());
+                if let Some(memo_args) = &memo_args {
+                    self.remember_call(&name, memo_args, last.clone());
+                }
                 return Ok(last);
             }
             for (index, (dname, expr)) in decl.defs.iter().enumerate() {
@@ -529,7 +550,9 @@ impl Engine {
                         self.env.insert(dname.clone(), value.clone());
                         last = self.function_result(&decl, &name, value)?;
                         self.set_frame_next("__done");
-                        self.remember_call(&name, &vals, last.clone());
+                        if let Some(memo_args) = &memo_args {
+                            self.remember_call(&name, memo_args, last.clone());
+                        }
                         return Ok(last);
                     }
                     let tail_value = match self.eval_tail(expr)? {
@@ -549,8 +572,10 @@ impl Engine {
                             let next_decl = self.functions.get(&next_name).cloned().ok_or_else(
                                 || fault("unbound", format!("unknown function `{next_name}`")),
                             )?;
-                            if self.remembers_tail_caller(&name, &vals) {
-                                facts.push((name.clone(), vals.clone()));
+                            if let Some(memo_args) = &memo_args
+                                && self.remembers_tail_caller(&name, memo_args)
+                            {
+                                facts.push((name.clone(), memo_args.clone()));
                             }
                             name = next_name;
                             decl = next_decl;
@@ -561,7 +586,9 @@ impl Engine {
                     self.env.insert(dname.clone(), tail_value.clone());
                     last = self.function_result(&decl, &name, tail_value)?;
                     self.set_frame_next("__done");
-                    self.remember_call(&name, &vals, last.clone());
+                    if let Some(memo_args) = &memo_args {
+                        self.remember_call(&name, memo_args, last.clone());
+                    }
                     return Ok(last);
                 }
                 last = self.eval(expr)?;

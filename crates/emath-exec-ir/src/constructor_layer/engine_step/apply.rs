@@ -42,6 +42,11 @@ impl Engine {
                     &outcome,
                     Err(err) if err.code == "budget_exhausted"
                 );
+                // No env pin here: the chain's `set_frame_next("body")`
+                // pins the rebound closure env for a kont resume, and a
+                // suspension inside a swapped scope pinned the inner env
+                // at the swap. A pin here would capture the env AFTER the
+                // unwind restored the caller's bindings.
                 self.env = saved;
                 if !exhausted {
                     self.pop_frame();
@@ -121,13 +126,9 @@ impl Engine {
             if !clos.param.is_empty() {
                 self.env.insert(clos.param.clone(), args[0].clone());
             }
-            let snapshot = !self.facts_only_memo;
             if let Some(frame) = self.frames.last_mut() {
                 frame.function = frame_name;
                 frame.kind = super::super::ContinuationKind::Expression;
-                if snapshot {
-                    frame.env = self.env.clone();
-                }
                 frame.kont.clear();
             }
             self.set_frame_next("body");
@@ -227,12 +228,30 @@ impl Engine {
                 let framed = !self.facts_only_memo;
                 if framed {
                     self.push_frame("__quote", super::super::ContinuationKind::Expression);
+                    // The quote frame runs no `set_frame_next`: pin the
+                    // evaluation env at the swap, so the resume of the
+                    // pending `EvalExpr` re-evaluates the code body against
+                    // exactly this env.
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.env = self.env.clone();
+                    }
                 }
                 let outcome = self.eval_with_kont(&code.expr, || Kont::EvalExpr {
                     expr: Rc::new(code.expr.clone()),
                 });
+                let exhausted =
+                    matches!(&outcome, Err(fault) if fault.code == "budget_exhausted");
+                // No env pin on exhaustion: a suspension inside a swapped
+                // scope below pinned the inner env at the swap, and a pin
+                // here would capture the env after the unwind restored it.
+                if outcome.is_err() {
+                    // The entry pin above holds the env the pending
+                    // `EvalExpr` re-evaluation reads; mark it so the
+                    // resume error path keeps it.
+                    self.swapped_unwind = true;
+                }
                 self.env = saved;
-                if framed && !matches!(&outcome, Err(fault) if fault.code == "budget_exhausted") {
+                if framed && !exhausted {
                     self.pop_frame();
                 }
                 outcome
