@@ -1,0 +1,52 @@
+# Fixture for the bounded-notes law (bead emath-agq2i, re-seated by
+# emath-cfe89): three claims whose checkers the emitter cannot lower
+# (Float64 templates the artifact lanes refuse). The run must name
+# each unlowerable function once, print the shared emitter refusal
+# once per run (never per claim), and stay bounded. Three claims, not
+# one, so the once-per-run dedup can fail: with a single claim,
+# "once per run" and "once per claim" are indistinguishable.
+exports: unlowerable_claim_a, unlowerable_claim_b, unlowerable_claim_c
+
+use search.claim
+
+emath function unlowerable_checker:
+    # A checker over a Float64 certificate template: the artifact
+    # lanes refuse float templates, so this checker is vm-only.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        result = quote.evaluate(quote(function x in Float64: x * 2.0f64))(1.0f64) > 0.0f64
+
+emath function unlowerable_claim_a:
+    # The construction witness as an F0 claim: kind construction,
+    # standing proven, the float literal as the certificate. The
+    # claim body itself carries float templates, so lowering the
+    # claim function refuses.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_construction(0), quote(function x in Float64: x > 0.0f64), quote(1.0f64), quote(unlowerable_checker), quote(0), standing_proven(0), quote(function x in Float64: x <= 0.0f64))
+
+emath function unlowerable_claim_b:
+    # Same shape, different statement, so the refusal is per claim
+    # while the emitter's report stays one shared message.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_construction(0), quote(function x in Float64: x < 10.0f64), quote(3.0f64), quote(unlowerable_checker), quote(0), standing_proven(0), quote(function x in Float64: x >= 10.0f64))
+
+emath function unlowerable_claim_c:
+    # Third claim: three rows name three functions; the shared
+    # float-template report must still print exactly once.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_construction(0), quote(function x in Float64: x >= 1.0f64), quote(2.5f64), quote(unlowerable_checker), quote(0), standing_proven(0), quote(function x in Float64: x < 1.0f64))

@@ -118,6 +118,29 @@ emath function conflict_caller:
         result = f(n) + length(f([n, n]))
 "#;
 
+/// The bound-claim certificate template's shape (bead emath-cfe89):
+/// a function template over a declared record type whose fields carry
+/// nested quotes and open names.
+const BOUND_CERT: &str = r#"emath object BoundData:
+    representation:
+        gap: Code
+        start: Int
+
+emath function cert_template:
+    inputs:
+        n: Int
+        g: Code
+    outputs:
+        result: Code
+    definitions:
+        result = quote(function unused in Int: BoundData: {gap: quote(g), start: n})
+    tests:
+        example <carries_the_binder>:
+            given n = 3
+            given g = quote(function k in Int: k)
+            expect quote.evaluate(result)(0).start == 3
+"#;
+
 #[test]
 fn probe() {
     boot();
@@ -231,10 +254,7 @@ fn probe() {
                 return;
             }
         };
-        // The crate is not blanket-runnable while a required producer
-        // refuses (the bound claim's certificate template, its own
-        // bead) - that is the vm-only law, not a defect. The cycle
-        // itself must monomorphize: one concrete entry under the
+        // The cycle must monomorphize: one concrete entry under the
         // plain mangled name its sites already call, the exhaustion
         // checker lowering against it, every instantiated record the
         // pair touches declared, and no call refused for a member the
@@ -266,10 +286,15 @@ fn probe() {
             !lib.contains("no monomorphic entry"),
             "an entry call refused for a member the emitter monomorphized",
         );
+        // The bound claim's certificate template (its own bead,
+        // emath-cfe89) now distills: the record literal embeds as a
+        // `CodeTree::Record` and the declared-carrier gate's
+        // tree-only fallback carries the cell, so the producer no
+        // longer refuses by name.
         p.contains(
-            "bound template refusal stays",
+            "bound template carries its tree",
             lib,
-            "quote template body must compute its declared `Int` carrier",
+            "emath_rt::code_tree::CodeTree::Record",
         );
     });
 
@@ -336,6 +361,56 @@ fn probe() {
             "no call to an unrendered entry",
             missing.is_empty(),
             format!("calls without a `pub fn`: {missing:?}"),
+        );
+    });
+
+    // The bound-claim certificate template (bead emath-cfe89): a
+    // function template whose body is a record literal with nested
+    // quotes in its fields. The distiller previously refused both
+    // shapes, so the template carried no tree, the declared-carrier
+    // gate's tree-only fallback had nothing to fall back to, and the
+    // producer refused by name - the claims.emath crate could not be
+    // emitted runnable. The demand: the template distills (the crate
+    // is runnable), the record literal embeds as a `CodeTree::Record`,
+    // and the nested quote embeds as a capture.
+    p.case("bound-certificate-template-distills", |p| {
+        let mut session =
+            emath_sema::CompilerSession::new(emath_core::limits::Limits::default());
+        let checked = session.check_owned("bound_cert.emath", BOUND_CERT);
+        let Some(prepared) = checked.prepared.as_ref() else {
+            p.fail("check", format!("{:?}", checked.diagnostics));
+            return;
+        };
+        let emission = match emath_rust_backend::constructor_crate::emit_constructor_crate(
+            prepared,
+            std::path::Path::new("bound_cert.emath"),
+            BOUND_CERT,
+        ) {
+            Ok(emission) => emission,
+            Err(err) => {
+                p.fail("emit", format!("{err:?}"));
+                return;
+            }
+        };
+        p.demand(
+            "runnable",
+            emission.runnable,
+            format!("unresolved {:?}", emission.unresolved),
+        );
+        let code = emission
+            .lib
+            .split("static __EMATH_SOURCE")
+            .next()
+            .unwrap_or_default();
+        p.contains(
+            "record literal embeds as a tree",
+            code,
+            "emath_rt::code_tree::CodeTree::Record",
+        );
+        p.contains(
+            "nested quote embeds as a capture",
+            code,
+            "emath_rt::code_tree::CodeTree::Code(Box::new(",
         );
     });
 

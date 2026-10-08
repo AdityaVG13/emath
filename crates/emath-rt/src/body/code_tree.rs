@@ -209,6 +209,21 @@ pub enum CodeTree {
         body: Box<CodeTree>,
     },
     Tuple(Vec<CodeTree>),
+    /// An inline record literal (`Point:{x: 1, y: 2}`): the declared
+    /// type path and the field trees, canonicalized to name-sorted
+    /// order at distillation (the VM stores record fields in a map,
+    /// so source order is not identity). Evaluates to the node
+    /// family's record; views and identifies structurally.
+    Record {
+        type_path: Vec<String>,
+        fields: Vec<(String, CodeTree)>,
+    },
+    /// `quote(expression)`: a closed code capture inside a template.
+    /// The content is the captured program's tree; evaluation yields
+    /// the dual-representation code value (`code_of`), and
+    /// substitution reaches through it (a substitution is syntactic,
+    /// as in the VM).
+    Code(Box<CodeTree>),
     /// Indexing (the VM's `Index`): `container[i, ..]`.
     Index {
         container: Box<CodeTree>,
@@ -885,6 +900,42 @@ pub fn view_tree(tree: &CodeTree, module: &ModuleTable) -> NodeValue {
                 ],
             )
         }),
+        CodeTree::Record { type_path, fields } => with_mint(|mint| {
+            view_record(
+                "Record",
+                vec![
+                    ("type", code_of(CodeTree::Path(type_path.clone()))),
+                    (
+                        "names",
+                        NodeValue::Sequence(
+                            fields.iter().map(|(name, _)| node_tag(name)).collect(),
+                        ),
+                    ),
+                    (
+                        "fields",
+                        NodeValue::Sequence(
+                            fields
+                                .iter()
+                                .map(|(_, value)| code_of(value.clone()))
+                                .collect(),
+                        ),
+                    ),
+                    (
+                        "children",
+                        NodeValue::Sequence(
+                            fields
+                                .iter()
+                                .map(|(_, value)| fragment_package(mint, value, None))
+                                .collect(),
+                        ),
+                    ),
+                ],
+            )
+        }),
+        CodeTree::Code(content) => view_record(
+            "Quote",
+            vec![("content", code_of((**content).clone()))],
+        ),
         // Mint order is the VM's: the index packages, then the
         // container's scrutinee package.
         CodeTree::Index { container, indices } => with_mint(|mint| {
@@ -1189,6 +1240,19 @@ fn canonical_tree_bytes(
                 canonical_tree_bytes(item, binders, out)?;
             }
         }
+        CodeTree::Record { type_path, fields } => {
+            out.push(b'{');
+            free_path_bytes(type_path, out);
+            count_bytes(fields.len(), out);
+            for (name, value) in fields {
+                text_bytes(name, out);
+                canonical_tree_bytes(value, binders, out)?;
+            }
+        }
+        CodeTree::Code(content) => {
+            out.push(b'Q');
+            canonical_tree_bytes(content, binders, out)?;
+        }
         CodeTree::Index { container, indices } => {
             out.push(b'N');
             canonical_tree_bytes(container, binders, out)?;
@@ -1380,6 +1444,57 @@ pub fn rebuild_node(value: &NodeValue) -> Result<CodeTree, String> {
                         ty: Box::new(ty),
                         body: Box::new(body),
                     })
+                }
+                "Record" => {
+                    // A record literal's view: the type path as Code,
+                    // field names as tags, field values as Code. The
+                    // rebuilt fields re-sort to the tree's canonical
+                    // name order.
+                    let type_path = match fields.get("type") {
+                        Some(NodeValue::Code(code)) => match &code.tree {
+                            CodeTree::Path(segments) => segments.clone(),
+                            _ => return Err(String::from("Record type is not a type path")),
+                        },
+                        _ => return Err(String::from("Record missing type")),
+                    };
+                    let names = match fields.get("names") {
+                        Some(NodeValue::Sequence(names)) => names
+                            .iter()
+                            .map(|name| {
+                                tag_name(name)
+                                    .map(str::to_string)
+                                    .ok_or_else(|| String::from("Record name is not a name tag"))
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                        _ => return Err(String::from("Record missing names")),
+                    };
+                    let values = match fields.get("fields") {
+                        Some(NodeValue::Sequence(values)) => values
+                            .iter()
+                            .map(rebuild_node)
+                            .collect::<Result<Vec<_>, _>>()?,
+                        _ => return Err(String::from("Record missing fields")),
+                    };
+                    if names.len() != values.len() {
+                        return Err(String::from("Record field count mismatch"));
+                    }
+                    let mut built = names.into_iter().zip(values).collect::<Vec<_>>();
+                    built.sort_by(|(a, _), (b, _)| a.cmp(b));
+                    if built.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+                        return Err(String::from("duplicate_field: record field repeated"));
+                    }
+                    Ok(CodeTree::Record {
+                        type_path,
+                        fields: built,
+                    })
+                }
+                "Quote" => {
+                    let content = rebuild_node(
+                        fields
+                            .get("content")
+                            .ok_or_else(|| String::from("Quote missing content"))?,
+                    )?;
+                    Ok(CodeTree::Code(Box::new(content)))
                 }
                 "Index" => {
                     let container = rebuild_node(
@@ -1574,6 +1689,20 @@ pub fn substitute_tree(tree: &CodeTree, reference: &str, replacement: &CodeTree)
                 .map(|item| substitute_tree(item, reference, replacement))
                 .collect(),
         ),
+        CodeTree::Record { type_path, fields } => CodeTree::Record {
+            type_path: type_path.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, value)| (name.clone(), substitute_tree(value, reference, replacement)))
+                .collect(),
+        },
+        // Substitution is syntactic and reaches through a quote, as in
+        // the VM: the captured program is a tree like any other.
+        CodeTree::Code(content) => CodeTree::Code(Box::new(substitute_tree(
+            content,
+            reference,
+            replacement,
+        ))),
         CodeTree::Index { container, indices } => CodeTree::Index {
             container: Box::new(substitute_tree(container, reference, replacement)),
             indices: indices
@@ -1632,6 +1761,15 @@ fn collect_free_names(tree: &CodeTree, free: &mut BTreeSet<String>) {
             free.extend(inner);
         }
         CodeTree::Tuple(items) => items.iter().for_each(|item| collect_free_names(item, free)),
+        CodeTree::Record { type_path, fields } => {
+            // The type path is a type expression, never a value
+            // reference; only the field trees contribute free names.
+            let _ = type_path;
+            fields
+                .iter()
+                .for_each(|(_, value)| collect_free_names(value, free));
+        }
+        CodeTree::Code(content) => collect_free_names(content, free),
         CodeTree::Index { container, indices } => {
             collect_free_names(container, free);
             indices
@@ -1702,6 +1840,17 @@ fn evaluate_node_body(tree: &CodeTree, module: &ModuleTable) -> Result<NodeValue
                 .map(|item| evaluate_node_tree(item, module))
                 .collect::<Result<_, _>>()?,
         )),
+        CodeTree::Record { type_path, fields } => {
+            let mut built = BTreeMap::new();
+            for (name, value) in fields {
+                let value = evaluate_node_tree(value, module)?;
+                if built.insert(name.clone(), value).is_some() {
+                    return Err(format!("duplicate_field: record field `{name}` repeated"));
+                }
+            }
+            Ok(NodeValue::Record(type_path.join("."), built))
+        }
+        CodeTree::Code(content) => Ok(code_of((**content).clone())),
         CodeTree::If {
             condition,
             then_value,
@@ -1943,6 +2092,22 @@ fn evaluate_tree_value(
             recursive_name: None,
             memo: None,
         }))),
+        CodeTree::Record { type_path, fields } => {
+            let mut built = BTreeMap::new();
+            for (name, value) in fields {
+                let value = evaluate_tree_value(value, inputs, module)?.node()?;
+                if built.insert(name.clone(), value).is_some() {
+                    return Err(format!("duplicate_field: record field `{name}` repeated"));
+                }
+            }
+            Ok(TreeValue::from_node(NodeValue::Record(
+                type_path.join("."),
+                built,
+            )))
+        }
+        CodeTree::Code(content) => {
+            Ok(TreeValue::from_node(code_of((**content).clone())))
+        }
         CodeTree::Recur { name, body, .. } => {
             let CodeTree::Closure { param, domain, body } = &**body else {
                 return Err(String::from("type: recursive function body is not callable"));
@@ -2153,9 +2318,11 @@ fn evaluate_scalar_body(
                 TreeUnary::Pos => Ok(value),
             }
         }
-        CodeTree::Tuple(_) | CodeTree::Index { .. } => Err(String::from(
-            "tree: structured values are not emitted in the scalar tree evaluator",
-        )),
+        CodeTree::Tuple(_) | CodeTree::Index { .. } | CodeTree::Record { .. } | CodeTree::Code(_) => {
+            Err(String::from(
+                "tree: structured values are not emitted in the scalar tree evaluator",
+            ))
+        }
         CodeTree::If {
             condition,
             then_value,

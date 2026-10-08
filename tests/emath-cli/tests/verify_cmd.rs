@@ -62,11 +62,11 @@ fn verify_cmd() {
     }
 
     // A library with one claim of each producer kind verifies: one row
-    // per claim. The witness and the exhaustion checkers lower and the
-    // VM and the emitted Rust agree on their verdicts, so those rows
-    // read settled. The bound claim's producer carries a certificate
-    // template the typed code-cell ABI cannot instantiate (its own
-    // bead), so its row reads vm-only with the emit refusal named.
+    // per claim. Every checker lowers and the VM and the emitted Rust
+    // agree on their verdicts, so all three rows read settled (bead
+    // emath-cfe89 widened the artifact tree with record literals and
+    // nested captures, so the bound claim's certificate template now
+    // lowers and its checker settles instead of reading vm-only).
     let (text, code) = verify(&dir, "claims.emath", &[]);
     probe.demand(
         "witness-claim-settles-on-agreement",
@@ -81,11 +81,10 @@ fn verify_cmd() {
         format!("exit {code}\n{text}"),
     );
     probe.demand(
-        "bound-claim-is-vm-only-naming-the-refusal",
+        "bound-claim-settles",
         code == EXIT_OK as i32
             && text.contains("certified_bound_claim kind=2 standing=4 checker=bound_checker")
-            && text.contains("verdict=vm-only native=unavailable")
-            && text.contains("quote template body must compute its declared `Int` carrier"),
+            && text.contains("verdict=settled native=true"),
         format!("exit {code}\n{text}"),
     );
 
@@ -100,7 +99,7 @@ fn verify_cmd() {
             && text.contains("\"name\":\"exhaustion_claim\"")
             && text.contains("\"verdict\":\"settled\",\"native\":true")
             && text.contains("\"name\":\"certified_bound_claim\"")
-            && text.contains("\"verdict\":\"vm-only\",\"native\":\"unavailable\"")
+            && text.contains("\"verdict\":\"settled\",\"native\":true")
             && text.contains("\"kind\":0")
             && text.contains("\"standing\":5"),
         format!("exit {code}\n{text}"),
@@ -183,26 +182,42 @@ fn two_path_decision() {
 /// claim, and a diagnostic must name the expression form and span, not
 /// the Debug tree of the whole Expr subtree. Every refusal stays
 /// named: each claim's note names the function that failed to lower,
-/// and the shared emitter refusals appear once per run.
+/// and the shared emitter refusals appear once per run. The fixture
+/// carries THREE unlowerable claims sharing one refusal (Float64
+/// templates the artifact lanes refuse): with a single claim,
+/// "once per run" and "once per claim" are indistinguishable, so the
+/// dedup law could not fail. bench_179's checkers lower since
+/// emath-cfe89 widened the artifact tree, so they no longer exercise
+/// this lane.
 #[test]
 fn verify_notes_are_bounded() {
     let mut probe = Probe::new("emath verify: emitter refusals stay bounded and named");
-    let dir = workspace();
-    let (text, code) = verify(&dir, "tests/fixtures/invention/bench_179/library.emath", &[]);
+    let dir = std::env::temp_dir().join(format!("emath_verify_unlowerable_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    std::fs::copy(
+        workspace().join("tests/fixtures/verify/unlowerable_checkers.emath"),
+        dir.join("unlowerable_checkers.emath"),
+    )
+    .expect("copy fixture");
+    let (text, code) = verify(&dir, "unlowerable_checkers.emath", &[]);
     probe.demand("verify-succeeds", code == EXIT_OK as i32, format!("exit {code}\n{text}"));
 
-    // Every claim the emitter cannot lower still names that function.
+    // Every unlowerable claim names its function: exactly one note per
+    // unlowerable claim, no more (the checker's own refusal is folded
+    // into its claim's note, not a second one).
     let cannot_lower = text.matches("the emitter cannot lower `").count();
     probe.demand(
         "every-unlowerable-claim-still-named",
-        cannot_lower >= 13,
-        format!("only {cannot_lower} cannot-lower notes in the run"),
+        cannot_lower == 3,
+        format!("expected 3 cannot-lower notes (one per unlowerable claim), got {cannot_lower}"),
     );
 
     // The shared emitter refusals print once per run, not once per
-    // claim: the receipt-field projection refusal (one of the shared
-    // emitter reports) must not repeat per vm-only row.
-    let shared = text.matches("field `n` projected off a CodeValue carrier").count();
+    // claim: the float-template refusal (the shared emitter report)
+    // must not repeat per vm-only row. The counted string appears only
+    // in the shared report — the per-claim notes name the function and
+    // carry no reason text — so the count is the shared report's.
+    let shared = text.matches("float template").count();
     probe.demand(
         "shared-refusals-once-per-run",
         shared == 1,

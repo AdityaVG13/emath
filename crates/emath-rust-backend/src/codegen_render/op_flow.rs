@@ -125,8 +125,36 @@ pub(super) fn authored_control_expr(
         let mut source = String::new();
         for (index, value) in args.iter().enumerate() {
             let name = format!("{prefix}arg_{}", start + index);
-            let expression = render_expr(&operand(program, *value));
-            let kind = kind_at(kinds, *value);
+            // An unapplied `quote.evaluate` argument crosses as the
+            // node decode: the certificate may be structured, so the
+            // binding renders `evaluate_node` and the body's input
+            // kind reads the node family (the same law the kind walk
+            // applies - `branch_input_kind`).
+            let decode = super::kinds::branch_input_kind(program, kinds, *value)
+                == ValueKind::Node
+                && kind_at(kinds, *value) == ValueKind::CodeValue;
+            let expression = if decode {
+                let quoted = match &program.ops.get(value.0 as usize)
+                    .expect("decode checked the producer")
+                    .0
+                {
+                    EmirOp::CodeEvaluate { code, .. } => *code,
+                    _ => unreachable!("decode checked the producer"),
+                };
+                let target = render_expr(&operand(program, quoted));
+                let target = if kind_at(kinds, quoted) == ValueKind::Node {
+                    format!("({target}).to_code()?")
+                } else {
+                    target
+                };
+                format!("({target}).evaluate_node(&__EMATH_MODULE_TABLE)?")
+            } else {
+                render_expr(&operand(program, *value))
+            };            let kind = if decode {
+                ValueKind::Node
+            } else {
+                kind_at(kinds, *value)
+            };
             if kind.is_copy() {
                 source.push_str(&format!("let {name} = {expression};"));
             } else if let ValueKind::Closure { params, result } = &kind {
@@ -176,7 +204,7 @@ pub(super) fn authored_control_expr(
         } => {
             let argument_kinds = args
                 .iter()
-                .map(|value| kind_at(kinds, *value))
+                .map(|value| super::kinds::branch_input_kind(program, kinds, *value))
                 .collect::<Vec<_>>();
             // One representation: the kind walk (`value_kinds`) joins
             // an exact-int arm with an i64 arm to ExactInt, so the i64
@@ -306,7 +334,7 @@ pub(super) fn authored_control_expr(
         }
         EmirOp::Collect { count, args, body } => {
             let argument_kinds = std::iter::once(ValueKind::I64)
-                .chain(args.iter().map(|value| kind_at(kinds, *value)))
+                .chain(args.iter().map(|value| super::kinds::branch_input_kind(program, kinds, *value)))
                 .collect();
             let body = nested(body, argument_kinds)?;
             format!(
@@ -324,7 +352,10 @@ pub(super) fn authored_control_expr(
         } => {
             let state_kind = kind_at(kinds, *init);
             let mut argument_kinds = vec![ValueKind::I64, state_kind.clone()];
-            argument_kinds.extend(args.iter().map(|value| kind_at(kinds, *value)));
+            argument_kinds.extend(
+                args.iter()
+                    .map(|value| super::kinds::branch_input_kind(program, kinds, *value)),
+            );
             let stop = stop
                 .as_ref()
                 .map(|stop| nested(stop, argument_kinds.clone()))

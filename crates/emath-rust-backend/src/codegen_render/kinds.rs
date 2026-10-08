@@ -649,6 +649,30 @@ pub(crate) fn kind_is_degenerate(kind: &ValueKind) -> bool {
     }
 }
 
+/// The kind a control-crossing argument (a branch/collect/iterate
+/// body input) carries: an unapplied `quote.evaluate` result kinds as
+/// the scalar union, but its certificate may be structured (a record
+/// the arms project fields off), so it crosses as the node decode -
+/// the render emits `evaluate_node` at the crossing and the body
+/// reads the node family (bead emath-cfe89).
+pub(super) fn branch_input_kind(
+    program: &EmirProgram,
+    kinds: &[ValueKind],
+    value: EmirValue,
+) -> ValueKind {
+    let kind = kind_at(kinds, value);
+    if kind == ValueKind::CodeValue
+        && matches!(
+            program.ops.get(value.0 as usize),
+            Some((EmirOp::CodeEvaluate { applied: None, .. }, _))
+        )
+    {
+        ValueKind::Node
+    } else {
+        kind
+    }
+}
+
 /// The carrier one branch renders when its arms carry these kinds -
 /// one law, one spelling, shared by the kind walk's `Branch` rule and
 /// the render's arm-widening (the two computed different joins when
@@ -1238,6 +1262,7 @@ pub(crate) fn value_kinds(
         for (i, (op, _)) in program.ops.iter().enumerate() {
             provisional[i] = kind_of_op(
                 op,
+                program,
                 &provisional,
                 names,
                 states,
@@ -1254,7 +1279,7 @@ pub(crate) fn value_kinds(
         }
     }
     for (i, (op, _)) in program.ops.iter().enumerate() {
-        kinds[i] = kind_of_op(op, &kinds, names, states, input_kinds, resolved.as_ref());
+        kinds[i] = kind_of_op(op, program, &kinds, names, states, input_kinds, resolved.as_ref());
     }
     // The collector follows these same nested bodies with the outer
     // literal origins. Starting another collector while it computes
@@ -1298,7 +1323,7 @@ pub(crate) fn value_kinds(
             {
                 literal_kind(body, captures, param.clone(), &kinds)
             } else {
-                kind_of_op(op, &kinds, names, states, input_kinds, resolved.as_ref())
+                kind_of_op(op, program, &kinds, names, states, input_kinds, resolved.as_ref())
             };
         }
     }
@@ -1667,6 +1692,7 @@ pub(super) fn template_uses_tree(
 
 pub(super) fn kind_of_op(
     op: &EmirOp,
+    program: &EmirProgram,
     kinds: &[ValueKind],
     names: &[String],
     states: &[String],
@@ -1717,6 +1743,18 @@ pub(super) fn kind_of_op(
                 ValueKind::Buffer if field == "length" => return ValueKind::I64,
                 ValueKind::Cell => return ValueKind::Cell,
                 _ => {}
+            }
+            // A field off an unapplied `quote.evaluate` result decodes
+            // through the node lane (the certificate's record shape is
+            // a runtime fact; the render emits the same decode), so
+            // the field's kind is the node family (bead emath-cfe89).
+            if kind_at(kinds, *record) == ValueKind::CodeValue
+                && matches!(
+                    program.ops.get(record.0 as usize),
+                    Some((EmirOp::CodeEvaluate { applied: None, .. }, _))
+                )
+            {
+                return ValueKind::Node;
             }
             // A field off a node value stays in the node family
             // (dynamic records: the field's own kind is a runtime
@@ -1860,6 +1898,11 @@ pub(super) fn kind_of_op(
                         ValueKind::from_signature(signature)
                     }
                 }
+                // The unapplied evaluate over a code value keeps the
+                // scalar union kind: a scalar certificate evaluates to
+                // a scalar, and a structured certificate decodes at
+                // the field/crossing sites that consume it (bead
+                // emath-cfe89).
                 None => ValueKind::CodeValue,
             },
             _ => ValueKind::Other,
@@ -2058,7 +2101,7 @@ pub(super) fn kind_of_op(
             let inputs = names
                 .iter()
                 .cloned()
-                .zip(args.iter().map(|value| kind_at(kinds, *value)))
+                .zip(args.iter().map(|value| branch_input_kind(program, kinds, *value)))
                 .collect();
             let left = program_kind(then_body, &names, &[], &inputs);
             let right = program_kind(else_body, &names, &[], &inputs);

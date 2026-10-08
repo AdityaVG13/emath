@@ -241,6 +241,16 @@ fn tree_expr(tree: &CodeTree) -> Expr {
             body: Box::new(tree_expr(body)),
         },
         CodeTree::Tuple(items) => ExprKind::Tuple(items.iter().map(tree_expr).collect()),
+        CodeTree::Record { type_path, fields } => ExprKind::Record {
+            type_path: type_path.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, value)| (name.clone(), tree_expr(value)))
+                .collect(),
+        },
+        CodeTree::Code(content) => ExprKind::Quote {
+            body: Box::new(tree_expr(content)),
+        },
         CodeTree::Index { container, indices } => ExprKind::Index {
             value: Box::new(tree_expr(container)),
             indices: indices.iter().map(tree_expr).collect(),

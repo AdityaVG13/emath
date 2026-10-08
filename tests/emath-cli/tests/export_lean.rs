@@ -470,9 +470,9 @@ fn export_lean_claims() {
     let claims = workspace().join("tests/fixtures/verify/claims.emath").to_string_lossy().to_string();
 
     // The settled witness claim exports as a theorem the kernel
-    // decides; the vm-only bound claim and the settled-but-not-witness
-    // exhaustion claim are refused by name; the rest of the file still
-    // translates.
+    // decides; the settled-but-not-witness bound and exhaustion
+    // claims are refused by name (only construction-witness claims
+    // export to Lean today); the rest of the file still translates.
     let (text, code) = emath(&workspace(), &["export", "lean", &claims, "--out", &out_arg]);
     probe.demand(
         "witness-claim-exports",

@@ -31,9 +31,11 @@ fn canonical_ratio(numer: &str, denom: &str) -> Result<CodeValue, String> {
 
 /// Distill an authored expression into the shared tree. The admitted
 /// shapes are exactly the scalar expression family the union lane
-/// compiles: literals, paths, scalar calls, binary/unary operators,
-/// sequences, and branches. Binders, nested quotes, structured
-/// constructors, and ranges refuse by name.
+/// compiles (literals, paths, scalar calls, binary/unary operators,
+/// sequences, branches, function literals, recursion), plus the two
+/// structured forms the node lane computes: record literals and
+/// nested `quote(expression)` captures. Function quotation, text and
+/// float templates, and ranges refuse by name.
 pub(crate) fn distill_tree(expr: &Expr) -> Result<CodeTree, String> {
     match &expr.kind {
         ExprKind::Int(text) => {
@@ -107,6 +109,30 @@ pub(crate) fn distill_tree(expr: &Expr) -> Result<CodeTree, String> {
             ty: Box::new(distill_tree(ty)?),
             body: Box::new(distill_tree(body)?),
         }),
+        ExprKind::Record { type_path, fields } => {
+            // The record literal: the declared type path plus one tree
+            // per field, canonicalized to name-sorted order (the VM
+            // stores record fields in a map; the tree's identity and
+            // evaluation depend on the canonical order, not source
+            // order). Duplicate field names refuse by name.
+            let mut built = Vec::with_capacity(fields.len());
+            for (name, field) in fields {
+                if built.iter().any(|(seen, _): &(String, CodeTree)| seen == name) {
+                    return Err(format!("duplicate field `{name}` in record literal"));
+                }
+                built.push((name.clone(), distill_tree(field)?));
+            }
+            built.sort_by(|(a, _), (b, _)| a.cmp(b));
+            Ok(CodeTree::Record {
+                type_path: type_path.clone(),
+                fields: built,
+            })
+        }
+        // `quote(expression)`: a closed code capture inside a template.
+        // The content distills like any other subtree (the dual
+        // representation covers nested quotes); evaluation yields the
+        // code value, substitution reaches through it syntactically.
+        ExprKind::Quote { body } => Ok(CodeTree::Code(Box::new(distill_tree(body)?))),
         ExprKind::Float(_) => Err(String::from(
             "float templates are not emitted in the artifact tree lane",
         )),

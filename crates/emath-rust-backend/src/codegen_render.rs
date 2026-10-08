@@ -358,6 +358,23 @@ pub(crate) fn tree_expr(tree: &emath_rt::code_tree::CodeTree) -> String {
             "emath_rt::code_tree::CodeTree::Tuple(vec![{}])",
             items.iter().map(tree_expr).collect::<Vec<_>>().join(", ")
         ),
+        CodeTree::Record { type_path, fields } => format!(
+            "emath_rt::code_tree::CodeTree::Record {{ type_path: vec![{}], fields: vec![{}] }}",
+            type_path
+                .iter()
+                .map(|segment| format!("String::from({segment:?})"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            fields
+                .iter()
+                .map(|(name, value)| format!("(String::from({name:?}), {})", tree_expr(value)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        CodeTree::Code(content) => format!(
+            "emath_rt::code_tree::CodeTree::Code(Box::new({}))",
+            tree_expr(content)
+        ),
         CodeTree::Index { container, indices } => format!(
             "emath_rt::code_tree::CodeTree::Index {{ container: Box::new({}), indices: vec![{}] }}",
             tree_expr(container),
@@ -768,6 +785,37 @@ pub(crate) fn op_expr(
                     | ValueKind::Code(_)
                     | ValueKind::CodeValue
             ) {
+                // A field off an unapplied `quote.evaluate` result
+                // decodes through the node lane: the certificate's
+                // record shape is a runtime fact, the same decode the
+                // applied lane uses (bead emath-qhl1i). A field the
+                // evaluated value does not carry faults at runtime,
+                // exactly as the VM faults. Every other scalar/code
+                // receiver refuses here - never emit Rust that cannot
+                // compile behind a runnable claim.
+                if record_kind == ValueKind::CodeValue
+                    && matches!(
+                        program.ops.get(record.0 as usize),
+                        Some((EmirOp::CodeEvaluate { applied: None, .. }, _))
+                    )
+                {
+                    let quoted = match &program.ops.get(record.0 as usize)
+                        .expect("decode checked the producer")
+                        .0
+                    {
+                        EmirOp::CodeEvaluate { code, .. } => *code,
+                        _ => unreachable!("decode checked the producer"),
+                    };
+                    let quoted_target = render_expr(&operand(program, quoted));
+                    let quoted_target = if kind_at(kinds, quoted) == ValueKind::Node {
+                        format!("({quoted_target}).to_code()?")
+                    } else {
+                        quoted_target
+                    };
+                    return Ok(Expr::Raw(format!(
+                        "({quoted_target}).evaluate_node(&__EMATH_MODULE_TABLE)?.field({field:?})?"
+                    )));
+                }
                 return Err(BackendError::UnsupportedType(format!(
                     "field `{field}` projected off a {record_kind:?} carrier, which has no fields"
                 )));
@@ -776,7 +824,7 @@ pub(crate) fn op_expr(
                 receiver: Box::new(operand(program, *record)),
                 field: escape_ident(field),
             };
-            if kind_of_op(op, kinds, names, states, input_kinds, None).is_copy() {
+            if kind_of_op(op, program, kinds, names, states, input_kinds, None).is_copy() {
                 Ok(value)
             } else {
                 Ok(Expr::Raw(format!("&{}", render_expr(&value))))

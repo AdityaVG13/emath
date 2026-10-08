@@ -581,9 +581,16 @@ pub fn substitute_tree_expr(
         reference,
         &replacement.tree,
     );
-    let free = super::code_tree::free_names_tree(&tree);
     let mut deps = code.deps.clone();
     deps.extend(replacement.deps.clone());
+    // The VM's `open_names` law: a free name the merged dependency
+    // snapshot stamps is a module dependency, not an open constant -
+    // the evaluator resolves it through the table, so it never
+    // surfaces as unbound.
+    let free = super::code_tree::free_names_tree(&tree)
+        .into_iter()
+        .filter(|name| !deps.contains_key(name))
+        .collect();
     ExprCode {
         free,
         tree,

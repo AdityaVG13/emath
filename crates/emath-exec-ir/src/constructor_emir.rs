@@ -1806,7 +1806,7 @@ impl Lowerer {
                     && carrier != "Union"
                 {
                     let mut free = BTreeSet::new();
-                    collect_free_names(inner, param, &mut free);
+                    collect_template_free_names(inner, param, &mut free);
                     // A module function CALLED in the body is a
                     // dependency, not an open constant (the VM's capture
                     // law): the compiled template calls it as a sibling.
@@ -1841,6 +1841,20 @@ impl Lowerer {
                     };
                     let lowered = child.expr(inner)?;
                     let program = child.finish(lowered);
+                    // The dependency snapshot: module functions CALLED
+                    // in the body stamp exactly as the VM's quote
+                    // capture does (`dependency_snapshot`), so the tree
+                    // evaluator resolves them through the module table
+                    // instead of refusing them unbound. The open
+                    // constants (the template's free names) never stamp.
+                    let deps: BTreeMap<String, u64> = called
+                        .keys()
+                        .filter_map(|name| {
+                            self.module_stamps
+                                .get(name)
+                                .map(|stamp| (name.clone(), *stamp))
+                        })
+                        .collect();
                     // The dual representation: the compiled factory
                     // AND the distilled Closure tree (the view seam
                     // reads a program template's structure through
@@ -1858,7 +1872,7 @@ impl Lowerer {
                         free,
                         carrier: carrier.to_string(),
                         tree: crate::tree_distill::distill_tree(body).ok(),
-                        deps: BTreeMap::new(),
+                        deps,
                     }))
                 } else {
                     // The expression template: all free names are
@@ -1867,7 +1881,7 @@ impl Lowerer {
                     // and the factory lower over the same body in
                     // this same arm - the dual-representation law.
                     let mut free = BTreeSet::new();
-                    collect_free_names(body, "", &mut free);
+                    collect_template_free_names(body, "", &mut free);
                     let mut called = BTreeMap::new();
                     collect_call_sites(body, &mut called);
                     let free: Vec<String> = free.into_iter().filter(|name| {
@@ -2383,10 +2397,25 @@ fn is_arrow_domain(domain: &Expr) -> bool {
 
 fn collect_free_names(expr: &Expr, param: &str, out: &mut BTreeSet<String>) {
     let mut bound = BTreeSet::from([param.to_string()]);
-    collect_free_names_bound(expr, &mut bound, out);
+    collect_free_names_bound(expr, &mut bound, out, false);
 }
 
-fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut BTreeSet<String>) {
+/// Template free names: names under nested `quote(...)` captures stay
+/// open in the tree lane (the capture is `CodeTree::Code(Path name)`
+/// until a substitution splices its replacement into the capture), so
+/// they are template open constants, not ambient captures. The VM's
+/// substitute splices into the Quote body exactly the same way.
+fn collect_template_free_names(expr: &Expr, param: &str, out: &mut BTreeSet<String>) {
+    let mut bound = BTreeSet::from([param.to_string()]);
+    collect_free_names_bound(expr, &mut bound, out, true);
+}
+
+fn collect_free_names_bound(
+    expr: &Expr,
+    bound: &mut BTreeSet<String>,
+    out: &mut BTreeSet<String>,
+    quotes_open: bool,
+) {
     match &expr.kind {
         ExprKind::Path { segments, .. } => {
             if let Some(head) = segments.first() {
@@ -2396,36 +2425,46 @@ fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut
             }
         }
         ExprKind::Call { function, args } => {
-            collect_free_names_bound(function, bound, out);
+            collect_free_names_bound(function, bound, out, quotes_open);
             for arg in args {
-                collect_free_names_bound(arg, bound, out);
+                collect_free_names_bound(arg, bound, out, quotes_open);
             }
         }
-        ExprKind::Unary { value, .. } => collect_free_names_bound(value, bound, out),
+        ExprKind::Unary { value, .. } => collect_free_names_bound(value, bound, out, quotes_open),
         ExprKind::Binary { left, right, .. } => {
-            collect_free_names_bound(left, bound, out);
-            collect_free_names_bound(right, bound, out);
+            collect_free_names_bound(left, bound, out, quotes_open);
+            collect_free_names_bound(right, bound, out, quotes_open);
         }
         ExprKind::If {
             condition,
             then_value,
             else_value,
         } => {
-            collect_free_names_bound(condition, bound, out);
-            collect_free_names_bound(then_value, bound, out);
-            collect_free_names_bound(else_value, bound, out);
+            collect_free_names_bound(condition, bound, out, quotes_open);
+            collect_free_names_bound(then_value, bound, out, quotes_open);
+            collect_free_names_bound(else_value, bound, out, quotes_open);
         }
         ExprKind::FunctionAbs { param, body, .. } => {
             let inserted = bound.insert(param.clone());
-            collect_free_names_bound(body, bound, out);
+            collect_free_names_bound(body, bound, out, quotes_open);
             if inserted { bound.remove(param); }
         }
         // The declared type is a type expression, never a value
         // reference (the VM's `free_path_names`).
         ExprKind::Recur { name, body, .. } => {
             let inserted = bound.insert(name.clone());
-            collect_free_names_bound(body, bound, out);
+            collect_free_names_bound(body, bound, out, quotes_open);
             if inserted { bound.remove(name); }
+        }
+        ExprKind::Quote { body } => {
+            // A nested capture is open in the template's free-name walk
+            // only when the template lane says so (`quotes_open`): the
+            // ambient-capture walks treat the capture as the VM does at
+            // creation, the template walk treats it as an open constant
+            // the tree evaluator must receive.
+            if quotes_open {
+                collect_free_names_bound(body, bound, out, quotes_open);
+            }
         }
         ExprKind::QuoteBind {
             param,
@@ -2433,8 +2472,8 @@ fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut
             body,
         } => {
             let inserted = bound.insert(param.clone());
-            collect_free_names_bound(domain, bound, out);
-            collect_free_names_bound(body, bound, out);
+            collect_free_names_bound(domain, bound, out, quotes_open);
+            collect_free_names_bound(body, bound, out, quotes_open);
             if inserted { bound.remove(param); }
         }
         ExprKind::CallableBinder {
@@ -2444,9 +2483,9 @@ fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut
             body,
         } => {
             let inserted = bound.insert(param.clone());
-            collect_free_names_bound(callee, bound, out);
-            collect_free_names_bound(domain, bound, out);
-            collect_free_names_bound(body, bound, out);
+            collect_free_names_bound(callee, bound, out, quotes_open);
+            collect_free_names_bound(domain, bound, out, quotes_open);
+            collect_free_names_bound(body, bound, out, quotes_open);
             if inserted { bound.remove(param); }
         }
         ExprKind::Cases {
@@ -2455,33 +2494,33 @@ fn collect_free_names_bound(expr: &Expr, bound: &mut BTreeSet<String>, out: &mut
             else_arm,
         } => {
             if let Some(subject) = subject {
-                collect_free_names_bound(subject, bound, out);
+                collect_free_names_bound(subject, bound, out, quotes_open);
             }
             for (cond, value) in arms {
-                collect_free_names_bound(cond, bound, out);
-                collect_free_names_bound(value, bound, out);
+                collect_free_names_bound(cond, bound, out, quotes_open);
+                collect_free_names_bound(value, bound, out, quotes_open);
             }
-            collect_free_names_bound(else_arm, bound, out);
+            collect_free_names_bound(else_arm, bound, out, quotes_open);
         }
         ExprKind::List(items) | ExprKind::Tuple(items) => {
             for item in items {
-                collect_free_names_bound(item, bound, out);
+                collect_free_names_bound(item, bound, out, quotes_open);
             }
         }
         ExprKind::Index { value, indices } => {
-            collect_free_names_bound(value, bound, out);
+            collect_free_names_bound(value, bound, out, quotes_open);
             for index in indices {
-                collect_free_names_bound(index, bound, out);
+                collect_free_names_bound(index, bound, out, quotes_open);
             }
         }
         ExprKind::Record { fields, .. } => {
             for (_, field) in fields {
-                collect_free_names_bound(field, bound, out);
+                collect_free_names_bound(field, bound, out, quotes_open);
             }
         }
         ExprKind::SequenceCons { head, tail, .. } => {
-            collect_free_names_bound(head, bound, out);
-            collect_free_names_bound(tail, bound, out);
+            collect_free_names_bound(head, bound, out, quotes_open);
+            collect_free_names_bound(tail, bound, out, quotes_open);
         }
         _ => {}
     }
