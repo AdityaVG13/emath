@@ -323,6 +323,12 @@ theorem witness_claim_settled : (is_pm_one [(1 : Int), (0 - 1 : Int), (1 : Int),
   decide +kernel
 ```
 
+A checker may spread its verdict over several definitions: they bind
+as ordered Lean `let`s, in the order emath evaluates them, with the
+last one the verdict. A certificate that quotes a record tag with no
+authored `emath object` still exports — Lean gets the structure from
+the certificate literal itself, its fields typed by their values.
+
 Claims of other settled kinds (exhaustion receipts, certified bounds)
 are refused by name for now. A claim the recheck refuses — a checker
 that rejects its certificate, a content id that does not match —

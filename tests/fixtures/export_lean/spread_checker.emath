@@ -1,0 +1,33 @@
+# Fixture kept library for `emath export lean`: one settled witness
+# claim whose checker spreads its verdict over several definitions —
+# the certificate decoded once into an intermediate, a count reading
+# a field of it, and the verdict reading both — as a real kept
+# checker does. The certificate quotes a record tag with no authored
+# object, as kept certificates do.
+# Run: emath export lean tests/fixtures/export_lean/spread_checker.emath --check
+exports: spread_checker, spread_claim
+
+use search.claim
+
+emath function spread_checker:
+    # The witness claim's checker: every use of the certificate itself
+    # is still the direct `quote.evaluate`; the verdict reads the
+    # decoded witness through an intermediate count of one field.
+    inputs:
+        cert: Code
+    outputs:
+        result: Bool
+    definitions:
+        c = quote.evaluate(cert)
+        count = length(c.items)
+        result = count == 2 and c.n == 2
+
+emath function spread_claim:
+    # The two-element witness as an F0 claim: kind construction,
+    # standing proven, the witness record as the certificate.
+    inputs:
+        unused: Int
+    outputs:
+        result: Claim
+    definitions:
+        result = make_claim(kind_construction(0), quote(function s in sequence(Int): length(s) == 2), quote(SpreadWitness: {n: 2, items: [1, 0 - 1]}), quote(spread_checker), quote(2), standing_proven(0), quote(function s in sequence(Int): length(s) != 2))

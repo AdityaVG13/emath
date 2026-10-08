@@ -295,6 +295,15 @@ fn render(ty: &Ty) -> String {
     }
 }
 
+/// A type a Lean `let` binding or structure field can ascribe: an
+/// integer literal stands as `Int`.
+fn concrete(ty: Ty) -> Ty {
+    match ty {
+        Ty::Lit => Ty::Int,
+        other => other,
+    }
+}
+
 /// `ty` with the type parameters `generics` names as call-site
 /// variables.
 fn generalize(ty: &Ty, generics: &[String]) -> Ty {
@@ -1006,7 +1015,10 @@ fn translate_file(
     if let Some(recheck) = &recheck {
         let module = source.prepared.as_ref().expect("a checked module");
         let budget = work.unwrap_or(DEFAULT_WORK);
-        for name in &claim_fns {
+        // Record tags the certificates quote without an authored
+        // object: each synthesized Lean structure is emitted once.
+        let mut claim_structures: BTreeSet<String> = BTreeSet::new();
+        'claims: for name in &claim_fns {
                 let Some(row) = recheck.rows.iter().find(|row| &row.name == name) else {
                     // The recheck stopped before this claim; the standing
                     // refusal, now the export's rejection, names why.
@@ -1077,33 +1089,70 @@ fn translate_file(
                             ));
                             continue;
                         }
-                        let bodies: Vec<&Expr> = checker_decl
+                        let defs: Vec<(&str, &Expr)> = checker_decl
                             .sections()
                             .filter(|section| section.name == "definitions")
                             .flat_map(|section| section.suite.statements.iter())
                             .filter_map(|stmt| match &stmt.kind {
-                                StmtKind::Assign { value, .. } => Some(value),
+                                StmtKind::Assign { target, value }
+                                    if target.segments.len() == 1 && target.indices.is_empty() =>
+                                {
+                                    Some((target.segments[0].as_str(), value))
+                                }
                                 _ => None,
                             })
                             .collect();
-                        let [body] = bodies.as_slice() else {
+                        if defs.is_empty() {
                             refusals.push(format!(
-                                "not exported: {} `{name}`: the checker `{checker_name}` must define its verdict in a single definition",
-                                source.rel
-                            ));
-                            continue;
-                        };
-                        if let Err(reason) = check_decode_only(body, cert_input) {
-                            refusals.push(format!(
-                                "not exported: {} `{name}`: {reason}",
+                                "not exported: {} `{name}`: the checker `{checker_name}` must define its verdict in a definition",
                                 source.rel
                             ));
                             continue;
                         }
-                        // The certificate once, then the checker's body
-                        // over it: the decode folds to the certificate,
-                        // so the kernel decides the checker's own logic
-                        // on the stored data.
+                        // The decode law holds for every definition: the
+                        // certificate itself is used only as a direct
+                        // decode; a later definition reads it through an
+                        // earlier definition's name.
+                        for (_, def_expr) in &defs {
+                            if let Err(reason) = check_decode_only(def_expr, cert_input) {
+                                refusals.push(format!(
+                                    "not exported: {} `{name}`: {reason}",
+                                    source.rel
+                                ));
+                                continue 'claims;
+                            }
+                        }
+                        // The certificate once, then the checker's
+                        // definitions over it: the decode folds to the
+                        // certificate, so the kernel decides the
+                        // checker's own logic on the stored data. A
+                        // certificate quoting a record tag with no
+                        // authored object still decodes: the Lean
+                        // structure comes from the literal itself, its
+                        // fields typed by their values.
+                        if let ExprKind::Record { type_path, fields } = &certificate.expr.kind {
+                            let tag = type_path.join(".");
+                            if !names.objects.contains_key(&tag) && claim_structures.insert(tag.clone()) {
+                                let mut fields_ctx = Ctx { names: &mut names, scope: Vec::new(), decode: None };
+                                let mut declared: Vec<(String, Ty)> = Vec::new();
+                                let mut shaped = true;
+                                for (field, value) in fields {
+                                    match fields_ctx.expr(value, false) {
+                                        Ok((_, _, ty)) => declared.push((field.clone(), concrete(ty))),
+                                        Err(_) => {
+                                            shaped = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                                drop(fields_ctx);
+                                if shaped {
+                                    let lean = ident(&tag);
+                                    names.objects.insert(tag.clone(), Ty::Record(lean.clone(), declared.clone()));
+                                    text.push_str(&structure_text(&lean, &declared));
+                                }
+                            }
+                        }
                         let mut ctx = Ctx { names: &mut names, scope: Vec::new(), decode: None };
                         let (cert_text, cert_ty) = match ctx.expr(&certificate.expr, true) {
                             Ok((text, _, ty)) => (text, ty),
@@ -1116,7 +1165,31 @@ fn translate_file(
                             }
                         };
                         ctx.decode = Some((cert_input.clone(), cert_text, cert_ty));
-                        let body_text = match ctx.expr(body, false) {
+                        // The definitions bind in the order emath
+                        // evaluates them; the last one is the verdict.
+                        let (_, verdict_expr) = *defs.last().expect("at least one definition");
+                        let mut let_lines: Vec<String> = Vec::new();
+                        for (def_name, def_expr) in &defs[..defs.len() - 1] {
+                            match ctx.expr(def_expr, false) {
+                                Ok((def_text, _, def_ty)) => {
+                                    let_lines.push(format!(
+                                        "let {} : {} := {};",
+                                        ident(def_name),
+                                        render(&concrete(def_ty.clone())),
+                                        def_text
+                                    ));
+                                    ctx.scope.push(((*def_name).to_string(), concrete(def_ty)));
+                                }
+                                Err(reason) => {
+                                    refusals.push(format!(
+                                        "not exported: {} `{name}`: the checker has no Lean translation ({reason})",
+                                        source.rel
+                                    ));
+                                    continue 'claims;
+                                }
+                            }
+                        }
+                        let body_text = match ctx.expr(verdict_expr, false) {
                             Ok((text, _, Ty::Bool)) => text,
                             Ok((_, _, ty)) => {
                                 refusals.push(format!(
@@ -1134,10 +1207,18 @@ fn translate_file(
                                 continue;
                             }
                         };
-                        let theorem_text = format!(
-                            "-- Settled claim `{name}`: the checker `{checker_name}` on its stored\n-- certificate, decoded once at export; the kernel decides it.\ntheorem {}_settled : ({body_text}) = true := by\n  decide +kernel\n\n",
-                            ident(name)
-                        );
+                        let theorem_text = if let_lines.is_empty() {
+                            format!(
+                                "-- Settled claim `{name}`: the checker `{checker_name}` on its stored\n-- certificate, decoded once at export; the kernel decides it.\ntheorem {}_settled : ({body_text}) = true := by\n  decide +kernel\n\n",
+                                ident(name)
+                            )
+                        } else {
+                            format!(
+                                "-- Settled claim `{name}`: the checker `{checker_name}` on its stored\n-- certificate, decoded once at export; the kernel decides it.\ntheorem {}_settled :\n    ({}\n     {body_text}) = true := by\n  decide +kernel\n\n",
+                                ident(name),
+                                let_lines.join("\n     ")
+                            )
+                        };
                         let first_line = text.lines().count() + 1;
                         text.push_str(&theorem_text);
                         export.sites.push(ExampleSite {

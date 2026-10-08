@@ -491,6 +491,27 @@ fn export_lean_claims() {
         format!("exit {code}\n{text}"),
     );
 
+    // A witness claim whose checker spreads its verdict over several
+    // definitions (the decode as an intermediate, a count of one of
+    // its fields, the verdict reading both) exports too: the
+    // definitions translate as ordered Lean `let` bindings over the
+    // folded decode, and the certificate's unauthored record tag
+    // becomes the Lean structure the bindings ascribe.
+    let spread = workspace().join("tests/fixtures/export_lean/spread_checker.emath").to_string_lossy().to_string();
+    let spread_out = std::env::temp_dir().join(format!("emath_lean_spread_{}", std::process::id()));
+    let spread_arg = spread_out.to_string_lossy().to_string();
+    let (text, code) = emath(&workspace(), &["export", "lean", &spread, "--out", &spread_arg]);
+    probe.demand(
+        "spread-checker-claim-exports",
+        code == EXIT_OK as i32
+            && std::fs::read_to_string(spread_out.join("Export/spread_checker.lean")).is_ok_and(|lean| {
+                lean.contains("theorem spread_claim_settled")
+                    && lean.contains("let c : SpreadWitness")
+                    && lean.contains("let count : Int")
+            }),
+        format!("exit {code}\n{text}"),
+    );
+
     // The kernel proves the exported claim: `--check` accepts the
     // project with the claim theorem in it.
     if lake_available() {
@@ -500,6 +521,17 @@ fn export_lean_claims() {
         probe.demand(
             "kernel-proves-the-witness-claim",
             code == EXIT_PARTIAL as i32 && text.contains("lean: accepted") && text.contains("1 claim theorems"),
+            format!("exit {code}\n{text}"),
+        );
+
+        // The spread checker's claim is kernel-proved too: the ordered
+        // let bindings reduce over the decoded certificate.
+        let spread_checked_out = std::env::temp_dir().join(format!("emath_lean_spread_check_{}", std::process::id()));
+        let spread_checked_arg = spread_checked_out.to_string_lossy().to_string();
+        let (text, code) = emath(&workspace(), &["export", "lean", &spread, "--out", &spread_checked_arg, "--check"]);
+        probe.demand(
+            "kernel-proves-the-spread-checker-claim",
+            code == EXIT_OK as i32 && text.contains("lean: accepted") && text.contains("1 claim theorems"),
             format!("exit {code}\n{text}"),
         );
 
