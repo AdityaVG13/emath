@@ -162,6 +162,7 @@ emath function Dreams:
         derived: Int
         refuted: Bool
         check: Bool
+        observed: Bool
         discerns: Bool
     definitions:
         state = StepConjecture(StepConjecture(StepConjecture(SeedConjecture(0), 0), 0), 0)
@@ -169,11 +170,17 @@ emath function Dreams:
         derived = length(state.derived)
         refuted = state.refuted > 0
         laws = filter(function e in Entry: quote.view(e.name).name == quote.view(quote(law_1)).name, library(state))
-        check = length(laws) == 1 and quote.evaluate(laws[0].program)([3, 1, 4, 1, 5, 9, 2, 6]) == true
+        # Each kept entry is an F0 Claim at the observed standing; the
+        # law's executable check is the claim's statement. The claim
+        # is evaluated once and read from.
+        claim_1 = quote.evaluate(laws[0].program)(0)
+        observed = length(laws) == 1 and claim_1.standing == 0
+        check = length(laws) == 1 and quote.evaluate(claim_1.statement)([3, 1, 4, 1, 5, 9, 2, 6]) == true
         # A kept check tells the sequences a law holds on from those it does not: this one holds only from 0.
         shifted = Law: {left: quote(partial_sums(differences(a))), right: quote(differences(partial_sums(a))), work_left: 0, work_right: 0, steps: 0 - 1}
         only = library(Conjectures: {exploration: SeedConjecture(0).exploration, laws: [shifted], derived: [], refuted: 0, judged: 0, batch: 0, verdict: 0, used: 0})
-        discerns = quote.evaluate(only[0].program)([0, 1, 4]) == true and quote.evaluate(only[0].program)([3, 1, 4]) == false
+        claim_only = quote.evaluate(only[0].program)(0)
+        discerns = quote.evaluate(claim_only.statement)([0, 1, 4]) == true and quote.evaluate(claim_only.statement)([3, 1, 4]) == false
     tests:
         example <dreams_and_judges>:
             given unused = 0
@@ -181,6 +188,7 @@ emath function Dreams:
             expect derived == 1
             expect refuted == true
             expect check == true
+            expect observed == true
             expect discerns == true
 
 emath function add:

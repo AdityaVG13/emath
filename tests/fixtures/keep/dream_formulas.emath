@@ -37,18 +37,31 @@ emath function dream_keep:
     definitions:
         result = kept(state, quote(e))
 
+emath function close_at:
+    # One kept claim's statement - the formula program - at depth 30,
+    # within 10^-20 of e on either side.
+    inputs:
+        k: Kept
+        e: Rat
+    outputs:
+        result: Bool
+    definitions:
+        d = (quote.evaluate(quote.evaluate(k.program)(0).statement)(30) - e) * 100000000000000000000
+        result = d < 1 / 1 and d > 0 - 1 / 1
+
 emath function kept_programs_give_e:
-    # Every kept program, run at depth 30, is within 10^-20 of e.
+    # Every kept claim's statement, run at depth 30, is within 10^-20
+    # of e. The hunt runs once; the claim is evaluated once per entry.
     inputs:
         unused: Int
     outputs:
         result: Bool
     definitions:
         e = e_bracket(60).lo
-        close = function k in Kept: (quote.evaluate(k.program)(30) - e) * 100000000000000000000
-        result = all(function k in Kept: close(k) < 1 / 1 and close(k) > 0 / 1 - 1 / 1, dream_keep(hunt_step(hunt_step(hunt_step(hunt_step(SeedHunt(0), 0), 0), 0), 0)))
+        entries = dream_keep(hunt_step(hunt_step(hunt_step(hunt_step(SeedHunt(0), 0), 0), 0), 0))
+        result = all(function k in Kept: close_at(k, e), entries)
     tests:
         example <every_kept_formula_computes_e>:
             given unused = 0
             expect result == true
-            expect length(dream_keep(hunt_step(hunt_step(hunt_step(hunt_step(SeedHunt(0), 0), 0), 0), 0))) > 0
+            expect length(entries) > 0
