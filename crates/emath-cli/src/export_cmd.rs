@@ -107,6 +107,13 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
             return EXIT_ADMISSION;
         }
     };
+    // A claim the recheck refused (a rejected certificate, a shape
+    // fault, an exhausted budget) refuses the export outright, naming
+    // the claim, before anything is written.
+    if let Some((code, message)) = &export.rejection {
+        eprintln!("error: {code}: {message}");
+        return EXIT_REFUSED;
+    }
     for (file, contents) in &export.files {
         let target = out.join(file);
         let written = target
@@ -119,13 +126,14 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         }
     }
     println!(
-        "exported {} source files to {}: {} functions, {} examples, {} library examples, {} laws",
+        "exported {} source files to {}: {} functions, {} examples, {} library examples, {} laws, {} claims",
         export.sources,
         out.display(),
         export.functions,
         export.examples,
         export.library_examples,
-        export.laws
+        export.laws,
+        export.claims
     );
     for refusal in &export.refusals {
         println!("{refusal}");
@@ -199,8 +207,8 @@ pub(crate) fn run(request: ExportRequest) -> CliExit {
         .collect();
     if output.status.success() && uncertified.is_empty() {
         println!(
-            "lean: accepted ({} examples, {} library examples and {} laws proved by the kernel)",
-            export.examples, export.library_examples, export.laws
+            "lean: accepted ({} examples, {} library examples, {} claim theorems and {} laws proved by the kernel)",
+            export.examples, export.library_examples, export.claims, export.laws
         );
         return translated;
     }

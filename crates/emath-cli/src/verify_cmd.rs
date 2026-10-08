@@ -99,15 +99,27 @@ impl Native {
 /// One claim's recheck outcome. `kind`/`standing` are the claim's own
 /// closed-set tags carried as data; `checker`/`conditions` are the
 /// stored code rendered as text.
-struct ClaimRow {
-    name: String,
-    kind: String,
+pub(crate) struct ClaimRow {
+    pub(crate) name: String,
+    pub(crate) kind: String,
+    /// The kind tag as the integer the closed sets define (0 = the
+    /// construction witness).
+    pub(crate) kind_tag: i64,
     standing: String,
-    checker: String,
+    pub(crate) checker: String,
     conditions: String,
-    verdict: &'static str,
+    pub(crate) verdict: &'static str,
     native: Native,
-    note: Option<String>,
+    pub(crate) note: Option<String>,
+}
+
+/// The recheck's outcome: one row per claim, the per-claim notes, the
+/// emitter's shared reports, and the run-standing refusal if any.
+pub(crate) struct Recheck {
+    pub(crate) rows: Vec<ClaimRow>,
+    pub(crate) notes: Vec<String>,
+    pub(crate) shared: Vec<String>,
+    pub(crate) refusal: Option<(&'static str, String)>,
 }
 
 fn refuse(code: &str, message: impl std::fmt::Display, exit: CliExit) -> CliExit {
@@ -408,14 +420,32 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
     let Some(module) = &checked.result.prepared else {
         return refuse("E-VERIFY-SHAPE", "checking produced no executable module", EXIT_ADMISSION);
     };
-    let library = request.path.display();
+    let Recheck { rows, notes, shared, refusal } =
+        match recheck_claims(module, checked.source(), &request.path, request.work) {
+            Ok(recheck) => recheck,
+            Err((code, message, exit)) => return refuse(&code, message, exit),
+        };
+    print_verdict(rows, notes, shared, refusal, request.json)
+}
+
+/// The whole verify recheck, shared with `emath export lean` so both
+/// commands decide settledness the same way: the reference VM's
+/// check_claim verdict per claim, then the emitted Rust's verdict on
+/// the VM-accepted ones. One row per claim; a refusal stands for the
+/// run and names the claim.
+pub(crate) fn recheck_claims(
+    module: &PreparedModule,
+    source: &str,
+    path: &Path,
+    work: u64,
+) -> Result<Recheck, (String, String, CliExit)> {
+    let library = path.display();
     let claims: Vec<String> = module
         .function_output_types()
         .into_iter()
         .filter(|(_, outputs)| outputs.iter().any(|name| name == "Claim"))
         .map(|(name, _)| name)
         .collect();
-
     // Registry entries are built per distinct named checker, only for
     // names that resolve in the library's scope: a claim naming a
     // stranger leaves its checker absent, and check_claim's own gate
@@ -430,31 +460,48 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
     for name in &claims {
         let inputs: BTreeMap<String, CValue> =
             BTreeMap::from([("unused".to_string(), parse_constructor_scalar("0"))]);
-        let value = match module.evaluate_function(name, &inputs, request.work) {
+        let value = match module.evaluate_function(name, &inputs, work) {
             Ok(value) => value,
             Err(err) if err.code == "budget_exhausted" => {
-                return refuse(
-                    "E-VERIFY-WORK",
+                return Err((
+                    "E-VERIFY-WORK".to_string(),
                     format!(
-                        "{library}: {name}: producing the claim exhausted the work budget {}; raise it with --work",
-                        request.work
+                        "{library}: {name}: producing the claim exhausted the work budget {work}; raise it with --work",
                     ),
                     EXIT_REFUSED,
-                );
+                ));
             }
-            Err(err) => return refuse(&err.code, format!("{library}: {name}: {}", err.message), EXIT_FAULT),
+            Err(err) => {
+                return Err((err.code.clone(), format!("{library}: {name}: {}", err.message), EXIT_FAULT))
+            }
         };
         let CValue::Record { type_name, fields } = &value else {
-            return refuse("E-VERIFY-SHAPE", format!("{library}: {name} declares a Claim output but evaluated to {value}"), EXIT_REFUSED);
+            return Err((
+                "E-VERIFY-SHAPE".to_string(),
+                format!("{library}: {name} declares a Claim output but evaluated to {value}"),
+                EXIT_REFUSED,
+            ));
         };
         if type_name.as_ref() != "Claim" {
-            return refuse("E-VERIFY-SHAPE", format!("{library}: {name} declares a Claim output but evaluated to a {type_name}"), EXIT_REFUSED);
+            return Err((
+                "E-VERIFY-SHAPE".to_string(),
+                format!("{library}: {name} declares a Claim output but evaluated to a {type_name}"),
+                EXIT_REFUSED,
+            ));
         }
         let (Some(CValue::Int(kind)), Some(CValue::Int(standing))) = (fields.get("kind"), fields.get("standing")) else {
-            return refuse("E-VERIFY-SHAPE", format!("{library}: {name} is missing its kind or standing tag"), EXIT_REFUSED);
+            return Err((
+                "E-VERIFY-SHAPE".to_string(),
+                format!("{library}: {name} is missing its kind or standing tag"),
+                EXIT_REFUSED,
+            ));
         };
         let (Some(CValue::Code(checker)), Some(CValue::Code(conditions))) = (fields.get("checker"), fields.get("conditions")) else {
-            return refuse("E-VERIFY-SHAPE", format!("{library}: {name} is missing its checker or conditions code"), EXIT_REFUSED);
+            return Err((
+                "E-VERIFY-SHAPE".to_string(),
+                format!("{library}: {name} is missing its checker or conditions code"),
+                EXIT_REFUSED,
+            ));
         };
         let checker_name = code_text(checker);
         if !registry_names.contains(&checker_name) && declared.contains(&checker_name) {
@@ -489,32 +536,40 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
         let verdict = match module.evaluate_expr(
             call,
             BTreeMap::from([("claim".to_string(), value.clone())]),
-            request.work,
+            work,
         ) {
             Ok(verdict) => verdict,
             Err(err) if err.code == "budget_exhausted" => {
-                return refuse(
-                    "E-VERIFY-WORK",
+                return Err((
+                    "E-VERIFY-WORK".to_string(),
                     format!(
-                        "{library}: {name}: replaying the checker exhausted the work budget {}; raise it with --work",
-                        request.work
+                        "{library}: {name}: replaying the checker exhausted the work budget {work}; raise it with --work",
                     ),
                     EXIT_REFUSED,
-                );
+                ));
             }
             Err(err) => {
-                return refuse(&err.code, format!("{library}: {name}: {}", err.message), EXIT_FAULT)
+                return Err((err.code.clone(), format!("{library}: {name}: {}", err.message), EXIT_FAULT))
             }
         };
         let CValue::Record { fields: verdict_fields, .. } = &verdict else {
-            return refuse("E-VERIFY-SHAPE", format!("{library}: {name}: check_claim did not return a verdict"), EXIT_REFUSED);
+            return Err((
+                "E-VERIFY-SHAPE".to_string(),
+                format!("{library}: {name}: check_claim did not return a verdict"),
+                EXIT_REFUSED,
+            ));
         };
         let Some(CValue::Int(status)) = verdict_fields.get("status") else {
-            return refuse("E-VERIFY-SHAPE", format!("{library}: {name}: the verdict carries no status"), EXIT_REFUSED);
+            return Err((
+                "E-VERIFY-SHAPE".to_string(),
+                format!("{library}: {name}: the verdict carries no status"),
+                EXIT_REFUSED,
+            ));
         };
         let row = ClaimRow {
             name: name.clone(),
             kind: kind.to_string(),
+            kind_tag: kind.to_i64().unwrap_or(-1),
             standing: standing.to_string(),
             checker: checker_name.clone(),
             conditions: code_text(conditions),
@@ -549,7 +604,11 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
                 break;
             }
             other => {
-                return refuse("E-VERIFY-SHAPE", format!("{library}: {name}: check_claim returned the unknown status {other:?}"), EXIT_REFUSED);
+                return Err((
+                    "E-VERIFY-SHAPE".to_string(),
+                    format!("{library}: {name}: check_claim returned the unknown status {other:?}"),
+                    EXIT_REFUSED,
+                ));
             }
         }
     }
@@ -563,7 +622,7 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
     let mut shared: Vec<String> = Vec::new();
     if !native_queue.is_empty() && refusal.is_none() {
         let (outcomes, shared_refusals) =
-            native_verdicts(module, checked.source(), &request.path, &native_queue);
+            native_verdicts(module, source, path, &native_queue);
         shared = shared_refusals;
         for (row_index, (claim, _checker)) in accepted_rows.iter().zip(&native_queue) {
             match two_path(outcomes[claim.as_str()].clone()) {
@@ -596,7 +655,19 @@ pub(crate) fn run(request: VerifyRequest) -> CliExit {
         }
     }
 
-    if request.json {
+    Ok(Recheck { rows, notes, shared, refusal })
+}
+
+/// The verify table and the standing refusal, printed once the whole
+/// recheck is in.
+fn print_verdict(
+    rows: Vec<ClaimRow>,
+    notes: Vec<String>,
+    shared: Vec<String>,
+    refusal: Option<(&'static str, String)>,
+    json: bool,
+) -> CliExit {
+    if json {
         let rows: Vec<String> = rows
             .iter()
             .map(|row| {

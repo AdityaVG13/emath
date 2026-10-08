@@ -452,3 +452,80 @@ fn export_lean() {
     }
     probe.finish();
 }
+
+/// Settled witness claims export to Lean (bead emath-nwvmi): the claim's
+/// certificate and its authored checker, translated from the `.emath`
+/// definitions the library uses, stated as checker-accepts and
+/// discharged by the kernel (`decide +kernel`, never `native_decide`).
+/// Only settled claims export: a vm-only claim and a claim of another
+/// settled kind are refused by name while the rest still exports, and
+/// a claim whose checker rejects its certificate (the forged Barker
+/// receipt, `claim_6`) refuses the export outright, naming the claim,
+/// with nothing written.
+#[test]
+fn export_lean_claims() {
+    let mut probe = Probe::new("emath export lean: settled witness claims export and the kernel proves them");
+    let out = std::env::temp_dir().join(format!("emath_lean_claims_{}", std::process::id()));
+    let out_arg = out.to_string_lossy().to_string();
+    let claims = workspace().join("tests/fixtures/verify/claims.emath").to_string_lossy().to_string();
+
+    // The settled witness claim exports as a theorem the kernel
+    // decides; the vm-only bound claim and the settled-but-not-witness
+    // exhaustion claim are refused by name; the rest of the file still
+    // translates.
+    let (text, code) = emath(&workspace(), &["export", "lean", &claims, "--out", &out_arg]);
+    probe.demand(
+        "witness-claim-exports",
+        code == EXIT_PARTIAL as i32
+            && std::fs::read_to_string(out.join("Export/claims.lean")).is_ok_and(|lean| {
+                lean.contains("theorem witness_claim_settled")
+                    && lean.contains("decide +kernel")
+                    && lean.contains("is_pm_one")
+            }),
+        format!("exit {code}\n{text}"),
+    );
+    probe.demand(
+        "non-exported-claims-named",
+        text.contains("not exported: claims.emath `certified_bound_claim`")
+            && text.contains("not exported: claims.emath `exhaustion_claim`"),
+        format!("exit {code}\n{text}"),
+    );
+
+    // The kernel proves the exported claim: `--check` accepts the
+    // project with the claim theorem in it.
+    if lake_available() {
+        let out_checked = std::env::temp_dir().join(format!("emath_lean_claims_check_{}", std::process::id()));
+        let checked_arg = out_checked.to_string_lossy().to_string();
+        let (text, code) = emath(&workspace(), &["export", "lean", &claims, "--out", &checked_arg, "--check"]);
+        probe.demand(
+            "kernel-proves-the-witness-claim",
+            code == EXIT_PARTIAL as i32 && text.contains("lean: accepted") && text.contains("1 claim theorems"),
+            format!("exit {code}\n{text}"),
+        );
+
+        // The forged Barker receipt (claim_6, whose checker rejects it)
+        // refuses the export by name, before anything is written.
+        let forged = workspace()
+            .join("tests/fixtures/invention/bench_179/library_forged.emath")
+            .to_string_lossy()
+            .to_string();
+        let forged_out = std::env::temp_dir().join(format!("emath_lean_forged_{}", std::process::id()));
+        let forged_arg = forged_out.to_string_lossy().to_string();
+        let (text, code) = emath(&workspace(), &["export", "lean", &forged, "--out", &forged_arg]);
+        probe.demand(
+            "forged-claim-refuses-by-name",
+            code == EXIT_REFUSED as i32
+                && text.contains("E-VERIFY-REJECTED")
+                && text.contains("bench179_claim_6"),
+            format!("exit {code}\n{text}"),
+        );
+        probe.demand(
+            "forged-exports-nothing",
+            !forged_out.exists(),
+            format!("the forged export wrote files: {forged_out:?}"),
+        );
+    } else {
+        eprintln!("export_lean_claims: `lake` is not on PATH; the --check half did not run");
+    }
+    probe.finish();
+}

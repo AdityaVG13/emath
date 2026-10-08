@@ -21,6 +21,7 @@ unmet/partial/suspended, **4** fault, **5** incompatible checkpoint.
 | `emath test <file>` | Authored `tests:` |
 | `emath build <file> [--out <dir>]` | Emit fully lowered runnable Rust |
 | `emath api [--search TEXT] [--json]` | Constructor contracts and imported exports |
+| `emath export lean <file\|dir> [--out <dir>] [--check] [--work N]` | Translate a project (or a kept library) into a Lean 4 project; `--check` proves the examples, laws, and settled witness claims by the kernel. Only settled claims export: a vm-only claim or another settled kind is refused by name, and a rejected certificate refuses the export, naming the claim |
 
 `--json` on `run` is `emath.constructor.v1`: `execution`, `fulfillment`,
 `representation`, `payload`, `evidence`, `remaining`. Historical

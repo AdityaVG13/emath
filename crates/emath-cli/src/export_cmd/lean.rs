@@ -27,6 +27,7 @@ use emath_core::tree::{
     TypeKind, UnaryOp, UseTree,
 };
 use emath_exec_ir::constructor_emir::section_typed_fields;
+use emath_exec_ir::constructor_layer::{parse_constructor_scalar, CValue, DEFAULT_WORK};
 
 pub(crate) const PRELUDE: &str = include_str!("Prelude.lean");
 /// The law library; only a project that certifies laws gets it, and
@@ -416,6 +417,11 @@ pub(crate) struct Export {
     pub examples: usize,
     pub library_examples: usize,
     pub laws: usize,
+    pub claims: usize,
+    /// A claim the recheck refused (a rejected certificate, a shape
+    /// fault, an exhausted budget): the export refuses outright with
+    /// this code and message, before anything is written.
+    pub rejection: Option<(String, String)>,
     pub sites: Vec<ExampleSite>,
     pub law_sites: Vec<LawSite>,
     pub snapshots: BTreeMap<PathBuf, emath_exec_ir::constructor_layer::PreparedModule>,
@@ -774,8 +780,61 @@ fn translate_file(
     let mut refusals = Vec::new();
     let mut body = String::new();
     let own_names: BTreeSet<String> = functions(&source.tree).map(|decl| decl.name.clone()).collect();
+    // Settled claims export to Lean (the Lean bridge): the claim's
+    // authored checker, translated from the definitions this library
+    // uses, applied to the stored certificate and decided by the
+    // kernel. Only an exported root rechecks its claims — an imported
+    // library module's own claim-shaped functions (the constructors
+    // themselves) are not claims being exported — and the recheck runs
+    // before the plain translation, because a claim function and the
+    // checker a settled witness claim names belong to the claim lane,
+    // not to it.
+    let claim_fns: Vec<String> = match (&source.prepared, source.library, &source.refused) {
+        (Some(module), false, None) => module
+            .function_output_types()
+            .into_iter()
+            .filter(|(_, outputs)| outputs.iter().any(|name| name == "Claim"))
+            .map(|(name, _)| name)
+            .collect(),
+        _ => Vec::new(),
+    };
+    let recheck = if claim_fns.is_empty() {
+        None
+    } else {
+        let module = source.prepared.as_ref().expect("a checked module");
+        match crate::verify_cmd::recheck_claims(
+            module,
+            &source.text,
+            &source.path,
+            work.unwrap_or(DEFAULT_WORK),
+        ) {
+            Ok(recheck) => {
+                if let Some((code, message)) = &recheck.refusal {
+                    export.rejection = Some((code.to_string(), message.clone()));
+                }
+                Some(recheck)
+            }
+            Err((code, message, _)) => {
+                export.rejection = Some((code, message));
+                None
+            }
+        }
+    };
+    let lane_owned: BTreeSet<String> = {
+        let mut owned: BTreeSet<String> = claim_fns.iter().cloned().collect();
+        if let Some(recheck) = &recheck {
+            for row in &recheck.rows {
+                if row.verdict == "settled" && row.kind_tag == 0 {
+                    owned.insert(row.checker.clone());
+                }
+            }
+        }
+        owned
+    };
+    let exportable: Vec<&Declaration> =
+        functions(&source.tree).filter(|decl| !lane_owned.contains(&decl.name)).collect();
     let (certifiers, own): (Vec<&Declaration>, Vec<&Declaration>) =
-        functions(&source.tree).partition(|decl| !certify_calls(decl, &names).is_empty());
+        exportable.into_iter().partition(|decl| !certify_calls(decl, &names).is_empty());
     for item in &source.tree.items {
         if let Item::Declaration(decl) = item
             && !matches!(decl.as_kind.as_str(), "function" | "object")
@@ -941,6 +1000,173 @@ fn translate_file(
             }
         }
     }
+    // The claim lane: one row per claim, one theorem per settled
+    // witness claim, a named refusal for every claim that does not
+    // export.
+    if let Some(recheck) = &recheck {
+        let module = source.prepared.as_ref().expect("a checked module");
+        let budget = work.unwrap_or(DEFAULT_WORK);
+        for name in &claim_fns {
+                let Some(row) = recheck.rows.iter().find(|row| &row.name == name) else {
+                    // The recheck stopped before this claim; the standing
+                    // refusal, now the export's rejection, names why.
+                    continue;
+                };
+                match (row.verdict, row.kind_tag) {
+                    ("settled", 0) => {
+                        // The claim's record: the certificate to decode
+                        // and the checker it names. The recheck just
+                        // produced this record, so a failure here
+                        // refuses by name.
+                        let inputs =
+                            BTreeMap::from([("unused".to_string(), parse_constructor_scalar("0"))]);
+                        let record = match module.evaluate_function(name, &inputs, budget) {
+                            Ok(record) => record,
+                            Err(err) => {
+                                refusals.push(format!(
+                                    "not exported: {} `{name}`: the claim did not produce again ({})",
+                                    source.rel, err.message
+                                ));
+                                continue;
+                            }
+                        };
+                        let CValue::Record { fields, .. } = &record else {
+                            refusals.push(format!(
+                                "not exported: {} `{name}`: the claim did not produce again",
+                                source.rel
+                            ));
+                            continue;
+                        };
+                        let (Some(CValue::Code(certificate)), Some(CValue::Code(checker))) =
+                            (fields.get("certificate"), fields.get("checker"))
+                        else {
+                            refusals.push(format!(
+                                "not exported: {} `{name}`: the claim carries no certificate or checker",
+                                source.rel
+                            ));
+                            continue;
+                        };
+                        let Some(checker_name) = code_name(&checker.expr) else {
+                            refusals.push(format!(
+                                "not exported: {} `{name}`: the claim's checker is not a name",
+                                source.rel
+                            ));
+                            continue;
+                        };
+                        let Some(checker_decl) =
+                            functions(&source.tree).find(|decl| decl.name == checker_name)
+                        else {
+                            refusals.push(format!(
+                                "not exported: {} `{name}`: the checker `{checker_name}` is not declared in this file; only a checker beside its claim exports to Lean today",
+                                source.rel
+                            ));
+                            continue;
+                        };
+                        let checker_inputs = section_typed_fields(checker_decl, "inputs");
+                        let [(cert_input, cert_input_ty)] = checker_inputs.as_slice() else {
+                            refusals.push(format!(
+                                "not exported: {} `{name}`: the checker `{checker_name}` must take exactly the certificate",
+                                source.rel
+                            ));
+                            continue;
+                        };
+                        if !is_code_type(cert_input_ty) {
+                            refusals.push(format!(
+                                "not exported: {} `{name}`: the checker `{checker_name}` does not take the certificate's `Code`",
+                                source.rel
+                            ));
+                            continue;
+                        }
+                        let bodies: Vec<&Expr> = checker_decl
+                            .sections()
+                            .filter(|section| section.name == "definitions")
+                            .flat_map(|section| section.suite.statements.iter())
+                            .filter_map(|stmt| match &stmt.kind {
+                                StmtKind::Assign { value, .. } => Some(value),
+                                _ => None,
+                            })
+                            .collect();
+                        let [body] = bodies.as_slice() else {
+                            refusals.push(format!(
+                                "not exported: {} `{name}`: the checker `{checker_name}` must define its verdict in a single definition",
+                                source.rel
+                            ));
+                            continue;
+                        };
+                        if let Err(reason) = check_decode_only(body, cert_input) {
+                            refusals.push(format!(
+                                "not exported: {} `{name}`: {reason}",
+                                source.rel
+                            ));
+                            continue;
+                        }
+                        // The certificate once, then the checker's body
+                        // over it: the decode folds to the certificate,
+                        // so the kernel decides the checker's own logic
+                        // on the stored data.
+                        let mut ctx = Ctx { names: &mut names, scope: Vec::new(), decode: None };
+                        let (cert_text, cert_ty) = match ctx.expr(&certificate.expr, true) {
+                            Ok((text, _, ty)) => (text, ty),
+                            Err(reason) => {
+                                refusals.push(format!(
+                                    "not exported: {} `{name}`: the certificate has no Lean translation ({reason})",
+                                    source.rel
+                                ));
+                                continue;
+                            }
+                        };
+                        ctx.decode = Some((cert_input.clone(), cert_text, cert_ty));
+                        let body_text = match ctx.expr(body, false) {
+                            Ok((text, _, Ty::Bool)) => text,
+                            Ok((_, _, ty)) => {
+                                refusals.push(format!(
+                                    "not exported: {} `{name}`: the checker `{checker_name}` computes a {}, not a Bool verdict",
+                                    source.rel,
+                                    render(&ty)
+                                ));
+                                continue;
+                            }
+                            Err(reason) => {
+                                refusals.push(format!(
+                                    "not exported: {} `{name}`: the checker has no Lean translation ({reason})",
+                                    source.rel
+                                ));
+                                continue;
+                            }
+                        };
+                        let theorem_text = format!(
+                            "-- Settled claim `{name}`: the checker `{checker_name}` on its stored\n-- certificate, decoded once at export; the kernel decides it.\ntheorem {}_settled : ({body_text}) = true := by\n  decide +kernel\n\n",
+                            ident(name)
+                        );
+                        let first_line = text.lines().count() + 1;
+                        text.push_str(&theorem_text);
+                        export.sites.push(ExampleSite {
+                            lean: lean_path.clone(),
+                            first_line,
+                            last_line: text.lines().count(),
+                            what: format!("{} claim `{name}`", source.rel),
+                        });
+                        export.claims += 1;
+                    }
+                    ("settled", _) => {
+                        refusals.push(format!(
+                            "not exported: {} `{name}`: the claim is settled, but only construction-witness claims export to Lean today",
+                            source.rel
+                        ));
+                    }
+                    ("vm-only", _) => {
+                        refusals.push(format!(
+                            "not exported: {} `{name}`: only a settled claim exports to Lean; this one is vm-only ({})",
+                            source.rel,
+                            row.note
+                                .as_deref()
+                                .unwrap_or("the emitted Rust did not reach a verdict"),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
     for (law, what, emath_call) in laws {
         let first_line = text.lines().count() + 1;
         text.push_str(&law.text);
@@ -1267,7 +1493,7 @@ struct Definitions {
 }
 
 fn definitions(decl: &Declaration, shape: &Shape, names: &mut Names) -> Result<Definitions, String> {
-    let mut ctx = Ctx { names, scope: shape.params.clone() };
+    let mut ctx = Ctx { names, scope: shape.params.clone(), decode: None };
     let mut lines = Vec::new();
     let mut assigned = BTreeMap::new();
     for section in decl.sections().filter(|section| section.name == "definitions") {
@@ -1535,7 +1761,7 @@ fn theorem(
     if case.expects.is_empty() {
         return Err("the example expects nothing".into());
     }
-    let mut ctx = Ctx { names, scope: Vec::new() };
+    let mut ctx = Ctx { names, scope: Vec::new(), decode: None };
     let mut lines = Vec::new();
     let mut args = Vec::new();
     let mut scope = Vec::new();
@@ -1659,7 +1885,7 @@ fn law(
             return Err("a side's variable is not over `Int`".into());
         }
         names.called.clear();
-        let mut ctx = Ctx { names, scope: vec![(param.clone(), Ty::Int)] };
+        let mut ctx = Ctx { names, scope: vec![(param.clone(), Ty::Int)], decode: None };
         let (text, level, ty) = ctx.expr(body, false)?;
         if !matches!(ty, Ty::Int | Ty::Rat | Ty::Lit) {
             return Err("a side's value is not a number".into());
@@ -1818,7 +2044,7 @@ fn law_all(
         names.called.clear();
         let mut scope: Vec<(String, Ty)> = params.iter().map(|param| (param.clone(), Ty::Rat)).collect();
         scope.push((n.to_string(), Ty::Int));
-        let mut ctx = Ctx { names, scope };
+        let mut ctx = Ctx { names, scope, decode: None };
         let (text, level, ty) = ctx.expr(&rename(body, &to_params), false)?;
         if !matches!(ty, Ty::Int | Ty::Rat | Ty::Lit) {
             return Err("a side's value is not a number".into());
@@ -1845,7 +2071,7 @@ fn law_all(
     let facts = reach.branches.iter().map(|(condition, side)| (condition, Some(*side)));
     for (expr, side) in facts.chain(reach.divisors.iter().map(|divisor| (divisor, None))) {
         let mut state = |expr: &Expr, scope: &Vec<(String, Ty)>| -> Result<String, String> {
-            let mut ctx = Ctx { names: &mut *names, scope: scope.clone() };
+            let mut ctx = Ctx { names: &mut *names, scope: scope.clone(), decode: None };
             Ok(match side {
                 Some(true) => prop(&mut ctx, expr)?,
                 Some(false) => format!("¬ ({})", prop(&mut ctx, expr)?),
@@ -2375,6 +2601,12 @@ type Out = (String, u8, Ty);
 struct Ctx<'a> {
     names: &'a mut Names,
     scope: Vec<(String, Ty)>,
+    /// The claim lane's decode: the checker's certificate input name,
+    /// its decoded Lean value and type. Set only for a claim theorem's
+    /// translation, where `quote.evaluate(<the certificate>)` folds to
+    /// the certificate's value; every other use of `quote.evaluate`
+    /// still refuses.
+    decode: Option<(String, String, Ty)>,
 }
 
 impl Ctx<'_> {
@@ -2571,6 +2803,22 @@ impl Ctx<'_> {
     /// Each argument is cast to its parameter's type; a generic
     /// parameter takes the type its first argument fixes.
     fn call(&mut self, function: &Expr, args: &[Expr]) -> Result<Out, String> {
+        // The claim lane's decode: `quote.evaluate` of the bare
+        // certificate folds to the certificate's value, so the checker
+        // is translated over the decoded data. `check_decode_only`
+        // guarantees this is the certificate's only use.
+        if let Some((input, cert_text, cert_ty)) = &self.decode
+            && let ExprKind::Path { segments, generics: None } = &function.kind
+            && segments.len() == 2
+            && segments[0] == "quote"
+            && segments[1] == "evaluate"
+            && let [arg] = args
+            && let ExprKind::Path { segments: arg_segments, generics: None } = &arg.kind
+            && arg_segments.len() == 1
+            && arg_segments[0] == *input
+        {
+            return Ok((cert_text.clone(), LEVEL_ATOM, cert_ty.clone()));
+        }
         // emath faults here. An example that reaches it is not exported
         // and a law must hold in emath too, so Lean's total stand-in is
         // never compared with an emath value.
@@ -2717,6 +2965,120 @@ impl Ctx<'_> {
 }
 
 /// An integer or rational literal, possibly under arithmetic.
+/// The claim's checker name: a `quote(<name>)` code holding a path.
+fn code_name(expr: &Expr) -> Option<String> {
+    match &expr.kind {
+        ExprKind::Path { segments, generics: None } if !segments.is_empty() => Some(segments.join(".")),
+        _ => None,
+    }
+}
+
+/// The checker's input must be the certificate's `Code`.
+fn is_code_type(ty: &TypeExpr) -> bool {
+    matches!(&ty.kind, TypeKind::Path { segments, .. } if segments.len() == 1 && segments[0] == "Code")
+}
+
+/// Every use of the checker's certificate input must be a direct
+/// `quote.evaluate(<the certificate>)`: the decode folds to the
+/// certificate's value, so any other use (the bare name, a decode of
+/// something else, a nested form hiding it) has no Lean translation.
+fn check_decode_only(expr: &Expr, input: &str) -> Result<(), String> {
+    match &expr.kind {
+        ExprKind::Path { segments, generics: None } => {
+            if segments.len() == 1 && segments[0] == input {
+                return Err("the checker uses its certificate other than by decoding it".into());
+            }
+            Ok(())
+        }
+        ExprKind::Call { function, args } => {
+            if let ExprKind::Path { segments, generics: None } = &function.kind
+                && segments.len() == 2
+                && segments[0] == "quote"
+                && segments[1] == "evaluate"
+            {
+                let [arg] = args.as_slice() else {
+                    return Err("`quote.evaluate` takes exactly the certificate".into());
+                };
+                return match &arg.kind {
+                    ExprKind::Path { segments, generics: None }
+                        if segments.len() == 1 && segments[0] == input =>
+                    {
+                        Ok(())
+                    }
+                    _ => Err("`quote.evaluate` of something other than the bare certificate".into()),
+                };
+            }
+            check_decode_only(function, input)?;
+            for arg in args {
+                check_decode_only(arg, input)?;
+            }
+            Ok(())
+        }
+        ExprKind::List(items) | ExprKind::Tuple(items) | ExprKind::Set(items) => {
+            for item in items {
+                check_decode_only(item, input)?;
+            }
+            Ok(())
+        }
+        ExprKind::SequenceCons { head, tail, .. } => {
+            check_decode_only(head, input)?;
+            check_decode_only(tail, input)
+        }
+        ExprKind::Index { value, indices } => {
+            check_decode_only(value, input)?;
+            for index in indices {
+                check_decode_only(index, input)?;
+            }
+            Ok(())
+        }
+        ExprKind::Unary { value, .. } => check_decode_only(value, input),
+        ExprKind::Binary { left, right, .. } => {
+            check_decode_only(left, input)?;
+            check_decode_only(right, input)
+        }
+        ExprKind::If { condition, then_value, else_value } => {
+            check_decode_only(condition, input)?;
+            check_decode_only(then_value, input)?;
+            check_decode_only(else_value, input)
+        }
+        ExprKind::Record { fields, .. } => {
+            for (_, value) in fields {
+                check_decode_only(value, input)?;
+            }
+            Ok(())
+        }
+        // The scalar literals carry no name.
+        ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Rational { .. } | ExprKind::Str(_)
+        | ExprKind::Bool(_) => Ok(()),
+        other => Err(format!(
+            "the checker's `{}` form has no Lean claim translation",
+            expr_form_name(other)
+        )),
+    }
+}
+
+/// The form name for a claim-checker refusal.
+fn expr_form_name(expr: &ExprKind) -> &'static str {
+    match expr {
+        ExprKind::Quote { .. } | ExprKind::QuoteBind { .. } => "quote",
+        ExprKind::FunctionAbs { .. } => "function literal",
+        ExprKind::Recur { .. } => "recur",
+        ExprKind::CallableBinder { .. } => "binder",
+        ExprKind::Slice { .. } => "slice",
+        ExprKind::Table { .. } => "table",
+        ExprKind::SetComprehension { .. } => "set comprehension",
+        ExprKind::Cases { .. } => "cases",
+        ExprKind::Approx { .. } => "approximation",
+        ExprKind::Quantity { .. } | ExprKind::Measured { .. } | ExprKind::UnitQuery { .. } => {
+            "quantity"
+        }
+        ExprKind::WithSeriesPolicy { .. } => "series policy",
+        ExprKind::Range { .. } => "range",
+        ExprKind::Conditioned { .. } => "conditioned",
+        _ => "expression",
+    }
+}
+
 fn is_literal(expr: &Expr) -> bool {
     match &expr.kind {
         ExprKind::Int(_) | ExprKind::Rational { .. } => true,

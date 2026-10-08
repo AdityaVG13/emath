@@ -300,6 +300,35 @@ A function that certifies laws becomes its laws. Its own value (a list
 of certificates) is not exported, so give it no `tests:`. An example on
 it is reported as `not translated`.
 
+## Settled claims
+
+A kept library's claims export too, but only what `emath verify`
+settled: a claim whose checker the reference VM and the emitted Rust
+agree on. The export runs the same recheck verify does and refuses
+anything else by name, so Lean never sees a claim emath could not
+settle.
+
+A settled construction-witness claim becomes one theorem: the claim's
+own checker — translated from the `.emath` definitions the library
+uses, never a hand-written copy — applied to the stored certificate,
+with the certificate decoded once at export. The Lean kernel decides
+the theorem (`decide +kernel`, never `native_decide`), so a wrong
+checker translation or a tampered certificate is a Lean error, not a
+silent pass:
+
+```lean
+-- Settled claim `witness_claim`: the checker `witness_checker` on its
+-- stored certificate, decoded once at export; the kernel decides it.
+theorem witness_claim_settled : (is_pm_one [(1 : Int), (0 - 1 : Int), (1 : Int), (1 : Int), (0 - 1 : Int)]) = true := by
+  decide +kernel
+```
+
+Claims of other settled kinds (exhaustion receipts, certified bounds)
+are refused by name for now. A claim the recheck refuses — a checker
+that rejects its certificate, a content id that does not match —
+refuses the whole export, naming the claim, and nothing is written: a
+library holding a rejected certificate exports nothing.
+
 ## Flags
 
 ```
@@ -329,7 +358,7 @@ the export refuses before writing. Retry after the source edits are complete.
 The first line always reports what was written:
 
 ```
-exported 2 source files to <dir>: 4 functions, 4 examples, 15 library examples, 3 laws
+exported 2 source files to <dir>: 4 functions, 4 examples, 15 library examples, 3 laws, 0 claims
 ```
 
 The next lines list anything left out, one per line, starting with
@@ -365,6 +394,8 @@ rejected: guess.emath law 1 of `laws`: the two sides differ at n = 0
 | `not translated: ... : it faults in emath (code)` | The example faults in emath, so it has no value to prove | Fix the example or the function |
 | `not translated: ... : it runs out of emath's work budget` | The example needs more work than the default budget | Add `--work N` (for example `--work 100000000`) |
 | `not translated: ... example of F: a function that certifies laws becomes the laws` | An example on a law function | Remove the example. The laws themselves are checked |
+| `not exported: ... \`claim\`: only a settled claim exports to Lean; this one is vm-only (...)` | The claim's checker does not lower natively, so verify could not settle it | See the verify note for what the emitter cannot lower |
+| `not exported: ... \`claim\`: the claim is settled, but only construction-witness claims export to Lean today` | A settled claim of another kind (exhaustion receipt, certified bound) | Wait for that kind's export, or keep the claim checked by `emath verify` |
 | `unproven: ... : Lean found no order bound for a side` | The law's shape is outside what the law library proves | See [Limits](#limits). This does not mean the law is false |
 | `unproven: ... : Lean ran out of time or recursion depth before deciding it` | The kernel gave up on a big computation | Use a smaller example. Very large values (around a million loop steps) are beyond the kernel |
 | `unproven: ... : Lean proves it, but emath does not certify it` | emath found no bound for a side, or a side faults in emath (such as a division by 0) where Lean's total arithmetic does not | Treat it as unproven. Run the law in emath: `points=0` means no bound, so rewrite the side; otherwise look for a division by something that can be 0 |
